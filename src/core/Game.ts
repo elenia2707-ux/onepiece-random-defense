@@ -406,7 +406,7 @@ export class Game {
     this.sim.events.on('monster:hit', (ev) => {
       const uDef = this.sim.data.unitsById.get(ev.unitId);
       const skin = this.equippedHeroSkinsMap.get(ev.unitId);
-      this.sound.playHit(uDef?.faction ?? 'orthodox', ev.isCrit, ev.isSkill);
+      this.sound.playHit(uDef?.faction ?? 'orthodox', ev.isCrit || ev.justShattered, ev.isSkill);
       this.vfx.spawnHitFx(
         ev.entityId,
         ev.x,
@@ -417,6 +417,8 @@ export class Game {
         ev.isCrit,
         ev.tick,
         ev.isSkill,
+        ev.armorBroken,
+        ev.justShattered,
       );
     });
 

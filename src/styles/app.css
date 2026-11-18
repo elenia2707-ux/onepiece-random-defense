@@ -2074,12 +2074,25 @@ button {
   font-size: 16px;
 }
 
+.relic-mini-px {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  margin-left: -2px;
+}
+
 .relic-buff-pill.vault {
   background: linear-gradient(180deg, #facc15 0%, #b45309 100%);
 }
 
 .relic-buff-pill.sword {
   background: linear-gradient(180deg, #fb7185 0%, #9f1239 100%);
+}
+
+.relic-buff-pill.active-relics {
+  background: linear-gradient(180deg, #38bdf8 0%, #0369a1 100%);
 }
 
 .relic-buff-pill.key-ready {
@@ -2171,24 +2184,169 @@ button {
   animation: gamblePop 300ms ease;
 }
 
+.relic-pull-showcase {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #422006 0%, #78350f 55%, #1c1917 100%);
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px rgba(250, 204, 21, 0.65);
+  animation: gamblePop 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.relic-pull-showcase.tier-master {
+  background: linear-gradient(135deg, #451a03 0%, #b45309 50%, #291509 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.relic-pull-showcase.tier-mythic {
+  background: linear-gradient(135deg, #450a0a 0%, #991b1b 50%, #422006 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.relic-pull-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  border: 2.5px solid var(--ink);
+  background: radial-gradient(circle at 50% 42%, #fef08a 0%, #92400e 65%, #271206 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 3px;
+}
+
+.relic-pull-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.relic-pull-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.relic-pull-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.relic-pull-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+}
+
+.relic-pull-title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  line-height: 1.15;
+}
+
+.relic-pull-stat {
+  font-size: 13px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
 .relic-card.relic-owned {
   background: linear-gradient(180deg, #1f6e64 0%, #124841 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 0 0 1.5px rgba(250, 204, 21, 0.45);
 }
 
+.relic-card.relic-master {
+  background: linear-gradient(180deg, #275e56 0%, #163e39 55%, #3b210c 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px rgba(253, 224, 71, 0.78);
+}
+
+.relic-card.relic-mythic {
+  background: linear-gradient(180deg, #6b1d28 0%, #3b121c 58%, #3a2007 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2.5px #fde047;
+}
+
 .relic-card.relic-locked {
-  opacity: 0.92;
+  opacity: 0.94;
 }
 
 .card-avatar.relic-avatar {
-  background: radial-gradient(circle at 50% 38%, #fef3c7 0%, #78350f 100%);
+  background: radial-gradient(circle at 50% 42%, #fef08a 0%, #92400e 66%, #291306 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 3px;
+  overflow: hidden;
 }
 
-.card-avatar.relic-avatar .ico {
-  font-size: 40px;
+.relic-card.relic-locked .card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 45%, #64748b 0%, #1e293b 70%, #0f172a 100%);
+}
+
+.relic-card.relic-mythic .card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 42%, #fef9c3 0%, #dc2626 62%, #450a0a 100%);
+}
+
+.card-avatar.relic-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.relic-lore {
+  color: #cbd5e1;
+}
+
+.relic-max-note {
+  color: #fde047;
+  font-family: var(--font-display);
+}
+
+.relic-lv-track {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 5px;
+  max-width: 220px;
+}
+
+.relic-lv-pip {
+  height: 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.relic-lv-pip.on {
+  background: linear-gradient(180deg, #4ade80 0%, #16a34a 100%);
+}
+
+.relic-lv-pip.high {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+}
+
+.relic-lv-pip.max {
+  background: linear-gradient(180deg, #fef08a 0%, #ef4444 65%, #991b1b 100%);
 }
 
 .relic-tag-pill {

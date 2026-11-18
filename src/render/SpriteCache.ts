@@ -4,9 +4,15 @@ import type {
   GradeDef,
   HeroSkinDef,
   MonsterKind,
+  RelicId,
   UnitDef,
 } from '../data/types';
-import { paintMonsterChibi, paintUnitChibi, PIXEL_OUTLINE } from './ChibiPainter';
+import {
+  paintMonsterChibi,
+  paintRelicPixelArt,
+  paintUnitChibi,
+  PIXEL_OUTLINE,
+} from './ChibiPainter';
 
 export interface GlyphMetric {
   readonly sx: number;
@@ -29,7 +35,8 @@ const UNIT_PIXEL_SIZE = 128; // 32 x 4
 const MOB_PIXEL_SIZE = 128; // 32 x 4
 const BOSS_PIXEL_SIZE = 128; // 32 x 4
 
-export type GlyphStyle = 'normal' | 'skill' | 'crit';
+export type GlyphStyle = 'normal' | 'skill' | 'crit' | 'shred';
+export type HitBadgeKind = 'crit' | 'shred' | 'execute';
 
 interface BannerSpec {
   readonly kind: 'boss' | 'craft';
@@ -62,6 +69,7 @@ export class SpriteCache {
   private readonly bannerSpecs = new Map<string, BannerSpec>();
   private readonly sealSpecs = new Map<string, SealSpec>();
   private readonly skillCalloutSpecs = new Map<string, SkillCalloutSpec>();
+  private readonly hitBadgeSpecs = new Map<string, HitBadgeKind>();
   private readonly skinnedVariants = new Map<string, Array<{ key: string; skin: HeroSkinDef }>>();
   private readonly probed = new Set<string>();
   private readonly loadedSheetImages = new Map<string, HTMLImageElement>();
@@ -93,6 +101,7 @@ export class SpriteCache {
     this.bannerSpecs.delete(key);
     this.sealSpecs.delete(key);
     this.skillCalloutSpecs.delete(key);
+    this.hitBadgeSpecs.delete(key);
   }
 
   public disposeAll(): void {
@@ -105,6 +114,7 @@ export class SpriteCache {
     this.bannerSpecs.clear();
     this.sealSpecs.clear();
     this.skillCalloutSpecs.clear();
+    this.hitBadgeSpecs.clear();
     this.skinnedVariants.clear();
     this.loadedSheetImages.clear();
     this.pendingSheetCallbacks.clear();
@@ -124,7 +134,7 @@ export class SpriteCache {
     if (typeof document === 'undefined' || !('fonts' in document)) return;
     const fonts = document.fonts;
     Promise.all([
-      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789 剛破天魔毒血雷龍'),
+      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789 剛破天魔毒血雷龍 회심 파갑 참살'),
       fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현 매화만개 천마군림보'),
     ])
       .catch(() => undefined)
@@ -147,6 +157,10 @@ export class SpriteCache {
     for (const [key, spec] of this.skillCalloutSpecs) {
       const c = this.cache.get(key);
       if (c) this.paintSkillCallout(c, spec);
+    }
+    for (const [key, kind] of this.hitBadgeSpecs) {
+      const c = this.cache.get(key);
+      if (c) this.paintHitBadge(c, kind);
     }
   }
 
@@ -683,6 +697,76 @@ export class SpriteCache {
     ctx.restore();
   }
 
+  /** Cached 96x96 pixel-art treasure portrait URL for the 6 Wuxia Relics (무림 6대 신물). */
+  public relicPortraitUrl(relicId: RelicId, level: number): string {
+    const tier = level >= 10 ? 10 : level >= 5 ? 5 : level > 0 ? 1 : 0;
+    const key = `url:relic:${relicId}:${tier}`;
+    const existing = this.portraitUrls.get(key);
+    if (existing) return existing;
+
+    const canvasKey = `relic:${relicId}:${tier}`;
+    let c = this.cache.get(canvasKey);
+    if (!c) {
+      c = this.createOffscreen(96, 96);
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        paintRelicPixelArt(ctx, relicId, 96, tier);
+      }
+      this.cache.set(canvasKey, c);
+    }
+
+    const url = c.width > 0 ? c.toDataURL('image/png') : '';
+    this.portraitUrls.set(key, url);
+    return url;
+  }
+
+  /** Pre-rendered mini combat hit stamp ('회심!', '파갑!', '참살!') with zero per-frame fillText. */
+  public hitBadge(kind: HitBadgeKind): HTMLCanvasElement {
+    const key = `hitbadge:${kind}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(112, 38);
+    this.paintHitBadge(c, kind);
+    this.cache.set(key, c);
+    this.hitBadgeSpecs.set(key, kind);
+    return c;
+  }
+
+  private paintHitBadge(c: HTMLCanvasElement, kind: HitBadgeKind): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+
+    const label = kind === 'crit' ? '회심!' : kind === 'shred' ? '파갑!' : '참살!';
+    const topCol = kind === 'crit' ? '#fde047' : kind === 'shred' ? '#e879f9' : '#fb7185';
+    const botCol = kind === 'crit' ? '#ea580c' : kind === 'shred' ? '#9333ea' : '#be123c';
+
+    ctx.beginPath();
+    ctx.roundRect(8, 5, c.width - 16, c.height - 10, 12);
+    const bg = ctx.createLinearGradient(0, 5, 0, c.height - 5);
+    bg.addColorStop(0, topCol);
+    bg.addColorStop(1, botCol);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+
+    ctx.font = `20px ${DISPLAY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(label, c.width * 0.5, c.height * 0.5 + 1);
+    ctx.fillStyle = '#fffbeb';
+    ctx.fillText(label, c.width * 0.5, c.height * 0.5 + 1);
+    ctx.restore();
+  }
+
   /** Cached PNG data URL for boss / monster pixel portrait badges in DOM HUD. */
   public monsterPortraitUrl(kind: MonsterKind): string {
     const key = `url:monster:${kind}`;
@@ -867,7 +951,7 @@ export class SpriteCache {
     const cellW = 46;
     const cellH = 60;
     this.glyphRowHeight = cellH;
-    const c = this.createOffscreen(GLYPH_CHARS.length * cellW, cellH * 3);
+    const c = this.createOffscreen(GLYPH_CHARS.length * cellW, cellH * 4);
     this.paintGlyphAtlas(c);
     this.glyphCanvas = c;
     return c;
@@ -929,6 +1013,20 @@ export class SpriteCache {
       ctx.fillStyle = critGrad;
       ctx.fillText(ch, cx, cy2);
 
+      // Row 3: Armor-broken amplified strike (파갑·강기격파!) — radiant amethyst-magenta-to-crimson gradient
+      const cy3 = cellH * 3.5;
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.strokeText(ch, cx, cy3 + 2.5);
+      ctx.strokeText(ch, cx, cy3);
+      const shredGrad = ctx.createLinearGradient(cx, cy3 - 19, cx, cy3 + 19);
+      shredGrad.addColorStop(0, '#fdf4ff');
+      shredGrad.addColorStop(0.4, '#e879f9');
+      shredGrad.addColorStop(0.78, '#f43f5e');
+      shredGrad.addColorStop(1, '#9f1239');
+      ctx.fillStyle = shredGrad;
+      ctx.fillText(ch, cx, cy3);
+
       const measured = ctx.measureText(ch).width;
       this.glyphMap.set(ch, {
         sx: i * cellW,
@@ -962,11 +1060,13 @@ export class SpriteCache {
     const resolved: GlyphStyle =
       typeof style === 'boolean' ? (style ? 'crit' : 'normal') : style;
     const rowSy =
-      resolved === 'crit'
-        ? this.glyphRowHeight * 2
-        : resolved === 'skill'
-          ? this.glyphRowHeight
-          : 0;
+      resolved === 'shred'
+        ? this.glyphRowHeight * 3
+        : resolved === 'crit'
+          ? this.glyphRowHeight * 2
+          : resolved === 'skill'
+            ? this.glyphRowHeight
+            : 0;
 
     for (let i = 0; i < text.length; i++) {
       const m = this.glyphMap.get(text[i]!);

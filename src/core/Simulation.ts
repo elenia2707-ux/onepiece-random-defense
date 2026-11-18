@@ -99,6 +99,8 @@ export interface SimEventMap {
     readonly slain: boolean;
     readonly isCrit: boolean;
     readonly isSkill: boolean;
+    readonly armorBroken: boolean;
+    readonly justShattered: boolean;
     readonly tick: number;
   };
   'skill:impact': {
@@ -1818,14 +1820,18 @@ export class Simulation {
     const idx = this.monsters.indexOf(m);
     if (idx === -1) return;
 
+    const prevShredBeforeHit = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
+    const prevNetArmor = m.armor - prevShredBeforeHit;
+
     if (p.armorShred > 0) {
-      const prevShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
-      m.armorShred = Math.min(140, prevShred + p.armorShred);
+      m.armorShred = Math.min(140, prevShredBeforeHit + p.armorShred);
       m.shredExpireTick = Math.max(m.shredExpireTick, this.currentTick + 120);
     }
 
     const activeShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
     const netArmor = m.armor - activeShred;
+    const justShattered = m.armor > 0 && prevNetArmor > 0 && netArmor <= 0;
+    const armorBroken = netArmor < 0 || (m.armor > 0 && netArmor <= 0);
     let damage = rawDamage;
     if (netArmor > 0) {
       damage = Math.max(1, Math.round(rawDamage * (100 / (100 + netArmor))));
@@ -1931,6 +1937,8 @@ export class Simulation {
       slain,
       isCrit: p.isCrit,
       isSkill: p.isSkill,
+      armorBroken,
+      justShattered,
       tick: this.currentTick,
     });
   }

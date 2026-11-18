@@ -935,6 +935,15 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(bountyMob!.armor).toBeGreaterThan(0);
 
     let observedShred = 0;
+    let bountyShatterCount = 0;
+    let bountyArmorBrokenHits = 0;
+    sim.events.on('monster:hit', (ev) => {
+      if (ev.entityId === bountyMob!.entityId) {
+        if (ev.justShattered) bountyShatterCount += 1;
+        if (ev.armorBroken) bountyArmorBrokenHits += 1;
+      }
+    });
+
     for (let t = 0; t < 180; t++) {
       sim.tick();
       const activeBounty = sim.getMonsters().find((m) => m.isBounty);
@@ -943,6 +952,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       }
     }
     expect(observedShred).toBeGreaterThan(0);
+    expect(bountyShatterCount).toBe(1);
+    expect(bountyArmorBrokenHits).toBeGreaterThan(0);
   });
 
   it('supports 금수화장각 skin gacha (1x/5x), duplicate 운금비단 refund, silk crafting, equipment persistence, and achievement unlocks', () => {

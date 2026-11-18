@@ -137,21 +137,6 @@ const ICON = {
   pavilion: `${SVG_OPEN}<path d="M2.5 11.5L12 4l9.5 7.5H2.5z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="5.5" y="11.5" width="13" height="8" rx="1.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M9.5 19.5v-5h5v5" fill="#991b1b" stroke="${INK}" stroke-width="1.8"/></svg>`,
 } as const;
 
-const RELIC_ICON: Readonly<Record<RelicId, string>> = {
-  // 천하제일 전장 금고 — Golden treasury coffer overflowing with sycee ingots
-  golden_vault: `${SVG_OPEN}<rect x="3" y="9" width="18" height="11.5" rx="2.5" fill="#d97706" stroke="${INK}" stroke-width="2.2"/><path d="M4.5 9c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5H4.5z" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><circle cx="12" cy="14.5" r="3" fill="#fef08a" stroke="${INK}" stroke-width="1.8"/><rect x="11" y="13.5" width="2" height="2" fill="${INK}"/></svg>`,
-  // 만금쾌검패 — Imperial gold medallion crossed by glowing qi sword
-  million_sword_seal: `${SVG_OPEN}<polygon points="12,2 20,7 20,17 12,22 4,17 4,7" fill="#7c2d12" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><polygon points="12,4.5 17.5,8 17.5,16 12,19.5 6.5,16 6.5,8" fill="#f59e0b"/><path d="M12 3.5v13M8.5 13.5h7" stroke="${INK}" stroke-width="4.2" stroke-linecap="round"/><path d="M12 3.5v13" stroke="#e0f2fe" stroke-width="2.2" stroke-linecap="round"/><path d="M8.5 13.5h7" stroke="#fef08a" stroke-width="2.2" stroke-linecap="round"/></svg>`,
-  // 야행도적의 비수 — Shadow stiletto with stolen brass coin gleam
-  bandit_dagger: `${SVG_OPEN}<path d="M18.5 3.5L7 14l3 3L20.5 5.5l-2-2z" fill="#38bdf8" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><path d="M5.5 15.5l4 4M4 19.5l3-3" stroke="#facc15" stroke-width="2.6" stroke-linecap="round"/><circle cx="16.5" cy="16.5" r="4" fill="#fde047" stroke="${INK}" stroke-width="2"/><rect x="15.5" y="15.5" width="2" height="2" fill="${INK}"/></svg>`,
-  // 태상노군 만년단로 — Taoist 3-legged bronze-gold alchemy furnace
-  immortal_furnace: `${SVG_OPEN}<path d="M7 18.5l-1.5 3M17 18.5l1.5 3M12 19v2.5" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/><ellipse cx="12" cy="13.5" rx="7.5" ry="5.8" fill="#ea580c" stroke="${INK}" stroke-width="2.3"/><path d="M7 8.5h10l-1.5-3.5h-7L7 8.5z" fill="#facc15" stroke="${INK}" stroke-width="2.1" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="2.5" fill="#fef08a"/></svg>`,
-  // 전설의 개국옥새 — Imperial white-jade seal with vermilion ink base
-  founding_jade_seal: `${SVG_OPEN}<rect x="4.5" y="12.5" width="15" height="8" rx="2" fill="#5eead4" stroke="${INK}" stroke-width="2.3"/><rect x="4.5" y="18" width="15" height="2.5" rx="1" fill="#e11d48" stroke="${INK}" stroke-width="1.6"/><path d="M8.5 12.5V8a3.5 3.5 0 0 1 7 0v4.5" fill="#ccfbf1" stroke="${INK}" stroke-width="2.3"/><circle cx="12" cy="8" r="1.6" fill="#facc15"/></svg>`,
-  // 천기비급함 — Celestial azure scroll case with golden talisman
-  heavenly_scroll_chest: `${SVG_OPEN}<rect x="3.5" y="6.5" width="17" height="12" rx="3" fill="#0284c7" stroke="${INK}" stroke-width="2.3"/><rect x="6" y="4" width="12" height="4" rx="1.5" fill="#38bdf8" stroke="${INK}" stroke-width="2"/><rect x="10" y="8" width="4" height="8.5" rx="1" fill="#fde047" stroke="${INK}" stroke-width="1.9"/><path d="M12 10v4.5" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round"/></svg>`,
-};
-
 export class UIManager {
   private readonly root: HTMLElement;
   private readonly data: GameDataBundle;
@@ -287,8 +272,15 @@ export class UIManager {
   private gameOverDismissed = false;
   private victoryDismissed = false;
   private lastAnimatedGambleSeq = 0;
-  private lastRelicNotice: { readonly text: string; readonly isWin: boolean; readonly seq: number } | null =
-    null;
+  private lastRelicNotice: {
+    readonly text: string;
+    readonly isWin: boolean;
+    readonly seq: number;
+    readonly relicId?: RelicId;
+    readonly prevLevel?: number;
+    readonly newLevel?: number;
+    readonly isNew?: boolean;
+  } | null = null;
   private relicNoticeSeq = 0;
   private lastAnimatedRelicSeq = 0;
   private lastSkinPull: {
@@ -907,7 +899,15 @@ export class UIManager {
           const msg = res.isNew
             ? `✨ 신규 신물 해금! [${rName}] Lv.1`
             : `⬆️ 신물 승급! [${rName}] Lv.${res.prevLevel} → Lv.${res.newLevel}`;
-          this.lastRelicNotice = { seq: ++this.relicNoticeSeq, isWin: true, text: msg };
+          this.lastRelicNotice = {
+            seq: ++this.relicNoticeSeq,
+            isWin: true,
+            text: msg,
+            relicId: res.relicId,
+            prevLevel: res.prevLevel,
+            newLevel: res.newLevel,
+            isNew: res.isNew,
+          };
           this.prevSheetSignature = '';
           if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
           this.showToast(msg);
@@ -924,7 +924,15 @@ export class UIManager {
           const msg = res.wasUnlock
             ? `✨ 신물 지정 해금! [${rName}] Lv.1`
             : `🔨 신물 제련 완료! [${rName}] Lv.${res.newLevel}`;
-          this.lastRelicNotice = { seq: ++this.relicNoticeSeq, isWin: true, text: msg };
+          this.lastRelicNotice = {
+            seq: ++this.relicNoticeSeq,
+            isWin: true,
+            text: msg,
+            relicId: res.relicId,
+            prevLevel: res.prevLevel,
+            newLevel: res.newLevel,
+            isNew: res.wasUnlock,
+          };
           this.prevSheetSignature = '';
           if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
           this.showToast(msg);
@@ -1491,20 +1499,37 @@ export class UIManager {
   }
 
   private refreshRelicBuffStrip(snapshot: UISnapshot, meta: MetaProfile): void {
+    const vaultLv = snapshot.relics.golden_vault ?? 0;
     const vaultPct = snapshot.relicBonus.interestPct;
     const swordLv = snapshot.relics.million_sword_seal ?? 0;
     const swordBps = snapshot.relicBonus.wealthAtkBps;
-    const sig = `${vaultPct}:${swordLv}:${swordBps}:${meta.keys}`;
+    const activeRelicCount = this.data.relics.filter((d) => (snapshot.relics[d.id] ?? 0) > 0).length;
+    const sig = `${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
     const pills: string[] = [];
     if (vaultPct > 0) {
-      pills.push(`<span class="relic-buff-pill vault">금고 +${vaultPct}%</span>`);
+      const iconUrl = this.sprites.relicPortraitUrl('golden_vault', Math.max(1, vaultLv));
+      pills.push(
+        `<span class="relic-buff-pill vault"><img class="relic-mini-px" src="${iconUrl}" alt="" />금고 +${vaultPct}%</span>`,
+      );
     }
     if (swordLv > 0) {
+      const iconUrl = this.sprites.relicPortraitUrl('million_sword_seal', swordLv);
       const pctStr = (swordBps / 100).toFixed(1);
-      pills.push(`<span class="relic-buff-pill sword">쾌검 +${pctStr}%</span>`);
+      pills.push(
+        `<span class="relic-buff-pill sword"><img class="relic-mini-px" src="${iconUrl}" alt="" />쾌검 +${pctStr}%</span>`,
+      );
+    }
+    if (pills.length === 0 && activeRelicCount > 0) {
+      const firstActive = this.data.relics.find((d) => (snapshot.relics[d.id] ?? 0) > 0);
+      const iconUrl = firstActive
+        ? this.sprites.relicPortraitUrl(firstActive.id, snapshot.relics[firstActive.id] ?? 1)
+        : '';
+      pills.push(
+        `<span class="relic-buff-pill active-relics">${iconUrl ? `<img class="relic-mini-px" src="${iconUrl}" alt="" />` : ICON.chest}신물 ${activeRelicCount}종 발동</span>`,
+      );
     }
     if (pills.length === 0) {
       if (meta.keys > 0) {
@@ -2242,12 +2267,41 @@ export class UIManager {
     const canDrawKey = !allMaxed && meta.keys >= 1;
     const canDrawGold = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST;
 
-    const noticeText = this.lastRelicNotice
-      ? this.lastRelicNotice.text
-      : '🏺 기보함을 개봉해 복리 이자(금고)·이자 데미지(만금쾌검패) 등 영구 신물을 획득하세요!';
-    const noticeClass = this.lastRelicNotice
-      ? 'relic-notice-banner win'
-      : 'relic-notice-banner';
+    let noticeHtml = '';
+    if (this.lastRelicNotice?.relicId) {
+      const n = this.lastRelicNotice;
+      const rDef = this.data.relicsById.get(n.relicId!);
+      const rLv = n.newLevel ?? 1;
+      const rPrev = n.prevLevel ?? 0;
+      const rPortrait = this.sprites.relicPortraitUrl(n.relicId!, rLv);
+      const badgeLabel = n.isNew
+        ? '✨ NEW 신물 해금'
+        : rLv >= (rDef?.maxLevel ?? 10)
+          ? '👑 극의 달성!'
+          : `⬆️ 제련 승급 Lv.${rPrev} → Lv.${rLv}`;
+      const tierCls = rLv >= 10 ? ' tier-mythic' : rLv >= 5 ? ' tier-master' : '';
+      noticeHtml = `
+        <div id="relic-notice-banner" class="relic-pull-showcase${tierCls}">
+          <div class="relic-pull-avatar">
+            <img src="${rPortrait}" alt="${escapeHtml(rDef?.name ?? '')}" />
+          </div>
+          <div class="relic-pull-meta">
+            <div class="relic-pull-badges">
+              <span class="relic-pull-state">${badgeLabel}</span>
+              ${rDef ? `<span class="grade-pill relic-tag-pill">${escapeHtml(rDef.tag)}</span>` : ''}
+            </div>
+            <div class="relic-pull-title">${escapeHtml(rDef?.name ?? n.text)}</div>
+            <div class="relic-pull-stat">${escapeHtml(formatRelicStatSummary(n.relicId!, rLv))}</div>
+          </div>
+        </div>
+      `;
+    } else {
+      const noticeText = this.lastRelicNotice
+        ? this.lastRelicNotice.text
+        : '🏺 기보함을 개봉해 복리 이자(금고)·이자 데미지(만금쾌검패) 등 무림 6대 신물을 제련하세요!';
+      const noticeClass = this.lastRelicNotice ? 'relic-notice-banner win' : 'relic-notice-banner';
+      noticeHtml = `<div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>`;
+    }
 
     const cardsHtml = this.data.relics
       .map((def) => {
@@ -2272,21 +2326,36 @@ export class UIManager {
 
         let statLine = '';
         if (!isOwned) {
-          statLine = `해금 시(Lv.1): <b class="up-next">${escapeHtml(formatRelicStatSummary(def.id, 1))}</b>`;
+          statLine = `<span class="relic-lore">${escapeHtml(def.desc)}</span> · 해금(Lv.1): <b class="up-next">${escapeHtml(formatRelicStatSummary(def.id, 1))}</b>`;
         } else if (isMax) {
-          statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} (극의 달성)`;
+          statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, lv))}</b> <span class="relic-max-note">(천하제일 극의 달성)</span>`;
         } else {
           statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} → <b class="up-next">Lv.${lv + 1}: ${escapeHtml(formatRelicStatSummary(def.id, lv + 1))}</b>`;
         }
 
-        const lvBadgeBg = isOwned ? '#d97706' : '#334155';
-        const lvBadgeTxt = isOwned ? `Lv.${lv}/${def.maxLevel}` : '미해금';
+        const lvBadgeBg = isMax ? '#dc2626' : lv >= 5 ? '#b45309' : isOwned ? '#d97706' : '#334155';
+        const lvBadgeTxt = isMax ? `극의 Lv.${lv}` : isOwned ? `Lv.${lv}/${def.maxLevel}` : '봉인됨';
         const ctaLabel = isMax ? '극의' : isOwned ? '제련' : '지정 해금';
+        const cardTierCls = isMax
+          ? ' relic-owned relic-mythic'
+          : lv >= 5
+            ? ' relic-owned relic-master'
+            : isOwned
+              ? ' relic-owned'
+              : ' relic-locked';
+        const portraitUrl = this.sprites.relicPortraitUrl(def.id, lv);
+        const pipsHtml = Array.from({ length: def.maxLevel }, (_, idx) => {
+          const filled = idx < lv;
+          const pipCls = !filled ? '' : isMax ? ' max' : lv >= 5 ? ' high' : ' on';
+          return `<span class="relic-lv-pip${pipCls}"></span>`;
+        }).join('');
 
         return `
-          <div class="sheet-card relic-card${isOwned ? ' relic-owned' : ' relic-locked'}">
+          <div class="sheet-card relic-card${cardTierCls}">
             <div class="card-left">
-              <div class="card-avatar relic-avatar">${RELIC_ICON[def.id]}</div>
+              <div class="card-avatar relic-avatar">
+                <img src="${portraitUrl}" alt="${escapeHtml(def.name)}" />
+              </div>
               <div class="card-info">
                 <div class="card-name-row">
                   <span class="grade-pill" style="background:${lvBadgeBg}">${lvBadgeTxt}</span>
@@ -2295,6 +2364,7 @@ export class UIManager {
                   ${liveBadgeHtml}
                 </div>
                 <div class="card-sub">${statLine}</div>
+                <div class="relic-lv-track" aria-hidden="true">${pipsHtml}</div>
               </div>
             </div>
             <button
@@ -2403,7 +2473,7 @@ export class UIManager {
             </button>
           </div>
         </div>
-        <div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>
+        ${noticeHtml}
       </div>
       ${cardsHtml}
       ${settleFooterHtml}

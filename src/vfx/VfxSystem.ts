@@ -11,7 +11,13 @@ const MAX_VFX_INSTANCES = 96;
 const MAX_PARTICLES = 1500;
 const MAX_SKILL_CALLOUTS = 6;
 
-type InternalVfxKind = 'ring' | 'craft_pillar' | 'hit_slash' | 'qi_resonance' | VfxTrackKind;
+type InternalVfxKind =
+  | 'ring'
+  | 'craft_pillar'
+  | 'hit_slash'
+  | 'armor_shatter'
+  | 'qi_resonance'
+  | VfxTrackKind;
 
 interface TrackVfxInstance {
   kind: InternalVfxKind;
@@ -44,6 +50,8 @@ interface FloatingDamageItem {
   value: number;
   isCrit: boolean;
   isSkill: boolean;
+  isShred: boolean;
+  isExecute: boolean;
 }
 
 interface SkillCalloutItem {
@@ -157,6 +165,8 @@ export class VfxSystem {
         value: 0,
         isCrit: false,
         isSkill: false,
+        isShred: false,
+        isExecute: false,
       });
     }
 
@@ -588,39 +598,109 @@ export class VfxSystem {
     isCrit: boolean,
     startTick: number,
     isSkill = false,
+    armorBroken = false,
+    justShattered = false,
   ): void {
-    const burstCount = slain ? 15 : isCrit ? 12 : isSkill ? 9 : 5;
-    const burstColor = isCrit ? '#facc15' : color;
+    const burstCount = slain ? 18 : isCrit ? 14 : isSkill ? 10 : 7;
+    const burstColor = isCrit ? '#facc15' : armorBroken ? '#e879f9' : color;
     this.emitRadialBurst(
       x,
       y,
       burstColor,
       burstCount,
-      slain ? 155 : isCrit ? 135 : 96,
-      isCrit || slain ? 0.28 : 0.22,
+      slain ? 168 : isCrit ? 148 : 108,
+      isCrit || slain ? 0.3 : 0.23,
       18,
       startTick,
     );
 
-    if (isCrit || isSkill || slain) {
-      this.emitRadialBurst(x, y, '#fffbeb', isCrit ? 6 : 4, 115, 0.18, 0, startTick);
+    if (armorBroken) {
+      this.emitRadialBurst(x, y, '#f43f5e', 5, 130, 0.24, 10, startTick);
+    }
+
+    if (justShattered) {
+      // Protective qi shattered! Pop '破' seal + exploding amethyst-crimson shield shards
       this.pushTrack({
-        kind: 'hit_slash',
+        kind: 'armor_shatter',
         startTick,
-        durationSec: isCrit ? 0.24 : 0.19,
+        durationSec: 0.54,
         fromX: x,
         fromY: y,
         x,
         y,
-        fromRadius: 7,
-        toRadius: isCrit ? 44 : slain ? 38 : 30,
-        color: isCrit ? '#facc15' : color,
-        lineWidth: isCrit ? 4.8 : 3.2,
-        glowRadius: isCrit ? 34 : 20,
+        fromRadius: 12,
+        toRadius: 56,
+        color: '#c084fc',
+        secondaryColor: '#f43f5e',
+        lineWidth: 4.5,
+        glowRadius: 48,
+      });
+      this.emitRadialBurst(x, y, '#f0abfc', 14, 165, 0.34, 24, startTick);
+    }
+
+    if (isCrit || isSkill || slain) {
+      this.emitRadialBurst(x, y, '#fffbeb', isCrit ? 7 : 4, 122, 0.2, 0, startTick);
+      this.pushTrack({
+        kind: 'hit_slash',
+        startTick,
+        durationSec: isCrit ? 0.26 : 0.2,
+        fromX: x,
+        fromY: y,
+        x,
+        y,
+        fromRadius: 8,
+        toRadius: isCrit ? 48 : slain ? 40 : 32,
+        color: isCrit ? '#facc15' : armorBroken ? '#e879f9' : color,
+        secondaryColor: armorBroken ? '#f43f5e' : '#f97316',
+        lineWidth: isCrit ? 5.2 : 3.5,
+        glowRadius: isCrit ? 38 : 22,
+      });
+      if (isCrit || slain) {
+        this.pushTrack({
+          kind: 'ring',
+          startTick,
+          durationSec: 0.24,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 8,
+          toRadius: isCrit ? 38 : 34,
+          color: isCrit ? '#fde047' : '#fb7185',
+          lineWidth: 3.2,
+          glowRadius: 0,
+        });
+      }
+    } else {
+      // Crisp micro blade/fist impact spark on every normal attack so basic hits feel sharp & meaty
+      this.pushTrack({
+        kind: 'hit_slash',
+        startTick,
+        durationSec: 0.14,
+        fromX: x,
+        fromY: y,
+        x,
+        y,
+        fromRadius: 5,
+        toRadius: 21,
+        color: armorBroken ? '#e879f9' : color,
+        secondaryColor: '#ffffff',
+        lineWidth: 2.6,
+        glowRadius: 14,
       });
     }
 
-    this.spawnOrMergeDamageText(entityId, x, y - 22, damage, isCrit, isSkill, startTick);
+    this.spawnOrMergeDamageText(
+      entityId,
+      x,
+      y - 22,
+      damage,
+      isCrit,
+      isSkill,
+      armorBroken,
+      slain,
+      startTick,
+    );
   }
 
   public showBossWaveBanner(wave: number, bossName: string, realNowMs: number): void {
@@ -1051,7 +1131,7 @@ export class VfxSystem {
         if (isHeavy) {
           const crossAng = baseAng + Math.PI * 0.52;
           strokeCut(crossAng, slashR * 0.78, inst.lineWidth + 3.5, PIXEL_OUTLINE);
-          strokeCut(crossAng, slashR * 0.78, inst.lineWidth, '#f97316');
+          strokeCut(crossAng, slashR * 0.78, inst.lineWidth, inst.secondaryColor);
           strokeCut(crossAng, slashR * 0.62, 2, '#fffbeb');
         }
 
@@ -1067,6 +1147,33 @@ export class VfxSystem {
           ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
         }
+        break;
+      }
+
+      case 'armor_shatter': {
+        // Protective qi shattered! Exploding diamond crystal shards + rising '破' Hanja seal
+        const burstR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
+        ctx.globalAlpha = inv * 0.96;
+        for (let s = 0; s < 6; s++) {
+          const ang = (s * Math.PI * 2) / 6 + p * 0.85;
+          const sx = inst.x + Math.cos(ang) * burstR * 0.85;
+          const sy = inst.y + Math.sin(ang) * burstR * 0.65;
+          const sz = (5.5 + (s % 2) * 2) * inv;
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(ang + p * 2.2);
+          ctx.fillStyle = PIXEL_OUTLINE;
+          ctx.fillRect(-sz - 1.5, -sz * 0.6 - 1.5, sz * 2 + 3, sz * 1.2 + 3);
+          ctx.fillStyle = s % 2 === 0 ? inst.color : inst.secondaryColor;
+          ctx.fillRect(-sz, -sz * 0.6, sz * 2, sz * 1.2);
+          ctx.restore();
+        }
+        const seal = this.sprites.kanjiSeal('破', inst.secondaryColor);
+        const pop = p < 0.22 ? 0.68 + (p / 0.22) * 0.48 : 1.16 - (p - 0.22) * 0.22;
+        const size = 66 * pop;
+        const liftY = inst.y - 24 - easeOutCubic(p) * 24;
+        ctx.globalAlpha = inv * 0.96;
+        ctx.drawImage(seal, inst.x - size * 0.5, liftY - size * 0.5, size, size);
         break;
       }
 
@@ -1131,6 +1238,8 @@ export class VfxSystem {
     damage: number,
     isCrit: boolean,
     isSkill: boolean,
+    isShred: boolean,
+    isExecute: boolean,
     startTick: number,
   ): void {
     // Only merge simultaneous same-tick multi-pellet hits on the exact same monster so rapid volleys fan out visibly
@@ -1142,6 +1251,8 @@ export class VfxSystem {
         item.y = y;
         item.isCrit = item.isCrit || isCrit;
         item.isSkill = item.isSkill || isSkill;
+        item.isShred = item.isShred || isShred;
+        item.isExecute = item.isExecute || isExecute;
         item.startTick = startTick;
         return;
       }
@@ -1161,6 +1272,8 @@ export class VfxSystem {
         item.value = damage;
         item.isCrit = isCrit;
         item.isSkill = isSkill;
+        item.isShred = isShred;
+        item.isExecute = isExecute;
         return;
       }
     }
@@ -1337,10 +1450,12 @@ export class VfxSystem {
   }
 
   private renderDamageTexts(ctx: CanvasRenderingContext2D): void {
+    const prevAlpha = ctx.globalAlpha;
+
     for (let i = 0; i < this.damageTexts.length; i++) {
       const item = this.damageTexts[i]!;
       if (!item.active) continue;
-      const life = item.isCrit ? 0.76 : item.isSkill ? 0.64 : 0.54;
+      const life = item.isCrit ? 0.8 : item.isShred || item.isSkill ? 0.68 : 0.56;
       const elapsed = this.currentSimTimeSec - item.startTick * TICK_DT;
       if (elapsed >= life || elapsed < 0) {
         item.active = false;
@@ -1348,35 +1463,63 @@ export class VfxSystem {
       }
       const p = elapsed / life;
       const drawX = item.x + item.offsetX + item.driftVx * elapsed;
-      const riseDist = item.isCrit ? 42 : item.isSkill ? 32 : 25;
+      const riseDist = item.isCrit ? 46 : item.isShred || item.isSkill ? 35 : 26;
       const riseY = item.y - easeOutCubic(p) * riseDist;
       const fade = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
 
       let scale: number;
       if (item.isCrit) {
         scale =
-          p < 0.14
-            ? 0.68 + (p / 0.14) * 0.44
+          p < 0.13
+            ? 0.72 + (p / 0.13) * 0.48
             : p < 0.28
-              ? 1.12 - ((p - 0.14) / 0.14) * 0.32
-              : 0.8 - (p - 0.28) * 0.08;
-      } else if (item.isSkill) {
+              ? 1.2 - ((p - 0.13) / 0.15) * 0.34
+              : 0.86 - (p - 0.28) * 0.08;
+      } else if (item.isShred || item.isSkill) {
         scale =
           p < 0.14
-            ? 0.52 + (p / 0.14) * 0.3
-            : 0.82 - Math.min(0.2, (p - 0.14) * 0.34);
+            ? 0.56 + (p / 0.14) * 0.32
+            : 0.88 - Math.min(0.2, (p - 0.14) * 0.32);
       } else {
         scale =
           p < 0.14
-            ? 0.44 + (p / 0.14) * 0.24
-            : 0.68 - Math.min(0.18, (p - 0.14) * 0.32);
+            ? 0.46 + (p / 0.14) * 0.24
+            : 0.7 - Math.min(0.18, (p - 0.14) * 0.32);
       }
 
       const formatted = formatDamageValue(item.value);
-      const label = item.isCrit ? `${formatted}!` : formatted;
-      const style = item.isCrit ? 'crit' : item.isSkill ? 'skill' : 'normal';
+      const label = item.isCrit || item.isShred ? `${formatted}!` : formatted;
+      const style = item.isCrit
+        ? 'crit'
+        : item.isShred
+          ? 'shred'
+          : item.isSkill
+            ? 'skill'
+            : 'normal';
       this.sprites.drawGlyphString(ctx, label, drawX, riseY, scale, fade, style);
+
+      // Pre-rendered mini Wuxia impact stamp above critical / armor-broken / heavy execution hits
+      const badgeKind =
+        item.isCrit && item.isShred
+          ? 'shred'
+          : item.isCrit
+            ? 'crit'
+            : item.isShred
+              ? 'shred'
+              : item.isExecute && item.value >= 180
+                ? 'execute'
+                : null;
+      if (badgeKind) {
+        const badge = this.sprites.hitBadge(badgeKind);
+        const bScale = (item.isCrit ? 0.56 : 0.48) * Math.min(1.08, scale / 0.78);
+        const bw = badge.width * bScale;
+        const bh = badge.height * bScale;
+        ctx.globalAlpha = prevAlpha * Math.max(0, Math.min(1, fade * 0.96));
+        ctx.drawImage(badge, drawX - bw * 0.5, riseY - 22 * scale - bh * 0.75, bw, bh);
+      }
     }
+
+    ctx.globalAlpha = prevAlpha;
   }
 }
 

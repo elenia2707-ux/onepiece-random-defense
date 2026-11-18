@@ -1,4 +1,4 @@
-import type { MonsterKind, UnitId } from '../data/types';
+import type { MonsterKind, RelicId, UnitId } from '../data/types';
 
 /**
  * 32x32 SD Wuxia pixel-art renderer ('King God Castle' / 'Guardian Tales' style).
@@ -138,6 +138,18 @@ class PixelCanvas {
                   : ramp[3];
           this.set(Math.round(cx + dx), Math.round(cy + dy), tone, layer);
         }
+      }
+    }
+  }
+
+  public rampBox(x: number, y: number, w: number, h: number, ramp: Ramp4, layer = LAYER_BODY): void {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        let tone = ramp[1];
+        if (dy === 0 || (dy === 1 && dx < w - 2)) tone = ramp[0];
+        else if (dy >= h - 2 || dx >= w - 2) tone = ramp[3];
+        else if (dy >= Math.floor(h * 0.6) || dx === 0) tone = ramp[2];
+        this.set(x + dx, y + dy, tone, layer);
       }
     }
   }
@@ -1140,3 +1152,189 @@ export function paintMonsterChibi(
 
   p.flush(ctx, canvasSize);
 }
+
+/* ========================================================================== */
+/*  6 Bespoke 32x32 Wuxia Relic Treasure Pixel-Art Icons (무림 6대 신물)      */
+/* ========================================================================== */
+
+export function paintRelicPixelArt(
+  ctx: CanvasRenderingContext2D,
+  relicId: RelicId,
+  canvasSize: number,
+  level = 1,
+): void {
+  const p = new PixelCanvas();
+
+  // Mastery level 10 radiant celestial halo behind treasure
+  if (level >= 10) {
+    for (let a = 0; a < 12; a++) {
+      const rad = (a * Math.PI * 2) / 12;
+      const hx = Math.round(15.5 + Math.cos(rad) * 12);
+      const hy = Math.round(15.5 + Math.sin(rad) * 12);
+      p.set(hx, hy, a % 2 === 0 ? '#fde047' : '#fb7185', LAYER_BACK);
+    }
+  }
+
+  switch (relicId) {
+    case 'golden_vault': {
+      // 천하제일 전장 금고 — Vermilion-lacquered golden treasury chest overflowing with sycee ingots & brass coins
+      // Carved pedestal feet
+      p.rect(6, 26, 4, 2, '#92400e', LAYER_BACK);
+      p.rect(22, 26, 4, 2, '#92400e', LAYER_BACK);
+      // Lower vermilion chest box with 4-stage shading
+      p.rampBox(6, 15, 20, 11, ROBE_CRIMSON, LAYER_BODY);
+      // Golden corner brackets & horizontal band
+      p.rect(6, 15, 3, 11, '#eab308', LAYER_BODY);
+      p.rect(23, 15, 3, 11, '#d97706', LAYER_BODY);
+      p.rect(6, 17, 20, 2, '#facc15', LAYER_FRONT);
+      // Overflowing sycee gold ingots & coins inside open chest mouth (y=9..15)
+      p.disc(11, 13, 3.2, GOLD_QI, LAYER_HEAD);
+      p.disc(16, 11, 3.8, GOLD_QI, LAYER_HEAD);
+      p.disc(21, 13, 3.2, GOLD_QI, LAYER_HEAD);
+      // Boat-shaped sycee ears & gleaming white-gold highlights
+      p.hline(9, 13, 11, '#fef08a', LAYER_FX);
+      p.hline(14, 18, 9, '#ffffff', LAYER_FX);
+      p.hline(19, 23, 11, '#fef08a', LAYER_FX);
+      // Arched open lid behind ingots
+      p.rampBox(7, 5, 18, 5, ['#fb7185', '#e11d48', '#be123c', '#881337'], LAYER_BACK);
+      p.hline(7, 24, 5, '#fde047', LAYER_BACK);
+      // Imperial ruby-gold lock plate in front
+      p.rect(13, 16, 6, 6, '#fde047', LAYER_FX);
+      p.rect(14, 17, 4, 4, '#e11d48', LAYER_FX);
+      p.set(15, 18, '#ffffff', LAYER_FX);
+      // Floating square-holed coin above chest
+      p.disc(25, 7, 2.5, GOLD_QI, LAYER_FX);
+      p.set(25, 7, PIXEL_OUTLINE, LAYER_FX);
+      break;
+    }
+
+    case 'million_sword_seal': {
+      // 만금쾌검패 — Octagonal imperial gold command medallion crossed by a radiant divine jian sword
+      // Twin crimson silk tassels hanging below
+      p.line(12, 23, 9, 28, '#e11d48', LAYER_BACK, 2);
+      p.line(19, 23, 22, 28, '#be123c', LAYER_BACK, 2);
+      p.set(9, 28, '#facc15', LAYER_BACK);
+      p.set(22, 28, '#facc15', LAYER_BACK);
+      // Octagonal imperial gold medallion
+      p.disc(15.5, 15.5, 8.8, ['#fef08a', '#facc15', '#d97706', '#92400e'], LAYER_BODY);
+      p.disc(15.5, 15.5, 6.2, ROBE_CRIMSON, LAYER_BODY);
+      p.rect(13, 13, 5, 5, '#f59e0b', LAYER_BODY);
+      // Radiant sky-cyan divine sword piercing diagonally/vertically across medallion
+      p.line(16, 3, 16, 27, '#e0f2fe', LAYER_FRONT, 2);
+      p.line(15, 4, 15, 26, '#38bdf8', LAYER_FRONT, 1);
+      p.line(16, 3, 16, 18, '#ffffff', LAYER_FX, 1);
+      // Ornate winged golden sword guard & pommel
+      p.hline(10, 21, 9, '#fde047', LAYER_FX);
+      p.hline(11, 20, 10, '#d97706', LAYER_FX);
+      p.rect(15, 5, 2, 4, '#b45309', LAYER_FX);
+      p.disc(15.5, 3.5, 1.8, GOLD_QI, LAYER_FX);
+      // Gleaming sword-qi cross sparks
+      p.set(7, 12, '#fef08a', LAYER_FX);
+      p.set(24, 19, '#67e8f9', LAYER_FX);
+      break;
+    }
+
+    case 'bandit_dagger': {
+      // 야행도적의 비수 — Nocturnal jade-cyan curved assassin stiletto slashing past stolen gold coins
+      // Indigo night-shadow cloak swirl backdrop
+      p.disc(15, 17, 7.8, ROBE_VIOLET, LAYER_BACK);
+      // Curved jade-steel dagger blade (bottom-left hilt -> top-right razor tip)
+      p.line(9, 22, 25, 5, '#67e8f9', LAYER_FRONT, 3);
+      p.line(10, 21, 26, 4, '#ecfeff', LAYER_FX, 1);
+      p.line(12, 22, 24, 9, '#0284c7', LAYER_FRONT, 1);
+      // Golden S-guard + wrapped ebony grip + crimson silk tassel
+      p.line(7, 19, 13, 25, '#facc15', LAYER_FX, 2);
+      p.line(6, 25, 9, 22, '#475569', LAYER_FRONT, 2);
+      p.line(5, 26, 3, 29, '#f43f5e', LAYER_FX, 1);
+      // Stolen brass coins & gold sycee tumbling beside blade
+      p.disc(22, 21, 3.6, GOLD_QI, LAYER_HEAD);
+      p.rect(21, 20, 2, 2, PIXEL_OUTLINE, LAYER_FX);
+      p.disc(9, 10, 2.8, GOLD_QI, LAYER_HEAD);
+      p.set(9, 10, PIXEL_OUTLINE, LAYER_FX);
+      p.set(26, 13, '#ffffff', LAYER_FX);
+      break;
+    }
+
+    case 'immortal_furnace': {
+      // 태상노군 만년단로 — Three-legged bronze-gold Taoist alchemy cauldron with rising nine-turn elixir fire
+      // Rising violet-gold immortal alchemy flames at top
+      p.disc(16, 7, 3.8, ['#fef08a', '#fb923c', '#e11d48', '#881337'], LAYER_BACK);
+      p.disc(16, 6, 2.2, ['#ffffff', '#fef08a', '#facc15', '#ea580c'], LAYER_FX);
+      p.set(11, 6, '#c084fc', LAYER_FX);
+      p.set(21, 5, '#fde047', LAYER_FX);
+      // Three sturdy tripod legs
+      p.line(10, 23, 8, 28, '#92400e', LAYER_BACK, 2);
+      p.line(21, 23, 23, 28, '#78350f', LAYER_BACK, 2);
+      p.line(16, 24, 16, 28, '#b45309', LAYER_BACK, 2);
+      // Dragon-ear side handles
+      p.rect(5, 13, 3, 6, '#facc15', LAYER_BACK);
+      p.rect(24, 13, 3, 6, '#d97706', LAYER_BACK);
+      // Round copper-gold cauldron belly
+      p.disc(15.5, 17.5, 8.2, ['#fde047', '#ea580c', '#b45309', '#7c2d12'], LAYER_BODY);
+      // Crowned furnace rim
+      p.rampBox(9, 10, 14, 3, GOLD_QI, LAYER_HEAD);
+      // Glowing crimson-gold Taiji hearth window in center of cauldron
+      p.disc(15.5, 18, 3.4, ['#ffffff', '#fef08a', '#f97316', '#dc2626'], LAYER_FX);
+      break;
+    }
+
+    case 'founding_jade_seal': {
+      // 전설의 개국옥새 — Imperial white-celadon jade dragon seal on a vermilion cinnabar ink base
+      // Vermilion cinnabar ink bottom stamp pad
+      p.rampBox(6, 23, 20, 4, ROBE_CRIMSON, LAYER_BODY);
+      p.hline(7, 25, 23, '#fda4af', LAYER_FX);
+      // Square carved celadon-white imperial jade block (y=14..23)
+      p.rampBox(6, 14, 20, 9, ['#f0fdfa', '#99f6e4', '#2dd4bf', '#0f766e'], LAYER_BODY);
+      // Golden imperial border inlay & seal glyph strokes
+      p.hline(7, 24, 15, '#fef08a', LAYER_FRONT);
+      p.rect(13, 17, 6, 4, '#0d9488', LAYER_FRONT);
+      p.rect(14, 18, 4, 2, '#facc15', LAYER_FX);
+      // Coiled golden-horned jade dragon knob (반룡 손잡이) atop the seal (y=5..14)
+      p.disc(15.5, 10, 5.2, ['#ccfbf1', '#5eead4', '#14b8a6', '#115e59'], LAYER_HEAD);
+      p.line(12, 6, 9, 3, '#fde047', LAYER_FX, 2);
+      p.line(19, 6, 22, 3, '#facc15', LAYER_FX, 2);
+      p.set(14, 9, PIXEL_OUTLINE, LAYER_FX);
+      p.set(18, 9, PIXEL_OUTLINE, LAYER_FX);
+      p.disc(16, 5, 1.6, GOLD_QI, LAYER_FX);
+      break;
+    }
+
+    case 'heavenly_scroll_chest': {
+      // 천기비급함 — Celestial azure brocade casket with levitating golden martial scroll & talisman
+      // Azure-lacquered treasure casket (y=15..26)
+      p.rampBox(5, 15, 22, 11, ROBE_AZURE, LAYER_BODY);
+      // Gold trim bands & cinnabar talisman seal strip
+      p.hline(5, 26, 17, '#facc15', LAYER_FRONT);
+      p.rect(13, 16, 6, 9, '#fef08a', LAYER_FRONT);
+      p.line(16, 17, 16, 23, '#e11d48', LAYER_FX, 2);
+      // Unfurled radiant jade-gold martial arts scroll floating above casket (y=5..13)
+      p.rampBox(8, 6, 16, 8, ['#fffbeb', '#fef3c7', '#fde68a', '#d97706'], LAYER_HEAD);
+      // Jade scroll rollers on left & right ends
+      p.rect(6, 5, 3, 10, '#2dd4bf', LAYER_FX);
+      p.rect(23, 5, 3, 10, '#14b8a6', LAYER_FX);
+      p.set(7, 6, '#ffffff', LAYER_FX);
+      // Mysterious heavenly sword-script runes on scroll
+      p.line(11, 9, 15, 9, '#0284c7', LAYER_FX, 1);
+      p.line(17, 11, 21, 11, '#e11d48', LAYER_FX, 1);
+      p.set(13, 11, '#0284c7', LAYER_FX);
+      break;
+    }
+  }
+
+  // Level 5+ auspicious spirit sparkles
+  if (level >= 5) {
+    p.set(4, 9, '#fef08a', LAYER_FX);
+    p.set(3, 10, '#ffffff', LAYER_FX);
+    p.set(27, 8, '#fef08a', LAYER_FX);
+    p.set(28, 9, '#67e8f9', LAYER_FX);
+  }
+
+  // Locked (Lv.0) diagonal paper talisman seal overlay so unowned vs unlocked is unmistakable
+  if (level <= 0) {
+    p.line(7, 24, 24, 7, '#fef3c7', LAYER_FX, 2);
+    p.line(9, 22, 22, 9, '#dc2626', LAYER_FX, 1);
+  }
+
+  p.flush(ctx, canvasSize);
+}
+
