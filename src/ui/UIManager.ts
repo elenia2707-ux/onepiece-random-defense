@@ -134,6 +134,19 @@ export class UIManager {
   private recIngsEl!: HTMLElement;
   private recCtaEl!: HTMLButtonElement;
   private benchCountEl!: HTMLElement;
+  private synergyBarEl!: HTMLElement;
+  private synOrthodoxBtnEl!: HTMLButtonElement;
+  private synUnorthodoxBtnEl!: HTMLButtonElement;
+  private synDemonicBtnEl!: HTMLButtonElement;
+  private synTrinityBtnEl!: HTMLButtonElement;
+  private synOrthodoxValEl!: HTMLElement;
+  private synUnorthodoxValEl!: HTMLElement;
+  private synDemonicValEl!: HTMLElement;
+  private prevSynergyTracked = false;
+  private prevOrthodoxTier = 0;
+  private prevUnorthodoxTier = 0;
+  private prevDemonicTier = 0;
+  private prevTrinityActive = false;
   private recRecipeId: string | null = null;
   private prevRecommendSignature = '';
 
@@ -261,6 +274,13 @@ export class UIManager {
       <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
 
       <div id="bench-badge" class="bench-badge">${ICON.pavilion}<span>문파 대기석</span><b id="val-bench-count">0/12</b></div>
+
+      <div id="synergy-bar" class="synergy-bar" aria-label="출전 문파 진법 공명">
+        <button id="btn-syn-orthodox" type="button" class="syn-pill syn-orthodox interactive" data-syn="orthodox" title="정파 북두검진">정<b id="syn-val-orthodox">0</b></button>
+        <button id="btn-syn-unorthodox" type="button" class="syn-pill syn-unorthodox interactive" data-syn="unorthodox" title="사파 만독혈진">사<b id="syn-val-unorthodox">0</b></button>
+        <button id="btn-syn-demonic" type="button" class="syn-pill syn-demonic interactive" data-syn="demonic" title="마교 천마혈진">마<b id="syn-val-demonic">0</b></button>
+        <button id="btn-syn-trinity" type="button" class="syn-pill syn-trinity interactive" data-syn="trinity" title="삼재귀원 삼재합진">삼재</button>
+      </div>
 
       <section id="recommend-bar" class="recommend-bar interactive" aria-label="추천 합공식">
         <span class="recommend-tag">등선 추천</span>
@@ -428,6 +448,14 @@ export class UIManager {
     this.recIngsEl = this.mustGet('rec-ings');
     this.recCtaEl = this.mustGet('btn-rec-cta') as HTMLButtonElement;
     this.benchCountEl = this.mustGet('val-bench-count');
+    this.synergyBarEl = this.mustGet('synergy-bar');
+    this.synOrthodoxBtnEl = this.mustGet('btn-syn-orthodox') as HTMLButtonElement;
+    this.synUnorthodoxBtnEl = this.mustGet('btn-syn-unorthodox') as HTMLButtonElement;
+    this.synDemonicBtnEl = this.mustGet('btn-syn-demonic') as HTMLButtonElement;
+    this.synTrinityBtnEl = this.mustGet('btn-syn-trinity') as HTMLButtonElement;
+    this.synOrthodoxValEl = this.mustGet('syn-val-orthodox');
+    this.synUnorthodoxValEl = this.mustGet('syn-val-unorthodox');
+    this.synDemonicValEl = this.mustGet('syn-val-demonic');
 
     this.toastLayerEl = this.mustGet('toast-layer');
     this.gameOverModalEl = this.mustGet('gameover-modal');
@@ -439,6 +467,29 @@ export class UIManager {
   private bindEvents(): void {
     this.speedBtnEl.addEventListener('click', () => this.handlers.onCycleSpeed());
     this.pauseBtnEl.addEventListener('click', () => this.handlers.onTogglePause());
+
+    this.synergyBarEl.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-syn]');
+      if (!btn) return;
+      const synId = btn.dataset.syn;
+      if (synId === 'orthodox') {
+        this.showToast(
+          '☯ 정파 『북두검진』 (출전 3/6인): [3인] 치명률+10%·제어+25% / [6인] 공격+20%·치명률+18%·제어+40%',
+        );
+      } else if (synId === 'unorthodox') {
+        this.showToast(
+          '☠ 사파 『만독혈진』 (출전 3/6인): [3인] 공속+18%·처치시 은자+1 / [6인] 공격+20%·공속+32%·처치시 은자+2',
+        );
+      } else if (synId === 'demonic') {
+        this.showToast(
+          '🩸 마교 『천마혈진』 (출전 3/6인): [3인] 치명피해+40%·절기배율+25% / [6인] 공격+25%·치명피해+80%·절기배율+45%',
+        );
+      } else if (synId === 'trinity') {
+        this.showToast(
+          '✦ 삼재귀원 『삼재합진』 (정·사·마 각 2인 이상 출전): 전 협객 공격력 +18% · 공속 +10%',
+        );
+      }
+    });
 
     this.devBtnEl.addEventListener('click', () => {
       this.devOpen = !this.devOpen;
@@ -698,6 +749,50 @@ export class UIManager {
     this.setText(this.occupancyEl, `비무대 ${snapshot.fieldOccupied}/18`);
     this.setText(this.benchCountEl, `${snapshot.benchOccupied}/12`);
     this.setText(this.summonCostEl, String(snapshot.summonCost));
+
+    const syn = snapshot.synergy;
+    this.setText(this.synOrthodoxValEl, String(syn.counts.orthodox));
+    this.setText(this.synUnorthodoxValEl, String(syn.counts.unorthodox));
+    this.setText(this.synDemonicValEl, String(syn.counts.demonic));
+    this.synOrthodoxBtnEl.classList.toggle('tier-1', syn.orthodoxTier === 1);
+    this.synOrthodoxBtnEl.classList.toggle('tier-2', syn.orthodoxTier === 2);
+    this.synUnorthodoxBtnEl.classList.toggle('tier-1', syn.unorthodoxTier === 1);
+    this.synUnorthodoxBtnEl.classList.toggle('tier-2', syn.unorthodoxTier === 2);
+    this.synDemonicBtnEl.classList.toggle('tier-1', syn.demonicTier === 1);
+    this.synDemonicBtnEl.classList.toggle('tier-2', syn.demonicTier === 2);
+    this.synTrinityBtnEl.classList.toggle('active', syn.trinityActive);
+
+    if (this.prevSynergyTracked) {
+      if (syn.orthodoxTier > this.prevOrthodoxTier) {
+        this.showToast(
+          syn.orthodoxTier === 2
+            ? '☯ 정파 『북두검진 · 극』 6인 발동! 정파 공격+20% · 치명률+18%'
+            : '☯ 정파 『북두검진』 3인 발동! 정파 치명률+10% · 제어시간+25%',
+        );
+      }
+      if (syn.unorthodoxTier > this.prevUnorthodoxTier) {
+        this.showToast(
+          syn.unorthodoxTier === 2
+            ? '☠ 사파 『만독혈진 · 극』 6인 발동! 사파 공격+20% · 공속+32% · 약탈+2'
+            : '☠ 사파 『만독혈진』 3인 발동! 사파 공속+18% · 처치시 약탈 은자+1',
+        );
+      }
+      if (syn.demonicTier > this.prevDemonicTier) {
+        this.showToast(
+          syn.demonicTier === 2
+            ? '🩸 마교 『천마혈진 · 극』 6인 발동! 마교 공격+25% · 치명피해+80%'
+            : '🩸 마교 『천마혈진』 3인 발동! 마교 치명피해+40% · 절기배율+25%',
+        );
+      }
+      if (syn.trinityActive && !this.prevTrinityActive) {
+        this.showToast('✦ 삼재귀원 『삼재합진』 발동! 전 협객 공격력 +18% · 공속 +10%');
+      }
+    }
+    this.prevSynergyTracked = true;
+    this.prevOrthodoxTier = syn.orthodoxTier;
+    this.prevUnorthodoxTier = syn.unorthodoxTier;
+    this.prevDemonicTier = syn.demonicTier;
+    this.prevTrinityActive = syn.trinityActive;
 
     const totalCraftable = snapshot.craft.readyCount + snapshot.craft.chainReadyCount;
     this.setText(this.craftBadgeEl, String(totalCraftable));

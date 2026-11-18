@@ -141,6 +141,14 @@ export interface GambleResultSnapshot {
   readonly unitId: UnitId | null;
 }
 
+export interface FactionSynergySnapshot {
+  readonly counts: Readonly<Record<FactionId, number>>;
+  readonly orthodoxTier: 0 | 1 | 2;
+  readonly unorthodoxTier: 0 | 1 | 2;
+  readonly demonicTier: 0 | 1 | 2;
+  readonly trinityActive: boolean;
+}
+
 export interface UISnapshot {
   readonly tick: number;
   readonly speed: Speed;
@@ -162,6 +170,7 @@ export interface UISnapshot {
   readonly summonCost: number;
   readonly wisps: Readonly<Record<GradeId, number>>;
   readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
+  readonly synergy: FactionSynergySnapshot;
   readonly lastGambleResult: GambleResultSnapshot | null;
   readonly field: readonly (SlotView | null)[];
   readonly bench: readonly (SlotView | null)[];
@@ -287,14 +296,58 @@ export class Simulation {
     return def.baseCost + lv * def.costStep;
   }
 
-  public getUnitEffectiveAtk(unitId: UnitId): { readonly baseAtk: number; readonly bonusAtk: number } {
+  public computeFieldSynergy(): FactionSynergySnapshot {
+    let orthodox = 0;
+    let unorthodox = 0;
+    let demonic = 0;
+
+    for (let i = 0; i < this.units.length; i++) {
+      const u = this.units[i]!;
+      if (u.slot.area !== 'field') continue;
+      const def = this.data.unitsById.get(u.unitId);
+      if (!def) continue;
+      if (def.faction === 'orthodox') orthodox++;
+      else if (def.faction === 'unorthodox') unorthodox++;
+      else if (def.faction === 'demonic') demonic++;
+    }
+
+    const orthodoxTier: 0 | 1 | 2 = orthodox >= 6 ? 2 : orthodox >= 3 ? 1 : 0;
+    const unorthodoxTier: 0 | 1 | 2 = unorthodox >= 6 ? 2 : unorthodox >= 3 ? 1 : 0;
+    const demonicTier: 0 | 1 | 2 = demonic >= 6 ? 2 : demonic >= 3 ? 1 : 0;
+    const trinityActive = orthodox >= 2 && unorthodox >= 2 && demonic >= 2;
+
+    return {
+      counts: { orthodox, unorthodox, demonic },
+      orthodoxTier,
+      unorthodoxTier,
+      demonicTier,
+      trinityActive,
+    };
+  }
+
+  public getUnitEffectiveAtk(
+    unitId: UnitId,
+    precomputedSynergy?: FactionSynergySnapshot,
+  ): { readonly baseAtk: number; readonly bonusAtk: number } {
     const def = this.data.unitsById.get(unitId);
     if (!def) return { baseAtk: 0, bonusAtk: 0 };
     const upDef = this.data.upgradesByFaction.get(def.faction);
-    if (!upDef) return { baseAtk: def.atk, bonusAtk: 0 };
-    const lv = this.upgradeLv[upDef.id] ?? 0;
-    if (lv <= 0) return { baseAtk: def.atk, bonusAtk: 0 };
-    const bonusAtk = Math.round((def.atk * lv * upDef.atkBonusPctPerLv) / 100);
+    const lv = upDef ? (this.upgradeLv[upDef.id] ?? 0) : 0;
+    const upPct = upDef && lv > 0 ? lv * upDef.atkBonusPctPerLv : 0;
+
+    const syn = precomputedSynergy ?? this.computeFieldSynergy();
+    let synPct = syn.trinityActive ? 18 : 0;
+    if (def.faction === 'orthodox' && syn.orthodoxTier === 2) {
+      synPct += 20;
+    } else if (def.faction === 'unorthodox' && syn.unorthodoxTier === 2) {
+      synPct += 20;
+    } else if (def.faction === 'demonic' && syn.demonicTier === 2) {
+      synPct += 25;
+    }
+
+    const totalPct = upPct + synPct;
+    if (totalPct <= 0) return { baseAtk: def.atk, bonusAtk: 0 };
+    const bonusAtk = Math.round((def.atk * totalPct) / 100);
     return { baseAtk: def.atk, bonusAtk };
   }
 
@@ -835,6 +888,8 @@ export class Simulation {
   }
 
   private stepCombat(): void {
+    const synergy = this.computeFieldSynergy();
+
     if (this.monsters.length > 0) {
       for (let i = 0; i < this.units.length; i++) {
         const u = this.units[i]!;
@@ -872,7 +927,12 @@ export class Simulation {
         }
 
         if (bestTarget !== null) {
-          u.cooldownTicks = def.attackIntervalTicks;
+          let speedMult = synergy.trinityActive ? 1.1 : 1.0;
+          if (def.faction === 'unorthodox') {
+            if (synergy.unorthodoxTier === 2) speedMult *= 1.32;
+            else if (synergy.unorthodoxTier === 1) speedMult *= 1.18;
+          }
+          u.cooldownTicks = Math.max(1, Math.round(def.attackIntervalTicks / speedMult));
           u.attackCount++;
           u.lastAttackTick = this.currentTick;
 
@@ -887,17 +947,41 @@ export class Simulation {
           const gradeColor = gradeDef?.color ?? '#94a3b8';
           const gradeRank = gradeDef?.rank ?? 1;
 
-          const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId);
+          const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId, synergy);
           const totalAtk = baseAtk + bonusAtk;
           const isSkill = u.attackCount % def.skill.everyN === 0;
-          const isCrit = this.rng.nextInt(1000) < Math.round(def.critChance * 1000);
+
+          let critChance = def.critChance;
+          let critMult = def.critMult;
+          let skillRatio = def.skill.atkRatio;
+          let ccMult = 1.0;
+
+          if (def.faction === 'orthodox') {
+            if (synergy.orthodoxTier === 2) {
+              critChance = Math.min(0.95, critChance + 0.18);
+              ccMult = 1.4;
+            } else if (synergy.orthodoxTier === 1) {
+              critChance = Math.min(0.95, critChance + 0.1);
+              ccMult = 1.25;
+            }
+          } else if (def.faction === 'demonic') {
+            if (synergy.demonicTier === 2) {
+              critMult += 0.8;
+              skillRatio *= 1.45;
+            } else if (synergy.demonicTier === 1) {
+              critMult += 0.4;
+              skillRatio *= 1.25;
+            }
+          }
+
+          const isCrit = this.rng.nextInt(1000) < Math.round(critChance * 1000);
 
           let damage = totalAtk;
           if (isSkill) {
-            damage = Math.round(damage * def.skill.atkRatio);
+            damage = Math.round(damage * skillRatio);
           }
           if (isCrit) {
-            damage = Math.round(damage * def.critMult);
+            damage = Math.round(damage * critMult);
           }
 
           this.projectiles.push({
@@ -922,9 +1006,15 @@ export class Simulation {
             skillName: def.skill.name,
             vfxTrack: def.skill.vfxTrack,
             splashRadius: isSkill ? def.skill.splashRadius : 0,
-            stunTicks: isSkill ? def.skill.stunTicks : 0,
+            stunTicks:
+              isSkill && def.skill.stunTicks > 0
+                ? Math.max(1, Math.round(def.skill.stunTicks * ccMult))
+                : 0,
             slowPct: isSkill ? def.skill.slowPct : 0,
-            slowTicks: isSkill ? def.skill.slowTicks : 0,
+            slowTicks:
+              isSkill && def.skill.slowTicks > 0
+                ? Math.max(1, Math.round(def.skill.slowTicks * ccMult))
+                : 0,
           });
         }
       }
@@ -993,10 +1083,10 @@ export class Simulation {
             // Primary target takes 100%, splash neighbors take 75%
             const dealt =
               m.entityId === p.targetEntityId ? p.damage : Math.max(1, Math.round(p.damage * 0.75));
-            this.applyHitToMonster(m, dealt, p);
+            this.applyHitToMonster(m, dealt, p, synergy);
           }
         } else if (target) {
-          this.applyHitToMonster(target, p.damage, p);
+          this.applyHitToMonster(target, p.damage, p, synergy);
         }
 
         this.projectiles.splice(i, 1);
@@ -1008,6 +1098,7 @@ export class Simulation {
     m: MonsterEntity,
     damage: number,
     p: ProjectileEntity,
+    synergy: FactionSynergySnapshot,
   ): void {
     const idx = this.monsters.indexOf(m);
     if (idx === -1) return;
@@ -1029,7 +1120,14 @@ export class Simulation {
     const hitY = m.currY;
 
     if (slain) {
-      this.coin += m.rewardCoin;
+      let pillageBonus = 0;
+      if (
+        synergy.unorthodoxTier > 0 &&
+        this.data.unitsById.get(p.unitId)?.faction === 'unorthodox'
+      ) {
+        pillageBonus = synergy.unorthodoxTier === 2 ? 2 : 1;
+      }
+      this.coin += m.rewardCoin + pillageBonus;
       this.monsters.splice(idx, 1);
 
       if (m.isBoss) {
@@ -1068,16 +1166,18 @@ export class Simulation {
   }
 
   public buildSnapshot(speed: Speed, paused: boolean): UISnapshot {
+    const synergy = this.computeFieldSynergy();
+
     const fieldViews: Array<SlotView | null> = [];
     for (let i = 0; i < this.board.field.capacity; i++) {
       const uid = this.board.field.getUidAt(i);
-      fieldViews.push(uid !== null ? this.toSlotView(uid) : null);
+      fieldViews.push(uid !== null ? this.toSlotView(uid, synergy) : null);
     }
 
     const benchViews: Array<SlotView | null> = [];
     for (let i = 0; i < this.board.bench.capacity; i++) {
       const uid = this.board.bench.getUidAt(i);
-      benchViews.push(uid !== null ? this.toSlotView(uid) : null);
+      benchViews.push(uid !== null ? this.toSlotView(uid, synergy) : null);
     }
 
     const rejects = this.pendingRejects.slice();
@@ -1109,6 +1209,7 @@ export class Simulation {
       summonCost: this.getSummonCost(),
       wisps: { ...this.wisps },
       upgradeLv: { ...this.upgradeLv },
+      synergy,
       lastGambleResult: this.lastGambleResult,
       field: fieldViews,
       bench: benchViews,
@@ -1120,11 +1221,11 @@ export class Simulation {
     };
   }
 
-  private toSlotView(uid: number): SlotView | null {
+  private toSlotView(uid: number, synergy: FactionSynergySnapshot): SlotView | null {
     const u = this.unitsByUid.get(uid);
     if (!u) return null;
     const def = this.data.unitsById.get(u.unitId);
-    const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId);
+    const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId, synergy);
     return {
       uid: u.uid,
       unitId: u.unitId,

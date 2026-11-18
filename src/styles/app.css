@@ -601,6 +601,88 @@ button {
 }
 
 /* =========================================================
+   3-Faction Field Formation Synergy Bar (sits right of bridge, y=715)
+   ========================================================= */
+.synergy-bar {
+  position: absolute;
+  right: 40px;
+  top: 715px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+}
+
+.syn-pill {
+  height: 30px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #332742 0%, #1e1629 100%);
+  box-shadow: 0 2.5px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  color: rgba(241, 245, 249, 0.72);
+  text-shadow: var(--outline-1);
+  cursor: pointer;
+  transition: transform 90ms ease, filter 120ms ease;
+}
+
+.syn-pill:active {
+  transform: translateY(1.5px);
+}
+
+.syn-pill b {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 12.5px;
+  padding: 0.5px 5px;
+  border-radius: 999px;
+  background: rgba(15, 10, 22, 0.72);
+  color: #cbd5e1;
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.syn-orthodox.tier-1,
+.syn-orthodox.tier-2 {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  color: #ffffff;
+}
+
+.syn-unorthodox.tier-1,
+.syn-unorthodox.tier-2 {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+  color: #ffffff;
+}
+
+.syn-demonic.tier-1,
+.syn-demonic.tier-2 {
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  color: #ffffff;
+}
+
+.syn-pill.tier-1 b,
+.syn-pill.tier-2 b {
+  background: var(--ink);
+  color: #fef08a;
+}
+
+.syn-pill.tier-2 {
+  box-shadow: 0 2.5px 0 var(--ink), 0 0 0 2px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.55);
+}
+
+.syn-trinity.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  box-shadow: 0 2.5px 0 var(--ink), 0 0 0 2px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* =========================================================
    Shared info bar shell (recommend bar & selected unit bar, y: 954..1032)
    ========================================================= */
 .recommend-bar,

@@ -1,6 +1,6 @@
 import { Pool } from '../core/Pool';
 import { TICK_DT } from '../core/time';
-import type { VfxTrackKind } from '../data/types';
+import type { FactionId, VfxTrackKind } from '../data/types';
 import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../platform/Viewport';
 import type { CanvasStack } from '../render/CanvasStack';
 import { PIXEL_OUTLINE } from '../render/ChibiPainter';
@@ -9,6 +9,7 @@ import type { SpriteCache } from '../render/SpriteCache';
 
 const MAX_VFX_INSTANCES = 96;
 const MAX_PARTICLES = 1500;
+const MAX_SKILL_CALLOUTS = 6;
 
 type InternalVfxKind = 'ring' | 'craft_pillar' | 'hit_slash' | 'qi_resonance' | VfxTrackKind;
 
@@ -25,6 +26,7 @@ interface TrackVfxInstance {
   color: string;
   lineWidth: number;
   glowRadius: number;
+  gradeRank: number;
   progress: number;
   renderableGround: IRenderable;
   renderableAir: IRenderable;
@@ -41,6 +43,16 @@ interface FloatingDamageItem {
   value: number;
   isCrit: boolean;
   isSkill: boolean;
+}
+
+interface SkillCalloutItem {
+  active: boolean;
+  startTick: number;
+  x: number;
+  y: number;
+  skillName: string;
+  faction: FactionId;
+  gradeRank: number;
 }
 
 interface ScreenFlashState {
@@ -82,12 +94,14 @@ export class VfxSystem {
   private particleCursor = 0;
 
   private readonly damageTexts: FloatingDamageItem[] = [];
+  private readonly skillCallouts: SkillCalloutItem[] = [];
   private flash: ScreenFlashState | null = null;
   private banner: OverlayBannerState | null = null;
   private currentSimTimeSec = 0;
 
   private readonly particleBatchRenderable: IRenderable;
   private readonly damageBatchRenderable: IRenderable;
+  private readonly calloutBatchRenderable: IRenderable;
 
   public constructor(sprites: SpriteCache) {
     this.sprites = sprites;
@@ -107,6 +121,7 @@ export class VfxSystem {
           color: '#ffffff',
           lineWidth: 3,
           glowRadius: 42,
+          gradeRank: 1,
           progress: 0,
           renderableGround: {
             layer: RenderLayer.GroundFx,
@@ -123,6 +138,7 @@ export class VfxSystem {
       },
       (inst) => {
         inst.progress = 0;
+        inst.gradeRank = 1;
       },
       36,
     );
@@ -142,6 +158,18 @@ export class VfxSystem {
       });
     }
 
+    for (let i = 0; i < MAX_SKILL_CALLOUTS; i++) {
+      this.skillCallouts.push({
+        active: false,
+        startTick: 0,
+        x: 0,
+        y: 0,
+        skillName: '',
+        faction: 'orthodox',
+        gradeRank: 1,
+      });
+    }
+
     this.particleBatchRenderable = {
       layer: RenderLayer.AirFx,
       sortY: 0,
@@ -152,6 +180,12 @@ export class VfxSystem {
       layer: RenderLayer.WorldUI,
       sortY: 9999,
       render: (ctx) => this.renderDamageTexts(ctx),
+    };
+
+    this.calloutBatchRenderable = {
+      layer: RenderLayer.WorldUI,
+      sortY: 9850,
+      render: (ctx) => this.renderSkillCallouts(ctx),
     };
   }
 
@@ -255,7 +289,7 @@ export class VfxSystem {
         this.pushTrack({
           kind: 'plum_blossom',
           startTick,
-          durationSec: 0.44,
+          durationSec: 0.46,
           fromX,
           fromY,
           x,
@@ -264,7 +298,8 @@ export class VfxSystem {
           toRadius: radius,
           color: plumColor,
           lineWidth: 5,
-          glowRadius: Math.min(82, radius * 0.8),
+          glowRadius: Math.min(84, radius * 0.8),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#fb7185', 14, 140, 0.42, 35, startTick);
         this.emitRadialBurst(x, y, '#fda4af', 10, 95, 0.48, 45, startTick);
@@ -275,7 +310,7 @@ export class VfxSystem {
         this.pushTrack({
           kind: 'emperor_thunder',
           startTick,
-          durationSec: 0.44,
+          durationSec: 0.46,
           fromX,
           fromY,
           x,
@@ -284,7 +319,8 @@ export class VfxSystem {
           toRadius: radius,
           color: '#0284c7',
           lineWidth: 5,
-          glowRadius: Math.min(88, radius * 0.85),
+          glowRadius: Math.min(90, radius * 0.85),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#38bdf8', 18, 175, 0.32, 20, startTick);
         break;
@@ -304,6 +340,7 @@ export class VfxSystem {
           color: '#d97706',
           lineWidth: 5.5,
           glowRadius: Math.min(88, radius * 0.85),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#f59e0b', 18, 155, 0.34, 0, startTick);
         break;
@@ -313,7 +350,7 @@ export class VfxSystem {
         this.pushTrack({
           kind: 'poison_rain',
           startTick,
-          durationSec: 0.46,
+          durationSec: 0.48,
           fromX,
           fromY,
           x,
@@ -321,8 +358,9 @@ export class VfxSystem {
           fromRadius: 16,
           toRadius: radius,
           color: '#16a34a',
-          lineWidth: 4,
-          glowRadius: Math.min(80, radius * 0.78),
+          lineWidth: 4.5,
+          glowRadius: Math.min(82, radius * 0.78),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#22c55e', 15, 140, 0.36, 30, startTick);
         this.emitRadialBurst(x, y, '#7e22ce', 8, 100, 0.34, 20, startTick);
@@ -333,7 +371,7 @@ export class VfxSystem {
         this.pushTrack({
           kind: 'blood_slash',
           startTick,
-          durationSec: 0.42,
+          durationSec: 0.44,
           fromX,
           fromY,
           x,
@@ -342,7 +380,8 @@ export class VfxSystem {
           toRadius: radius,
           color: '#be123c',
           lineWidth: 5.5,
-          glowRadius: Math.min(90, radius * 0.85),
+          glowRadius: Math.min(92, radius * 0.85),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#e11d48', 20, 175, 0.34, 0, startTick);
         break;
@@ -352,7 +391,7 @@ export class VfxSystem {
         this.pushTrack({
           kind: 'demonic_flame',
           startTick,
-          durationSec: 0.48,
+          durationSec: 0.5,
           fromX,
           fromY,
           x,
@@ -361,7 +400,8 @@ export class VfxSystem {
           toRadius: radius,
           color: '#dc2626',
           lineWidth: 5.5,
-          glowRadius: Math.min(94, radius * 0.88),
+          glowRadius: Math.min(96, radius * 0.88),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#dc2626', 18, 150, 0.38, -95, startTick);
         this.emitRadialBurst(x, y, '#9333ea', 10, 105, 0.34, -110, startTick);
@@ -382,6 +422,7 @@ export class VfxSystem {
           color: '#be123c',
           lineWidth: 7,
           glowRadius: Math.min(120, radius * 0.95),
+          gradeRank,
         });
         this.emitRadialBurst(x, y, '#e11d48', 26, 210, 0.44, 0, startTick);
         this.emitRadialBurst(x, y, PIXEL_OUTLINE, 16, 165, 0.4, 0, startTick);
@@ -394,6 +435,64 @@ export class VfxSystem {
         break;
       }
     }
+  }
+
+  /**
+   * Pops a pre-baked Wuxia martial skill plaque (e.g. 「매화만개」, 「절기 만천화우」, 「천마군림보」)
+   * above the casting hero on skill activation without any per-frame fillText.
+   */
+  public spawnSkillCallout(
+    x: number,
+    y: number,
+    skillName: string,
+    faction: FactionId,
+    gradeRank: number,
+    startTick: number,
+  ): void {
+    // Deduplicate near-identical position within 8 ticks so rapid procs stay crisp
+    for (let i = 0; i < this.skillCallouts.length; i++) {
+      const c = this.skillCallouts[i]!;
+      if (
+        c.active &&
+        Math.abs(c.x - x) < 28 &&
+        Math.abs(c.y - y) < 28 &&
+        startTick - c.startTick < 10
+      ) {
+        if (gradeRank >= c.gradeRank) {
+          c.skillName = skillName;
+          c.faction = faction;
+          c.gradeRank = gradeRank;
+          c.startTick = startTick;
+        }
+        return;
+      }
+    }
+
+    let targetSlot: SkillCalloutItem | null = null;
+    for (let i = 0; i < this.skillCallouts.length; i++) {
+      if (!this.skillCallouts[i]!.active) {
+        targetSlot = this.skillCallouts[i]!;
+        break;
+      }
+    }
+    if (!targetSlot) {
+      // Replace oldest lower-or-equal rank callout
+      let oldestIdx = 0;
+      for (let i = 1; i < this.skillCallouts.length; i++) {
+        if (this.skillCallouts[i]!.startTick < this.skillCallouts[oldestIdx]!.startTick) {
+          oldestIdx = i;
+        }
+      }
+      targetSlot = this.skillCallouts[oldestIdx]!;
+    }
+
+    targetSlot.active = true;
+    targetSlot.startTick = startTick;
+    targetSlot.x = Math.max(82, Math.min(LOGICAL_WIDTH - 82, x));
+    targetSlot.y = Math.max(132, y);
+    targetSlot.skillName = skillName;
+    targetSlot.faction = faction;
+    targetSlot.gradeRank = gradeRank;
   }
 
   public spawnMovePulse(x: number, y: number, startTick: number): void {
@@ -550,7 +649,9 @@ export class VfxSystem {
   }
 
   private pushTrack(
-    cfg: Omit<TrackVfxInstance, 'renderableGround' | 'renderableAir' | 'progress'>,
+    cfg: Omit<TrackVfxInstance, 'renderableGround' | 'renderableAir' | 'progress' | 'gradeRank'> & {
+      readonly gradeRank?: number;
+    },
   ): void {
     if (this.activeTracks.length >= MAX_VFX_INSTANCES) {
       const oldest = this.activeTracks.shift();
@@ -571,6 +672,7 @@ export class VfxSystem {
     inst.color = cfg.color;
     inst.lineWidth = cfg.lineWidth;
     inst.glowRadius = cfg.glowRadius;
+    inst.gradeRank = cfg.gradeRank ?? 1;
     inst.renderableGround.sortY = cfg.y;
     inst.renderableAir.sortY = cfg.y;
     this.activeTracks.push(inst);
@@ -713,7 +815,7 @@ export class VfxSystem {
       }
 
       case 'emperor_thunder': {
-        // Namgung 제왕검형: towering sky-to-ground cyan-blue & white lightning bolt
+        // Namgung / Wudang 제왕검형·태극천뢰: towering sky-to-ground cyan-blue & white lightning bolt
         ctx.globalAlpha = inv * 0.96;
         const skyY = inst.y - 190;
         const seed = inst.startTick * 17;
@@ -735,12 +837,20 @@ export class VfxSystem {
         traceBolt(8, '#0284c7');
         traceBolt(4, '#7dd3fc');
         traceBolt(2, '#ffffff');
+
+        if (inst.gradeRank >= 3) {
+          const seal = this.sprites.kanjiSeal('雷', '#0284c7');
+          const size = (inst.gradeRank >= 5 ? 74 : 62) * (0.8 + inv * 0.25);
+          ctx.globalAlpha = inv * 0.92;
+          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 26 - p * 22 - size * 0.5, size, size);
+        }
         break;
       }
 
       case 'golden_palm': {
-        // Shaolin 금강권: golden Hanja '剛' martial seal rising above golden shockwave
-        const seal = this.sprites.kanjiSeal('剛', '#d97706');
+        // Shaolin / Gaebang 금강권·항룡장: golden Hanja '剛' or '龍' martial seal rising above golden shockwave
+        const hanja = inst.gradeRank >= 3 ? '龍' : '剛';
+        const seal = this.sprites.kanjiSeal(hanja, '#d97706');
         const pop = p < 0.25 ? 0.7 + (p / 0.25) * 0.45 : 1.15 - (p - 0.25) * 0.2;
         const size = 76 * pop;
         const liftY = inst.y - 16 - easeOutCubic(p) * 26;
@@ -750,13 +860,13 @@ export class VfxSystem {
       }
 
       case 'poison_rain': {
-        // Tang Sect 만천화우: diagonal volley of dark-outlined emerald poison needles
+        // Tang Sect 만천화우: diagonal volley of dark-outlined emerald-violet poison needles + '毒' seal
         ctx.globalAlpha = inv * 0.96;
         const seed = inst.startTick * 13;
-        for (let n = 0; n < 10; n++) {
-          const spreadX = (((seed + n * 23) % 48) - 24) * (inst.toRadius / 70);
-          const spreadY = (((seed + n * 37) % 36) - 18) * (inst.toRadius / 70);
-          const fall = (1 - p) * 44;
+        for (let n = 0; n < 12; n++) {
+          const spreadX = (((seed + n * 23) % 52) - 26) * (inst.toRadius / 70);
+          const spreadY = (((seed + n * 37) % 38) - 19) * (inst.toRadius / 70);
+          const fall = (1 - p) * 46;
           const tx = inst.x + spreadX;
           const ty = inst.y + spreadY;
           const sx = tx - fall * 0.55;
@@ -765,19 +875,25 @@ export class VfxSystem {
           ctx.beginPath();
           ctx.moveTo(sx, sy);
           ctx.lineTo(tx, ty);
-          ctx.lineWidth = 4.5;
+          ctx.lineWidth = 4.6;
           ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
 
-          ctx.lineWidth = 2.2;
+          ctx.lineWidth = 2.3;
           ctx.strokeStyle = n % 3 === 0 ? '#a855f7' : '#4ade80';
           ctx.stroke();
+        }
+        if (inst.gradeRank >= 2) {
+          const seal = this.sprites.kanjiSeal('毒', '#16a34a');
+          const size = (inst.gradeRank >= 4 ? 72 : 58) * (0.85 + inv * 0.2);
+          ctx.globalAlpha = inv * 0.9;
+          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 22 - p * 20 - size * 0.5, size, size);
         }
         break;
       }
 
       case 'blood_slash': {
-        // Unorthodox 혈도·광마참: fierce X-crossed crimson-ink saber arcs
+        // Unorthodox 혈도·광마참: fierce X-crossed crimson-ink saber arcs + '血' seal
         const r = inst.toRadius * (0.55 + easeOutCubic(p) * 0.42);
         ctx.globalAlpha = inv * 0.96;
         const drawSlash = (w: number, col: string): void => {
@@ -791,14 +907,21 @@ export class VfxSystem {
           ctx.strokeStyle = col;
           ctx.stroke();
         };
-        drawSlash(11, PIXEL_OUTLINE);
-        drawSlash(6.5, '#e11d48');
-        drawSlash(2.5, '#ffe4e6');
+        drawSlash(11.5, PIXEL_OUTLINE);
+        drawSlash(6.8, '#e11d48');
+        drawSlash(2.6, '#ffe4e6');
+
+        if (inst.gradeRank >= 3) {
+          const seal = this.sprites.kanjiSeal('血', '#be123c');
+          const size = (inst.gradeRank >= 5 ? 76 : 62) * (0.85 + inv * 0.2);
+          ctx.globalAlpha = inv * 0.92;
+          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 24 - p * 22 - size * 0.5, size, size);
+        }
         break;
       }
 
       case 'demonic_flame': {
-        // Demonic Cult 마염: swirling obsidian-crimson & violet hellfire rings
+        // Demonic Cult 마염: swirling obsidian-crimson & violet hellfire rings + '魔' seal
         const r = inst.toRadius * (0.35 + p * 0.58);
         ctx.globalAlpha = inv * 0.92;
         ctx.beginPath();
@@ -821,11 +944,18 @@ export class VfxSystem {
         ctx.lineWidth = 4.5 * inv;
         ctx.strokeStyle = '#a855f7';
         ctx.stroke();
+
+        if (inst.gradeRank >= 3) {
+          const seal = this.sprites.kanjiSeal('魔', '#9333ea');
+          const size = (inst.gradeRank >= 4 ? 72 : 60) * (0.85 + inv * 0.2);
+          ctx.globalAlpha = inv * 0.92;
+          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 24 - p * 22 - size * 0.5, size, size);
+        }
         break;
       }
 
       case 'heavenly_demon': {
-        // 천마군림보: pitch-black & blood-crimson lightning spatial fracture cracks!
+        // 천마군림보: pitch-black & blood-crimson lightning spatial fracture cracks + '天' seal!
         const maxR = inst.toRadius * (0.45 + easeOutCubic(p) * 0.58);
         ctx.globalAlpha = inv * 0.98;
         const traceFractures = (w: number, col: string): void => {
@@ -855,6 +985,13 @@ export class VfxSystem {
         traceFractures(9.5, PIXEL_OUTLINE);
         traceFractures(5, '#e11d48');
         traceFractures(1.8, '#fde047');
+
+        if (inst.gradeRank >= 4) {
+          const seal = this.sprites.kanjiSeal('天', '#e11d48');
+          const size = (inst.gradeRank >= 6 ? 86 : 70) * (0.85 + inv * 0.25);
+          ctx.globalAlpha = inv * 0.95;
+          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 26 - p * 24 - size * 0.5, size, size);
+        }
         break;
       }
 
@@ -1018,6 +1155,7 @@ export class VfxSystem {
     }
 
     buckets[RenderLayer.AirFx]!.push(this.particleBatchRenderable);
+    buckets[RenderLayer.WorldUI]!.push(this.calloutBatchRenderable);
     buckets[RenderLayer.WorldUI]!.push(this.damageBatchRenderable);
   }
 
@@ -1130,6 +1268,40 @@ export class VfxSystem {
       ctx.fillRect(x - size - 1, y - size - 1, size * 2 + 2, size * 2 + 2);
       ctx.fillStyle = this.pColor[i]!;
       ctx.fillRect(x - size, y - size, size * 2, size * 2);
+    }
+
+    ctx.globalAlpha = prevAlpha;
+  }
+
+  private renderSkillCallouts(ctx: CanvasRenderingContext2D): void {
+    const prevAlpha = ctx.globalAlpha;
+
+    for (let i = 0; i < this.skillCallouts.length; i++) {
+      const item = this.skillCallouts[i]!;
+      if (!item.active) continue;
+      const life = item.gradeRank >= 4 ? 0.86 : 0.68;
+      const elapsed = this.currentSimTimeSec - item.startTick * TICK_DT;
+      if (elapsed >= life || elapsed < 0) {
+        item.active = false;
+        continue;
+      }
+      const p = elapsed / life;
+      const baseScale = item.gradeRank >= 5 ? 0.56 : item.gradeRank >= 3 ? 0.5 : 0.44;
+      const pop =
+        p < 0.16
+          ? 0.72 + (p / 0.16) * 0.38
+          : p < 0.3
+            ? 1.1 - ((p - 0.16) / 0.14) * 0.1
+            : 1;
+      const scale = baseScale * pop;
+      const riseY = item.y - easeOutCubic(p) * 18;
+      const fade = p < 0.72 ? 1 : 1 - (p - 0.72) / 0.28;
+
+      const plaque = this.sprites.skillCallout(item.skillName, item.faction);
+      const dw = plaque.width * scale;
+      const dh = plaque.height * scale;
+      ctx.globalAlpha = prevAlpha * Math.max(0, Math.min(1, fade));
+      ctx.drawImage(plaque, item.x - dw * 0.5, riseY - dh * 0.5, dw, dh);
     }
 
     ctx.globalAlpha = prevAlpha;

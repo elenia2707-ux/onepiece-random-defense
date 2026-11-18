@@ -1,4 +1,4 @@
-import type { GradeDef, MonsterKind, UnitDef } from '../data/types';
+import type { FactionId, GradeDef, MonsterKind, UnitDef } from '../data/types';
 import { paintMonsterChibi, paintUnitChibi, PIXEL_OUTLINE } from './ChibiPainter';
 
 export interface GlyphMetric {
@@ -36,6 +36,11 @@ interface SealSpec {
   readonly accent: string;
 }
 
+interface SkillCalloutSpec {
+  readonly label: string;
+  readonly faction: FactionId;
+}
+
 /**
  * Sole factory/owner for offscreen HTMLCanvasElements (AGENTS.md §2 & §6).
  * Releases canvas memory by zeroing width & height.
@@ -49,6 +54,7 @@ export class SpriteCache {
   private readonly portraitUrls = new Map<string, string>();
   private readonly bannerSpecs = new Map<string, BannerSpec>();
   private readonly sealSpecs = new Map<string, SealSpec>();
+  private readonly skillCalloutSpecs = new Map<string, SkillCalloutSpec>();
   private readonly probed = new Set<string>();
   private readonly loadedSheetImages = new Map<string, HTMLImageElement>();
   private readonly pendingSheetCallbacks = new Map<string, Array<(img: HTMLImageElement) => void>>();
@@ -78,6 +84,7 @@ export class SpriteCache {
     }
     this.bannerSpecs.delete(key);
     this.sealSpecs.delete(key);
+    this.skillCalloutSpecs.delete(key);
   }
 
   public disposeAll(): void {
@@ -89,6 +96,7 @@ export class SpriteCache {
     this.portraitUrls.clear();
     this.bannerSpecs.clear();
     this.sealSpecs.clear();
+    this.skillCalloutSpecs.clear();
     this.loadedSheetImages.clear();
     this.pendingSheetCallbacks.clear();
     if (this.glyphCanvas) {
@@ -107,8 +115,8 @@ export class SpriteCache {
     if (typeof document === 'undefined' || !('fonts' in document)) return;
     const fonts = document.fonts;
     Promise.all([
-      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789 剛破天魔'),
-      fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현'),
+      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789 剛破天魔毒血雷龍'),
+      fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현 매화만개 천마군림보'),
     ])
       .catch(() => undefined)
       .then(() => fonts.ready)
@@ -126,6 +134,10 @@ export class SpriteCache {
     for (const [key, spec] of this.sealSpecs) {
       const c = this.cache.get(key);
       if (c) this.paintKanjiSeal(c, spec);
+    }
+    for (const [key, spec] of this.skillCalloutSpecs) {
+      const c = this.cache.get(key);
+      if (c) this.paintSkillCallout(c, spec);
     }
   }
 
@@ -257,6 +269,109 @@ export class SpriteCache {
     g.addColorStop(1, spec.accent);
     ctx.fillStyle = g;
     ctx.fillText(spec.char, 48, 50);
+    ctx.restore();
+  }
+
+  /**
+   * Pre-rendered Oriental scroll skill callout plaque (e.g. 「매화만개」, 「천마군림보」)
+   * styled per faction (정파 청옥·금, 사파 취록·혈, 마교 흑적·마염) with zero per-frame fillText.
+   */
+  public skillCallout(skillName: string, faction: FactionId): HTMLCanvasElement {
+    const concise =
+      skillName.length > 9 && skillName.includes('·')
+        ? skillName.split('·')[0]!.trim()
+        : skillName;
+    const key = `callout:${faction}:${concise}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(312, 62);
+    const spec: SkillCalloutSpec = { label: concise, faction };
+    this.paintSkillCallout(c, spec);
+    this.cache.set(key, c);
+    this.skillCalloutSpecs.set(key, spec);
+    return c;
+  }
+
+  private paintSkillCallout(c: HTMLCanvasElement, spec: SkillCalloutSpec): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+
+    const text = `「${spec.label}」`;
+    ctx.font = `bold 29px ${BODY_FONT}`;
+    const measuredW = Math.min(268, Math.max(124, Math.ceil(ctx.measureText(text).width) + 34));
+    const pillX = Math.round((c.width - measuredW) * 0.5);
+    const pillY = 9;
+    const pillH = 42;
+
+    // 3D ink drop shadow
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY + 5, measuredW, pillH, 12);
+    ctx.fillStyle = PIXEL_OUTLINE;
+    ctx.fill();
+
+    // Faction lacquer scroll body
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, measuredW, pillH, 12);
+    const bg = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
+    let rimColor = '#fde047';
+    let textTop = '#ffffff';
+    let textBot = '#bae6fd';
+    if (spec.faction === 'orthodox') {
+      bg.addColorStop(0, '#075985');
+      bg.addColorStop(1, '#082f49');
+      rimColor = '#fde047';
+      textTop = '#fffbeb';
+      textBot = '#7dd3fc';
+    } else if (spec.faction === 'unorthodox') {
+      bg.addColorStop(0, '#166534');
+      bg.addColorStop(1, '#052e16');
+      rimColor = '#4ade80';
+      textTop = '#fefce8';
+      textBot = '#86efac';
+    } else {
+      bg.addColorStop(0, '#881337');
+      bg.addColorStop(1, '#2a0410');
+      rimColor = '#fb7185';
+      textTop = '#fff1f2';
+      textBot = '#fda4af';
+    }
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.roundRect(pillX + 3, pillY + 3, measuredW - 6, pillH - 6, 9);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = rimColor;
+    ctx.stroke();
+
+    // Traditional scroll gold end-spindles on left & right
+    for (const rx of [pillX - 4, pillX + measuredW - 3]) {
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.fillRect(rx - 1.5, pillY + 4, 10, pillH - 8);
+      ctx.fillStyle = rimColor;
+      ctx.fillRect(rx, pillY + 6, 7, pillH - 12);
+    }
+
+    // Crisp ink-outlined martial skill name
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 7.5;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(text, c.width * 0.5, pillY + pillH * 0.5 + 1);
+
+    const tg = ctx.createLinearGradient(0, pillY + 6, 0, pillY + pillH - 6);
+    tg.addColorStop(0, textTop);
+    tg.addColorStop(1, textBot);
+    ctx.fillStyle = tg;
+    ctx.fillText(text, c.width * 0.5, pillY + pillH * 0.5 + 1);
+
     ctx.restore();
   }
 

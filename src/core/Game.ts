@@ -40,7 +40,9 @@ export class Game {
     this.sim = new Simulation(data);
     this.stack = new CanvasStack();
     this.sprites = new SpriteCache();
-    this.bgPainter = new BackgroundPainter();
+    this.bgPainter = new BackgroundPainter(() => {
+      this.bgPainter.paint(this.stack.bgCtx, this.sim.board, this.sim.path);
+    });
     this.vfx = new VfxSystem(this.sprites);
     this.renderer = new Renderer(this.stack, this.sprites, this.vfx);
 
@@ -162,6 +164,15 @@ export class Game {
         ev.y,
         ev.radius,
         ev.color,
+        ev.gradeRank,
+        ev.tick,
+      );
+      const uDef = this.sim.data.unitsById.get(ev.unitId);
+      this.vfx.spawnSkillCallout(
+        ev.fromX,
+        ev.fromY - 56,
+        ev.skillName,
+        uDef?.faction ?? 'orthodox',
         ev.gradeRank,
         ev.tick,
       );

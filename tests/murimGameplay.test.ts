@@ -143,5 +143,69 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
     }
     expect(spriteSet.size).toBe(36);
+
+    const bgFiles = Object.keys(import.meta.glob('../public/bg/*.png'));
+    expect(bgFiles.some((p) => p.endsWith('/murim_arena_bg.png'))).toBe(true);
+  });
+
+  it('activates deterministic 3-faction field formations (북두검진 · 만독혈진 · 천마혈진 · 삼재합진) strictly from field slots', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x55aa55aa);
+
+    expect(sim.computeFieldSynergy()).toEqual({
+      counts: { orthodox: 0, unorthodox: 0, demonic: 0 },
+      orthodoxTier: 0,
+      unorthodoxTier: 0,
+      demonicTier: 0,
+      trinityActive: false,
+    });
+
+    // Place 3 Orthodox units onto the 6x3 field -> 북두검진 Tier 1
+    for (let i = 0; i < 3; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    }
+    sim.tick();
+
+    expect(sim.computeFieldSynergy().orthodoxTier).toBe(1);
+    expect(sim.computeFieldSynergy().trinityActive).toBe(false);
+
+    // Move one Orthodox unit to bench -> drops to 2 on field (bench units do not form field array)
+    sim.commands.enqueue({
+      type: 'move',
+      from: { area: 'field', index: 2 },
+      to: { area: 'bench', index: 0 },
+    });
+    // Add 2 Unorthodox + 2 Demonic onto field -> 2/2/2 삼재합진 activates!
+    for (let i = 0; i < 2; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'tang_assassin' });
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'cult_initiate' });
+    }
+    sim.tick();
+
+    const trinitySyn = sim.computeFieldSynergy();
+    expect(trinitySyn.counts).toEqual({ orthodox: 2, unorthodox: 2, demonic: 2 });
+    expect(trinitySyn.trinityActive).toBe(true);
+    expect(sim.getUnitEffectiveAtk('hwasan_novice').bonusAtk).toBeGreaterThan(0);
+    expect(sim.getUnitEffectiveAtk('tang_assassin').bonusAtk).toBeGreaterThan(0);
+    expect(sim.getUnitEffectiveAtk('cult_initiate').bonusAtk).toBeGreaterThan(0);
+
+    // Move bench Orthodox back and add 3 more Orthodox -> 6 Orthodox on field -> 북두검진 Tier 2!
+    sim.commands.enqueue({
+      type: 'move',
+      from: { area: 'bench', index: 0 },
+      to: { area: 'field', index: 6 },
+    });
+    for (let i = 0; i < 3; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'mudang_disciple' });
+    }
+    sim.tick();
+
+    const tier2Syn = sim.computeFieldSynergy();
+    expect(tier2Syn.orthodoxTier).toBe(2);
+    expect(tier2Syn.trinityActive).toBe(true);
   });
 });
