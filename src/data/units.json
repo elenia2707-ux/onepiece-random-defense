@@ -12,6 +12,11 @@
     "critChance": 0.1,
     "critMult": 1.85,
     "sellCoin": 10,
+    "supportAura": {
+      "name": "나한진",
+      "atkPct": 8,
+      "speedPct": 0
+    },
     "skill": {
       "name": "나한권",
       "desc": "3타마다 금강 장풍 파동 195% 범위 피해 및 짧은 기절",
@@ -62,6 +67,11 @@
     "critChance": 0.14,
     "critMult": 1.85,
     "sellCoin": 10,
+    "supportAura": {
+      "name": "양의진",
+      "atkPct": 0,
+      "speedPct": 10
+    },
     "skill": {
       "name": "양의검기",
       "desc": "3타마다 청백 뇌전 검기 190% 범위 피해 및 감속",
@@ -87,6 +97,7 @@
     "critChance": 0.15,
     "critMult": 1.9,
     "sellCoin": 10,
+    "armorShred": 6,
     "skill": {
       "name": "타구봉 일격",
       "desc": "3타마다 타구봉 강타 195% 범위 피해 및 0.35초 기절",
@@ -137,6 +148,7 @@
     "critChance": 0.22,
     "critMult": 2.05,
     "sellCoin": 10,
+    "armorShred": 7,
     "skill": {
       "name": "독침 투척",
       "desc": "3타마다 맹독 비수 탄막 190% 범위 피해 및 감속",
@@ -262,6 +274,11 @@
     "critChance": 0.16,
     "critMult": 2.0,
     "sellCoin": 28,
+    "supportAura": {
+      "name": "금강진",
+      "atkPct": 12,
+      "speedPct": 5
+    },
     "skill": {
       "name": "대력금강장",
       "desc": "3타마다 황금 금강권 파동 235% 범위 피해 및 0.45초 기절",
@@ -312,6 +329,11 @@
     "critChance": 0.22,
     "critMult": 2.05,
     "sellCoin": 28,
+    "supportAura": {
+      "name": "약왕독진",
+      "atkPct": 8,
+      "speedPct": 12
+    },
     "skill": {
       "name": "벽력독무탄",
       "desc": "3타마다 맹독 침우 탄막 230% 범위 피해 및 강한 감속",
@@ -337,6 +359,7 @@
     "critChance": 0.26,
     "critMult": 2.2,
     "sellCoin": 28,
+    "armorShred": 12,
     "skill": {
       "name": "혈영단두참",
       "desc": "3타마다 거대 혈도 참격파 245% 범위 피해",
@@ -387,6 +410,11 @@
     "critChance": 0.2,
     "critMult": 2.1,
     "sellCoin": 28,
+    "supportAura": {
+      "name": "호법마진",
+      "atkPct": 14,
+      "speedPct": 0
+    },
     "skill": {
       "name": "마염파천장",
       "desc": "3타마다 검붉은 마염 폭발 238% 범위 피해 및 0.35초 기절",
@@ -437,6 +465,7 @@
     "critChance": 0.25,
     "critMult": 2.15,
     "sellCoin": 75,
+    "armorShred": 18,
     "skill": {
       "name": "항룡십팔장",
       "desc": "3타마다 금강 항룡 파동 260% 광역 피해 및 0.55초 기절",
@@ -462,6 +491,7 @@
     "critChance": 0.26,
     "critMult": 2.3,
     "sellCoin": 75,
+    "armorShred": 18,
     "skill": {
       "name": "패왕파산도",
       "desc": "3타마다 대지를 가르는 혈도 265% 광역 피해 및 0.5초 기절",
@@ -487,6 +517,11 @@
     "critChance": 0.28,
     "critMult": 2.25,
     "sellCoin": 75,
+    "supportAura": {
+      "name": "혈염진",
+      "atkPct": 16,
+      "speedPct": 8
+    },
     "skill": {
       "name": "천마혈염진",
       "desc": "3타마다 검붉은 마염진 폭발 268% 광역 피해 및 감속",
@@ -537,6 +572,11 @@
     "critChance": 0.3,
     "critMult": 2.35,
     "sellCoin": 200,
+    "supportAura": {
+      "name": "태극양의진",
+      "atkPct": 18,
+      "speedPct": 14
+    },
     "skill": {
       "name": "태극천뢰검",
       "desc": "3타마다 태극 청뢰가 낙하해 305% 광역 피해 및 0.75초 기절",
@@ -562,6 +602,7 @@
     "critChance": 0.36,
     "critMult": 2.45,
     "sellCoin": 200,
+    "armorShred": 26,
     "skill": {
       "name": "절기 만천화우",
       "desc": "3타마다 초록 독침 폭우가 쏟아져 310% 광역 피해 및 감속",
@@ -587,6 +628,7 @@
     "critChance": 0.38,
     "critMult": 2.55,
     "sellCoin": 200,
+    "armorShred": 24,
     "skill": {
       "name": "혈해무변도",
       "desc": "3타마다 핏빛 광풍 참격 320% 광역 피해 및 0.5초 기절",
@@ -612,6 +654,7 @@
     "critChance": 0.42,
     "critMult": 2.65,
     "sellCoin": 200,
+    "armorShred": 28,
     "skill": {
       "name": "흑뢰단공참",
       "desc": "3타마다 검붉은 흑뢰 공간 참격 325% 광역 피해 및 0.55초 기절",
@@ -687,6 +730,11 @@
     "critChance": 0.38,
     "critMult": 2.65,
     "sellCoin": 480,
+    "supportAura": {
+      "name": "천하호령진",
+      "atkPct": 24,
+      "speedPct": 12
+    },
     "skill": {
       "name": "제왕검형 · 천하호령",
       "desc": "3타마다 청백 제왕 낙뢰가 내리꽂혀 345% 광역 피해 및 1.05초 기절",
@@ -712,6 +760,7 @@
     "critChance": 0.42,
     "critMult": 2.75,
     "sellCoin": 480,
+    "armorShred": 34,
     "skill": {
       "name": "광마난무 · 적혈천하",
       "desc": "3타마다 광기 어린 적혈 참격이 폭발해 355% 광역 피해 및 0.95초 기절",
@@ -737,6 +786,12 @@
     "critChance": 0.5,
     "critMult": 3.0,
     "sellCoin": 1400,
+    "armorShred": 24,
+    "supportAura": {
+      "name": "천마군림진",
+      "atkPct": 32,
+      "speedPct": 12
+    },
     "skill": {
       "name": "천마군림보 · 공간파쇄",
       "desc": "3타마다 검붉은 흑뢰가 공간을 찢어 400% 전장 초토화 및 1.25초 기절",
@@ -748,5 +803,68 @@
       "slowSec": 3.0,
       "vfxTrack": "heavenly_demon"
     }
+  },
+  {
+    "id": "sword_immortal",
+    "name": "태상검선",
+    "title": "우화등선 천하검조",
+    "faction": "orthodox",
+    "grade": "immortal",
+    "leaf": false,
+    "atk": 3180,
+    "range": 330,
+    "attackIntervalSec": 0.41,
+    "critChance": 0.5,
+    "critMult": 2.95,
+    "sellCoin": 1400,
+    "armorShred": 28,
+    "supportAura": {
+      "name": "태상검진",
+      "atkPct": 28,
+      "speedPct": 14
+    },
+    "skill": {
+      "name": "태상무극 · 만검천하",
+      "desc": "3타마다 선계의 황금·청백 만검이 강림해 405% 전장 광역 피해 및 1.2초 기절",
+      "everyN": 3,
+      "atkRatio": 4.05,
+      "splashRadius": 220,
+      "stunSec": 1.2,
+      "slowPct": 0.5,
+      "slowSec": 2.8,
+      "vfxTrack": "emperor_thunder"
+    }
+  },
+  {
+    "id": "asura_emperor",
+    "name": "혈해수라왕",
+    "title": "만독무간 사파지존",
+    "faction": "unorthodox",
+    "grade": "immortal",
+    "leaf": false,
+    "atk": 3220,
+    "range": 325,
+    "attackIntervalSec": 0.39,
+    "critChance": 0.52,
+    "critMult": 3.05,
+    "sellCoin": 1400,
+    "armorShred": 42,
+    "supportAura": {
+      "name": "혈해수라진",
+      "atkPct": 20,
+      "speedPct": 22
+    },
+    "skill": {
+      "name": "수라혈겁 · 만독멸세",
+      "desc": "3타마다 적혈 쌍도와 맹독 폭풍이 전장을 휩쓸어 408% 광역 파갑 피해 및 1.15초 기절",
+      "everyN": 3,
+      "atkRatio": 4.08,
+      "splashRadius": 222,
+      "stunSec": 1.15,
+      "slowPct": 0.6,
+      "slowSec": 3.0,
+      "vfxTrack": "blood_slash"
+    }
   }
 ]
+

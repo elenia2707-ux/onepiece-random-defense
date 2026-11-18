@@ -11,12 +11,17 @@ import type { SlotView, UISnapshot } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
+  CourtSkinId,
   DifficultyId,
   FactionId,
   GameDataBundle,
   GradeId,
+  HeroSkinDef,
   RecipeDef,
   RelicId,
+  SkinRarity,
+  SkinUnlockCond,
+  UnitDef,
   UnitId,
   UpgradeGroupId,
 } from '../data/types';
@@ -29,6 +34,11 @@ import {
   type RelicDrawResult,
   type RelicUpgradeResult,
   type SettlementRecord,
+  SKIN_MULTI5_GOLD_COST,
+  SKIN_SINGLE_GOLD_COST,
+  type SkinCraftResult,
+  type SkinGachaResult,
+  type SkinPullItem,
 } from '../platform/MetaStore';
 import type { SpriteCache } from '../render/SpriteCache';
 
@@ -46,14 +56,19 @@ export interface UIControlHandlers {
   getSettlementRecord(): SettlementRecord | null;
   onDrawRelic(payWith: 'key' | 'gold'): RelicDrawResult;
   onUpgradeRelic(relicId: RelicId): RelicUpgradeResult;
+  onDrawSkin(count: 1 | 5, payWith: 'gold' | 'key'): SkinGachaResult;
+  onCraftSkin(skinId: string): SkinCraftResult;
+  onEquipHeroSkin(unitId: UnitId, skinId: string | null): boolean;
+  onEquipCourtSkin(courtId: CourtSkinId): boolean;
   onGrantDevMeta(): void;
   getSelectedSlot(): SlotRef | null;
   clearSelection(): void;
 }
 
-type SheetKind = 'craft' | 'wisp' | 'gamble' | 'upgrade' | 'relic' | 'codex' | 'mission';
+type SheetKind = 'craft' | 'wisp' | 'gamble' | 'upgrade' | 'relic' | 'wardrobe' | 'codex' | 'mission';
 type CraftTabId = 'all' | GradeId;
 type CodexFilterId = 'all' | FactionId;
+type WardrobeSubTab = 'hero' | 'court';
 
 const NORMAL_SYNC_INTERVAL_MS = 100; // Max 10Hz for non-priority HUD fields (AGENTS.md §4)
 
@@ -75,6 +90,21 @@ const FACTION_META: Readonly<Record<FactionId, { readonly label: string; readonl
   demonic: { label: '마교', color: '#be123c' },
 };
 
+const SKIN_RARITY_META: Readonly<
+  Record<SkinRarity, { readonly label: string; readonly color: string; readonly rank: number }>
+> = {
+  achievement: { label: '한정업적', color: '#7c3aed', rank: 4 },
+  mythic: { label: '신화', color: '#e11d48', rank: 3 },
+  legendary: { label: '전설', color: '#d97706', rank: 2 },
+  rare: { label: '명품', color: '#0284c7', rank: 1 },
+};
+
+const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
+  any_clear: '제 30 장 천하통일 제패 시 영구 해금',
+  hell_clear: '아수라 혈겁 난이도 제 30 장 제패 시 영구 해금',
+  wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
+};
+
 /** Inline Oriental Wuxia SVG game icons (thick #1a1224 ink outline + bright cel fill). */
 const SVG_OPEN = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">';
 const INK = '#1a1224';
@@ -85,6 +115,10 @@ const ICON = {
   goldCoin: `${SVG_OPEN}<polygon points="8.2,2.5 15.8,2.5 21.5,8.2 21.5,15.8 15.8,21.5 8.2,21.5 2.5,15.8 2.5,8.2" fill="#fde047" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><polygon points="9.2,5.2 14.8,5.2 18.8,9.2 18.8,14.8 14.8,18.8 9.2,18.8 5.2,14.8 5.2,9.2" fill="#f59e0b" stroke="#b45309" stroke-width="1.2"/><circle cx="12" cy="12" r="3.4" fill="#e11d48" stroke="${INK}" stroke-width="1.8"/><circle cx="11" cy="11" r="1.1" fill="#fef08a"/></svg>`,
   // 기보함 열쇠 (Ornate golden treasury key with crimson tassel)
   key: `${SVG_OPEN}<circle cx="8" cy="9" r="5.2" fill="#fde047" stroke="${INK}" stroke-width="2.3"/><circle cx="8" cy="9" r="2" fill="${INK}"/><path d="M12.2 12l8.3 6.5M16.5 15.4l-2.2 2.8M19.5 17.7l-2.3 2.9" stroke="${INK}" stroke-width="4.4" stroke-linecap="round"/><path d="M12.2 12l8.3 6.5M16.5 15.4l-2.2 2.8M19.5 17.7l-2.3 2.9" stroke="#facc15" stroke-width="2.1" stroke-linecap="round"/><path d="M4.2 13.2l-1.7 4.2" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+  // 운금비단 (Rolled imperial brocade silk bolt with golden sash)
+  silk: `${SVG_OPEN}<rect x="3.5" y="6" width="17" height="12" rx="4" fill="#c084fc" stroke="${INK}" stroke-width="2.3"/><ellipse cx="7.5" cy="12" rx="2.7" ry="5.5" fill="#f3e8ff" stroke="${INK}" stroke-width="1.8"/><path d="M13 6v12" stroke="#facc15" stroke-width="2.8"/><path d="M11 12h4" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/></svg>`,
+  // 전설 금의 (Imperial martial silk robe)
+  robe: `${SVG_OPEN}<path d="M8 4l4 3.5L16 4l4.5 3.5-2.5 4.2-2-1.2V20H8v-9.5L6 11.7 3.5 7.5 8 4z" fill="#f43f5e" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><path d="M9.5 5.2L12 10l2.5-4.8" fill="none" stroke="#fef08a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="8" y="12.2" width="8" height="2.4" fill="#facc15" stroke="${INK}" stroke-width="1.5"/></svg>`,
   // 기보함 (Lacquered Wuxia relic chest)
   chest: `${SVG_OPEN}<rect x="3" y="8.5" width="18" height="12" rx="2.5" fill="#b45309" stroke="${INK}" stroke-width="2.3"/><path d="M3 9.5C3 6.5 6 5 12 5s9 1.5 9 4.5H3z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="3" y="10.5" width="18" height="2.6" fill="#facc15" stroke="${INK}" stroke-width="1.6"/><rect x="10" y="9.5" width="4" height="5" rx="1" fill="#fef08a" stroke="${INK}" stroke-width="1.8"/></svg>`,
   // 영단 (Glowing crimson-gold medicinal elixir pill)
@@ -154,6 +188,7 @@ export class UIManager {
   private bountyBtnEl!: HTMLButtonElement;
   private missionBtnEl!: HTMLButtonElement;
   private dpsBtnEl!: HTMLButtonElement;
+  private wardrobeBtnEl!: HTMLButtonElement;
   private codexBtnEl!: HTMLButtonElement;
   private dpsPanelEl!: HTMLElement;
   private dpsTotalEl!: HTMLElement;
@@ -244,6 +279,7 @@ export class UIManager {
   private activeSheet: SheetKind | null = null;
   private craftTab: CraftTabId = 'all';
   private codexFilter: CodexFilterId = 'all';
+  private wardrobeSubTab: WardrobeSubTab = 'hero';
   private wispTab: GradeId;
   private readonly craftTabs: readonly { readonly id: CraftTabId; readonly label: string }[];
   private readonly wispTabs: readonly { readonly id: GradeId; readonly label: string }[];
@@ -255,6 +291,13 @@ export class UIManager {
     null;
   private relicNoticeSeq = 0;
   private lastAnimatedRelicSeq = 0;
+  private lastSkinPull: {
+    readonly items: readonly SkinPullItem[];
+    readonly totalSilkRefund: number;
+    readonly seq: number;
+  } | null = null;
+  private skinPullSeq = 0;
+  private lastAnimatedSkinSeq = 0;
 
   public constructor(
     data: GameDataBundle,
@@ -360,7 +403,8 @@ export class UIManager {
         <button id="btn-bounty" type="button" class="tac-pill bounty interactive" title="강호 현상수배범 호출 (30초 내 처치 시 영단·은자 획득)">📜 수배 (2장~)</button>
         <button id="btn-mission" type="button" class="tac-pill mission interactive" title="강호 의뢰 목록">📋 의뢰 0/10</button>
         <button id="btn-dps" type="button" class="tac-pill dps interactive" title="실시간 협객 딜량 순위표">⚔ 딜량표</button>
-        <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 30인 명숙록 및 난이도">📖 명숙록 0/30</button>
+        <button id="btn-wardrobe" type="button" class="tac-pill wardrobe interactive" title="금수화장각 — 의복·검기 스킨 뽑기 및 비무대 테마">👘 화장각 1/14</button>
+        <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 32인 명숙록 및 난이도">📖 명숙록 0/32</button>
       </nav>
 
       <aside id="dps-panel" class="dps-panel interactive" aria-label="실시간 협객 딜량표">
@@ -379,7 +423,7 @@ export class UIManager {
           <button type="button" class="dev-chip-btn interactive" data-dev-action="luck">+5 영단</button>
           <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-common">+1 삼류 기연</button>
           <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-rare">+1 일류 기연</button>
-          <button type="button" class="dev-chip-btn dev-span-2 interactive" data-dev-action="meta">+250 천하주화 · +2 열쇠 (난이도 해금)</button>
+          <button type="button" class="dev-chip-btn dev-span-2 interactive" data-dev-action="meta">+250 주화 · +2 열쇠 · +180 비단 (난이도 해금)</button>
         </div>
       </aside>
 
@@ -534,6 +578,7 @@ export class UIManager {
     this.bountyBtnEl = this.mustGet('btn-bounty') as HTMLButtonElement;
     this.missionBtnEl = this.mustGet('btn-mission') as HTMLButtonElement;
     this.dpsBtnEl = this.mustGet('btn-dps') as HTMLButtonElement;
+    this.wardrobeBtnEl = this.mustGet('btn-wardrobe') as HTMLButtonElement;
     this.codexBtnEl = this.mustGet('btn-codex') as HTMLButtonElement;
     this.dpsPanelEl = this.mustGet('dps-panel');
     this.dpsTotalEl = this.mustGet('dps-total-val');
@@ -635,6 +680,7 @@ export class UIManager {
       this.dpsBtnEl.classList.remove('active');
       this.dpsPanelEl.classList.remove('open');
     });
+    this.wardrobeBtnEl.addEventListener('click', () => this.toggleSheet('wardrobe'));
     this.codexBtnEl.addEventListener('click', () => this.toggleSheet('codex'));
 
     this.autoArrangeBtnEl.addEventListener('click', () => {
@@ -689,7 +735,7 @@ export class UIManager {
         this.showToast('DEV: +1 일류 기연 지급');
       } else if (act === 'meta') {
         this.handlers.onGrantDevMeta();
-        this.showToast('DEV: +250 천하주화 · +2 열쇠 · 전 난이도 해금');
+        this.showToast('DEV: +250 천하주화 · +2 열쇠 · +180 운금비단 · 전 난이도 해금');
       }
     });
 
@@ -806,6 +852,10 @@ export class UIManager {
         this.openSheet('relic');
         return;
       }
+      if (tabId === 'sheet-wardrobe') {
+        this.openSheet('wardrobe');
+        return;
+      }
       if (tabId === 'sheet-codex') {
         this.openSheet('codex');
         return;
@@ -880,6 +930,71 @@ export class UIManager {
           this.showToast(msg);
         } else {
           this.showToast(res.reason, true);
+        }
+      } else if (action === 'wardrobe-subtab') {
+        const sub = btn.dataset.subtab === 'court' ? 'court' : 'hero';
+        this.wardrobeSubTab = sub;
+        this.prevSheetSignature = '';
+        if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'skin-draw') {
+        const count: 1 | 5 = btn.dataset.count === '5' ? 5 : 1;
+        const payWith = btn.dataset.pay === 'key' ? 'key' : 'gold';
+        const res = this.handlers.onDrawSkin(count, payWith);
+        if (res.ok) {
+          this.lastSkinPull = {
+            items: res.items,
+            totalSilkRefund: res.totalSilkRefund,
+            seq: ++this.skinPullSeq,
+          };
+          const newCount = res.items.filter((x) => x.isNew).length;
+          const topItem = [...res.items].sort(
+            (a, b) => SKIN_RARITY_META[b.rarity].rank - SKIN_RARITY_META[a.rarity].rank,
+          )[0];
+          const summaryMsg =
+            count === 5
+              ? `👘 5연속 초빙 완료! 신규 ${newCount}종${res.totalSilkRefund > 0 ? ` · 운금비단 +${res.totalSilkRefund}필` : ''}`
+              : topItem?.isNew
+                ? `✨ 전설 의복 획득! [${SKIN_RARITY_META[topItem.rarity].label}] ${topItem.name}`
+                : `🧶 중복 환급! [${topItem?.name ?? ''}] → 운금비단 +${res.totalSilkRefund}필`;
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(summaryMsg);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'skin-craft') {
+        const skinId = btn.dataset.skinId;
+        if (!skinId) return;
+        const res = this.handlers.onCraftSkin(skinId);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(`👘 확정 재단 완료! [${res.name}] 장착 완료 (-${res.spentSilk}필)`);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'skin-equip-hero') {
+        const unitId = btn.dataset.unitId;
+        const skinId = btn.dataset.skinId ? btn.dataset.skinId : null;
+        if (!unitId) return;
+        const ok = this.handlers.onEquipHeroSkin(unitId, skinId);
+        if (ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          const skinDef = skinId ? this.data.heroSkinsById.get(skinId) : null;
+          this.showToast(
+            skinDef ? `👘 [${skinDef.name}] 의복·검기 장착!` : '기본 문파 복장으로 복귀했습니다.',
+          );
+        }
+      } else if (action === 'skin-equip-court') {
+        const courtId = btn.dataset.courtId as CourtSkinId | undefined;
+        if (!courtId) return;
+        const ok = this.handlers.onEquipCourtSkin(courtId);
+        if (ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          const courtDef = this.data.courtSkinsById.get(courtId);
+          this.showToast(`🏯 비무대 테마 [${courtDef?.name ?? courtId}] 적용!`);
         }
       } else if (action === 'select-difficulty') {
         const diff = btn.dataset.difficulty as DifficultyId | undefined;
@@ -1003,7 +1118,17 @@ export class UIManager {
         this.bossHudTagEl,
         snapshot.boss.isBounty ? `수배 ${leftSec}초` : `제한 ${ticksToClock(snapshot.boss.ticksLeft)}`,
       );
-      this.setText(this.bossHudNameEl, snapshot.boss.name);
+      let bossNameLabel = snapshot.boss.name;
+      if (snapshot.boss.armor > 0 || snapshot.boss.armorShred > 0) {
+        const netArmor = snapshot.boss.armor - snapshot.boss.armorShred;
+        bossNameLabel =
+          netArmor < 0
+            ? `${snapshot.boss.name} · 💥파갑 ${netArmor}`
+            : snapshot.boss.armorShred > 0
+              ? `${snapshot.boss.name} · 🛡강기 ${netArmor} (-${snapshot.boss.armorShred})`
+              : `${snapshot.boss.name} · 🛡강기 ${netArmor}`;
+      }
+      this.setText(this.bossHudNameEl, bossNameLabel);
       this.setText(
         this.bossHudHpEl,
         `${Math.ceil(snapshot.boss.hp).toLocaleString('ko-KR')} / ${snapshot.boss.maxHp.toLocaleString('ko-KR')}`,
@@ -1017,7 +1142,7 @@ export class UIManager {
       this.bossHudTrailEl.style.width = wCss;
     }
 
-    // 1b. Tactical Strip (Bounty · Missions · DPS · Codex)
+    // 1b. Tactical Strip (Bounty · Missions · DPS · Wardrobe · Codex)
     const bnt = snapshot.bounty;
     let bountyLabel = '📜 수배 (2장~)';
     if (bnt.active) {
@@ -1038,6 +1163,18 @@ export class UIManager {
       `📋 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length}`,
     );
     this.missionBtnEl.classList.toggle('active', this.activeSheet === 'mission');
+
+    const totalSkinCount = this.data.heroSkins.length + this.data.courtSkins.length;
+    const hasUnownedGachaSkin = this.hasUnownedGachaSkin(meta);
+    const canDrawSkinNow =
+      hasUnownedGachaSkin && (meta.keys >= 1 || meta.gold >= SKIN_SINGLE_GOLD_COST);
+    this.setText(this.wardrobeBtnEl, `👘 화장각 ${meta.ownedSkinCount}/${totalSkinCount}`);
+    this.wardrobeBtnEl.classList.toggle('active', this.activeSheet === 'wardrobe');
+    this.wardrobeBtnEl.classList.toggle(
+      'draw-ready',
+      canDrawSkinNow && this.activeSheet !== 'wardrobe',
+    );
+
     this.codexBtnEl.classList.toggle('active', this.activeSheet === 'codex');
     this.setText(this.codexBtnEl, `📖 명숙록 ${meta.discoveredCount}/${this.data.units.length}`);
 
@@ -1160,9 +1297,53 @@ export class UIManager {
     this.refreshSettlementModal(snapshot, waveStr);
   }
 
+  private getEquippedSkinDef(unitId: UnitId, meta: MetaProfile): HeroSkinDef | null {
+    const skinId = meta.equippedHeroSkins[unitId];
+    if (!skinId) return null;
+    return this.data.heroSkinsById.get(skinId) ?? null;
+  }
+
+  private hasUnownedGachaSkin(meta: MetaProfile): boolean {
+    for (let i = 0; i < this.data.heroSkins.length; i++) {
+      const s = this.data.heroSkins[i]!;
+      if (s.rarity !== 'achievement' && !s.unlockCond && !meta.ownedSkins[s.id]) {
+        return true;
+      }
+    }
+    for (let i = 0; i < this.data.courtSkins.length; i++) {
+      const c = this.data.courtSkins[i]!;
+      if (
+        c.id !== 'court_bamboo_dawn' &&
+        c.rarity !== 'achievement' &&
+        !c.unlockCond &&
+        !meta.ownedSkins[c.id]
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private buildUnitRoleBadgesHtml(u: UnitDef): string {
+    const chips: string[] = [];
+    if (u.supportAura) {
+      const spdPart = u.supportAura.speedPct > 0 ? `·속+${u.supportAura.speedPct}%` : '';
+      chips.push(
+        `<span class="role-chip totem" title="${escapeHtml(u.supportAura.name)}: 비무대 십자 인접 아군 공격력 +${u.supportAura.atkPct}%${spdPart}">✦고무 +${u.supportAura.atkPct}%</span>`,
+      );
+    }
+    if ((u.armorShred ?? 0) > 0) {
+      chips.push(
+        `<span class="role-chip shred" title="타격 시 마물 호신강기 -${u.armorShred} 파쇄 (중첩)">💥파갑 ${u.armorShred}</span>`,
+      );
+    }
+    return chips.join('');
+  }
+
   private refreshDpsPanel(snapshot: UISnapshot): void {
+    const meta = this.handlers.getMetaProfile();
     const dm = snapshot.damageMeter;
-    const sig = `${dm.totalDamage}:${dm.entries.map((e) => `${e.unitId}=${e.damage}`).join(',')}`;
+    const sig = `${meta.rev}:${dm.totalDamage}:${dm.entries.map((e) => `${e.unitId}=${e.damage}`).join(',')}`;
     if (sig === this.prevDpsSig) return;
     this.prevDpsSig = sig;
 
@@ -1177,7 +1358,8 @@ export class UIManager {
       .map((entry, idx) => {
         const u = this.data.unitsById.get(entry.unitId);
         const g = u ? this.data.gradesById.get(u.grade) : undefined;
-        const imgUrl = u && g ? this.sprites.unitPortraitUrl(u, g) : '';
+        const imgUrl =
+          u && g ? this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta)) : '';
         const fColor = FACTION_META[entry.faction].color;
         return `
           <div class="dps-row">
@@ -1250,7 +1432,7 @@ export class UIManager {
       this.setText(this.gameOverRestartBtnEl, '재출정');
     }
 
-    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}`;
+    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}`;
     if (rec && sig !== this.prevSettlementRenderedSig) {
       this.prevSettlementRenderedSig = sig;
       const multBadge =
@@ -1267,9 +1449,25 @@ export class UIManager {
         `;
       }
 
+      let skinUnlockBanner = '';
+      if (rec.unlockedSkinIds.length > 0) {
+        const names = rec.unlockedSkinIds.map(
+          (id) =>
+            this.data.heroSkinsById.get(id)?.name ??
+            this.data.courtSkinsById.get(id as CourtSkinId)?.name ??
+            id,
+        );
+        skinUnlockBanner = `
+          <div class="first-clear-banner skin-unlock-banner">
+            👘 한정 전설 외형 영구 해금! [${escapeHtml(names.join(', '))}]
+          </div>
+        `;
+      }
+
       this.gameOverLootEl.innerHTML = `
         <div class="settlement-loot-title">출정 정산 영구 보상${multBadge}</div>
         ${firstClearBanner}
+        ${skinUnlockBanner}
         <div class="settlement-loot-row">
           <div class="settlement-loot-item">
             ${ICON.goldCoin}
@@ -1356,9 +1554,10 @@ export class UIManager {
       return;
     }
 
+    const meta = this.handlers.getMetaProfile();
     const rec = this.pickRecommendedRecipe(snapshot);
     const st = rec ? snapshot.craft.recipes[rec.id] : undefined;
-    const sig = `${rec?.id ?? 'none'}:${st?.lamp ?? ''}:${st?.have ?? 0}:${snapshot.craft.rev}:${snapshot.fieldOccupied + snapshot.benchOccupied}`;
+    const sig = `${meta.rev}:${rec?.id ?? 'none'}:${st?.lamp ?? ''}:${st?.have ?? 0}:${snapshot.craft.rev}:${snapshot.fieldOccupied + snapshot.benchOccupied}`;
     if (sig === this.prevRecommendSignature) return;
     this.prevRecommendSignature = sig;
 
@@ -1372,7 +1571,11 @@ export class UIManager {
 
     this.recRecipeId = rec.id;
     this.recommendBarEl.classList.add('visible');
-    this.recImgEl.src = this.sprites.unitPortraitUrl(outUnit, outGrade);
+    this.recImgEl.src = this.sprites.unitPortraitUrl(
+      outUnit,
+      outGrade,
+      this.getEquippedSkinDef(outUnit.id, meta),
+    );
     this.recImgEl.alt = outUnit.name;
     this.recGradeEl.textContent = outGrade.name;
     this.recGradeEl.style.backgroundColor = outGrade.color;
@@ -1387,7 +1590,7 @@ export class UIManager {
         const owned = Math.min(ing.n, unlocked.get(ing.unit) ?? 0);
         const ok = owned >= ing.n;
         const cnt = ing.n > 1 ? `${owned}/${ing.n}` : ok ? '✓' : '✕';
-        return `<span class="rec-ing ${ok ? 'ok' : 'miss'}"><img src="${this.sprites.unitPortraitUrl(u, g)}" alt="${escapeHtml(u.name)}" /><b>${cnt}</b></span>`;
+        return `<span class="rec-ing ${ok ? 'ok' : 'miss'}"><img src="${this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta))}" alt="${escapeHtml(u.name)}" /><b>${cnt}</b></span>`;
       })
       .join('');
 
@@ -1438,7 +1641,8 @@ export class UIManager {
       return;
     }
 
-    const sig = `${slotView.uid}:${slotView.locked}:${slotView.bonusAtk}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
+    const meta = this.handlers.getMetaProfile();
+    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
     if (sig === this.prevSelectSignature) {
       return;
     }
@@ -1451,7 +1655,11 @@ export class UIManager {
     const fMeta = FACTION_META[slotView.faction];
 
     this.unitSelectBarEl.classList.add('visible');
-    this.unitPortraitImgEl.src = this.sprites.unitPortraitUrl(unitDef, gradeDef);
+    this.unitPortraitImgEl.src = this.sprites.unitPortraitUrl(
+      unitDef,
+      gradeDef,
+      this.getEquippedSkinDef(unitDef.id, meta),
+    );
     this.unitPortraitImgEl.alt = slotView.name;
 
     this.unitGradePillEl.textContent = gradeDef.name;
@@ -1464,12 +1672,30 @@ export class UIManager {
       slotView.bonusAtk > 0
         ? `⚔ ${slotView.baseAtk + slotView.bonusAtk}(+${slotView.bonusAtk})`
         : `⚔ ${slotView.baseAtk}`;
-    this.unitStatEl.textContent = `${atkText} · ◎${slotView.range}`;
+    const statParts = [atkText, `◎${slotView.range}`];
+    if (slotView.armorShred > 0) {
+      statParts.push(`💥파갑${slotView.armorShred}`);
+    }
+    if (slotView.tileBuffAtkPct > 0 || slotView.tileBuffSpeedPct > 0) {
+      statParts.push(
+        `✦고무+${slotView.tileBuffAtkPct}%${slotView.tileBuffSpeedPct > 0 ? `/속+${slotView.tileBuffSpeedPct}%` : ''}`,
+      );
+    }
+    this.unitStatEl.textContent = statParts.join(' · ');
     this.unitStatEl.title = slotView.skillName;
 
     const upperRecipes = this.recipeGraph.byIngredient.get(slotView.unitId) ?? [];
     this.unitShortcutsEl.innerHTML = '';
     let bestAscend: { recipeId: string; chain: boolean; rank: number; label: string } | null = null;
+
+    if (slotView.supportAura) {
+      const auraChip = document.createElement('span');
+      auraChip.className = 'shortcut-chip aura-chip';
+      const spdPart =
+        slotView.supportAura.speedPct > 0 ? `·속+${slotView.supportAura.speedPct}%` : '';
+      auraChip.textContent = `✦ 인접고무: 공+${slotView.supportAura.atkPct}%${spdPart}`;
+      this.unitShortcutsEl.appendChild(auraChip);
+    }
 
     if (upperRecipes.length === 0) {
       const doneChip = document.createElement('span');
@@ -1533,13 +1759,15 @@ export class UIManager {
     const totalSlotsUsed = snapshot.fieldOccupied + snapshot.benchOccupied;
     let sig = '';
     if (kind === 'craft') {
-      sig = `craft:${this.craftTab}:${snapshot.craft.rev}:${totalSlotsUsed}`;
+      sig = `craft:${meta.rev}:${this.craftTab}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'wisp') {
-      sig = `wisp:${this.wispTab}:${snapshot.wisps.common ?? 0}:${snapshot.wisps.uncommon ?? 0}:${snapshot.wisps.rare ?? 0}:${snapshot.craft.rev}:${totalSlotsUsed}`;
+      sig = `wisp:${meta.rev}:${this.wispTab}:${snapshot.wisps.common ?? 0}:${snapshot.wisps.uncommon ?? 0}:${snapshot.wisps.rare ?? 0}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'gamble') {
-      sig = `gamble:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
+      sig = `gamble:${meta.rev}:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
     } else if (kind === 'upgrade') {
-      sig = `upgrade:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${meta.keys}:${meta.discoveredCount}`;
+      sig = `upgrade:${meta.rev}:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${meta.keys}:${meta.discoveredCount}`;
+    } else if (kind === 'wardrobe') {
+      sig = `wardrobe:${this.wardrobeSubTab}:${meta.rev}:${this.lastSkinPull?.seq ?? 0}`;
     } else if (kind === 'codex') {
       sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.craft.rev}`;
     } else if (kind === 'mission') {
@@ -1554,13 +1782,15 @@ export class UIManager {
     this.prevSheetSignature = sig;
 
     if (kind === 'craft') {
-      this.renderCraftSheet(snapshot);
+      this.renderCraftSheet(snapshot, meta);
     } else if (kind === 'wisp') {
-      this.renderWispSheet(snapshot);
+      this.renderWispSheet(snapshot, meta);
     } else if (kind === 'gamble') {
-      this.renderGambleSheet(snapshot);
+      this.renderGambleSheet(snapshot, meta);
     } else if (kind === 'upgrade') {
       this.renderUpgradeSheet(snapshot, meta);
+    } else if (kind === 'wardrobe') {
+      this.renderWardrobeSheet(meta);
     } else if (kind === 'codex') {
       this.renderCodexSheet(snapshot, meta);
     } else if (kind === 'mission') {
@@ -1587,7 +1817,7 @@ export class UIManager {
     return counts;
   }
 
-  private renderCraftSheet(snapshot: UISnapshot): void {
+  private renderCraftSheet(snapshot: UISnapshot, meta: MetaProfile): void {
     this.setText(this.sheetTitleEl, '합공 · 등선');
     this.setText(
       this.sheetSubtitleEl,
@@ -1645,7 +1875,7 @@ export class UIManager {
     if (readyList.length > 0 && this.craftTab === 'all') {
       parts.push('<div class="sheet-section-label">⚡ 지금 합공 · 등선 가능</div>');
       for (let i = 0; i < readyList.length; i++) {
-        parts.push(this.buildRecipeCardHtml(readyList[i]!, snapshot, unlocked));
+        parts.push(this.buildRecipeCardHtml(readyList[i]!, snapshot, unlocked, meta));
       }
     }
 
@@ -1656,7 +1886,7 @@ export class UIManager {
     parts.push(`<div class="sheet-section-label">${escapeHtml(sectionTitle)}</div>`);
 
     for (let i = 0; i < restRecipes.length; i++) {
-      parts.push(this.buildRecipeCardHtml(restRecipes[i]!, snapshot, unlocked));
+      parts.push(this.buildRecipeCardHtml(restRecipes[i]!, snapshot, unlocked, meta));
     }
 
     this.sheetBodyEl.innerHTML = parts.join('');
@@ -1666,6 +1896,7 @@ export class UIManager {
     recipe: RecipeDef,
     snapshot: UISnapshot,
     unlocked: ReadonlyMap<UnitId, number>,
+    meta: MetaProfile,
   ): string {
     const outUnit = this.data.unitsById.get(recipe.output);
     if (!outUnit) return '';
@@ -1678,14 +1909,21 @@ export class UIManager {
     const cardStateClass =
       lamp === 'ready' ? ' card-ready' : lamp === 'chainReady' ? ' card-chain' : '';
 
-    const portraitUrl = this.sprites.unitPortraitUrl(outUnit, outGrade);
+    const portraitUrl = this.sprites.unitPortraitUrl(
+      outUnit,
+      outGrade,
+      this.getEquippedSkinDef(outUnit.id, meta),
+    );
+    const roleBadges = this.buildUnitRoleBadgesHtml(outUnit);
 
     const ingChips = recipe.ingredients
       .map((ing) => {
         const ingUnit = this.data.unitsById.get(ing.unit);
         if (!ingUnit) return '';
         const ingGrade = this.data.gradesById.get(ingUnit.grade);
-        const ingImg = ingGrade ? this.sprites.unitPortraitUrl(ingUnit, ingGrade) : '';
+        const ingImg = ingGrade
+          ? this.sprites.unitPortraitUrl(ingUnit, ingGrade, this.getEquippedSkinDef(ingUnit.id, meta))
+          : '';
         const owned = unlocked.get(ing.unit) ?? 0;
         const ok = owned >= ing.n;
         const statusText = ok ? (ing.n > 1 ? `${ing.n}/${ing.n}` : '✓') : `${owned}/${ing.n}`;
@@ -1711,6 +1949,7 @@ export class UIManager {
               <span class="grade-pill" style="background:${outGrade.color}">${escapeHtml(outGrade.name)}</span>
               <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
               <span class="card-name">${escapeHtml(outUnit.name)}</span>
+              ${roleBadges}
               <span class="card-sub">⚔${outUnit.atk} · ${escapeHtml(outUnit.skill.name)}</span>
             </div>
             <div class="ing-list">${ingChips}</div>
@@ -1721,7 +1960,7 @@ export class UIManager {
     `;
   }
 
-  private renderWispSheet(snapshot: UISnapshot): void {
+  private renderWispSheet(snapshot: UISnapshot, meta: MetaProfile): void {
     const totalWisps = Object.values(snapshot.wisps).reduce((s, n) => s + (n ?? 0), 0);
     this.setText(this.sheetTitleEl, '기연 초빙');
     this.setText(this.sheetSubtitleEl, `비급 초빙권 ${totalWisps}장`);
@@ -1761,9 +2000,10 @@ export class UIManager {
         const g = this.data.gradesById.get(u.grade);
         if (!g) return '';
         const fMeta = FACTION_META[u.faction];
-        const portrait = this.sprites.unitPortraitUrl(u, g);
+        const portrait = this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta));
         const owned = unlocked.get(uid) ?? 0;
         const hint = hintMap.get(uid);
+        const roleBadges = this.buildUnitRoleBadgesHtml(u);
 
         let hintBadge = `<span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>`;
         let recommendClass = '';
@@ -1787,6 +2027,7 @@ export class UIManager {
                 <div class="card-name-row">
                   <span class="card-name">${escapeHtml(u.name)}</span>
                   ${hintBadge}
+                  ${roleBadges}
                 </div>
                 <div class="card-sub">보유 ${owned} · ⚔${u.atk}</div>
               </div>
@@ -1810,7 +2051,7 @@ export class UIManager {
     this.sheetBodyEl.innerHTML = `<div class="wisp-grid">${cardsHtml}</div>`;
   }
 
-  private renderGambleSheet(snapshot: UISnapshot): void {
+  private renderGambleSheet(snapshot: UISnapshot, meta: MetaProfile): void {
     const furnaceBonus = snapshot.relicBonus.gambleBonusPct;
     const furnaceRefund = snapshot.relicBonus.gambleRefundPct;
     this.setText(this.sheetTitleEl, '영약 복용');
@@ -1850,7 +2091,9 @@ export class UIManager {
         const repId = GAMBLE_REP_UNIT[rate.tier] ?? 'plum_swordsman';
         const repUnit = this.data.unitsById.get(repId);
         const portrait =
-          repUnit && gradeDef ? this.sprites.unitPortraitUrl(repUnit, gradeDef) : '';
+          repUnit && gradeDef
+            ? this.sprites.unitPortraitUrl(repUnit, gradeDef, this.getEquippedSkinDef(repUnit.id, meta))
+            : '';
 
         const canRoll = snapshot.luckStone >= rate.costLuck && hasFreeSlot;
         const btnText = !hasFreeSlot ? '가득참' : snapshot.luckStone >= rate.costLuck ? '복용!' : '영단 부족';
@@ -1903,17 +2146,25 @@ export class UIManager {
     }
   }
 
-  private renderGrowthTabs(active: 'upgrade' | 'relic' | 'codex', meta: MetaProfile): void {
+  private renderGrowthTabs(
+    active: 'upgrade' | 'relic' | 'wardrobe' | 'codex',
+    meta: MetaProfile,
+  ): void {
     const hasRelicNotif =
       meta.keys > 0 ||
       (meta.gold >= RELIC_CHEST_GOLD_COST &&
         this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel));
-    const dot = hasRelicNotif ? '<span class="sheet-tab-dot"></span>' : '';
+    const relicDot = hasRelicNotif ? '<span class="sheet-tab-dot"></span>' : '';
+    const totalSkins = this.data.heroSkins.length + this.data.courtSkins.length;
+    const hasWardrobeNotif =
+      this.hasUnownedGachaSkin(meta) && (meta.keys >= 1 || meta.gold >= SKIN_SINGLE_GOLD_COST);
+    const wardrobeDot = hasWardrobeNotif ? '<span class="sheet-tab-dot"></span>' : '';
     this.sheetTabsEl.style.display = 'flex';
     this.sheetTabsEl.innerHTML = `
-      <button type="button" class="sheet-tab-btn interactive${active === 'upgrade' ? ' active' : ''}" data-tab-id="sheet-upgrade">문파 내공 (이번 판)</button>
-      <button type="button" class="sheet-tab-btn interactive${active === 'relic' ? ' active' : ''}" data-tab-id="sheet-relic">무림 신물 (영구)${dot}</button>
-      <button type="button" class="sheet-tab-btn interactive${active === 'codex' ? ' active' : ''}" data-tab-id="sheet-codex">명숙록 · 난이도 (${meta.discoveredCount}/${this.data.units.length})</button>
+      <button type="button" class="sheet-tab-btn interactive${active === 'upgrade' ? ' active' : ''}" data-tab-id="sheet-upgrade">문파 내공</button>
+      <button type="button" class="sheet-tab-btn interactive${active === 'relic' ? ' active' : ''}" data-tab-id="sheet-relic">무림 신물${relicDot}</button>
+      <button type="button" class="sheet-tab-btn interactive${active === 'wardrobe' ? ' active' : ''}" data-tab-id="sheet-wardrobe">금수화장각 (${meta.ownedSkinCount}/${totalSkins})${wardrobeDot}</button>
+      <button type="button" class="sheet-tab-btn interactive${active === 'codex' ? ' active' : ''}" data-tab-id="sheet-codex">명숙록 (${meta.discoveredCount}/${this.data.units.length})</button>
     `;
   }
 
@@ -1936,7 +2187,10 @@ export class UIManager {
         const fMeta = FACTION_META[up.faction];
         const repUnit = this.data.unitsById.get(UPGRADE_REP_UNIT[up.id]);
         const repGrade = repUnit ? this.data.gradesById.get(repUnit.grade) : undefined;
-        const portrait = repUnit && repGrade ? this.sprites.unitPortraitUrl(repUnit, repGrade) : '';
+        const portrait =
+          repUnit && repGrade
+            ? this.sprites.unitPortraitUrl(repUnit, repGrade, this.getEquippedSkinDef(repUnit.id, meta))
+            : '';
 
         const curPct = lv * up.atkBonusPctPerLv;
         const nextPct = Math.min(up.maxLevel, lv + 1) * up.atkBonusPctPerLv;
@@ -2166,6 +2420,311 @@ export class UIManager {
     }
   }
 
+  private renderWardrobeSheet(meta: MetaProfile): void {
+    const totalSkins = this.data.heroSkins.length + this.data.courtSkins.length;
+    const ownedHeroCount = this.data.heroSkins.filter((s) => Boolean(meta.ownedSkins[s.id])).length;
+    const ownedCourtCount = this.data.courtSkins.filter((c) => Boolean(meta.ownedSkins[c.id])).length;
+
+    this.setText(this.sheetTitleEl, '금수화장각 · 전설 의복 & 비무대');
+    this.setText(
+      this.sheetSubtitleEl,
+      `수집 ${meta.ownedSkinCount}/${totalSkins}종 · 의복·검기·절기 이펙트 영구 변모 (전투 능력치 변동 없음)`,
+    );
+    this.renderGrowthTabs('wardrobe', meta);
+
+    const canDrawKey1 = meta.keys >= 1;
+    const canDrawGold1 = meta.gold >= SKIN_SINGLE_GOLD_COST;
+    const canDrawGold5 = meta.gold >= SKIN_MULTI5_GOLD_COST;
+
+    let showcaseHtml = '';
+    if (this.lastSkinPull) {
+      const pullCards = this.lastSkinPull.items
+        .map((item) => {
+          const rMeta = SKIN_RARITY_META[item.rarity];
+          let imgUrl = '';
+          let subName = '비무대 테마';
+          if (item.kind === 'hero') {
+            const skinDef = this.data.heroSkinsById.get(item.skinId);
+            const u = item.unitId ? this.data.unitsById.get(item.unitId) : undefined;
+            const g = u ? this.data.gradesById.get(u.grade) : undefined;
+            if (u && g && skinDef) {
+              imgUrl = this.sprites.unitPortraitUrl(u, g, skinDef);
+              subName = u.name;
+            }
+          } else {
+            const courtDef = this.data.courtSkinsById.get(item.skinId as CourtSkinId);
+            if (courtDef) {
+              imgUrl = this.sprites.courtPreviewUrl(courtDef);
+            }
+          }
+
+          const tagHtml = item.isNew
+            ? '<span class="pull-tag new">✨ NEW</span>'
+            : `<span class="pull-tag refund">+${item.silkRefund}필</span>`;
+
+          return `
+            <div class="skin-pull-card rarity-${item.rarity}">
+              <span class="skin-rarity-pill" style="background:${rMeta.color}">${rMeta.label}</span>
+              <div class="skin-pull-avatar"><img src="${imgUrl}" alt="${escapeHtml(item.name)}" /></div>
+              <div class="skin-pull-name">${escapeHtml(item.name)}</div>
+              <div class="skin-pull-target">${escapeHtml(subName)}</div>
+              ${tagHtml}
+            </div>
+          `;
+        })
+        .join('');
+
+      const multiClass = this.lastSkinPull.items.length > 1 ? ' multi-5' : ' single-1';
+      const refundNote =
+        this.lastSkinPull.totalSilkRefund > 0
+          ? `<div class="skin-pull-summary">🧶 중복 의복 환급 합계: <b>운금비단 +${this.lastSkinPull.totalSilkRefund}필</b> (보유 ${meta.silk}필)</div>`
+          : '';
+      showcaseHtml = `
+        <div id="skin-pull-showcase" class="skin-pull-showcase${multiClass}">
+          <div class="skin-pull-grid">${pullCards}</div>
+          ${refundNote}
+        </div>
+      `;
+    }
+
+    let listHtml = '';
+    if (this.wardrobeSubTab === 'hero') {
+      const sortedHeroSkins = [...this.data.heroSkins].sort((a, b) => {
+        const eqA = meta.equippedHeroSkins[a.unitId] === a.id ? 1 : 0;
+        const eqB = meta.equippedHeroSkins[b.unitId] === b.id ? 1 : 0;
+        if (eqA !== eqB) return eqB - eqA;
+        const ownA = meta.ownedSkins[a.id] ? 1 : 0;
+        const ownB = meta.ownedSkins[b.id] ? 1 : 0;
+        if (ownA !== ownB) return ownB - ownA;
+        return SKIN_RARITY_META[b.rarity].rank - SKIN_RARITY_META[a.rarity].rank;
+      });
+
+      listHtml = sortedHeroSkins
+        .map((skin) => {
+          const u = this.data.unitsById.get(skin.unitId);
+          const g = u ? this.data.gradesById.get(u.grade) : undefined;
+          if (!u || !g) return '';
+          const rMeta = SKIN_RARITY_META[skin.rarity];
+          const fMeta = FACTION_META[u.faction];
+          const isOwned = Boolean(meta.ownedSkins[skin.id]);
+          const isEquipped = meta.equippedHeroSkins[skin.unitId] === skin.id;
+          const portrait = this.sprites.unitPortraitUrl(u, g, skin);
+
+          const condText =
+            !isOwned && skin.unlockCond
+              ? ` · <b class="skin-cond-note">🏆 ${escapeHtml(UNLOCK_COND_LABEL[skin.unlockCond])}</b>`
+              : '';
+
+          let ctaHtml = '';
+          if (isEquipped) {
+            ctaHtml = `
+              <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="skin-equip-hero" data-unit-id="${skin.unitId}" data-skin-id="">
+                <span>장착중 ✓</span>
+                <span class="mini-price">해제</span>
+              </button>
+            `;
+          } else if (isOwned) {
+            ctaHtml = `
+              <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="skin-equip-hero" data-unit-id="${skin.unitId}" data-skin-id="${skin.id}">
+                <span>의복 장착</span>
+              </button>
+            `;
+          } else if (skin.unlockCond) {
+            ctaHtml = `
+              <button type="button" class="card-cta-btn cta-disabled" disabled>
+                <span>업적 전용</span>
+              </button>
+            `;
+          } else {
+            const canCraft = meta.silk >= skin.silkCost;
+            ctaHtml = `
+              <button
+                type="button"
+                class="card-cta-btn ${canCraft ? 'interactive' : 'cta-disabled'}"
+                data-sheet-action="skin-craft"
+                data-skin-id="${skin.id}"
+                ${canCraft ? '' : 'disabled'}
+              >
+                <span>확정 재단</span>
+                <span class="mini-price">${ICON.silk}${skin.silkCost}필</span>
+              </button>
+            `;
+          }
+
+          return `
+            <div class="sheet-card skin-card${isEquipped ? ' skin-equipped' : isOwned ? ' skin-owned' : ' skin-locked'}">
+              <div class="card-left">
+                <div class="card-avatar skin-avatar"><img src="${portrait}" alt="${escapeHtml(skin.name)}" /></div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label}</span>
+                    <span class="grade-pill" style="background:${fMeta.color}">${escapeHtml(u.name)}</span>
+                    <span class="card-name">${escapeHtml(skin.name)}</span>
+                    <span class="skin-swatches" title="검기·절기 색상">
+                      <i style="background:${skin.primaryColor}"></i>
+                      <i style="background:${skin.secondaryColor}"></i>
+                    </span>
+                  </div>
+                  <div class="card-sub">${escapeHtml(skin.desc)}${condText}</div>
+                </div>
+              </div>
+              ${ctaHtml}
+            </div>
+          `;
+        })
+        .join('');
+    } else {
+      listHtml = this.data.courtSkins
+        .map((court) => {
+          const rMeta = SKIN_RARITY_META[court.rarity];
+          const isOwned = Boolean(meta.ownedSkins[court.id]);
+          const isEquipped = meta.equippedCourtSkin === court.id;
+          const previewUrl = this.sprites.courtPreviewUrl(court);
+          const condText =
+            !isOwned && court.unlockCond
+              ? ` · <b class="skin-cond-note">🏆 ${escapeHtml(UNLOCK_COND_LABEL[court.unlockCond])}</b>`
+              : '';
+
+          let ctaHtml = '';
+          if (isEquipped) {
+            ctaHtml = `
+              <button type="button" class="card-cta-btn cta-green cta-disabled" disabled>
+                <span>적용중 ✓</span>
+              </button>
+            `;
+          } else if (isOwned) {
+            ctaHtml = `
+              <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="skin-equip-court" data-court-id="${court.id}">
+                <span>테마 적용</span>
+              </button>
+            `;
+          } else if (court.unlockCond) {
+            ctaHtml = `
+              <button type="button" class="card-cta-btn cta-disabled" disabled>
+                <span>업적 전용</span>
+              </button>
+            `;
+          } else {
+            const canCraft = meta.silk >= court.silkCost;
+            ctaHtml = `
+              <button
+                type="button"
+                class="card-cta-btn ${canCraft ? 'interactive' : 'cta-disabled'}"
+                data-sheet-action="skin-craft"
+                data-skin-id="${court.id}"
+                ${canCraft ? '' : 'disabled'}
+              >
+                <span>확정 재단</span>
+                <span class="mini-price">${ICON.silk}${court.silkCost}필</span>
+              </button>
+            `;
+          }
+
+          return `
+            <div class="sheet-card skin-card${isEquipped ? ' skin-equipped' : isOwned ? ' skin-owned' : ' skin-locked'}">
+              <div class="card-left">
+                <div class="card-avatar court-avatar"><img src="${previewUrl}" alt="${escapeHtml(court.name)}" /></div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label}</span>
+                    <span class="card-name">${escapeHtml(court.name)}</span>
+                    <span class="skin-swatches" title="등불·꽃잎 분위기 색상">
+                      <i style="background:${court.lanternColor}"></i>
+                      <i style="background:${court.petalPrimary}"></i>
+                    </span>
+                  </div>
+                  <div class="card-sub">${escapeHtml(court.desc)}${condText}</div>
+                </div>
+              </div>
+              ${ctaHtml}
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    this.sheetBodyEl.innerHTML = `
+      <div class="wardrobe-gacha-panel">
+        <div class="relic-wallet-row">
+          <div class="relic-wallet-pills">
+            <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
+            <span class="relic-wallet-pill key">${ICON.key}<span>열쇠</span><b>${meta.keys}</b></span>
+            <span class="relic-wallet-pill silk">${ICON.silk}<span>운금비단</span><b>${meta.silk}필</b></span>
+          </div>
+          <div class="relic-draw-btns">
+            <button
+              type="button"
+              class="card-cta-btn cta-green ${canDrawKey1 ? 'interactive' : 'cta-disabled'}"
+              data-sheet-action="skin-draw"
+              data-count="1"
+              data-pay="key"
+              ${canDrawKey1 ? '' : 'disabled'}
+            >
+              <span>열쇠 초빙</span>
+              <span class="mini-price">${ICON.key}1</span>
+            </button>
+            <button
+              type="button"
+              class="card-cta-btn ${canDrawGold1 ? 'interactive' : 'cta-disabled'}"
+              data-sheet-action="skin-draw"
+              data-count="1"
+              data-pay="gold"
+              ${canDrawGold1 ? '' : 'disabled'}
+            >
+              <span>1회 초빙</span>
+              <span class="mini-price">${ICON.goldCoin}${SKIN_SINGLE_GOLD_COST}</span>
+            </button>
+            <button
+              type="button"
+              class="card-cta-btn cta-crimson ${canDrawGold5 ? 'interactive' : 'cta-disabled'}"
+              data-sheet-action="skin-draw"
+              data-count="5"
+              data-pay="gold"
+              ${canDrawGold5 ? '' : 'disabled'}
+            >
+              <span>5연속 (10%↓)</span>
+              <span class="mini-price">${ICON.goldCoin}${SKIN_MULTI5_GOLD_COST}</span>
+            </button>
+          </div>
+        </div>
+        <div class="wardrobe-rate-note">
+          ✨ 확률: <b>신화 15%</b> · <b>전설 35%</b> · <b>명품 50%</b> ｜ 중복 당첨 시 운금비단 자동 환급 (+15/+30/+50필)
+        </div>
+        ${showcaseHtml}
+      </div>
+
+      <div class="wardrobe-subtabs">
+        <button
+          type="button"
+          class="wardrobe-subtab-btn interactive${this.wardrobeSubTab === 'hero' ? ' active' : ''}"
+          data-sheet-action="wardrobe-subtab"
+          data-subtab="hero"
+        >
+          👘 협객 전설 의복 (${ownedHeroCount}/${this.data.heroSkins.length})
+        </button>
+        <button
+          type="button"
+          class="wardrobe-subtab-btn interactive${this.wardrobeSubTab === 'court' ? ' active' : ''}"
+          data-sheet-action="wardrobe-subtab"
+          data-subtab="court"
+        >
+          🏯 비무대 테마 (${ownedCourtCount}/${this.data.courtSkins.length})
+        </button>
+      </div>
+      ${listHtml}
+    `;
+
+    if (this.lastSkinPull && this.lastSkinPull.seq !== this.lastAnimatedSkinSeq) {
+      this.lastAnimatedSkinSeq = this.lastSkinPull.seq;
+      const boxEl = document.getElementById('skin-pull-showcase');
+      if (boxEl) {
+        boxEl.style.animation = 'none';
+        void boxEl.offsetWidth;
+        boxEl.style.animation = '';
+      }
+    }
+  }
+
   private renderMissionSheet(snapshot: UISnapshot): void {
     this.setText(this.sheetTitleEl, '강호 의뢰 · 밀서');
     this.setText(
@@ -2272,11 +2831,15 @@ export class UIManager {
       `;
     }).join('');
 
+    const orthodoxTotal = this.data.units.filter((u) => u.faction === 'orthodox').length;
+    const unorthodoxTotal = this.data.units.filter((u) => u.faction === 'unorthodox').length;
+    const demonicTotal = this.data.units.filter((u) => u.faction === 'demonic').length;
+
     const filters: readonly { readonly id: CodexFilterId; readonly label: string }[] = [
       { id: 'all', label: `전체 (${this.data.units.length})` },
-      { id: 'orthodox', label: '정파 (10)' },
-      { id: 'unorthodox', label: '사파 (10)' },
-      { id: 'demonic', label: '마교 (10)' },
+      { id: 'orthodox', label: `정파 (${orthodoxTotal})` },
+      { id: 'unorthodox', label: `사파 (${unorthodoxTotal})` },
+      { id: 'demonic', label: `마교 (${demonicTotal})` },
     ];
     const filterHtml = filters
       .map(
@@ -2302,7 +2865,8 @@ export class UIManager {
         const fMeta = FACTION_META[u.faction];
         const discovered = Boolean(meta.discoveredUnits[u.id]);
         const discReward = getCodexDiscoveryReward(g.rank);
-        const portrait = this.sprites.unitPortraitUrl(u, g);
+        const portrait = this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta));
+        const roleBadges = this.buildUnitRoleBadgesHtml(u);
 
         const lowerRec = this.recipeGraph.byOutput.get(u.id)?.[0];
         let lowerLine = '획득처: 초출강호(일반 소환) · 기연 초빙';
@@ -2329,6 +2893,17 @@ export class UIManager {
           ? '<span class="codex-disc-badge ok">등재 완료 ✓</span>'
           : `<span class="codex-disc-badge locked">미등재 · 초회 +${discReward.gold}주화${discReward.keys > 0 ? ` · 열쇠+${discReward.keys}` : ''}</span>`;
 
+        const extraTactical: string[] = [];
+        if (u.supportAura) {
+          const spd = u.supportAura.speedPct > 0 ? `·속+${u.supportAura.speedPct}%` : '';
+          extraTactical.push(`인접고무 [${u.supportAura.name}] 공+${u.supportAura.atkPct}%${spd}`);
+        }
+        if ((u.armorShred ?? 0) > 0) {
+          extraTactical.push(`호신강기 파쇄 -${u.armorShred}`);
+        }
+        const tacticalNote =
+          extraTactical.length > 0 ? ` · <b>${escapeHtml(extraTactical.join(' / '))}</b>` : '';
+
         return `
           <div class="sheet-card codex-card${discovered ? ' codex-discovered' : ' codex-undiscovered'}">
             <div class="card-left">
@@ -2338,9 +2913,10 @@ export class UIManager {
                   <span class="grade-pill" style="background:${g.color}">${escapeHtml(g.name)}</span>
                   <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
                   <span class="card-name">${escapeHtml(u.name)}</span>
+                  ${roleBadges}
                   ${statusBadge}
                 </div>
-                <div class="card-sub">⚔${u.atk} · 사거리 ${u.range} · 절기 <b>[${escapeHtml(u.skill.name)}]</b></div>
+                <div class="card-sub">⚔${u.atk} · 사거리 ${u.range} · 절기 <b>[${escapeHtml(u.skill.name)}]</b>${tacticalNote}</div>
                 <div class="codex-lineage">${escapeHtml(lowerLine)} · <span>${escapeHtml(upperLine)}</span></div>
               </div>
             </div>
@@ -2353,7 +2929,7 @@ export class UIManager {
       <div class="sheet-section-label">⚔ 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
       <div class="diff-list">${diffCards}</div>
       <div class="codex-header-bar">
-        <span class="sheet-section-label">📖 무림 30인 명숙록 (${meta.discoveredCount}/${this.data.units.length})</span>
+        <span class="sheet-section-label">📖 무림 ${this.data.units.length}인 명숙록 (${meta.discoveredCount}/${this.data.units.length})</span>
         <div class="codex-filter-row">${filterHtml}</div>
       </div>
       ${unitCards}

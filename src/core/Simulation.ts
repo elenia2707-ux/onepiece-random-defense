@@ -37,6 +37,7 @@ import type {
   MissionDef,
   MonsterKind,
   RelicId,
+  SupportAuraDef,
   UnitId,
   UpgradeGroupId,
   Vec2,
@@ -196,6 +197,11 @@ export interface SimEventMap {
   };
 }
 
+export interface TileAuraBuff {
+  readonly atkPct: number;
+  readonly speedPct: number;
+}
+
 export interface SlotView {
   readonly uid: number;
   readonly unitId: UnitId;
@@ -208,6 +214,10 @@ export interface SlotView {
   readonly bonusAtk: number;
   readonly range: number;
   readonly skillName: string;
+  readonly armorShred: number;
+  readonly supportAura?: SupportAuraDef;
+  readonly tileBuffAtkPct: number;
+  readonly tileBuffSpeedPct: number;
 }
 
 export interface RejectNotice {
@@ -290,6 +300,8 @@ export interface UISnapshot {
     readonly name: string;
     readonly hp: number;
     readonly maxHp: number;
+    readonly armor: number;
+    readonly armorShred: number;
     readonly isBounty: boolean;
     readonly ticksLeft: number;
   };
@@ -541,9 +553,71 @@ export class Simulation {
     };
   }
 
+  public getOrthogonalFieldNeighbors(fieldIndex: number): number[] {
+    const cols = this.board.config.field.cols;
+    const rows = this.board.config.field.rows;
+    if (fieldIndex < 0 || fieldIndex >= cols * rows) return [];
+    const col = fieldIndex % cols;
+    const row = Math.floor(fieldIndex / cols);
+    const out: number[] = [];
+    if (col > 0) out.push(fieldIndex - 1);
+    if (col < cols - 1) out.push(fieldIndex + 1);
+    if (row > 0) out.push(fieldIndex - cols);
+    if (row < rows - 1) out.push(fieldIndex + cols);
+    return out;
+  }
+
+  public computeFieldTileBuffs(): readonly TileAuraBuff[] {
+    const cap = this.board.field.capacity;
+    const cols = this.board.config.field.cols;
+    const rows = this.board.config.field.rows;
+    const out: TileAuraBuff[] = new Array<TileAuraBuff>(cap);
+
+    for (let idx = 0; idx < cap; idx++) {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      let atkPct = 0;
+      let speedPct = 0;
+
+      const checkNeighbor = (nIdx: number): void => {
+        const nUid = this.board.field.getUidAt(nIdx);
+        if (nUid === null) return;
+        const nUnit = this.unitsByUid.get(nUid);
+        if (!nUnit) return;
+        const nDef = this.data.unitsById.get(nUnit.unitId);
+        if (!nDef?.supportAura) return;
+        atkPct += nDef.supportAura.atkPct;
+        speedPct += nDef.supportAura.speedPct;
+      };
+
+      if (col > 0) checkNeighbor(idx - 1);
+      if (col < cols - 1) checkNeighbor(idx + 1);
+      if (row > 0) checkNeighbor(idx - cols);
+      if (row < rows - 1) checkNeighbor(idx + cols);
+
+      out[idx] = {
+        atkPct: Math.min(65, atkPct),
+        speedPct: Math.min(45, speedPct),
+      };
+    }
+    return out;
+  }
+
+  public computeMonsterArmor(waveNum: number, isBoss: boolean, isBounty: boolean): number {
+    if (waveNum <= 2 && !isBounty) {
+      return 0;
+    }
+    const base =
+      Math.max(0, waveNum - 2) * 2.6 +
+      (isBoss && !isBounty ? 18 : 0) +
+      (isBounty ? 12 : 0);
+    return Math.min(130, Math.round(base));
+  }
+
   public getUnitEffectiveAtk(
     unitId: UnitId,
     precomputedSynergy?: FactionSynergySnapshot,
+    tileBuffAtkPct = 0,
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
     const def = this.data.unitsById.get(unitId);
     if (!def) return { baseAtk: 0, bonusAtk: 0 };
@@ -561,7 +635,7 @@ export class Simulation {
       synPct += 25;
     }
 
-    const traitPct = upPct + synPct;
+    const traitPct = upPct + synPct + Math.max(0, tileBuffAtkPct);
     const wealthBps = getWealthBonusBps(this.relicLv.million_sword_seal, this.coin);
     if (traitPct <= 0 && wealthBps <= 0) {
       return { baseAtk: def.atk, bonusAtk: 0 };
@@ -852,6 +926,9 @@ export class Simulation {
           bossName: spec.name,
           hp: bountyHp,
           maxHp: bountyHp,
+          armor: this.computeMonsterArmor(this.waveNumber, false, true),
+          armorShred: 0,
+          shredExpireTick: 0,
           speedPerTick: 3.4 * diffCfg.speedMult,
           radius: spec.radius,
           rewardCoin,
@@ -1392,6 +1469,9 @@ export class Simulation {
         bossName: resolvedBossName,
         hp: scaledHp,
         maxHp: scaledHp,
+        armor: this.computeMonsterArmor(this.waveNumber, waveDef.isBoss, false),
+        armorShred: 0,
+        shredExpireTick: 0,
         speedPerTick: waveDef.monsterSpeedPerTick * diffCfg.speedMult,
         radius: waveDef.monsterRadius,
         rewardCoin: waveDef.rewardCoin,
@@ -1507,6 +1587,7 @@ export class Simulation {
 
   private stepCombat(): void {
     const synergy = this.computeFieldSynergy();
+    const tileBuffs = this.computeFieldTileBuffs();
 
     if (this.monsters.length > 0) {
       for (let i = 0; i < this.units.length; i++) {
@@ -1545,10 +1626,14 @@ export class Simulation {
         }
 
         if (bestTarget !== null) {
+          const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
           let speedMult = synergy.trinityActive ? 1.1 : 1.0;
           if (def.faction === 'unorthodox') {
             if (synergy.unorthodoxTier === 2) speedMult *= 1.32;
             else if (synergy.unorthodoxTier === 1) speedMult *= 1.18;
+          }
+          if (tileBuff.speedPct > 0) {
+            speedMult *= 1 + tileBuff.speedPct / 100;
           }
           u.cooldownTicks = Math.max(1, Math.round(def.attackIntervalTicks / speedMult));
           u.attackCount++;
@@ -1565,7 +1650,11 @@ export class Simulation {
           const gradeColor = gradeDef?.color ?? '#94a3b8';
           const gradeRank = gradeDef?.rank ?? 1;
 
-          const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId, synergy);
+          const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
+            u.unitId,
+            synergy,
+            tileBuff.atkPct,
+          );
           const totalAtk = baseAtk + bonusAtk;
           const isSkill = u.attackCount % def.skill.everyN === 0;
 
@@ -1602,6 +1691,13 @@ export class Simulation {
             damage = Math.round(damage * critMult);
           }
 
+          const projectileShred =
+            def.armorShred > 0
+              ? isSkill
+                ? Math.round(def.armorShred * 1.5)
+                : def.armorShred
+              : 0;
+
           this.projectiles.push({
             id: this.nextProjectileId++,
             unitId: u.unitId,
@@ -1617,6 +1713,7 @@ export class Simulation {
             currX: u.currX,
             currY: u.currY - 8,
             damage: Math.max(1, damage),
+            armorShred: projectileShred,
             color: gradeColor,
             gradeRank,
             isCrit,
@@ -1714,12 +1811,28 @@ export class Simulation {
 
   private applyHitToMonster(
     m: MonsterEntity,
-    damage: number,
+    rawDamage: number,
     p: ProjectileEntity,
     synergy: FactionSynergySnapshot,
   ): void {
     const idx = this.monsters.indexOf(m);
     if (idx === -1) return;
+
+    if (p.armorShred > 0) {
+      const prevShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
+      m.armorShred = Math.min(140, prevShred + p.armorShred);
+      m.shredExpireTick = Math.max(m.shredExpireTick, this.currentTick + 120);
+    }
+
+    const activeShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
+    const netArmor = m.armor - activeShred;
+    let damage = rawDamage;
+    if (netArmor > 0) {
+      damage = Math.max(1, Math.round(rawDamage * (100 / (100 + netArmor))));
+    } else if (netArmor < 0) {
+      const amp = Math.min(0.45, -netArmor * 0.0075);
+      damage = Math.max(1, Math.round(rawDamage * (1 + amp)));
+    }
 
     m.hp -= damage;
     m.lastHitTick = this.currentTick;
@@ -1831,17 +1944,20 @@ export class Simulation {
 
   public buildSnapshot(speed: Speed, paused: boolean): UISnapshot {
     const synergy = this.computeFieldSynergy();
+    const tileBuffs = this.computeFieldTileBuffs();
 
     const fieldViews: Array<SlotView | null> = [];
     for (let i = 0; i < this.board.field.capacity; i++) {
       const uid = this.board.field.getUidAt(i);
-      fieldViews.push(uid !== null ? this.toSlotView(uid, synergy) : null);
+      const buff = tileBuffs[i] ?? { atkPct: 0, speedPct: 0 };
+      fieldViews.push(uid !== null ? this.toSlotView(uid, synergy, buff) : null);
     }
 
+    const zeroBuff: TileAuraBuff = { atkPct: 0, speedPct: 0 };
     const benchViews: Array<SlotView | null> = [];
     for (let i = 0; i < this.board.bench.capacity; i++) {
       const uid = this.board.bench.getUidAt(i);
-      benchViews.push(uid !== null ? this.toSlotView(uid, synergy) : null);
+      benchViews.push(uid !== null ? this.toSlotView(uid, synergy, zeroBuff) : null);
     }
 
     const rejects = this.pendingRejects.slice();
@@ -1938,6 +2054,9 @@ export class Simulation {
             name: activeBoss.bossName ?? '영물 보스',
             hp: Math.max(0, activeBoss.hp),
             maxHp: activeBoss.maxHp,
+            armor: activeBoss.armor,
+            armorShred:
+              this.currentTick < activeBoss.shredExpireTick ? activeBoss.armorShred : 0,
             isBounty: Boolean(activeBoss.isBounty),
             ticksLeft:
               activeBoss.isBounty && activeBoss.expireTick !== undefined
@@ -1975,11 +2094,19 @@ export class Simulation {
     };
   }
 
-  private toSlotView(uid: number, synergy: FactionSynergySnapshot): SlotView | null {
+  private toSlotView(
+    uid: number,
+    synergy: FactionSynergySnapshot,
+    tileBuff: TileAuraBuff,
+  ): SlotView | null {
     const u = this.unitsByUid.get(uid);
     if (!u) return null;
     const def = this.data.unitsById.get(u.unitId);
-    const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId, synergy);
+    const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
+      u.unitId,
+      synergy,
+      tileBuff.atkPct,
+    );
     return {
       uid: u.uid,
       unitId: u.unitId,
@@ -1992,6 +2119,10 @@ export class Simulation {
       bonusAtk,
       range: def?.range ?? 150,
       skillName: def?.skill.name ?? '기본 초식',
+      armorShred: def?.armorShred ?? 0,
+      supportAura: def?.supportAura,
+      tileBuffAtkPct: tileBuff.atkPct,
+      tileBuffSpeedPct: tileBuff.speedPct,
     };
   }
 
@@ -2075,6 +2206,9 @@ export class Simulation {
       const m = this.monsters[i]!;
       feedInt(m.entityId);
       feedInt(m.hp);
+      feedInt(m.armor);
+      feedInt(m.armorShred);
+      feedInt(m.shredExpireTick);
       feedInt(m.stunUntilTick);
       feedInt(m.slowUntilTick);
       feedInt(Math.round(m.currDistance * 1000));
@@ -2086,6 +2220,7 @@ export class Simulation {
       feedInt(p.arriveTick);
       feedInt(p.targetEntityId);
       feedInt(p.damage);
+      feedInt(p.armorShred);
       feedInt(p.isSkill ? 1 : 0);
       feedInt(p.isCrit ? 1 : 0);
     }
@@ -2097,3 +2232,4 @@ export class Simulation {
     return `${h1.toString(16).padStart(8, '0')}-${h2.toString(16).padStart(8, '0')}`;
   }
 }
+

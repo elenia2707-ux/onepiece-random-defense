@@ -2246,18 +2246,18 @@ button {
 }
 
 /* =========================================================
-   Tactical Command Strip (Bounty · Missions · DPS · Codex)
+   Tactical Command Strip (Bounty · Missions · DPS · Wardrobe · Codex)
    ========================================================= */
 .tactical-strip {
   position: absolute;
-  left: 32px;
-  right: 32px;
+  left: 14px;
+  right: 14px;
   top: 102px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 5px;
   pointer-events: none;
   z-index: 12;
   transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -2269,19 +2269,19 @@ button {
 
 .tac-pill {
   height: 30px;
-  padding: 0 11px;
+  padding: 0 9px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
   background: linear-gradient(180deg, rgba(20, 77, 71, 0.94) 0%, rgba(8, 35, 32, 0.96) 100%);
   box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.2);
   color: #f8fafc;
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 12.5px;
   text-shadow: var(--outline-1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   transition: transform 80ms ease, box-shadow 80ms ease;
@@ -2293,6 +2293,20 @@ button {
 }
 
 .tac-pill.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+}
+
+.tac-pill.wardrobe {
+  background: linear-gradient(180deg, #86198f 0%, #4a044e 100%);
+  color: #fdf4ff;
+}
+
+.tac-pill.wardrobe.draw-ready {
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 1.5px #f5d0fe, inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+}
+
+.tac-pill.wardrobe.active {
   background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   color: #ffffff;
 }
@@ -2686,5 +2700,297 @@ button {
 .codex-lineage span {
   color: #fde68a;
 }
+
+/* =========================================================
+   Tactical Role Chips (6x3 Support Totem · Armor Shred)
+   ========================================================= */
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  font-size: 11.5px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+}
+
+.role-chip.totem {
+  background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+  color: #fffbeb;
+}
+
+.role-chip.shred {
+  background: linear-gradient(180deg, #8b5cf6 0%, #5b21b6 100%);
+  color: #f5f3ff;
+}
+
+.shortcut-chip.aura-chip {
+  background: linear-gradient(180deg, #92400e 0%, #451a03 100%);
+  border-color: var(--ink);
+  color: #fde68a;
+}
+
+.first-clear-banner.skin-unlock-banner {
+  background: linear-gradient(180deg, #86198f 0%, #4a044e 100%);
+  color: #fdf4ff;
+  box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* =========================================================
+   Imperial Wardrobe & Skin Gacha (금수화장각 · 의복 & 비무대 테마)
+   ========================================================= */
+.wardrobe-gacha-panel {
+  padding: 12px 14px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #581c87 0%, #2e1065 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 5px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.wardrobe-gacha-panel .relic-wallet-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.wardrobe-gacha-panel .relic-wallet-pills {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.relic-wallet-pill.silk b {
+  color: #f5d0fe;
+}
+
+.wardrobe-gacha-panel .relic-draw-btns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wardrobe-gacha-panel .relic-draw-btns .card-cta-btn {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.wardrobe-rate-note {
+  padding: 6px 10px;
+  border-radius: 11px;
+  background: rgba(15, 10, 24, 0.52);
+  border: 2px solid var(--ink);
+  color: #f3e8ff;
+  font-size: 13px;
+  text-align: center;
+  text-shadow: var(--outline-1);
+}
+
+.wardrobe-rate-note b {
+  color: #fde047;
+}
+
+.skin-pull-showcase {
+  padding: 10px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 25%, rgba(134, 25, 143, 0.55) 0%, rgba(17, 12, 28, 0.88) 100%);
+  border: 2.5px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: gamblePop 300ms ease;
+}
+
+.skin-pull-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.skin-pull-showcase.single-1 .skin-pull-grid {
+  grid-template-columns: minmax(0, 200px);
+  justify-content: center;
+}
+
+.skin-pull-card {
+  padding: 7px 5px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.skin-pull-card.rarity-mythic {
+  background: linear-gradient(180deg, #881337 0%, #4c0519 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px #fda4af;
+}
+
+.skin-pull-card.rarity-legendary {
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px #fde047;
+}
+
+.skin-pull-card.rarity-rare {
+  background: linear-gradient(180deg, #0c4a6e 0%, #082f49 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px #7dd3fc;
+}
+
+.skin-rarity-pill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  font-size: 11px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.skin-pull-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #cbd5e1 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.skin-pull-avatar img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.skin-pull-name {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  line-height: 1.15;
+  word-break: keep-all;
+}
+
+.skin-pull-target {
+  font-size: 11px;
+  color: #cbd5e1;
+  text-shadow: var(--outline-1);
+}
+
+.pull-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  font-size: 11px;
+  text-shadow: var(--outline-1);
+}
+
+.pull-tag.new {
+  background: linear-gradient(180deg, #fde047 0%, #ea580c 100%);
+  color: #ffffff;
+}
+
+.pull-tag.refund {
+  background: linear-gradient(180deg, #a855f7 0%, #6b21a8 100%);
+  color: #fdf4ff;
+}
+
+.skin-pull-summary {
+  font-size: 13px;
+  color: #f5d0fe;
+  text-align: center;
+  text-shadow: var(--outline-1);
+}
+
+.skin-pull-summary b {
+  color: #fde047;
+}
+
+.wardrobe-subtabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wardrobe-subtab-btn {
+  height: 36px;
+  border-radius: 14px;
+  border: 2.5px solid var(--ink);
+  background: var(--jade-0);
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  text-shadow: var(--outline-1);
+  box-shadow: 0 3px 0 var(--ink);
+}
+
+.wardrobe-subtab-btn.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+}
+
+.skin-card.skin-equipped {
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.skin-card.skin-owned {
+  background: linear-gradient(180deg, #1f6e64 0%, #124841 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 1.5px rgba(245, 208, 254, 0.45);
+}
+
+.skin-card.skin-locked {
+  opacity: 0.92;
+}
+
+.card-avatar.court-avatar {
+  padding: 2px;
+  background: #0f172a;
+}
+
+.card-avatar.court-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.skin-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.skin-swatches i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.8px solid var(--ink);
+  display: inline-block;
+}
+
+.skin-cond-note {
+  color: #fde047;
+  font-weight: 400;
+}
+
 
 

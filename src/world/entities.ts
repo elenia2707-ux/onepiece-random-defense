@@ -32,6 +32,9 @@ export interface MonsterEntity {
   readonly bossName?: string;
   hp: number;
   readonly maxHp: number;
+  readonly armor: number;
+  armorShred: number;
+  shredExpireTick: number;
   readonly speedPerTick: number;
   readonly radius: number;
   readonly rewardCoin: number;
@@ -63,6 +66,7 @@ export interface ProjectileEntity {
   currX: number;
   currY: number;
   readonly damage: number;
+  readonly armorShred: number;
   readonly color: string;
   readonly gradeRank: number;
   readonly isCrit: boolean;
@@ -74,3 +78,4 @@ export interface ProjectileEntity {
   readonly slowPct: number;
   readonly slowTicks: number;
 }
+

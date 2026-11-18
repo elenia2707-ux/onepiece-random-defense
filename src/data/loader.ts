@@ -4,6 +4,7 @@ import rawGrades from './grades.json';
 import rawMissions from './missions.json';
 import rawRecipes from './recipes.json';
 import rawRelics from './relics.json';
+import rawSkins from './skins.json';
 import rawUnits from './units.json';
 import rawUpgrades from './upgrades.json';
 import rawWaves from './waves.json';
@@ -11,11 +12,14 @@ import rawWispPools from './wisp_pools.json';
 import { secToTicks, TICK_DT } from '../core/time';
 import type {
   BoardConfig,
+  CourtSkinDef,
+  CourtSkinId,
   FactionId,
   GambleRateDef,
   GameDataBundle,
   GradeDef,
   GridSpec,
+  HeroSkinDef,
   MissionConditionKind,
   MissionDef,
   MonsterKind,
@@ -24,6 +28,10 @@ import type {
   RecipeDef,
   RelicDef,
   RelicId,
+  SkinCrestKind,
+  SkinRarity,
+  SkinUnlockCond,
+  SupportAuraDef,
   UnitDef,
   UnitSkillDef,
   UpgradeGroupDef,
@@ -82,6 +90,33 @@ const VALID_MISSION_CONDITIONS: ReadonlySet<string> = new Set<MissionConditionKi
   'gamble_wins',
   'held_coin',
   'total_upgrades',
+]);
+
+const VALID_SKIN_RARITIES: ReadonlySet<string> = new Set<SkinRarity>([
+  'rare',
+  'legendary',
+  'mythic',
+  'achievement',
+]);
+
+const VALID_SKIN_UNLOCKS: ReadonlySet<string> = new Set<SkinUnlockCond>([
+  'any_clear',
+  'hell_clear',
+  'wave_35',
+]);
+
+const VALID_SKIN_CRESTS: ReadonlySet<string> = new Set<SkinCrestKind>([
+  'halo',
+  'crown',
+  'blades',
+  'orbs',
+]);
+
+const VALID_COURT_IDS: ReadonlySet<string> = new Set<CourtSkinId>([
+  'court_bamboo_dawn',
+  'court_crimson_sunset',
+  'court_blood_moon',
+  'court_golden_palace',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -227,6 +262,26 @@ export function validateUnits(
     const critChance = assertNonNegativeNumber(row.critChance, `units[${i}].critChance`);
     const critMult = assertPositiveNumber(row.critMult, `units[${i}].critMult`);
     const sellCoin = assertNonNegativeNumber(row.sellCoin, `units[${i}].sellCoin`);
+    const armorShred =
+      row.armorShred !== undefined
+        ? Math.round(assertNonNegativeNumber(row.armorShred, `units[${i}].armorShred`))
+        : 0;
+    let supportAura: SupportAuraDef | undefined;
+    if (row.supportAura !== undefined) {
+      const auraRaw = assertRecord(row.supportAura, `units[${i}].supportAura`);
+      const auraName = assertNonEmptyString(auraRaw.name, `units[${i}].supportAura.name`);
+      const atkPct = assertNonNegativeNumber(auraRaw.atkPct, `units[${i}].supportAura.atkPct`);
+      const speedPct = assertNonNegativeNumber(
+        auraRaw.speedPct,
+        `units[${i}].supportAura.speedPct`,
+      );
+      if (atkPct <= 0 && speedPct <= 0) {
+        throw new Error(
+          `[DataValidation] units[${i}].supportAura must grant positive atkPct or speedPct`,
+        );
+      }
+      supportAura = { name: auraName, atkPct, speedPct };
+    }
     const skill = validateUnitSkill(row.skill, `units[${i}].skill`);
 
     out.push({
@@ -242,6 +297,8 @@ export function validateUnits(
       critChance: Math.min(1, critChance),
       critMult,
       sellCoin,
+      armorShred,
+      supportAura,
       skill,
     });
   }
@@ -579,6 +636,138 @@ export function validateMissions(
   });
 }
 
+export function validateSkins(
+  input: unknown,
+  unitsById: ReadonlyMap<string, UnitDef>,
+): { heroSkins: HeroSkinDef[]; courtSkins: CourtSkinDef[] } {
+  const rec = assertRecord(input, 'skins');
+  if (!Array.isArray(rec.heroSkins) || rec.heroSkins.length === 0) {
+    throw new Error('[DataValidation] skins.heroSkins must be a non-empty array');
+  }
+  if (!Array.isArray(rec.courtSkins) || rec.courtSkins.length === 0) {
+    throw new Error('[DataValidation] skins.courtSkins must be a non-empty array');
+  }
+
+  const seenIds = new Set<string>();
+  const heroSkins: HeroSkinDef[] = rec.heroSkins.map((raw, i) => {
+    const r = assertRecord(raw, `skins.heroSkins[${i}]`);
+    const id = assertNonEmptyString(r.id, `skins.heroSkins[${i}].id`);
+    if (seenIds.has(id)) {
+      throw new Error(`[DataValidation] duplicate skin id: ${id}`);
+    }
+    seenIds.add(id);
+    const unitId = assertNonEmptyString(r.unitId, `skins.heroSkins[${i}].unitId`);
+    if (!unitsById.has(unitId)) {
+      throw new Error(`[DataValidation] skins.heroSkins[${i}] unknown unitId: ${unitId}`);
+    }
+    const name = assertNonEmptyString(r.name, `skins.heroSkins[${i}].name`);
+    const rarityStr = assertNonEmptyString(r.rarity, `skins.heroSkins[${i}].rarity`);
+    if (!VALID_SKIN_RARITIES.has(rarityStr)) {
+      throw new Error(`[DataValidation] skins.heroSkins[${i}].rarity invalid: ${rarityStr}`);
+    }
+    let unlockCond: SkinUnlockCond | undefined;
+    if (r.unlockCond !== undefined) {
+      const uStr = assertNonEmptyString(r.unlockCond, `skins.heroSkins[${i}].unlockCond`);
+      if (!VALID_SKIN_UNLOCKS.has(uStr)) {
+        throw new Error(`[DataValidation] skins.heroSkins[${i}].unlockCond invalid: ${uStr}`);
+      }
+      unlockCond = uStr as SkinUnlockCond;
+    }
+    const silkCost = assertNonNegativeNumber(r.silkCost, `skins.heroSkins[${i}].silkCost`);
+    const desc = assertNonEmptyString(r.desc, `skins.heroSkins[${i}].desc`);
+    const robeHue = assertNonNegativeNumber(r.robeHue, `skins.heroSkins[${i}].robeHue`);
+    const satMult = assertPositiveNumber(r.satMult, `skins.heroSkins[${i}].satMult`);
+    if (typeof r.lumOffset !== 'number' || !Number.isFinite(r.lumOffset)) {
+      throw new Error(`[DataValidation] skins.heroSkins[${i}].lumOffset must be finite number`);
+    }
+    const primaryColor = assertNonEmptyString(
+      r.primaryColor,
+      `skins.heroSkins[${i}].primaryColor`,
+    );
+    const secondaryColor = assertNonEmptyString(
+      r.secondaryColor,
+      `skins.heroSkins[${i}].secondaryColor`,
+    );
+    const crestStr = assertNonEmptyString(r.crestKind, `skins.heroSkins[${i}].crestKind`);
+    if (!VALID_SKIN_CRESTS.has(crestStr)) {
+      throw new Error(`[DataValidation] skins.heroSkins[${i}].crestKind invalid: ${crestStr}`);
+    }
+
+    return {
+      id,
+      unitId,
+      name,
+      rarity: rarityStr as SkinRarity,
+      unlockCond,
+      silkCost,
+      desc,
+      robeHue,
+      satMult,
+      lumOffset: r.lumOffset,
+      primaryColor,
+      secondaryColor,
+      crestKind: crestStr as SkinCrestKind,
+    };
+  });
+
+  const courtSkins: CourtSkinDef[] = rec.courtSkins.map((raw, i) => {
+    const r = assertRecord(raw, `skins.courtSkins[${i}]`);
+    const idStr = assertNonEmptyString(r.id, `skins.courtSkins[${i}].id`);
+    if (!VALID_COURT_IDS.has(idStr)) {
+      throw new Error(`[DataValidation] skins.courtSkins[${i}].id invalid: ${idStr}`);
+    }
+    if (seenIds.has(idStr)) {
+      throw new Error(`[DataValidation] duplicate skin id: ${idStr}`);
+    }
+    seenIds.add(idStr);
+    const name = assertNonEmptyString(r.name, `skins.courtSkins[${i}].name`);
+    const rarityStr = assertNonEmptyString(r.rarity, `skins.courtSkins[${i}].rarity`);
+    if (!VALID_SKIN_RARITIES.has(rarityStr)) {
+      throw new Error(`[DataValidation] skins.courtSkins[${i}].rarity invalid: ${rarityStr}`);
+    }
+    let unlockCond: SkinUnlockCond | undefined;
+    if (r.unlockCond !== undefined) {
+      const uStr = assertNonEmptyString(r.unlockCond, `skins.courtSkins[${i}].unlockCond`);
+      if (!VALID_SKIN_UNLOCKS.has(uStr)) {
+        throw new Error(`[DataValidation] skins.courtSkins[${i}].unlockCond invalid: ${uStr}`);
+      }
+      unlockCond = uStr as SkinUnlockCond;
+    }
+    const silkCost = assertNonNegativeNumber(r.silkCost, `skins.courtSkins[${i}].silkCost`);
+    const desc = assertNonEmptyString(r.desc, `skins.courtSkins[${i}].desc`);
+    const tintColor = assertNonEmptyString(r.tintColor, `skins.courtSkins[${i}].tintColor`);
+    const tintAlpha = assertNonNegativeNumber(r.tintAlpha, `skins.courtSkins[${i}].tintAlpha`);
+    const lanternColor = assertNonEmptyString(
+      r.lanternColor,
+      `skins.courtSkins[${i}].lanternColor`,
+    );
+    const petalPrimary = assertNonEmptyString(
+      r.petalPrimary,
+      `skins.courtSkins[${i}].petalPrimary`,
+    );
+    const petalSecondary = assertNonEmptyString(
+      r.petalSecondary,
+      `skins.courtSkins[${i}].petalSecondary`,
+    );
+
+    return {
+      id: idStr as CourtSkinId,
+      name,
+      rarity: rarityStr as SkinRarity,
+      unlockCond,
+      silkCost,
+      desc,
+      tintColor,
+      tintAlpha: Math.min(0.6, tintAlpha),
+      lanternColor,
+      petalPrimary,
+      petalSecondary,
+    };
+  });
+
+  return { heroSkins, courtSkins };
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -602,6 +791,15 @@ export function loadGameData(): GameDataBundle {
   const relics = validateRelics(rawRelics);
   const relicsById = new Map<RelicId, RelicDef>(relics.map((rel) => [rel.id, rel]));
   const missions = validateMissions(rawMissions, gradesById);
+  const { heroSkins, courtSkins } = validateSkins(rawSkins, unitsById);
+  const heroSkinsById = new Map<string, HeroSkinDef>(heroSkins.map((s) => [s.id, s]));
+  const heroSkinsByUnit = new Map<string, HeroSkinDef[]>();
+  for (const s of heroSkins) {
+    const arr = heroSkinsByUnit.get(s.unitId) ?? [];
+    arr.push(s);
+    heroSkinsByUnit.set(s.unitId, arr);
+  }
+  const courtSkinsById = new Map<CourtSkinId, CourtSkinDef>(courtSkins.map((c) => [c.id, c]));
 
   cachedBundle = {
     grades,
@@ -618,7 +816,13 @@ export function loadGameData(): GameDataBundle {
     relics,
     relicsById,
     missions,
+    heroSkins,
+    heroSkinsById,
+    heroSkinsByUnit,
+    courtSkins,
+    courtSkinsById,
   };
   return cachedBundle;
 }
+
 

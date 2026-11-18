@@ -1,5 +1,16 @@
 import { CLEAR_TARGET_WAVE, DIFFICULTY_CONFIGS, DIFFICULTY_ORDER } from '../core/relicFormulas';
-import type { DifficultyId, GradeDef, RelicDef, RelicId, UnitDef, UnitId } from '../data/types';
+import type {
+  CourtSkinDef,
+  CourtSkinId,
+  DifficultyId,
+  GradeDef,
+  HeroSkinDef,
+  RelicDef,
+  RelicId,
+  SkinRarity,
+  UnitDef,
+  UnitId,
+} from '../data/types';
 
 export const RELIC_ORDER: readonly RelicId[] = [
   'golden_vault',
@@ -12,10 +23,21 @@ export const RELIC_ORDER: readonly RelicId[] = [
 
 export const RELIC_CHEST_GOLD_COST = 100;
 export const RELIC_DIRECT_UNLOCK_GOLD = 180;
+export const SKIN_SINGLE_GOLD_COST = 120;
+export const SKIN_MULTI5_GOLD_COST = 540;
+export const DEFAULT_COURT_SKIN_ID: CourtSkinId = 'court_bamboo_dawn';
 
 const STORAGE_KEY = 'murim_defense_meta_v1';
 const STARTER_GOLD = 120;
 const STARTER_KEYS = 2;
+const STARTER_SILK = 30;
+
+const VALID_COURT_SKIN_SET: ReadonlySet<string> = new Set<CourtSkinId>([
+  'court_bamboo_dawn',
+  'court_crimson_sunset',
+  'court_blood_moon',
+  'court_golden_palace',
+]);
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -25,6 +47,7 @@ export interface StorageLike {
 export interface MetaProfile {
   readonly gold: number;
   readonly keys: number;
+  readonly silk: number;
   readonly relics: Readonly<Record<RelicId, number>>;
   readonly totalRuns: number;
   readonly bestWave: number;
@@ -33,6 +56,10 @@ export interface MetaProfile {
   readonly clearedDifficulties: Readonly<Record<DifficultyId, boolean>>;
   readonly discoveredUnits: Readonly<Record<UnitId, boolean>>;
   readonly discoveredCount: number;
+  readonly ownedSkins: Readonly<Record<string, boolean>>;
+  readonly ownedSkinCount: number;
+  readonly equippedHeroSkins: Readonly<Record<UnitId, string>>;
+  readonly equippedCourtSkin: CourtSkinId;
   readonly rev: number;
 }
 
@@ -61,6 +88,7 @@ export interface SettlementRecord extends SettlementReward {
   readonly firstClearBonusGold: number;
   readonly firstClearBonusKeys: number;
   readonly unlockedNextDifficulty: DifficultyId | null;
+  readonly unlockedSkinIds: readonly string[];
   readonly totalGold: number;
   readonly totalKeys: number;
   readonly isNewBest: boolean;
@@ -101,6 +129,45 @@ export type RelicUpgradeResult =
       readonly ok: false;
       readonly reason: string;
     };
+
+export interface SkinPullItem {
+  readonly skinId: string;
+  readonly name: string;
+  readonly rarity: SkinRarity;
+  readonly kind: 'hero' | 'court';
+  readonly unitId?: UnitId;
+  readonly isNew: boolean;
+  readonly silkRefund: number;
+}
+
+export type SkinGachaResult =
+  | {
+      readonly ok: true;
+      readonly items: readonly SkinPullItem[];
+      readonly totalSilkRefund: number;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type SkinCraftResult =
+  | {
+      readonly ok: true;
+      readonly skinId: string;
+      readonly name: string;
+      readonly spentSilk: number;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export function getSkinDuplicateSilk(rarity: SkinRarity): number {
+  if (rarity === 'mythic') return 50;
+  if (rarity === 'legendary') return 30;
+  return 15;
+}
 
 export function createEmptyRelicMap(): Record<RelicId, number> {
   return {
@@ -185,6 +252,7 @@ export class MetaStore {
   private readonly storage: StorageLike | null;
   private gold = STARTER_GOLD;
   private keys = STARTER_KEYS;
+  private silk = STARTER_SILK;
   private readonly relics: Record<RelicId, number> = createEmptyRelicMap();
   private totalRuns = 0;
   private bestWave = 1;
@@ -200,18 +268,26 @@ export class MetaStore {
     hell: false,
   };
   private readonly discoveredUnits: Record<UnitId, boolean> = {};
+  private readonly ownedSkins: Record<string, boolean> = {
+    [DEFAULT_COURT_SKIN_ID]: true,
+  };
+  private readonly equippedHeroSkins: Record<UnitId, string> = {};
+  private equippedCourtSkin: CourtSkinId = DEFAULT_COURT_SKIN_ID;
   private rev = 1;
 
   public constructor(customStorage?: StorageLike | null) {
     this.storage = customStorage !== undefined ? customStorage : resolveDefaultStorage();
     this.load();
+    this.unlockEligibleAchievementSkins();
   }
 
   public getProfile(): MetaProfile {
     const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
+    const ownedSkinCount = Object.values(this.ownedSkins).filter(Boolean).length;
     return {
       gold: this.gold,
       keys: this.keys,
+      silk: this.silk,
       relics: { ...this.relics },
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
@@ -220,6 +296,10 @@ export class MetaStore {
       clearedDifficulties: { ...this.clearedDifficulties },
       discoveredUnits: { ...this.discoveredUnits },
       discoveredCount,
+      ownedSkins: { ...this.ownedSkins },
+      ownedSkinCount,
+      equippedHeroSkins: { ...this.equippedHeroSkins },
+      equippedCourtSkin: this.equippedCourtSkin,
       rev: this.rev,
     };
   }
@@ -230,6 +310,14 @@ export class MetaStore {
 
   public getSelectedDifficulty(): DifficultyId {
     return this.selectedDifficulty;
+  }
+
+  public getEquippedHeroSkins(): Readonly<Record<UnitId, string>> {
+    return { ...this.equippedHeroSkins };
+  }
+
+  public getEquippedCourtSkin(): CourtSkinId {
+    return this.equippedCourtSkin;
   }
 
   public setSelectedDifficulty(diff: DifficultyId): boolean {
@@ -375,6 +463,198 @@ export class MetaStore {
     };
   }
 
+  public drawSkinGacha(
+    heroSkins: readonly HeroSkinDef[],
+    courtSkins: readonly CourtSkinDef[],
+    count: 1 | 5,
+    payWith: 'gold' | 'key',
+    rngFn: () => number = Math.random,
+  ): SkinGachaResult {
+    type GachaCandidate =
+      | { readonly kind: 'hero'; readonly def: HeroSkinDef }
+      | { readonly kind: 'court'; readonly def: CourtSkinDef };
+
+    const allCandidates: GachaCandidate[] = [];
+    for (const h of heroSkins) {
+      if (h.rarity !== 'achievement' && h.silkCost > 0) {
+        allCandidates.push({ kind: 'hero', def: h });
+      }
+    }
+    for (const c of courtSkins) {
+      if (c.rarity !== 'achievement' && c.silkCost > 0) {
+        allCandidates.push({ kind: 'court', def: c });
+      }
+    }
+    if (allCandidates.length === 0) {
+      return { ok: false, reason: '초빙 가능한 의복·테마 목록이 없습니다.' };
+    }
+
+    if (payWith === 'key') {
+      if (this.keys < count) {
+        return { ok: false, reason: `보유한 기보함 열쇠가 부족합니다 (${count}개 필요)` };
+      }
+      this.keys -= count;
+    } else {
+      const goldCost = count === 5 ? SKIN_MULTI5_GOLD_COST : SKIN_SINGLE_GOLD_COST;
+      if (this.gold < goldCost) {
+        return { ok: false, reason: `천하주화가 부족합니다 (${goldCost} 필요)` };
+      }
+      this.gold -= goldCost;
+    }
+
+    const rarePool = allCandidates.filter((c) => c.def.rarity === 'rare');
+    const legendaryPool = allCandidates.filter((c) => c.def.rarity === 'legendary');
+    const mythicPool = allCandidates.filter((c) => c.def.rarity === 'mythic');
+
+    const items: SkinPullItem[] = [];
+    let totalSilkRefund = 0;
+
+    for (let i = 0; i < count; i++) {
+      const tierRoll = Math.max(0, Math.min(0.999999, rngFn())) * 100;
+      let pool: GachaCandidate[];
+      if (tierRoll < 15 && mythicPool.length > 0) {
+        pool = mythicPool;
+      } else if (tierRoll < 50 && legendaryPool.length > 0) {
+        pool = legendaryPool;
+      } else if (rarePool.length > 0) {
+        pool = rarePool;
+      } else {
+        pool = allCandidates;
+      }
+
+      const pickIdx = Math.floor(Math.max(0, Math.min(0.999999, rngFn())) * pool.length);
+      const picked = pool[pickIdx] ?? pool[0]!;
+      const skinId = picked.def.id;
+      const wasOwned = Boolean(this.ownedSkins[skinId]);
+
+      if (wasOwned) {
+        const refund = getSkinDuplicateSilk(picked.def.rarity);
+        this.silk += refund;
+        totalSilkRefund += refund;
+        items.push({
+          skinId,
+          name: picked.def.name,
+          rarity: picked.def.rarity,
+          kind: picked.kind,
+          unitId: picked.kind === 'hero' ? picked.def.unitId : undefined,
+          isNew: false,
+          silkRefund: refund,
+        });
+      } else {
+        this.ownedSkins[skinId] = true;
+        if (picked.kind === 'hero' && !this.equippedHeroSkins[picked.def.unitId]) {
+          this.equippedHeroSkins[picked.def.unitId] = skinId;
+        }
+        items.push({
+          skinId,
+          name: picked.def.name,
+          rarity: picked.def.rarity,
+          kind: picked.kind,
+          unitId: picked.kind === 'hero' ? picked.def.unitId : undefined,
+          isNew: true,
+          silkRefund: 0,
+        });
+      }
+    }
+
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      items,
+      totalSilkRefund,
+    };
+  }
+
+  public craftSkinWithSilk(skin: HeroSkinDef | CourtSkinDef): SkinCraftResult {
+    if (this.ownedSkins[skin.id]) {
+      return { ok: false, reason: '이미 보유 중인 의복·테마입니다.' };
+    }
+    if (skin.rarity === 'achievement' || skin.silkCost <= 0) {
+      return { ok: false, reason: '업적 한정 스킨은 조건 달성으로만 해금할 수 있습니다.' };
+    }
+    if (this.silk < skin.silkCost) {
+      return { ok: false, reason: `운금비단이 부족합니다 (${skin.silkCost}필 필요)` };
+    }
+
+    this.silk -= skin.silkCost;
+    this.ownedSkins[skin.id] = true;
+    if ('unitId' in skin) {
+      this.equippedHeroSkins[skin.unitId] = skin.id;
+    } else {
+      this.equippedCourtSkin = skin.id;
+    }
+    this.rev++;
+    this.save();
+
+    return {
+      ok: true,
+      skinId: skin.id,
+      name: skin.name,
+      spentSilk: skin.silkCost,
+    };
+  }
+
+  public equipHeroSkin(
+    unitId: UnitId,
+    skinId: string | null,
+    heroSkinsById: ReadonlyMap<string, HeroSkinDef>,
+  ): boolean {
+    if (skinId === null) {
+      if (!this.equippedHeroSkins[unitId]) return true;
+      delete this.equippedHeroSkins[unitId];
+      this.rev++;
+      this.save();
+      return true;
+    }
+    const def = heroSkinsById.get(skinId);
+    if (!def || def.unitId !== unitId || !this.ownedSkins[skinId]) {
+      return false;
+    }
+    this.equippedHeroSkins[unitId] = skinId;
+    this.rev++;
+    this.save();
+    return true;
+  }
+
+  public equipCourtSkin(courtId: CourtSkinId): boolean {
+    if (!VALID_COURT_SKIN_SET.has(courtId) || !this.ownedSkins[courtId]) {
+      return false;
+    }
+    this.equippedCourtSkin = courtId;
+    this.rev++;
+    this.save();
+    return true;
+  }
+
+  private unlockEligibleAchievementSkins(): string[] {
+    const newlyUnlocked: string[] = [];
+    const anyCleared =
+      this.clearedDifficulties.normal ||
+      this.clearedDifficulties.hard ||
+      this.clearedDifficulties.hell;
+
+    if (anyCleared && !this.ownedSkins.court_golden_palace) {
+      this.ownedSkins.court_golden_palace = true;
+      newlyUnlocked.push('court_golden_palace');
+    }
+    if (this.clearedDifficulties.hell && !this.ownedSkins.skin_cheonma_golden_emperor) {
+      this.ownedSkins.skin_cheonma_golden_emperor = true;
+      if (!this.equippedHeroSkins.cheonma) {
+        this.equippedHeroSkins.cheonma = 'skin_cheonma_golden_emperor';
+      }
+      newlyUnlocked.push('skin_cheonma_golden_emperor');
+    }
+    if (this.bestWave >= 35 && !this.ownedSkins.skin_sword_demon_azure) {
+      this.ownedSkins.skin_sword_demon_azure = true;
+      if (!this.equippedHeroSkins.sword_demon) {
+        this.equippedHeroSkins.sword_demon = 'skin_sword_demon_azure';
+      }
+      newlyUnlocked.push('skin_sword_demon_azure');
+    }
+    return newlyUnlocked;
+  }
+
   public settleRun(input: SettlementInput): SettlementRecord {
     const diff = input.difficulty ?? 'normal';
     const victory = Boolean(input.victory);
@@ -411,6 +691,7 @@ export class MetaStore {
     if (isNewBest) {
       this.bestWave = wave;
     }
+    const unlockedSkinIds = this.unlockEligibleAchievementSkins();
     this.rev++;
     this.save();
 
@@ -425,6 +706,7 @@ export class MetaStore {
       firstClearBonusGold,
       firstClearBonusKeys,
       unlockedNextDifficulty,
+      unlockedSkinIds,
       goldEarned: totalGoldGain,
       keysEarned: totalKeysGain,
       totalGold: this.gold,
@@ -461,6 +743,11 @@ export class MetaStore {
     if (wave > this.bestWave) {
       this.bestWave = wave;
     }
+    const overtimeUnlocked = this.unlockEligibleAchievementSkins();
+    const mergedSkins = [
+      ...prevRecord.unlockedSkinIds,
+      ...overtimeUnlocked.filter((id) => !prevRecord.unlockedSkinIds.includes(id)),
+    ];
     this.rev++;
     this.save();
 
@@ -474,6 +761,7 @@ export class MetaStore {
         prevRecord.bountiesSlain,
         Math.floor(finalInput.bountiesSlain ?? 0),
       ),
+      unlockedSkinIds: mergedSkins,
       goldEarned: prevRecord.goldEarned + deltaGold,
       keysEarned: prevRecord.keysEarned + deltaKeys,
       totalGold: this.gold,
@@ -482,9 +770,10 @@ export class MetaStore {
     };
   }
 
-  public grantDevMeta(goldBonus: number, keyBonus: number): void {
+  public grantDevMeta(goldBonus: number, keyBonus: number, silkBonus = 180): void {
     this.gold += Math.max(0, Math.floor(goldBonus));
     this.keys += Math.max(0, Math.floor(keyBonus));
+    this.silk += Math.max(0, Math.floor(silkBonus));
     this.unlockedDifficulties.hard = true;
     this.unlockedDifficulties.hell = true;
     this.rev++;
@@ -505,6 +794,9 @@ export class MetaStore {
       }
       if (typeof rec.keys === 'number' && Number.isFinite(rec.keys) && rec.keys >= 0) {
         this.keys = Math.floor(rec.keys);
+      }
+      if (typeof rec.silk === 'number' && Number.isFinite(rec.silk) && rec.silk >= 0) {
+        this.silk = Math.floor(rec.silk);
       }
       if (typeof rec.totalRuns === 'number' && Number.isFinite(rec.totalRuns) && rec.totalRuns >= 0) {
         this.totalRuns = Math.floor(rec.totalRuns);
@@ -555,6 +847,30 @@ export class MetaStore {
           }
         }
       }
+      if (typeof rec.ownedSkins === 'object' && rec.ownedSkins !== null) {
+        const sObj = rec.ownedSkins as Record<string, unknown>;
+        for (const [sid, val] of Object.entries(sObj)) {
+          if (val === true) {
+            this.ownedSkins[sid] = true;
+          }
+        }
+      }
+      this.ownedSkins[DEFAULT_COURT_SKIN_ID] = true;
+      if (typeof rec.equippedHeroSkins === 'object' && rec.equippedHeroSkins !== null) {
+        const eObj = rec.equippedHeroSkins as Record<string, unknown>;
+        for (const [uid, sid] of Object.entries(eObj)) {
+          if (typeof sid === 'string' && this.ownedSkins[sid]) {
+            this.equippedHeroSkins[uid] = sid;
+          }
+        }
+      }
+      if (
+        typeof rec.equippedCourtSkin === 'string' &&
+        VALID_COURT_SKIN_SET.has(rec.equippedCourtSkin) &&
+        this.ownedSkins[rec.equippedCourtSkin]
+      ) {
+        this.equippedCourtSkin = rec.equippedCourtSkin as CourtSkinId;
+      }
     } catch {
       // Ignore malformed storage data and retain clean defaults
     }
@@ -566,6 +882,7 @@ export class MetaStore {
       const payload = JSON.stringify({
         gold: this.gold,
         keys: this.keys,
+        silk: this.silk,
         relics: this.relics,
         totalRuns: this.totalRuns,
         bestWave: this.bestWave,
@@ -573,6 +890,9 @@ export class MetaStore {
         unlockedDifficulties: this.unlockedDifficulties,
         clearedDifficulties: this.clearedDifficulties,
         discoveredUnits: this.discoveredUnits,
+        ownedSkins: this.ownedSkins,
+        equippedHeroSkins: this.equippedHeroSkins,
+        equippedCourtSkin: this.equippedCourtSkin,
       });
       this.storage.setItem(STORAGE_KEY, payload);
     } catch {
@@ -580,3 +900,4 @@ export class MetaStore {
     }
   }
 }
+

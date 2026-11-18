@@ -3,7 +3,14 @@ import type { StampedCommand } from '../src/core/CommandQueue';
 import { Simulation } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
 import type { MonsterKind } from '../src/data/types';
-import { MetaStore, type StorageLike } from '../src/platform/MetaStore';
+import {
+  DEFAULT_COURT_SKIN_ID,
+  MetaStore,
+  SKIN_MULTI5_GOLD_COST,
+  SKIN_SINGLE_GOLD_COST,
+  getSkinDuplicateSilk,
+  type StorageLike,
+} from '../src/platform/MetaStore';
 import { SoundSynthesizer } from '../src/platform/SoundSynthesizer';
 
 describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble (영약 복용) & faction upgrades (내공 수련)', () => {
@@ -123,8 +130,12 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('provides bespoke 1:1 pixel-art PNG sprites for all 30 units and all 6 monsters/bosses', () => {
+  it('provides bespoke 1:1 pixel-art PNG sprites for all 32 units and all 6 monsters/bosses plus validated skin catalog', () => {
     const data = loadGameData();
+    expect(data.units.length).toBe(32);
+    expect(data.heroSkins.length).toBe(10);
+    expect(data.courtSkins.length).toBe(4);
+
     const spriteFiles = Object.keys(import.meta.glob('../public/sprites/*.png'));
     const spriteSet = new Set(
       spriteFiles.map((p) => p.slice(p.lastIndexOf('/') + 1)),
@@ -145,7 +156,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     for (const kind of monsterKinds) {
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
     }
-    expect(spriteSet.size).toBe(36);
+    expect(spriteSet.size).toBe(38);
 
     const bgFiles = Object.keys(import.meta.glob('../public/bg/*.png'));
     expect(bgFiles.some((p) => p.endsWith('/murim_arena_bg.png'))).toBe(true);
@@ -717,6 +728,344 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(sim3x.hashState()).toBe(sim1x.hashState());
     expect(sim1x.buildSnapshot(1, false).wave).toBe(2);
     expect(sim1x.buildSnapshot(1, false).bounty.active || sim1x.buildSnapshot(1, false).bounty.bountiesSlain > 0).toBe(true);
+  });
+
+  it('chain-crafts new 6-tier Immortals 태상검선 (sword_immortal) and 혈해수라왕 (asura_emperor) with aura & armor-shred traits', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x778899aa);
+    const craftedOutputs: { unitId: string; grade: string }[] = [];
+    sim.events.on('craft:done', (ev) => {
+      craftedOutputs.push({ unitId: ev.outputUnitId, grade: ev.grade });
+    });
+
+    const grantWispUnits = (items: readonly { readonly grade: string; readonly unitId: string }[]): void => {
+      for (const item of items) {
+        sim.commands.enqueue({ type: 'grantTestResource', wispGrade: item.grade });
+        sim.commands.enqueue({ type: 'useWisp', grade: item.grade, unitId: item.unitId });
+      }
+      sim.tick();
+    };
+
+    // 1. Craft r_sword_saint -> r_murim_lord -> chain-craft r_sword_immortal
+    grantWispUnits([
+      { grade: 'rare', unitId: 'plum_elder' },
+      { grade: 'uncommon', unitId: 'plum_swordsman' },
+      { grade: 'common', unitId: 'hwasan_novice' },
+      { grade: 'rare', unitId: 'plum_elder' },
+      { grade: 'uncommon', unitId: 'namgung_thunder' },
+    ]);
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_sword_saint', chain: true });
+    sim.tick();
+
+    grantWispUnits([
+      { grade: 'rare', unitId: 'gaebang_elder' },
+      { grade: 'uncommon', unitId: 'namgung_thunder' },
+      { grade: 'common', unitId: 'mudang_disciple' },
+      { grade: 'rare', unitId: 'gaebang_elder' },
+      { grade: 'uncommon', unitId: 'shaolin_monk' },
+    ]);
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_murim_lord', chain: true });
+    sim.tick();
+
+    grantWispUnits([
+      { grade: 'rare', unitId: 'plum_elder' },
+      { grade: 'uncommon', unitId: 'plum_swordsman' },
+      { grade: 'common', unitId: 'hwasan_novice' },
+      { grade: 'rare', unitId: 'gaebang_elder' },
+      { grade: 'uncommon', unitId: 'namgung_thunder' },
+      { grade: 'common', unitId: 'mudang_disciple' },
+    ]);
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_sword_immortal']?.lamp).toBe('chainReady');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_sword_immortal', chain: true });
+    sim.tick();
+
+    // 2. Craft r_mad_demon -> chain-craft r_asura_emperor
+    grantWispUnits([
+      { grade: 'rare', unitId: 'nokrim_chief' },
+      { grade: 'uncommon', unitId: 'poison_healer' },
+      { grade: 'common', unitId: 'tang_assassin' },
+      { grade: 'rare', unitId: 'nokrim_chief' },
+      { grade: 'uncommon', unitId: 'blood_blade' },
+      { grade: 'common', unitId: 'haomun_ronin' },
+    ]);
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_mad_demon', chain: true });
+    sim.tick();
+
+    grantWispUnits([
+      { grade: 'rare', unitId: 'nokrim_chief' },
+      { grade: 'uncommon', unitId: 'poison_healer' },
+      { grade: 'common', unitId: 'tang_assassin' },
+      { grade: 'rare', unitId: 'nokrim_chief' },
+      { grade: 'uncommon', unitId: 'blood_blade' },
+      { grade: 'common', unitId: 'haomun_ronin' },
+      { grade: 'rare', unitId: 'nokrim_chief' },
+    ]);
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_asura_emperor']?.lamp).toBe('chainReady');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_asura_emperor', chain: true });
+    sim.tick();
+
+    const snap = sim.buildSnapshot(1, false);
+    const owned = [...snap.field, ...snap.bench].filter((s): s is NonNullable<typeof s> => s !== null);
+    const swordImmortal = owned.find((u) => u.unitId === 'sword_immortal');
+    const asuraEmperor = owned.find((u) => u.unitId === 'asura_emperor');
+
+    expect(swordImmortal).toBeDefined();
+    expect(swordImmortal?.grade).toBe('immortal');
+    expect(swordImmortal?.faction).toBe('orthodox');
+    expect(swordImmortal?.armorShred).toBeGreaterThan(0);
+    expect(swordImmortal?.supportAura).toBeDefined();
+
+    expect(asuraEmperor).toBeDefined();
+    expect(asuraEmperor?.grade).toBe('immortal');
+    expect(asuraEmperor?.faction).toBe('unorthodox');
+    expect(asuraEmperor?.armorShred).toBeGreaterThan(0);
+    expect(asuraEmperor?.supportAura).toBeDefined();
+
+    expect(craftedOutputs.some((c) => c.unitId === 'sword_immortal' && c.grade === 'immortal')).toBe(true);
+    expect(craftedOutputs.some((c) => c.unitId === 'asura_emperor' && c.grade === 'immortal')).toBe(true);
+  });
+
+  it('applies 6x3 orthogonal supportAura buffs strictly to cross-adjacent field tiles and caps stacked bonuses', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x33445566);
+
+    // Spawn 1 cult_elder (totem: +16% atk, +8% speed) and 3 hwasan_novice attackers
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'cult_elder' }); // lands on field[0]
+    for (let i = 0; i < 3; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' }); // field[1], field[2], field[3]
+    }
+    sim.tick();
+
+    // Move cult_elder to center tile field[7] (row 1, col 1 -> orthogonal neighbors: 1, 6, 8, 13)
+    // Move novices to: field[1] (north neighbor), field[0] (diagonal NW), bench[0] (off-field)
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 0 }, to: { area: 'field', index: 7 } });
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 2 }, to: { area: 'field', index: 0 } });
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 3 }, to: { area: 'bench', index: 0 } });
+    sim.tick();
+
+    const snap = sim.buildSnapshot(1, false);
+    const northAlly = snap.field[1]!;
+    const diagAlly = snap.field[0]!;
+    const benchAlly = snap.bench[0]!;
+    const centerTotem = snap.field[7]!;
+
+    expect(centerTotem.unitId).toBe('cult_elder');
+    expect(centerTotem.tileBuffAtkPct).toBe(0); // totem does not buff its own tile
+    expect(northAlly.unitId).toBe('hwasan_novice');
+    expect(northAlly.tileBuffAtkPct).toBe(16);
+    expect(northAlly.tileBuffSpeedPct).toBe(8);
+    expect(northAlly.bonusAtk).toBeGreaterThan(diagAlly.bonusAtk);
+
+    expect(diagAlly.unitId).toBe('hwasan_novice');
+    expect(diagAlly.tileBuffAtkPct).toBe(0);
+    expect(diagAlly.tileBuffSpeedPct).toBe(0);
+
+    expect(benchAlly.unitId).toBe('hwasan_novice');
+    expect(benchAlly.tileBuffAtkPct).toBe(0);
+
+    // Surround field[7] with 4 mudang_master totems (+18% atk, +14% speed -> 4x = 72% / 56%) on 1, 6, 8, 13 to verify caps (65% atk / 45% speed)
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 7 }, to: { area: 'bench', index: 5 } });
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 1 }, to: { area: 'field', index: 7 } });
+    sim.tick();
+
+    const surroundSlots = [1, 6, 8, 13];
+    for (let k = 0; k < surroundSlots.length; k++) {
+      const targetIdx = surroundSlots[k]!;
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'gaebang_elder' });
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'uncommon' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'uncommon', unitId: 'namgung_thunder' });
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'mudang_disciple' });
+      sim.tick();
+      sim.commands.enqueue({ type: 'craft', recipeId: 'r_mudang_master', chain: true });
+      sim.tick();
+
+      const snapTmp = sim.buildSnapshot(1, false);
+      const placedAlready = surroundSlots.slice(0, k);
+      const spawnedIdx = snapTmp.field.findIndex(
+        (s, idx) => s?.unitId === 'mudang_master' && !placedAlready.includes(idx),
+      );
+      if (spawnedIdx >= 0 && spawnedIdx !== targetIdx) {
+        sim.commands.enqueue({
+          type: 'move',
+          from: { area: 'field', index: spawnedIdx },
+          to: { area: 'field', index: targetIdx },
+        });
+        sim.tick();
+      }
+    }
+
+    const cappedSnap = sim.buildSnapshot(1, false);
+    expect(cappedSnap.field[7]?.tileBuffAtkPct).toBe(65);
+    expect(cappedSnap.field[7]?.tileBuffSpeedPct).toBe(45);
+  });
+
+  it('enforces monster 호신강기 (armor) scaling and 파갑 (armorShred) defense break + negative-armor damage amplification', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x99112233, undefined, 'hard');
+
+    // Wave 1 regular monsters have 0 armor
+    for (let t = 0; t < 45; t++) {
+      sim.tick();
+    }
+    expect(sim.getMonsters().length).toBeGreaterThan(0);
+    expect(sim.getMonsters()[0]?.armor).toBe(0);
+
+    // Place armor-shredding heroes (gaebang_elder: 18, tang_assassin: 7) on field to fight Wave 2 armored bounty
+    for (let i = 0; i < 4; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'gaebang_elder' });
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'tang_assassin' });
+    }
+    sim.tick();
+
+    // Advance into Wave 2 (tick >= 840) and summon an armored bounty target
+    while (sim.buildSnapshot(1, false).wave < 2 && sim.tickCount < 1000) {
+      sim.tick();
+    }
+    sim.commands.enqueue({ type: 'callBounty' });
+    sim.tick();
+
+    const bountyMob = sim.getMonsters().find((m) => m.isBounty);
+    expect(bountyMob).toBeDefined();
+    expect(bountyMob!.armor).toBeGreaterThan(0);
+
+    let observedShred = 0;
+    for (let t = 0; t < 180; t++) {
+      sim.tick();
+      const activeBounty = sim.getMonsters().find((m) => m.isBounty);
+      if (activeBounty && activeBounty.armorShred > observedShred) {
+        observedShred = activeBounty.armorShred;
+      }
+    }
+    expect(observedShred).toBeGreaterThan(0);
+  });
+
+  it('supports 금수화장각 skin gacha (1x/5x), duplicate 운금비단 refund, silk crafting, equipment persistence, and achievement unlocks', () => {
+    const data = loadGameData();
+    const mem = new Map<string, string>();
+    const mockStorage: StorageLike = {
+      getItem: (k) => mem.get(k) ?? null,
+      setItem: (k, v) => {
+        mem.set(k, v);
+      },
+    };
+
+    const store = new MetaStore(mockStorage);
+    const startProfile = store.getProfile();
+    expect(startProfile.silk).toBe(30);
+    expect(startProfile.equippedCourtSkin).toBe(DEFAULT_COURT_SKIN_ID);
+    expect(startProfile.ownedSkins[DEFAULT_COURT_SKIN_ID]).toBe(true);
+
+    const expectedGoldAfterGrant = startProfile.gold + 1500;
+    const expectedKeysAfterGrant = startProfile.keys + 10;
+    store.grantDevMeta(1500, 10, 0);
+    expect(store.getProfile().gold).toBe(expectedGoldAfterGrant);
+
+    // 1. Single pull with deterministic rngFn -> rolls first rare skin (new)
+    const pull1 = store.drawSkinGacha(data.heroSkins, data.courtSkins, 1, 'gold', () => 0.85);
+    expect(pull1.ok).toBe(true);
+    if (!pull1.ok) throw new Error(pull1.reason);
+    expect(pull1.items.length).toBe(1);
+    const firstPulled = pull1.items[0]!;
+    expect(firstPulled.isNew).toBe(true);
+    expect(firstPulled.silkRefund).toBe(0);
+    expect(store.getProfile().gold).toBe(expectedGoldAfterGrant - SKIN_SINGLE_GOLD_COST);
+    expect(store.getProfile().ownedSkins[firstPulled.skinId]).toBe(true);
+
+    // 2. Pulling the exact same rng seed again -> duplicate refund in 운금비단 (silk)
+    const silkBeforeDup = store.getProfile().silk;
+    const pullDup = store.drawSkinGacha(data.heroSkins, data.courtSkins, 1, 'key', () => 0.85);
+    expect(pullDup.ok).toBe(true);
+    if (!pullDup.ok) throw new Error(pullDup.reason);
+    expect(pullDup.items[0]!.skinId).toBe(firstPulled.skinId);
+    expect(pullDup.items[0]!.isNew).toBe(false);
+    const expectedRefund = getSkinDuplicateSilk(firstPulled.rarity);
+    expect(pullDup.totalSilkRefund).toBe(expectedRefund);
+    expect(store.getProfile().silk).toBe(silkBeforeDup + expectedRefund);
+    expect(store.getProfile().keys).toBe(expectedKeysAfterGrant - 1);
+
+    // 3. 5x multi-pull applies 10% gold discount (540 gold instead of 600)
+    const goldBefore5x = store.getProfile().gold;
+    let rollCursor = 0;
+    const rolls = [0.05, 0.0, 0.25, 0.3, 0.65, 0.5, 0.12, 0.9, 0.42, 0.7];
+    const pull5 = store.drawSkinGacha(
+      data.heroSkins,
+      data.courtSkins,
+      5,
+      'gold',
+      () => rolls[rollCursor++ % rolls.length]!,
+    );
+    expect(pull5.ok).toBe(true);
+    if (!pull5.ok) throw new Error(pull5.reason);
+    expect(pull5.items.length).toBe(5);
+    expect(store.getProfile().gold).toBe(goldBefore5x - SKIN_MULTI5_GOLD_COST);
+
+    // 4. Deterministic silk crafting & equip/unequip persistence
+    store.grantDevMeta(0, 0, 300);
+    const unownedHeroSkin = data.heroSkins.find(
+      (s) => s.rarity !== 'achievement' && !store.getProfile().ownedSkins[s.id],
+    )!;
+    expect(unownedHeroSkin).toBeDefined();
+    const silkBeforeCraft = store.getProfile().silk;
+    const craftRes = store.craftSkinWithSilk(unownedHeroSkin);
+    expect(craftRes.ok).toBe(true);
+    expect(store.getProfile().silk).toBe(silkBeforeCraft - unownedHeroSkin.silkCost);
+    expect(store.getProfile().ownedSkins[unownedHeroSkin.id]).toBe(true);
+    expect(store.getProfile().equippedHeroSkins[unownedHeroSkin.unitId]).toBe(unownedHeroSkin.id);
+
+    // Unequip & re-equip hero skin + craft & equip court skin
+    expect(store.equipHeroSkin(unownedHeroSkin.unitId, null, data.heroSkinsById)).toBe(true);
+    expect(store.getProfile().equippedHeroSkins[unownedHeroSkin.unitId]).toBeUndefined();
+    expect(store.equipHeroSkin(unownedHeroSkin.unitId, unownedHeroSkin.id, data.heroSkinsById)).toBe(true);
+
+    const bloodMoonCourt = data.courtSkinsById.get('court_blood_moon')!;
+    if (!store.getProfile().ownedSkins[bloodMoonCourt.id]) {
+      expect(store.craftSkinWithSilk(bloodMoonCourt).ok).toBe(true);
+    } else {
+      expect(store.equipCourtSkin(bloodMoonCourt.id)).toBe(true);
+    }
+    expect(store.getProfile().equippedCourtSkin).toBe('court_blood_moon');
+
+    // Achievement skins cannot be crafted with silk directly
+    const achSkin = data.heroSkinsById.get('skin_cheonma_golden_emperor')!;
+    expect(store.craftSkinWithSilk(achSkin).ok).toBe(false);
+
+    // 5. Achievement skin auto-unlocks on Hell Wave 30 victory & Wave 35 Endless overtime
+    const hellClear = store.settleRun({
+      wave: 30,
+      monstersSlain: 900,
+      bossesSlain: 3,
+      bountiesSlain: 4,
+      difficulty: 'hell',
+      victory: true,
+    });
+    expect(hellClear.unlockedSkinIds).toContain('court_golden_palace');
+    expect(hellClear.unlockedSkinIds).toContain('skin_cheonma_golden_emperor');
+    expect(store.getProfile().ownedSkins.court_golden_palace).toBe(true);
+    expect(store.getProfile().ownedSkins.skin_cheonma_golden_emperor).toBe(true);
+
+    const wave35Rec = store.settleEndlessOvertime(hellClear, {
+      wave: 35,
+      monstersSlain: 1200,
+      bossesSlain: 3,
+      bountiesSlain: 5,
+      difficulty: 'hell',
+      victory: true,
+    });
+    expect(wave35Rec.unlockedSkinIds).toContain('skin_sword_demon_azure');
+    expect(store.getProfile().ownedSkins.skin_sword_demon_azure).toBe(true);
+
+    // Reload from mockStorage and verify full persistence
+    const reloaded = new MetaStore(mockStorage).getProfile();
+    expect(reloaded.equippedCourtSkin).toBe('court_blood_moon');
+    expect(reloaded.equippedHeroSkins[unownedHeroSkin.unitId]).toBe(unownedHeroSkin.id);
+    expect(reloaded.ownedSkins.skin_cheonma_golden_emperor).toBe(true);
+    expect(reloaded.ownedSkins.skin_sword_demon_azure).toBe(true);
   });
 });
 

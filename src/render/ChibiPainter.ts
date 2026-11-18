@@ -936,6 +936,46 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'sword_immortal': {
+      // ORTHODOX IMMORTAL: Grand Sword Immortal (태상검선) — celestial golden halo + floating spirit swords
+      for (let a = 0; a < 12; a++) {
+        const rad = (a * Math.PI * 2) / 12;
+        const hx = Math.round(14 + Math.cos(rad) * 11.5);
+        const hy = Math.round(13 + Math.sin(rad) * 10.5);
+        p.set(hx, hy, a % 2 === 0 ? '#fde047' : '#38bdf8', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_AZURE, true);
+      paintHead34(p, SKIN_WARM, { glint: '#38bdf8', browColor: '#f8fafc' });
+      p.line(14, 17, 16, 22, '#f8fafc', LAYER_HEAD);
+      paintFlowingMane(p, HAIR_SILVER, '#facc15');
+      p.rect(12, 2, 4, 4, '#facc15', LAYER_HEAD);
+      p.set(14, 3, '#67e8f9', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_WHITE, GOLD_QI, '#0284c7');
+      paintDiagonalSword(p, CYAN_QI, '#fde047', true);
+      p.line(4, 15, 7, 4, '#67e8f9', LAYER_FX, 1);
+      p.line(26, 17, 30, 6, '#fde047', LAYER_FX, 1);
+      break;
+    }
+
+    case 'asura_emperor': {
+      // UNORTHODOX IMMORTAL: Blood-Sea Asura Emperor (혈해수라왕) — crimson-jade flames + twin curved sabers
+      for (let a = 0; a < 12; a++) {
+        const rad = (a * Math.PI * 2) / 12;
+        const hx = Math.round(14 + Math.cos(rad) * 11.5);
+        const hy = Math.round(14 + Math.sin(rad) * 10.5);
+        p.set(hx, hy, a % 2 === 0 ? '#e11d48' : '#4ade80', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      paintHead34(p, SKIN_TAN, { glint: '#fef08a', fierce: true, scar: true });
+      paintFlowingMane(p, HAIR_CRIMSON, '#facc15');
+      p.line(10, 4, 8, 1, '#facc15', LAYER_HEAD);
+      p.line(17, 4, 19, 1, '#facc15', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_DEMON, GOLD_QI, '#22c55e');
+      paintCurvedSaber(p, ROBE_CRIMSON, '#fde047');
+      p.line(3, 18, 8, 7, '#4ade80', LAYER_FX, 2);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

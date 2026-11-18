@@ -1,9 +1,11 @@
 import type { SlotRef } from '../core/CommandQueue';
+import type { CourtSkinDef } from '../data/types';
 import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../platform/Viewport';
 import type { Board } from '../world/Board';
 import type { LoopPath } from '../world/Path';
 import type { CellRect } from '../world/SlotGrid';
 import { PIXEL_OUTLINE } from './ChibiPainter';
+import { hexWithAlpha } from './SpriteCache';
 
 /** Visual inflation of slot bounds for selection/hover highlights (hit-testing uses board.json). */
 const FIELD_INFLATE_X = 2.5;
@@ -38,18 +40,24 @@ interface RingGeom {
  *   with grand tiled temple eaves, glowing red silk lanterns, Mount Hua plum blossoms,
  *   ancient pine & bamboo cliffs, carved dragon balustrades, Bagua Yin-Yang white-jade arena,
  *   dragon-relief bridge, and Dancheong sect waiting pavilion.
+ * - Supports atmospheric courtyard skins (낙조 / 적월야 / 황실 금란비무전) via pure gradient glazes.
  * - Overlays delicate recessed stone slab seams & subtle standing markers aligned to the
  *   exact `board.json` 6x3 field & 6x2 bench slots for razor-sharp tactical clarity.
  * - Includes an instant architectural Wuxia fallback before the PNG finishes decoding.
- * Executed ONLY on initialization, image decode, and viewport resize (zero text, zero filters).
+ * Executed ONLY on initialization, image decode, theme switch, and viewport resize (zero text, zero filters).
  */
 export class BackgroundPainter {
   private bgImg: HTMLImageElement | null = null;
+  private courtSkin: CourtSkinDef | null = null;
   private readonly onReady?: () => void;
 
   public constructor(onReady?: () => void) {
     this.onReady = onReady;
     this.loadStageImage();
+  }
+
+  public setCourtSkin(skin: CourtSkinDef | null): void {
+    this.courtSkin = skin;
   }
 
   private loadStageImage(): void {
@@ -95,6 +103,7 @@ export class BackgroundPainter {
       ctx.drawImage(this.bgImg, 0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
       ctx.restore();
 
+      this.paintCourtAtmosphere(ctx, board, ring);
       this.paintTacticalPathGuide(ctx, ring);
       this.paintEngravedGridSeams(ctx, board);
       return;
@@ -105,7 +114,45 @@ export class BackgroundPainter {
     this.paintFallbackTrack(ctx, ring);
     this.paintFallbackCourtyard(ctx, board, ring);
     this.paintFallbackBench(ctx, board);
+    this.paintCourtAtmosphere(ctx, board, ring);
     this.paintEngravedGridSeams(ctx, board);
+  }
+
+  private paintCourtAtmosphere(
+    ctx: CanvasRenderingContext2D,
+    board: Board,
+    ring: RingGeom,
+  ): void {
+    const skin = this.courtSkin;
+    if (!skin || skin.tintAlpha <= 0.001) return;
+
+    ctx.save();
+    // 1. Atmospheric sky-to-courtyard glaze
+    const grad = ctx.createLinearGradient(0, 0, 0, LOGICAL_HEIGHT);
+    grad.addColorStop(0, hexWithAlpha(skin.tintColor, Math.min(0.45, skin.tintAlpha * 1.45)));
+    grad.addColorStop(0.45, hexWithAlpha(skin.tintColor, skin.tintAlpha * 0.72));
+    grad.addColorStop(1, hexWithAlpha(skin.tintColor, Math.min(0.42, skin.tintAlpha * 1.25)));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+    // 2. Crisp ornamental border trim around the inner courtyard & pavilion
+    ctx.beginPath();
+    ctx.roundRect(ring.ix + 2, ring.iy + 2, ring.iw - 4, ring.ih - 4, 10);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = hexWithAlpha(skin.lanternColor, 0.52);
+    ctx.stroke();
+
+    const f = board.config.field;
+    const fw = f.cols * f.cellW + (f.cols - 1) * f.gapX;
+    const fh = f.rows * f.cellH + (f.rows - 1) * f.gapY;
+    const cx = f.originX + fw * 0.5;
+    const cy = f.originY + fh * 0.5;
+    const sealGrad = ctx.createRadialGradient(cx, cy, 12, cx, cy, 130);
+    sealGrad.addColorStop(0, hexWithAlpha(skin.lanternColor, 0.16));
+    sealGrad.addColorStop(1, hexWithAlpha(skin.lanternColor, 0));
+    ctx.fillStyle = sealGrad;
+    ctx.fillRect(f.originX - 20, f.originY - 20, fw + 40, fh + 40);
+    ctx.restore();
   }
 
   /**

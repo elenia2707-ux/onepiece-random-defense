@@ -24,6 +24,7 @@ interface TrackVfxInstance {
   fromRadius: number;
   toRadius: number;
   color: string;
+  secondaryColor: string;
   lineWidth: number;
   glowRadius: number;
   gradeRank: number;
@@ -119,6 +120,7 @@ export class VfxSystem {
           fromRadius: 8,
           toRadius: 48,
           color: '#ffffff',
+          secondaryColor: '#fde047',
           lineWidth: 3,
           glowRadius: 42,
           gradeRank: 1,
@@ -282,10 +284,13 @@ export class VfxSystem {
     color: string,
     gradeRank: number,
     startTick: number,
+    skinPrimary?: string,
+    skinSecondary?: string,
   ): void {
     switch (track) {
       case 'plum_blossom': {
-        const plumColor = gradeRank >= 4 ? '#db2777' : '#f43f5e';
+        const plumColor = skinPrimary ?? (gradeRank >= 4 ? '#db2777' : '#f43f5e');
+        const petalLight = skinSecondary ?? '#fda4af';
         this.pushTrack({
           kind: 'plum_blossom',
           startTick,
@@ -297,16 +302,19 @@ export class VfxSystem {
           fromRadius: 16,
           toRadius: radius,
           color: plumColor,
+          secondaryColor: petalLight,
           lineWidth: 5,
           glowRadius: Math.min(84, radius * 0.8),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#fb7185', 14, 140, 0.42, 35, startTick);
-        this.emitRadialBurst(x, y, '#fda4af', 10, 95, 0.48, 45, startTick);
+        this.emitRadialBurst(x, y, skinPrimary ?? '#fb7185', 14, 140, 0.42, 35, startTick);
+        this.emitRadialBurst(x, y, petalLight, 10, 95, 0.48, 45, startTick);
         break;
       }
 
       case 'emperor_thunder': {
+        const boltMain = skinPrimary ?? '#0284c7';
+        const boltSub = skinSecondary ?? '#7dd3fc';
         this.pushTrack({
           kind: 'emperor_thunder',
           startTick,
@@ -317,16 +325,19 @@ export class VfxSystem {
           y,
           fromRadius: 14,
           toRadius: radius,
-          color: '#0284c7',
+          color: boltMain,
+          secondaryColor: boltSub,
           lineWidth: 5,
           glowRadius: Math.min(90, radius * 0.85),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#38bdf8', 18, 175, 0.32, 20, startTick);
+        this.emitRadialBurst(x, y, skinPrimary ?? '#38bdf8', 18, 175, 0.32, 20, startTick);
         break;
       }
 
       case 'golden_palm': {
+        const palmMain = skinPrimary ?? '#d97706';
+        const palmSub = skinSecondary ?? '#facc15';
         this.pushTrack({
           kind: 'golden_palm',
           startTick,
@@ -337,16 +348,19 @@ export class VfxSystem {
           y,
           fromRadius: 14,
           toRadius: radius,
-          color: '#d97706',
+          color: palmMain,
+          secondaryColor: palmSub,
           lineWidth: 5.5,
           glowRadius: Math.min(88, radius * 0.85),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#f59e0b', 18, 155, 0.34, 0, startTick);
+        this.emitRadialBurst(x, y, skinPrimary ?? '#f59e0b', 18, 155, 0.34, 0, startTick);
         break;
       }
 
       case 'poison_rain': {
+        const poisonMain = skinPrimary ?? '#16a34a';
+        const poisonSub = skinSecondary ?? '#a855f7';
         this.pushTrack({
           kind: 'poison_rain',
           startTick,
@@ -357,17 +371,20 @@ export class VfxSystem {
           y,
           fromRadius: 16,
           toRadius: radius,
-          color: '#16a34a',
+          color: poisonMain,
+          secondaryColor: poisonSub,
           lineWidth: 4.5,
           glowRadius: Math.min(82, radius * 0.78),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#22c55e', 15, 140, 0.36, 30, startTick);
-        this.emitRadialBurst(x, y, '#7e22ce', 8, 100, 0.34, 20, startTick);
+        this.emitRadialBurst(x, y, skinPrimary ?? '#22c55e', 15, 140, 0.36, 30, startTick);
+        this.emitRadialBurst(x, y, skinSecondary ?? '#7e22ce', 8, 100, 0.34, 20, startTick);
         break;
       }
 
       case 'blood_slash': {
+        const slashMain = skinPrimary ?? '#e11d48';
+        const slashSub = skinSecondary ?? '#ffe4e6';
         this.pushTrack({
           kind: 'blood_slash',
           startTick,
@@ -378,16 +395,19 @@ export class VfxSystem {
           y,
           fromRadius: 18,
           toRadius: radius,
-          color: '#be123c',
+          color: skinPrimary ?? '#be123c',
+          secondaryColor: slashSub,
           lineWidth: 5.5,
           glowRadius: Math.min(92, radius * 0.85),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#e11d48', 20, 175, 0.34, 0, startTick);
+        this.emitRadialBurst(x, y, slashMain, 20, 175, 0.34, 0, startTick);
         break;
       }
 
       case 'demonic_flame': {
+        const flameMain = skinPrimary ?? '#dc2626';
+        const flameSub = skinSecondary ?? '#a855f7';
         this.pushTrack({
           kind: 'demonic_flame',
           startTick,
@@ -398,17 +418,20 @@ export class VfxSystem {
           y,
           fromRadius: 16,
           toRadius: radius,
-          color: '#dc2626',
+          color: flameMain,
+          secondaryColor: flameSub,
           lineWidth: 5.5,
           glowRadius: Math.min(96, radius * 0.88),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#dc2626', 18, 150, 0.38, -95, startTick);
-        this.emitRadialBurst(x, y, '#9333ea', 10, 105, 0.34, -110, startTick);
+        this.emitRadialBurst(x, y, flameMain, 18, 150, 0.38, -95, startTick);
+        this.emitRadialBurst(x, y, skinSecondary ?? '#9333ea', 10, 105, 0.34, -110, startTick);
         break;
       }
 
       case 'heavenly_demon': {
+        const demonMain = skinPrimary ?? '#be123c';
+        const demonSub = skinSecondary ?? '#fde047';
         this.pushTrack({
           kind: 'heavenly_demon',
           startTick,
@@ -419,19 +442,20 @@ export class VfxSystem {
           y,
           fromRadius: 20,
           toRadius: radius,
-          color: '#be123c',
+          color: demonMain,
+          secondaryColor: demonSub,
           lineWidth: 7,
           glowRadius: Math.min(120, radius * 0.95),
           gradeRank,
         });
-        this.emitRadialBurst(x, y, '#e11d48', 26, 210, 0.44, 0, startTick);
+        this.emitRadialBurst(x, y, skinPrimary ?? '#e11d48', 26, 210, 0.44, 0, startTick);
         this.emitRadialBurst(x, y, PIXEL_OUTLINE, 16, 165, 0.4, 0, startTick);
-        this.triggerScreenFlash('#be123c', gradeRank >= 6 ? 0.14 : 0.09, 0.16, startTick);
+        this.triggerScreenFlash(demonMain, gradeRank >= 6 ? 0.14 : 0.09, 0.16, startTick);
         break;
       }
 
       default: {
-        this.emitRadialBurst(x, y, color, 12, 120, 0.3, 0, startTick);
+        this.emitRadialBurst(x, y, skinPrimary ?? color, 12, 120, 0.3, 0, startTick);
         break;
       }
     }
@@ -649,8 +673,12 @@ export class VfxSystem {
   }
 
   private pushTrack(
-    cfg: Omit<TrackVfxInstance, 'renderableGround' | 'renderableAir' | 'progress' | 'gradeRank'> & {
+    cfg: Omit<
+      TrackVfxInstance,
+      'renderableGround' | 'renderableAir' | 'progress' | 'gradeRank' | 'secondaryColor'
+    > & {
       readonly gradeRank?: number;
+      readonly secondaryColor?: string;
     },
   ): void {
     if (this.activeTracks.length >= MAX_VFX_INSTANCES) {
@@ -670,6 +698,7 @@ export class VfxSystem {
     inst.fromRadius = cfg.fromRadius;
     inst.toRadius = cfg.toRadius;
     inst.color = cfg.color;
+    inst.secondaryColor = cfg.secondaryColor ?? '#fde047';
     inst.lineWidth = cfg.lineWidth;
     inst.glowRadius = cfg.glowRadius;
     inst.gradeRank = cfg.gradeRank ?? 1;
@@ -691,7 +720,7 @@ export class VfxSystem {
       ctx.globalAlpha = inv * 0.24;
       ctx.beginPath();
       ctx.arc(inst.x, inst.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = '#22c55e';
+      ctx.fillStyle = inst.color;
       ctx.fill();
     } else if (inst.kind === 'heavenly_demon') {
       // Dark-crimson abyssal crater imprint
@@ -739,7 +768,7 @@ export class VfxSystem {
       ctx.beginPath();
       ctx.arc(inst.x, inst.y, radius * 0.62, 0, Math.PI * 2);
       ctx.lineWidth = Math.max(1.2, inst.lineWidth * 0.7 * inv);
-      ctx.strokeStyle = inst.kind === 'heavenly_demon' ? '#f43f5e' : '#facc15';
+      ctx.strokeStyle = inst.secondaryColor;
       ctx.stroke();
     }
 
@@ -805,7 +834,7 @@ export class VfxSystem {
           const by = inst.y + Math.sin(ba) * br;
           ctx.beginPath();
           ctx.arc(bx, by, 5.2 * inv + 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = b % 2 === 0 ? '#fb7185' : '#fda4af';
+          ctx.fillStyle = b % 2 === 0 ? inst.color : inst.secondaryColor;
           ctx.fill();
           ctx.lineWidth = 1.6;
           ctx.strokeStyle = PIXEL_OUTLINE;
@@ -834,12 +863,12 @@ export class VfxSystem {
           ctx.stroke();
         };
         traceBolt(12, PIXEL_OUTLINE);
-        traceBolt(8, '#0284c7');
-        traceBolt(4, '#7dd3fc');
+        traceBolt(8, inst.color);
+        traceBolt(4, inst.secondaryColor);
         traceBolt(2, '#ffffff');
 
         if (inst.gradeRank >= 3) {
-          const seal = this.sprites.kanjiSeal('雷', '#0284c7');
+          const seal = this.sprites.kanjiSeal('雷', inst.color);
           const size = (inst.gradeRank >= 5 ? 74 : 62) * (0.8 + inv * 0.25);
           ctx.globalAlpha = inv * 0.92;
           ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 26 - p * 22 - size * 0.5, size, size);
@@ -850,7 +879,7 @@ export class VfxSystem {
       case 'golden_palm': {
         // Shaolin / Gaebang 금강권·항룡장: golden Hanja '剛' or '龍' martial seal rising above golden shockwave
         const hanja = inst.gradeRank >= 3 ? '龍' : '剛';
-        const seal = this.sprites.kanjiSeal(hanja, '#d97706');
+        const seal = this.sprites.kanjiSeal(hanja, inst.color);
         const pop = p < 0.25 ? 0.7 + (p / 0.25) * 0.45 : 1.15 - (p - 0.25) * 0.2;
         const size = 76 * pop;
         const liftY = inst.y - 16 - easeOutCubic(p) * 26;
@@ -880,11 +909,11 @@ export class VfxSystem {
           ctx.stroke();
 
           ctx.lineWidth = 2.3;
-          ctx.strokeStyle = n % 3 === 0 ? '#a855f7' : '#4ade80';
+          ctx.strokeStyle = n % 3 === 0 ? inst.secondaryColor : inst.color;
           ctx.stroke();
         }
         if (inst.gradeRank >= 2) {
-          const seal = this.sprites.kanjiSeal('毒', '#16a34a');
+          const seal = this.sprites.kanjiSeal('毒', inst.color);
           const size = (inst.gradeRank >= 4 ? 72 : 58) * (0.85 + inv * 0.2);
           ctx.globalAlpha = inv * 0.9;
           ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 22 - p * 20 - size * 0.5, size, size);
@@ -908,11 +937,11 @@ export class VfxSystem {
           ctx.stroke();
         };
         drawSlash(11.5, PIXEL_OUTLINE);
-        drawSlash(6.8, '#e11d48');
-        drawSlash(2.6, '#ffe4e6');
+        drawSlash(6.8, inst.color);
+        drawSlash(2.6, inst.secondaryColor);
 
         if (inst.gradeRank >= 3) {
-          const seal = this.sprites.kanjiSeal('血', '#be123c');
+          const seal = this.sprites.kanjiSeal('血', inst.color);
           const size = (inst.gradeRank >= 5 ? 76 : 62) * (0.85 + inv * 0.2);
           ctx.globalAlpha = inv * 0.92;
           ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 24 - p * 22 - size * 0.5, size, size);
@@ -930,23 +959,23 @@ export class VfxSystem {
         ctx.fill();
         ctx.beginPath();
         ctx.arc(inst.x, inst.y, r * 0.36, 0, Math.PI * 2);
-        ctx.fillStyle = '#f97316';
+        ctx.fillStyle = inst.secondaryColor;
         ctx.fill();
 
         ctx.beginPath();
         ctx.arc(inst.x, inst.y, r, p * 4.5, p * 4.5 + Math.PI * 1.45);
         ctx.lineWidth = 7 * inv;
-        ctx.strokeStyle = '#dc2626';
+        ctx.strokeStyle = inst.color;
         ctx.stroke();
 
         ctx.beginPath();
         ctx.arc(inst.x, inst.y, r * 0.82, -p * 4, -p * 4 + Math.PI * 1.2);
         ctx.lineWidth = 4.5 * inv;
-        ctx.strokeStyle = '#a855f7';
+        ctx.strokeStyle = inst.secondaryColor;
         ctx.stroke();
 
         if (inst.gradeRank >= 3) {
-          const seal = this.sprites.kanjiSeal('魔', '#9333ea');
+          const seal = this.sprites.kanjiSeal('魔', inst.secondaryColor);
           const size = (inst.gradeRank >= 4 ? 72 : 60) * (0.85 + inv * 0.2);
           ctx.globalAlpha = inv * 0.92;
           ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 24 - p * 22 - size * 0.5, size, size);
@@ -983,11 +1012,11 @@ export class VfxSystem {
           ctx.stroke();
         };
         traceFractures(9.5, PIXEL_OUTLINE);
-        traceFractures(5, '#e11d48');
-        traceFractures(1.8, '#fde047');
+        traceFractures(5, inst.color);
+        traceFractures(1.8, inst.secondaryColor);
 
         if (inst.gradeRank >= 4) {
-          const seal = this.sprites.kanjiSeal('天', '#e11d48');
+          const seal = this.sprites.kanjiSeal('天', inst.color);
           const size = (inst.gradeRank >= 6 ? 86 : 70) * (0.85 + inv * 0.25);
           ctx.globalAlpha = inv * 0.95;
           ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 26 - p * 24 - size * 0.5, size, size);

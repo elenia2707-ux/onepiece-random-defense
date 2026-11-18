@@ -1,4 +1,11 @@
-import type { FactionId, GradeDef, MonsterKind, UnitDef } from '../data/types';
+import type {
+  CourtSkinDef,
+  FactionId,
+  GradeDef,
+  HeroSkinDef,
+  MonsterKind,
+  UnitDef,
+} from '../data/types';
 import { paintMonsterChibi, paintUnitChibi, PIXEL_OUTLINE } from './ChibiPainter';
 
 export interface GlyphMetric {
@@ -55,6 +62,7 @@ export class SpriteCache {
   private readonly bannerSpecs = new Map<string, BannerSpec>();
   private readonly sealSpecs = new Map<string, SealSpec>();
   private readonly skillCalloutSpecs = new Map<string, SkillCalloutSpec>();
+  private readonly skinnedVariants = new Map<string, Array<{ key: string; skin: HeroSkinDef }>>();
   private readonly probed = new Set<string>();
   private readonly loadedSheetImages = new Map<string, HTMLImageElement>();
   private readonly pendingSheetCallbacks = new Map<string, Array<(img: HTMLImageElement) => void>>();
@@ -97,6 +105,7 @@ export class SpriteCache {
     this.bannerSpecs.clear();
     this.sealSpecs.clear();
     this.skillCalloutSpecs.clear();
+    this.skinnedVariants.clear();
     this.loadedSheetImages.clear();
     this.pendingSheetCallbacks.clear();
     if (this.glyphCanvas) {
@@ -377,35 +386,301 @@ export class SpriteCache {
 
   /**
    * Unit sprite: 32x32 SD pixel art at x4 (128px), or `public/sprites/{id}.png` when present.
+   * When `skin` is supplied, bakes a cached pixel-palette variant + custom pixel crest (`ctx.filter` = 0).
    */
-  public unitToken(unit: UnitDef, _grade: GradeDef): HTMLCanvasElement {
-    const key = `unit:${unit.id}`;
-    const existing = this.cache.get(key);
-    if (existing) return existing;
+  public unitToken(
+    unit: UnitDef,
+    _grade: GradeDef,
+    skin?: HeroSkinDef | null,
+  ): HTMLCanvasElement {
+    const baseKey = `unit:${unit.id}`;
+    let baseCanvas = this.cache.get(baseKey);
+    if (!baseCanvas) {
+      const created = this.createOffscreen(UNIT_PIXEL_SIZE, UNIT_PIXEL_SIZE);
+      baseCanvas = created;
+      const ctx = created.getContext('2d');
+      if (ctx) paintUnitChibi(ctx, unit.id, UNIT_PIXEL_SIZE);
+      this.cache.set(baseKey, created);
 
-    const c = this.createOffscreen(UNIT_PIXEL_SIZE, UNIT_PIXEL_SIZE);
-    const ctx = c.getContext('2d');
-    if (ctx) paintUnitChibi(ctx, unit.id, UNIT_PIXEL_SIZE);
-    this.cache.set(key, c);
+      this.probeExternal(unit.id, (img) => {
+        this.paintExternal(created, img);
+        this.portraitUrls.delete(`url:${unit.id}`);
+        const variants = this.skinnedVariants.get(unit.id);
+        if (variants) {
+          for (const v of variants) {
+            const vc = this.cache.get(v.key);
+            if (vc) {
+              this.paintSkinnedUnit(vc, created, v.skin);
+            }
+            this.portraitUrls.delete(`url:${unit.id}:skin:${v.skin.id}`);
+          }
+        }
+        this.notifySpriteUpdated();
+      });
+    }
 
-    this.probeExternal(unit.id, (img) => {
-      this.paintExternal(c, img);
-      this.portraitUrls.delete(`url:${unit.id}`);
-      this.notifySpriteUpdated();
-    });
-    return c;
+    if (!skin) return baseCanvas;
+
+    const skinKey = `unit:${unit.id}:skin:${skin.id}`;
+    const existingSkin = this.cache.get(skinKey);
+    if (existingSkin) return existingSkin;
+
+    const skinnedCanvas = this.createOffscreen(baseCanvas.width, baseCanvas.height);
+    this.paintSkinnedUnit(skinnedCanvas, baseCanvas, skin);
+    this.cache.set(skinKey, skinnedCanvas);
+
+    let list = this.skinnedVariants.get(unit.id);
+    if (!list) {
+      list = [];
+      this.skinnedVariants.set(unit.id, list);
+    }
+    if (!list.some((item) => item.key === skinKey)) {
+      list.push({ key: skinKey, skin });
+    }
+    return skinnedCanvas;
   }
 
   /** Cached PNG data URL for DOM portrait badges without creating extra DOM canvases. */
-  public unitPortraitUrl(unit: UnitDef, grade: GradeDef): string {
-    const key = `url:${unit.id}`;
+  public unitPortraitUrl(
+    unit: UnitDef,
+    grade: GradeDef,
+    skin?: HeroSkinDef | null,
+  ): string {
+    const key = skin ? `url:${unit.id}:skin:${skin.id}` : `url:${unit.id}`;
     const existing = this.portraitUrls.get(key);
     if (existing) return existing;
 
-    const sprite = this.unitToken(unit, grade);
+    const sprite = this.unitToken(unit, grade, skin);
     const url = sprite.width > 0 ? sprite.toDataURL('image/png') : '';
     this.portraitUrls.set(key, url);
     return url;
+  }
+
+  /** Cached PNG data URL for courtyard theme skin cards in the wardrobe sheet. */
+  public courtPreviewUrl(court: CourtSkinDef): string {
+    const urlKey = `url:court:${court.id}`;
+    const existingUrl = this.portraitUrls.get(urlKey);
+    if (existingUrl) return existingUrl;
+
+    const canvasKey = `court_icon:${court.id}`;
+    let c = this.cache.get(canvasKey);
+    if (!c) {
+      c = this.createOffscreen(96, 96);
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        const p = 3; // 32x32 grid -> 96x96
+        const dot = (gx: number, gy: number, gw: number, gh: number, col: string): void => {
+          ctx.fillStyle = col;
+          ctx.fillRect(gx * p, gy * p, gw * p, gh * p);
+        };
+        // Sky backdrop
+        dot(0, 0, 32, 32, '#0f172a');
+        dot(1, 1, 30, 14, court.tintAlpha > 0 ? hexWithAlpha(court.tintColor, 0.55) : '#1e293b');
+        // Moon / Sun disk
+        dot(21, 3, 6, 6, court.lanternColor);
+        dot(22, 4, 4, 4, '#fffbeb');
+        // Pagoda tiled roof silhouette
+        dot(3, 10, 26, 2, PIXEL_OUTLINE);
+        dot(5, 8, 22, 2, PIXEL_OUTLINE);
+        dot(6, 9, 20, 1, court.petalPrimary);
+        // Jade arena courtyard floor
+        dot(2, 13, 28, 17, PIXEL_OUTLINE);
+        dot(3, 14, 26, 15, '#cbd5e1');
+        dot(5, 16, 22, 11, '#f1f5f9');
+        if (court.tintAlpha > 0) {
+          dot(3, 14, 26, 15, hexWithAlpha(court.tintColor, Math.min(0.42, court.tintAlpha * 2.4)));
+        }
+        // Inner tile grid lines
+        dot(15, 16, 2, 11, '#94a3b8');
+        dot(5, 21, 22, 1, '#94a3b8');
+        // Twin glowing lanterns
+        for (const lx of [4, 25]) {
+          dot(lx, 12, 3, 4, PIXEL_OUTLINE);
+          dot(lx + 1, 13, 1, 2, court.lanternColor);
+        }
+        // Drifting blossom / ember petals
+        dot(9, 18, 2, 2, court.petalPrimary);
+        dot(20, 23, 2, 2, court.petalPrimary);
+        dot(13, 25, 2, 1, court.petalSecondary);
+        dot(23, 17, 1, 2, court.petalSecondary);
+      }
+      this.cache.set(canvasKey, c);
+    }
+
+    const url = c.width > 0 ? c.toDataURL('image/png') : '';
+    this.portraitUrls.set(urlKey, url);
+    return url;
+  }
+
+  /**
+   * One-time offscreen pixel palette remapping + custom pixel crest synthesis.
+   * Preserves dark ink outlines (`#1a1224`), warm skin tones, and pure white glints; zero `ctx.filter`.
+   */
+  private paintSkinnedUnit(
+    target: HTMLCanvasElement,
+    base: HTMLCanvasElement,
+    skin: HeroSkinDef,
+  ): void {
+    const w = Math.max(1, base.width);
+    const h = Math.max(1, base.height);
+    target.width = w;
+    target.height = h;
+    const ctx = target.getContext('2d');
+    if (!ctx) return;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(base, 0, 0);
+
+    try {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      const minX = w * 0.22;
+      const maxX = w * 0.78;
+      const minY = h * 0.16;
+      const maxY = h * 0.72;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const a = data[i + 3]!;
+        if (a < 16) continue;
+
+        const r = data[i]!;
+        const g = data[i + 1]!;
+        const b = data[i + 2]!;
+        const maxC = r > g ? (r > b ? r : b) : g > b ? g : b;
+        const minC = r < g ? (r < b ? r : b) : g < b ? g : b;
+
+        // Keep dark ink outlines intact
+        if (maxC <= 56) continue;
+        // Keep pure specular white glints crisp
+        if (minC >= 242) continue;
+
+        // Preserve central face/hand warm skin tones
+        const pIdx = i >> 2;
+        const px = pIdx % w;
+        const py = (pIdx - px) / w;
+        if (
+          px >= minX &&
+          px <= maxX &&
+          py >= minY &&
+          py <= maxY &&
+          r >= 165 &&
+          g >= 115 &&
+          b >= 85 &&
+          r > g &&
+          g >= b &&
+          r - b >= 22 &&
+          r - b <= 98 &&
+          r - g >= 8 &&
+          r - g <= 58
+        ) {
+          continue;
+        }
+
+        const [origH, origS, origL] = rgbToHsl(r, g, b);
+        const shiftedH = (((skin.robeHue + (origH - 180) * 0.18) % 360) + 360) % 360;
+        const shiftedS =
+          origS < 0.09
+            ? origL > 0.88
+              ? origS
+              : Math.min(0.92, Math.max(0.28, 0.44 * skin.satMult))
+            : Math.min(1, Math.max(0.14, origS * skin.satMult));
+        const shiftedL = Math.min(0.94, Math.max(0.12, origL + skin.lumOffset));
+        const [nr, ng, nb] = hslToRgb(shiftedH, shiftedS, shiftedL);
+        data[i] = nr;
+        data[i + 1] = ng;
+        data[i + 2] = nb;
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    } catch {
+      // Safe fallback in non-pixel headless test contexts
+    }
+
+    // Composite bespoke pixel-art crest behind the hero silhouette
+    const step = Math.max(2, Math.round(w / 32));
+    const block = (gx: number, gy: number, gw: number, gh: number, col: string): void => {
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(gx * step), Math.round(gy * step), Math.round(gw * step), Math.round(gh * step));
+    };
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-over';
+    switch (skin.crestKind) {
+      case 'halo': {
+        // Radiant pixel Dharma/Immortal ring behind upper torso & head
+        const ringPts: ReadonlyArray<readonly [number, number]> = [
+          [12, 3], [13, 3], [14, 2], [15, 2], [16, 2], [17, 2], [18, 3], [19, 3],
+          [9, 5], [10, 4], [21, 4], [22, 5],
+          [7, 7], [8, 6], [23, 6], [24, 7],
+          [6, 9], [6, 10], [6, 11], [6, 12], [6, 13], [6, 14],
+          [25, 9], [25, 10], [25, 11], [25, 12], [25, 13], [25, 14],
+          [7, 15], [8, 16], [23, 16], [24, 15],
+        ];
+        for (const [rx, ry] of ringPts) {
+          block(rx, ry, 1, 1, (rx + ry) % 2 === 0 ? skin.secondaryColor : skin.primaryColor);
+        }
+        // Cardinal rays + dark pixel outline behind ring
+        block(15, 0, 2, 2, skin.secondaryColor);
+        block(4, 11, 2, 2, skin.secondaryColor);
+        block(26, 11, 2, 2, skin.secondaryColor);
+        for (const [rx, ry] of ringPts) {
+          block(rx - 1, ry, 3, 1, PIXEL_OUTLINE);
+          block(rx, ry - 1, 1, 3, PIXEL_OUTLINE);
+        }
+        block(14, 0, 4, 3, PIXEL_OUTLINE);
+        block(3, 10, 3, 4, PIXEL_OUTLINE);
+        block(26, 10, 3, 4, PIXEL_OUTLINE);
+        break;
+      }
+
+      case 'crown': {
+        // Sovereign 5-prong imperial crest floating above/behind crown
+        block(11, 4, 10, 3, skin.secondaryColor);
+        block(10, 2, 2, 3, skin.secondaryColor);
+        block(15, 1, 2, 4, skin.secondaryColor);
+        block(20, 2, 2, 3, skin.secondaryColor);
+        block(15, 3, 2, 2, skin.primaryColor);
+        // Outline
+        block(9, 1, 4, 6, PIXEL_OUTLINE);
+        block(14, 0, 4, 7, PIXEL_OUTLINE);
+        block(19, 1, 4, 6, PIXEL_OUTLINE);
+        block(10, 3, 12, 5, PIXEL_OUTLINE);
+        break;
+      }
+
+      case 'blades': {
+        // Twin levitating spirit swords flanking left & right shoulders
+        for (const bx of [4, 26]) {
+          block(bx, 6, 2, 2, '#ffffff');
+          block(bx, 8, 2, 9, skin.primaryColor);
+          block(bx - 1, 17, 4, 1, skin.secondaryColor);
+          block(bx, 18, 2, 2, skin.secondaryColor);
+          // Outline
+          block(bx - 1, 5, 4, 16, PIXEL_OUTLINE);
+          block(bx - 2, 16, 6, 3, PIXEL_OUTLINE);
+        }
+        break;
+      }
+
+      case 'orbs': {
+        // Four celestial spirit pearls orbiting in an arc
+        const orbCenters: ReadonlyArray<readonly [number, number]> = [
+          [5, 15],
+          [7, 7],
+          [23, 7],
+          [25, 15],
+        ];
+        for (const [ox, oy] of orbCenters) {
+          block(ox, oy, 2, 2, skin.primaryColor);
+          block(ox, oy, 1, 1, skin.secondaryColor);
+          block(ox - 1, oy - 1, 4, 4, PIXEL_OUTLINE);
+        }
+        break;
+      }
+    }
+    ctx.restore();
   }
 
   /** Cached PNG data URL for boss / monster pixel portrait badges in DOM HUD. */
@@ -717,4 +992,51 @@ export function hexWithAlpha(hex: string, alpha: number): string {
   const g = parseInt(cleaned.slice(2, 4), 16);
   const b = parseInt(cleaned.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) * 0.5;
+  if (max === min) {
+    return [0, 0, l];
+  }
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === rn) {
+    h = (gn - bn) / d + (gn < bn ? 6 : 0);
+  } else if (max === gn) {
+    h = (bn - rn) / d + 2;
+  } else {
+    h = (rn - gn) / d + 4;
+  }
+  return [h * 60, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s <= 0) {
+    const v = Math.round(l * 255);
+    return [v, v, v];
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hk = (((h % 360) + 360) % 360) / 360;
+  const hue2rgb = (tIn: number): number => {
+    let t = tIn;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [
+    Math.round(hue2rgb(hk + 1 / 3) * 255),
+    Math.round(hue2rgb(hk) * 255),
+    Math.round(hue2rgb(hk - 1 / 3) * 255),
+  ];
 }

@@ -1,7 +1,7 @@
 import type { SlotRef } from '../core/CommandQueue';
 import type { Simulation } from '../core/Simulation';
 import { TICK_DT } from '../core/time';
-import type { FactionId } from '../data/types';
+import type { CourtSkinDef, FactionId, HeroSkinDef, UnitId } from '../data/types';
 import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../platform/Viewport';
 import type { VfxSystem } from '../vfx/VfxSystem';
 import { expandedSlotRect } from './BackgroundPainter';
@@ -66,7 +66,7 @@ const DEFAULT_PROFILE: UnitCombatProfile = {
 };
 
 /**
- * Bespoke martial weapon & sect visual profile for all 30 units in `units.json`.
+ * Bespoke martial weapon & sect visual profile for all 32 units in `units.json`.
  * Drives multi-phase weapon-swing choreography, blade/staff/palm smears, and sect projectiles.
  */
 const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> = {
@@ -80,6 +80,13 @@ const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> = {
     sect: 'hwasan',
     primary: '#38bdf8',
     secondary: '#f472b6',
+    dualWield: true,
+  },
+  sword_immortal: {
+    style: 'sword',
+    sect: 'namgung',
+    primary: '#38bdf8',
+    secondary: '#fde047',
     dualWield: true,
   },
 
@@ -132,6 +139,13 @@ const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> = {
   blood_blade: { style: 'saber', sect: 'sapa_blade', primary: '#e11d48', secondary: '#fecdd3' },
   blood_demon: { style: 'saber', sect: 'sapa_blade', primary: '#be123c', secondary: '#fda4af' },
   mad_demon: { style: 'palm_fist', sect: 'mad_demon', primary: '#e11d48', secondary: '#fde047' },
+  asura_emperor: {
+    style: 'saber',
+    sect: 'sapa_blade',
+    primary: '#e11d48',
+    secondary: '#4ade80',
+    dualWield: true,
+  },
 
   // 천마신교 · 마교 (흑살도·백골창·흑풍쌍검·마염·천마검)
   cult_initiate: { style: 'saber', sect: 'magyo_sword', primary: '#be123c', secondary: '#fda4af' },
@@ -186,12 +200,22 @@ export class Renderer {
   private readonly sprites: SpriteCache;
   private readonly vfx: VfxSystem;
   private readonly buckets: IRenderable[][];
+  private equippedHeroSkins: ReadonlyMap<UnitId, HeroSkinDef> = new Map();
+  private courtSkin: CourtSkinDef | null = null;
 
   public constructor(stack: CanvasStack, sprites: SpriteCache, vfx: VfxSystem) {
     this.stack = stack;
     this.sprites = sprites;
     this.vfx = vfx;
     this.buckets = Array.from({ length: RENDER_LAYER_COUNT }, () => []);
+  }
+
+  public setCosmetics(
+    heroSkinsByUnit: ReadonlyMap<UnitId, HeroSkinDef>,
+    courtSkin: CourtSkinDef | null,
+  ): void {
+    this.equippedHeroSkins = heroSkinsByUnit;
+    this.courtSkin = courtSkin;
   }
 
   public render(
@@ -255,6 +279,10 @@ export class Renderer {
    * - Drifting Mount Hua plum petals, bamboo leaves & golden inner-qi motes
    */
   private collectAmbientMurimWorld(simTimeSec: number): void {
+    const lanternCol = this.courtSkin?.lanternColor ?? '#f97316';
+    const petalPrimary = this.courtSkin?.petalPrimary ?? '#fb7185';
+    const petalSecondary = this.courtSkin?.petalSecondary ?? '#fda4af';
+
     this.buckets[RenderLayer.AirFx]!.push({
       layer: RenderLayer.AirFx,
       sortY: 9400,
@@ -262,7 +290,7 @@ export class Renderer {
         const prevAlpha = ctx.globalAlpha;
 
         // 1. Warm breathing candlelight on temple & bridge lanterns
-        const lanternGlow = this.sprites.glow('#f97316', 28);
+        const lanternGlow = this.sprites.glow(lanternCol, 28);
         for (let i = 0; i < TEMPLE_LANTERNS.length; i++) {
           const lt = TEMPLE_LANTERNS[i]!;
           const flicker = 0.24 + Math.sin(simTimeSec * 4.2 + i * 1.37) * 0.08;
@@ -301,28 +329,28 @@ export class Renderer {
           ctx.globalAlpha = prevAlpha * 0.72;
 
           if (p % 3 === 0) {
-            // Pink Mount Hua plum petal
+            // Theme petal / ember
             ctx.beginPath();
             ctx.ellipse(0, 0, 4.2, 2.5, 0, 0, Math.PI * 2);
-            ctx.fillStyle = p % 2 === 0 ? '#fb7185' : '#fda4af';
+            ctx.fillStyle = p % 2 === 0 ? petalPrimary : petalSecondary;
             ctx.fill();
             ctx.lineWidth = 1;
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
           } else if (p % 3 === 1) {
-            // Emerald bamboo leaf
+            // Emerald bamboo leaf (or secondary motif when court skin is active)
             ctx.beginPath();
             ctx.ellipse(0, 0, 5.2, 1.8, 0, 0, Math.PI * 2);
-            ctx.fillStyle = '#4ade80';
+            ctx.fillStyle = this.courtSkin ? petalSecondary : '#4ade80';
             ctx.fill();
             ctx.lineWidth = 1;
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
           } else {
-            // Warm golden lantern mote
+            // Warm lantern mote
             ctx.beginPath();
             ctx.arc(0, 0, 2.1, 0, Math.PI * 2);
-            ctx.fillStyle = '#fde047';
+            ctx.fillStyle = this.courtSkin ? lanternCol : '#fde047';
             ctx.fill();
           }
           ctx.restore();
@@ -338,6 +366,126 @@ export class Renderer {
     interaction: InteractionOverlayState,
     simTimeSec: number,
   ): void {
+    // 1. Live 6x3 orthogonal supportAura qi links & buffed-tile corner emblems
+    const tileBuffs = sim.computeFieldTileBuffs();
+    const fieldCap = sim.board.field.capacity;
+    let hasAnyAuraLink = false;
+    for (let idx = 0; idx < fieldCap; idx++) {
+      if (tileBuffs[idx]!.atkPct > 0 || tileBuffs[idx]!.speedPct > 0) {
+        hasAnyAuraLink = true;
+        break;
+      }
+    }
+    if (hasAnyAuraLink) {
+      this.buckets[RenderLayer.GroundFx]!.push({
+        layer: RenderLayer.GroundFx,
+        sortY: 180,
+        render: (ctx) => {
+          const prevA = ctx.globalAlpha;
+          const pulse = 0.65 + Math.sin(simTimeSec * 4.5) * 0.25;
+
+          // Draw qi conduit lines from totem heroes to occupied orthogonal neighbors
+          for (let fIdx = 0; fIdx < fieldCap; fIdx++) {
+            const uid = sim.board.field.getUidAt(fIdx);
+            if (uid === null) continue;
+            const uEnt = sim.getUnitByUid(uid);
+            const uDef = uEnt ? sim.data.unitsById.get(uEnt.unitId) : undefined;
+            if (!uDef?.supportAura) continue;
+
+            const fromPos = sim.board.getSlotCenter({ area: 'field', index: fIdx });
+            const neighbors = sim.getOrthogonalFieldNeighbors(fIdx);
+            for (let k = 0; k < neighbors.length; k++) {
+              const nIdx = neighbors[k]!;
+              if (sim.board.field.getUidAt(nIdx) === null) continue;
+              const toPos = sim.board.getSlotCenter({ area: 'field', index: nIdx });
+
+              ctx.save();
+              ctx.globalAlpha = prevA * 0.55 * pulse;
+              ctx.setLineDash([6, 6]);
+              ctx.lineDashOffset = -simTimeSec * 22;
+              ctx.beginPath();
+              ctx.moveTo(fromPos.x, fromPos.y + 18);
+              ctx.lineTo(toPos.x, toPos.y + 18);
+              ctx.lineWidth = 4.2;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2.2;
+              ctx.strokeStyle = '#34d399';
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+
+          // Draw compact jade-gold corner pip on occupied buffed tiles
+          for (let fIdx = 0; fIdx < fieldCap; fIdx++) {
+            const buff = tileBuffs[fIdx]!;
+            if (buff.atkPct <= 0 && buff.speedPct <= 0) continue;
+            if (sim.board.field.getUidAt(fIdx) === null) continue;
+            const r = expandedSlotRect(sim.board, { area: 'field', index: fIdx });
+            const px = r.x + 10;
+            const py = r.y + 10;
+            ctx.globalAlpha = prevA * 0.92;
+            ctx.beginPath();
+            ctx.moveTo(px, py - 5);
+            ctx.lineTo(px + 5, py);
+            ctx.lineTo(px, py + 5);
+            ctx.lineTo(px - 5, py);
+            ctx.closePath();
+            ctx.fillStyle = buff.atkPct >= 25 ? '#facc15' : '#34d399';
+            ctx.fill();
+            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+          }
+          ctx.globalAlpha = prevA;
+        },
+      });
+    }
+
+    // 2. Highlight 4 orthogonal neighbor tiles when selecting or dragging a supportAura totem hero
+    let totemPreviewFieldIdx: number | null = null;
+    if (interaction.draggingFromSlot && interaction.hoverTargetSlot?.area === 'field') {
+      const dUid = sim.board.getUid(interaction.draggingFromSlot);
+      const dUnit = dUid !== null ? sim.getUnitByUid(dUid) : undefined;
+      const dDef = dUnit ? sim.data.unitsById.get(dUnit.unitId) : undefined;
+      if (dDef?.supportAura) {
+        totemPreviewFieldIdx = interaction.hoverTargetSlot.index;
+      }
+    } else if (interaction.selectedSlot?.area === 'field') {
+      const sUid = sim.board.getUid(interaction.selectedSlot);
+      const sUnit = sUid !== null ? sim.getUnitByUid(sUid) : undefined;
+      const sDef = sUnit ? sim.data.unitsById.get(sUnit.unitId) : undefined;
+      if (sDef?.supportAura) {
+        totemPreviewFieldIdx = interaction.selectedSlot.index;
+      }
+    }
+
+    if (totemPreviewFieldIdx !== null) {
+      const neighbors = sim.getOrthogonalFieldNeighbors(totemPreviewFieldIdx);
+      if (neighbors.length > 0) {
+        this.buckets[RenderLayer.GroundFx]!.push({
+          layer: RenderLayer.GroundFx,
+          sortY: 195,
+          render: (ctx) => {
+            const pulse = 0.72 + Math.sin(simTimeSec * 6.5) * 0.28;
+            for (let k = 0; k < neighbors.length; k++) {
+              const nRect = expandedSlotRect(sim.board, { area: 'field', index: neighbors[k]! });
+              ctx.beginPath();
+              ctx.roundRect(nRect.x + 1, nRect.y + 1, nRect.w - 2, nRect.h - 2, 10);
+              ctx.fillStyle = `rgba(16, 185, 129, ${(0.2 * pulse).toFixed(3)})`;
+              ctx.fill();
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2.2;
+              ctx.strokeStyle = '#34d399';
+              ctx.stroke();
+            }
+          },
+        });
+      }
+    }
+
     const sel = interaction.selectedSlot;
     if (sel) {
       const rect = expandedSlotRect(sim.board, sel);
@@ -438,6 +586,8 @@ export class Renderer {
 
       const isStunned = currentTick < m.stunUntilTick;
       const isSlowed = currentTick < m.slowUntilTick;
+      const isArmorShredded = currentTick < m.shredExpireTick && m.armorShred > 0;
+      const isArmorBroken = isArmorShredded && m.armor - m.armorShred < 0;
       const drawSize = m.isBoss ? BOSS_SPRITE : MOB_SPRITE;
       const strideSin = isStunned
         ? 0
@@ -472,6 +622,31 @@ export class Renderer {
             ctx.lineWidth = 2.6;
             ctx.strokeStyle = '#facc15';
             ctx.stroke();
+          },
+        });
+      }
+
+      if (isArmorShredded) {
+        this.buckets[RenderLayer.GroundFx]!.push({
+          layer: RenderLayer.GroundFx,
+          sortY: y - 1.5,
+          render: (ctx) => {
+            ctx.save();
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.ellipse(
+              x,
+              y + m.radius * 0.72,
+              m.radius * 1.14,
+              m.radius * 0.5,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.strokeStyle = isArmorBroken ? '#f43f5e' : '#c084fc';
+            ctx.lineWidth = isArmorBroken ? 2.8 : 2.1;
+            ctx.stroke();
+            ctx.restore();
           },
         });
       }
@@ -516,7 +691,7 @@ export class Renderer {
         },
       });
 
-      if (m.isBoss || m.hp < m.maxHp || isStunned) {
+      if (m.isBoss || m.hp < m.maxHp || isStunned || isArmorShredded) {
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
           sortY: y + 1,
@@ -557,6 +732,32 @@ export class Renderer {
               ctx.fill();
             }
 
+            if (isArmorShredded) {
+              // Cracked shield icon at left edge of HP bar (bright crimson when broken < 0)
+              const sx = bx - 8;
+              const sy = by + barH * 0.5;
+              ctx.beginPath();
+              ctx.moveTo(sx, sy - 5);
+              ctx.lineTo(sx + 4.5, sy - 2.5);
+              ctx.lineTo(sx + 3.5, sy + 3);
+              ctx.lineTo(sx, sy + 5.5);
+              ctx.lineTo(sx - 3.5, sy + 3);
+              ctx.lineTo(sx - 4.5, sy - 2.5);
+              ctx.closePath();
+              ctx.fillStyle = isArmorBroken ? '#f43f5e' : '#a855f7';
+              ctx.fill();
+              ctx.lineWidth = 1.5;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              // Crack slash across shield
+              ctx.beginPath();
+              ctx.moveTo(sx - 2, sy - 3);
+              ctx.lineTo(sx + 2, sy + 3);
+              ctx.lineWidth = 1.4;
+              ctx.strokeStyle = '#fffbeb';
+              ctx.stroke();
+            }
+
             if (isStunned) {
               const spin = (currentTick + alpha) * 0.35;
               for (let s = 0; s < 3; s++) {
@@ -592,7 +793,15 @@ export class Renderer {
       const grade = sim.data.gradesById.get(u.grade);
       if (!def || !grade) continue;
 
-      const profile = UNIT_COMBAT_PROFILES[u.unitId] ?? DEFAULT_PROFILE;
+      const equippedSkin = this.equippedHeroSkins.get(u.unitId) ?? null;
+      const baseProfile = UNIT_COMBAT_PROFILES[u.unitId] ?? DEFAULT_PROFILE;
+      const profile: UnitCombatProfile = equippedSkin
+        ? {
+            ...baseProfile,
+            primary: equippedSkin.primaryColor,
+            secondary: equippedSkin.secondaryColor,
+          }
+        : baseProfile;
 
       const isDraggedOrigin =
         draggingFrom !== null &&
@@ -709,7 +918,7 @@ export class Renderer {
       const drawY = baseY + stepY;
       const footY = baseY + (isField ? FIELD_FOOT : BENCH_FOOT);
       const drawFootY = footY + stepY;
-      const sprite = this.sprites.unitToken(def, grade);
+      const sprite = this.sprites.unitToken(def, grade, equippedSkin);
       const facingLeft = isField && u.attackDirX < -0.15;
 
       // 1. Faction-distinct martial formation ring under feet (정파 팔괘진 / 사파 혈독진 / 마교 천마혈진)
@@ -727,6 +936,8 @@ export class Renderer {
             grade.color,
             simTimeSec,
             u.uid,
+            equippedSkin?.primaryColor,
+            equippedSkin?.secondaryColor,
           );
         },
       });
@@ -803,13 +1014,13 @@ export class Renderer {
         });
       }
 
-      // 5. Subtle floating sect aura motes on high-tier masters (절정 rank >= 4)
-      if (isField && grade.rank >= 4 && !isDraggedOrigin) {
+      // 5. Subtle floating sect aura motes on high-tier masters (절정 rank >= 4 or skinned hero)
+      if (isField && (grade.rank >= 4 || equippedSkin !== null) && !isDraggedOrigin) {
         this.buckets[RenderLayer.AirFx]!.push({
           layer: RenderLayer.AirFx,
           sortY: drawY + 2,
           render: (ctx) => {
-            const count = grade.rank >= 5 ? 3 : 2;
+            const count = grade.rank >= 5 || equippedSkin ? 3 : 2;
             const prevA = ctx.globalAlpha;
             ctx.globalAlpha = prevA * 0.85;
             for (let m = 0; m < count; m++) {
@@ -891,24 +1102,28 @@ export class Renderer {
     gradeColor: string,
     simTimeSec: number,
     uid: number,
+    skinPrimary?: string,
+    skinSecondary?: string,
   ): void {
     const pulse = 1 + Math.sin(simTimeSec * 3.8 + uid) * 0.06;
     const rx = (isField ? 31 : 28) * pulse;
     const ry = rx * 0.4;
     const rot = simTimeSec * (rank >= 5 ? 1.9 : 1.2);
 
-    if (rank >= 4) {
+    if (rank >= 4 || skinPrimary) {
       const glowColor =
-        faction === 'demonic' ? '#e11d48' : faction === 'unorthodox' ? '#22c55e' : gradeColor;
+        skinPrimary ??
+        (faction === 'demonic' ? '#e11d48' : faction === 'unorthodox' ? '#22c55e' : gradeColor);
       const glow = this.sprites.glow(glowColor, 38);
       const prevA = ctx.globalAlpha;
-      ctx.globalAlpha = rank >= 5 ? 0.5 : 0.34;
+      ctx.globalAlpha = rank >= 5 || skinPrimary ? 0.5 : 0.34;
       ctx.drawImage(glow, cx - 38, cy - 19, 76, 38);
       ctx.globalAlpha = prevA;
     }
 
     if (faction === 'orthodox') {
       // Octagonal Bagua formation (팔괘진)
+      const mainCol = skinPrimary ?? gradeColor;
       ctx.beginPath();
       for (let k = 0; k < 8; k++) {
         const a = rot * 0.65 + (k * Math.PI) / 4;
@@ -918,20 +1133,20 @@ export class Renderer {
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      ctx.fillStyle = hexWithAlpha(gradeColor, rank >= 3 ? 0.28 : 0.2);
+      ctx.fillStyle = hexWithAlpha(mainCol, rank >= 3 ? 0.28 : 0.2);
       ctx.fill();
       ctx.lineWidth = 4;
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
       ctx.lineWidth = rank >= 4 ? 2.6 : 2;
-      ctx.strokeStyle = gradeColor;
+      ctx.strokeStyle = mainCol;
       ctx.stroke();
 
       if (rank >= 2) {
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx * 0.68, ry * 0.68, 0, 0, Math.PI * 2);
         ctx.lineWidth = 1.6;
-        ctx.strokeStyle = rank >= 4 ? '#facc15' : '#bae6fd';
+        ctx.strokeStyle = skinSecondary ?? (rank >= 4 ? '#facc15' : '#bae6fd');
         ctx.stroke();
       }
     } else if (faction === 'unorthodox') {
@@ -947,13 +1162,13 @@ export class Renderer {
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      ctx.fillStyle = hexWithAlpha(rank >= 3 ? '#16a34a' : gradeColor, 0.25);
+      ctx.fillStyle = hexWithAlpha(skinPrimary ?? (rank >= 3 ? '#16a34a' : gradeColor), 0.25);
       ctx.fill();
       ctx.lineWidth = 3.8;
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
       ctx.lineWidth = 2.1;
-      ctx.strokeStyle = rank >= 4 ? '#f43f5e' : gradeColor;
+      ctx.strokeStyle = skinSecondary ?? (rank >= 4 ? '#f43f5e' : gradeColor);
       ctx.stroke();
     } else {
       // Obsidian-crimson Demonic Cult star seal (천마혈진)
@@ -965,7 +1180,7 @@ export class Renderer {
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
       ctx.lineWidth = 2.2;
-      ctx.strokeStyle = rank >= 4 ? '#e11d48' : gradeColor;
+      ctx.strokeStyle = skinPrimary ?? (rank >= 4 ? '#e11d48' : gradeColor);
       ctx.stroke();
 
       const spikes = rank >= 4 ? 8 : 6;
@@ -976,7 +1191,7 @@ export class Renderer {
         ctx.lineTo(cx + Math.cos(a) * (rx + 4.5), cy + Math.sin(a) * (ry + 2.2));
       }
       ctx.lineWidth = 2;
-      ctx.strokeStyle = rank >= 5 ? '#fde047' : '#fb7185';
+      ctx.strokeStyle = skinSecondary ?? (rank >= 5 ? '#fde047' : '#fb7185');
       ctx.stroke();
     }
   }
@@ -1337,13 +1552,16 @@ export class Renderer {
           const x = p.prevX + (p.currX - p.prevX) * alpha;
           const y = p.prevY + (p.currY - p.prevY) * alpha;
           const ang = Math.atan2(y - p.fromY, x - p.fromX);
-          const profile = UNIT_COMBAT_PROFILES[p.unitId] ?? DEFAULT_PROFILE;
+          const skin = this.equippedHeroSkins.get(p.unitId);
+          const baseProfile = UNIT_COMBAT_PROFILES[p.unitId] ?? DEFAULT_PROFILE;
+          const cMain = skin ? skin.primaryColor : baseProfile.primary;
+          const cSub = skin ? skin.secondaryColor : baseProfile.secondary;
           const scale = p.isSkill ? 1.38 : p.isCrit ? 1.16 : 1;
 
           ctx.save();
           ctx.translate(x, y);
 
-          switch (profile.sect) {
+          switch (baseProfile.sect) {
             case 'hwasan': {
               // Curved pink-crimson Mount Hua crescent sword-qi + trailing plum petal
               ctx.rotate(ang);
@@ -1352,7 +1570,7 @@ export class Renderer {
               ctx.arc(-2, 0, r, -Math.PI * 0.44, Math.PI * 0.44);
               ctx.quadraticCurveTo(r * 0.35, 0, Math.cos(-Math.PI * 0.44) * r - 2, Math.sin(-Math.PI * 0.44) * r);
               ctx.closePath();
-              ctx.fillStyle = p.isSkill ? '#f43f5e' : profile.primary;
+              ctx.fillStyle = skin ? cMain : p.isSkill ? '#f43f5e' : cMain;
               ctx.fill();
               ctx.lineWidth = 2.4;
               ctx.strokeStyle = PIXEL_OUTLINE;
@@ -1360,7 +1578,7 @@ export class Renderer {
 
               ctx.beginPath();
               ctx.arc(-11 * scale, 0, 2.8 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = '#fda4af';
+              ctx.fillStyle = skin ? cSub : '#fda4af';
               ctx.fill();
               break;
             }
@@ -1376,20 +1594,20 @@ export class Renderer {
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 3.8 * scale;
-              ctx.strokeStyle = '#38bdf8';
+              ctx.strokeStyle = skin ? cMain : '#38bdf8';
               ctx.stroke();
 
               ctx.rotate(simTimeSec * 14 + p.id);
               ctx.beginPath();
               ctx.arc(0, 0, 5.2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = '#ffffff';
+              ctx.fillStyle = skin ? cSub : '#ffffff';
               ctx.fill();
               ctx.beginPath();
               ctx.arc(0, 0, 5.2 * scale, 0, Math.PI);
               ctx.fillStyle = PIXEL_OUTLINE;
               ctx.fill();
               ctx.lineWidth = 1.6;
-              ctx.strokeStyle = '#06b6d4';
+              ctx.strokeStyle = skin ? cMain : '#06b6d4';
               ctx.stroke();
               break;
             }
@@ -1408,10 +1626,10 @@ export class Renderer {
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 4.2 * scale;
-              ctx.strokeStyle = profile.primary;
+              ctx.strokeStyle = cMain;
               ctx.stroke();
               ctx.lineWidth = 1.8 * scale;
-              ctx.strokeStyle = '#fef08a';
+              ctx.strokeStyle = skin ? cSub : '#fef08a';
               ctx.stroke();
               break;
             }
@@ -1424,15 +1642,15 @@ export class Renderer {
               ctx.lineTo(0, 0);
               ctx.lineCap = 'round';
               ctx.lineWidth = 8.5 * scale;
-              ctx.strokeStyle = hexWithAlpha('#f59e0b', 0.55);
+              ctx.strokeStyle = hexWithAlpha(skin ? cMain : '#f59e0b', 0.55);
               ctx.stroke();
               drawClenchedFist(
                 ctx,
                 2 * scale,
                 0,
                 0.78 * scale,
-                p.isSkill ? '#fef08a' : '#fbbf24',
-                '#f59e0b',
+                skin ? cSub : p.isSkill ? '#fef08a' : '#fbbf24',
+                skin ? cMain : '#f59e0b',
                 '#c2410c',
               );
               break;
@@ -1449,11 +1667,11 @@ export class Renderer {
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 4 * scale;
-              ctx.strokeStyle = p.isSkill ? '#4ade80' : profile.primary;
+              ctx.strokeStyle = skin ? cMain : p.isSkill ? '#4ade80' : cMain;
               ctx.stroke();
               ctx.beginPath();
               ctx.arc(1, 0, 3.2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = '#dcfce7';
+              ctx.fillStyle = skin ? cSub : '#dcfce7';
               ctx.fill();
               break;
             }
@@ -1463,14 +1681,14 @@ export class Renderer {
               if (p.unitId === 'poison_healer') {
                 ctx.beginPath();
                 ctx.arc(0, 0, 6 * scale, 0, Math.PI * 2);
-                ctx.fillStyle = '#22c55e';
+                ctx.fillStyle = skin ? cMain : '#22c55e';
                 ctx.fill();
                 ctx.lineWidth = 2.4;
                 ctx.strokeStyle = PIXEL_OUTLINE;
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(-2, -2, 2.2 * scale, 0, Math.PI * 2);
-                ctx.fillStyle = '#d8b4fe';
+                ctx.fillStyle = skin ? cSub : '#d8b4fe';
                 ctx.fill();
               } else {
                 ctx.rotate(simTimeSec * 22 + p.id * 1.7);
@@ -1480,14 +1698,14 @@ export class Renderer {
                 ctx.lineTo(10 * scale, 0);
                 ctx.lineTo(0, 3.5 * scale);
                 ctx.closePath();
-                ctx.fillStyle = '#4ade80';
+                ctx.fillStyle = skin ? cMain : '#4ade80';
                 ctx.fill();
                 ctx.lineWidth = 2.2;
                 ctx.strokeStyle = PIXEL_OUTLINE;
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(0, 0, 2 * scale, 0, Math.PI * 2);
-                ctx.fillStyle = '#a855f7';
+                ctx.fillStyle = skin ? cSub : '#a855f7';
                 ctx.fill();
               }
               break;
@@ -1506,10 +1724,10 @@ export class Renderer {
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 4.4 * scale;
-              ctx.strokeStyle = profile.sect === 'haomun' ? '#e2e8f0' : '#e11d48';
+              ctx.strokeStyle = skin ? cMain : baseProfile.sect === 'haomun' ? '#e2e8f0' : '#e11d48';
               ctx.stroke();
               ctx.lineWidth = 1.6 * scale;
-              ctx.strokeStyle = '#fff1f2';
+              ctx.strokeStyle = skin ? cSub : '#fff1f2';
               ctx.stroke();
               break;
             }
@@ -1523,7 +1741,7 @@ export class Renderer {
               ctx.lineTo(4 * scale, 0);
               ctx.lineCap = 'round';
               ctx.lineWidth = 7 * scale;
-              ctx.strokeStyle = '#9333ea';
+              ctx.strokeStyle = skin ? cSub : '#9333ea';
               ctx.stroke();
 
               ctx.beginPath();
@@ -1532,11 +1750,11 @@ export class Renderer {
               ctx.fill();
               ctx.beginPath();
               ctx.arc(2 * scale, 0, 4.4 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = profile.sect === 'magyo_bone' ? '#c084fc' : '#ef4444';
+              ctx.fillStyle = skin ? cMain : baseProfile.sect === 'magyo_bone' ? '#c084fc' : '#ef4444';
               ctx.fill();
               ctx.beginPath();
               ctx.arc(3 * scale, -1, 2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = '#fde047';
+              ctx.fillStyle = skin ? cSub : '#fde047';
               ctx.fill();
               break;
             }
@@ -1553,10 +1771,10 @@ export class Renderer {
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 4.4 * scale;
-              ctx.strokeStyle = '#e11d48';
+              ctx.strokeStyle = skin ? cMain : '#e11d48';
               ctx.stroke();
               ctx.lineWidth = 1.6 * scale;
-              ctx.strokeStyle = p.isSkill ? '#fde047' : '#fda4af';
+              ctx.strokeStyle = skin ? cSub : p.isSkill ? '#fde047' : '#fda4af';
               ctx.stroke();
               break;
             }

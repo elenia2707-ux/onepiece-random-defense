@@ -88,6 +88,7 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       critChance: 10,
       critMult: 1.8,
       sellCoin: 50,
+      armorShred: 0,
       skill: {
         name: '무형검기',
         desc: '테스트 초식',

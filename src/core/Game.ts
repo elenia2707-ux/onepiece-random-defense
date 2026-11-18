@@ -1,6 +1,7 @@
 import { GameLoop } from './GameLoop';
 import { Simulation, type UISnapshot } from './Simulation';
 import { loadGameData } from '../data/loader';
+import type { CourtSkinId, GameDataBundle, HeroSkinDef, UnitId } from '../data/types';
 import { DragController } from '../input/DragController';
 import { InputManager } from '../input/InputManager';
 import { Lifecycle } from '../platform/Lifecycle';
@@ -15,6 +16,7 @@ import { UIManager } from '../ui/UIManager';
 import { VfxSystem } from '../vfx/VfxSystem';
 
 export class Game {
+  private readonly data: GameDataBundle;
   private readonly meta: MetaStore;
   private readonly sim: Simulation;
   private readonly stack: CanvasStack;
@@ -29,6 +31,7 @@ export class Game {
   private readonly viewport: Viewport;
   private readonly lifecycle: Lifecycle;
   private readonly sound: SoundSynthesizer;
+  private readonly equippedHeroSkinsMap = new Map<UnitId, HeroSkinDef>();
 
   private settlementRecord: SettlementRecord | null = null;
   private endlessSettled = false;
@@ -36,6 +39,7 @@ export class Game {
 
   public constructor() {
     const data = loadGameData();
+    this.data = data;
     const appEl = document.getElementById('app');
     if (!(appEl instanceof HTMLElement)) {
       throw new Error('[Game] Missing #app root');
@@ -57,6 +61,7 @@ export class Game {
     });
     this.vfx = new VfxSystem(this.sprites);
     this.renderer = new Renderer(this.stack, this.sprites, this.vfx);
+    this.syncCosmetics(false);
 
     this.drag = new DragController(
       this.sim,
@@ -136,6 +141,69 @@ export class Game {
         );
         return res;
       },
+      onDrawSkin: (count, payWith) => {
+        const res = this.meta.drawSkinGacha(data.heroSkins, data.courtSkins, count, payWith);
+        if (res.ok) {
+          const bestRank = res.items.some((x) => x.rarity === 'mythic')
+            ? 6
+            : res.items.some((x) => x.rarity === 'legendary')
+              ? 5
+              : 4;
+          this.sound.playCraft(bestRank);
+          this.syncCosmetics(false);
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onCraftSkin: (skinId) => {
+        const skin =
+          data.heroSkinsById.get(skinId) ??
+          data.courtSkins.find((c) => c.id === (skinId as CourtSkinId));
+        if (!skin) {
+          return { ok: false, reason: '존재하지 않는 의복·테마입니다.' };
+        }
+        const res = this.meta.craftSkinWithSilk(skin);
+        if (res.ok) {
+          this.sound.playCraft(5);
+          this.syncCosmetics(true);
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onEquipHeroSkin: (unitId, skinId) => {
+        const ok = this.meta.equipHeroSkin(unitId, skinId, data.heroSkinsById);
+        if (ok) {
+          this.sound.playUiTap();
+          this.syncCosmetics(false);
+          this.ui.sync(
+            this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+            performance.now(),
+            true,
+          );
+        }
+        return ok;
+      },
+      onEquipCourtSkin: (courtId) => {
+        const ok = this.meta.equipCourtSkin(courtId);
+        if (ok) {
+          this.sound.playUiTap();
+          this.syncCosmetics(true);
+          this.ui.sync(
+            this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+            performance.now(),
+            true,
+          );
+        }
+        return ok;
+      },
       onGrantDevMeta: () => {
         this.sound.playCoinReward();
         this.meta.grantDevMeta(250, 2);
@@ -170,6 +238,7 @@ export class Game {
           }
         } else if (snap.gameOver && this.settlementRecord && !this.endlessSettled) {
           this.endlessSettled = true;
+          const prevUnlockLen = this.settlementRecord.unlockedSkinIds.length;
           this.settlementRecord = this.meta.settleEndlessOvertime(this.settlementRecord, {
             wave: snap.wave,
             monstersSlain: snap.monstersSlain,
@@ -178,6 +247,9 @@ export class Game {
             difficulty: snap.difficulty,
             victory: snap.victoryAchieved,
           });
+          if (this.settlementRecord.unlockedSkinIds.length > prevUnlockLen) {
+            this.syncCosmetics(true);
+          }
           this.sound.playDefeat();
         }
         this.ui.sync(snap, nowMs, forcePriority);
@@ -206,6 +278,23 @@ export class Game {
     this.bindSimulationEvents();
   }
 
+  private syncCosmetics(repaintBg: boolean): void {
+    this.equippedHeroSkinsMap.clear();
+    const rawEquipped = this.meta.getEquippedHeroSkins();
+    for (const [unitId, skinId] of Object.entries(rawEquipped)) {
+      const skinDef = this.data.heroSkinsById.get(skinId);
+      if (skinDef) {
+        this.equippedHeroSkinsMap.set(unitId, skinDef);
+      }
+    }
+    const courtDef = this.data.courtSkinsById.get(this.meta.getEquippedCourtSkin()) ?? null;
+    this.bgPainter.setCourtSkin(courtDef);
+    this.renderer.setCosmetics(this.equippedHeroSkinsMap, courtDef);
+    if (repaintBg) {
+      this.bgPainter.paint(this.stack.bgCtx, this.sim.board, this.sim.path);
+    }
+  }
+
   private settleCurrentRun(snap: UISnapshot): SettlementRecord {
     if (!this.settlementRecord) {
       this.settlementRecord = this.meta.settleRun({
@@ -216,6 +305,9 @@ export class Game {
         difficulty: snap.difficulty,
         victory: snap.victoryAchieved,
       });
+      if (this.settlementRecord.unlockedSkinIds.length > 0) {
+        this.syncCosmetics(true);
+      }
     }
     return this.settlementRecord;
   }
@@ -224,7 +316,8 @@ export class Game {
     this.sim.events.on('unit:added', (ev) => {
       const unitDef = this.sim.data.unitsById.get(ev.unitId);
       const gradeDef = this.sim.data.gradesById.get(ev.grade);
-      const color = gradeDef?.color ?? '#94a3b8';
+      const skin = this.equippedHeroSkinsMap.get(ev.unitId);
+      const color = skin?.primaryColor ?? gradeDef?.color ?? '#94a3b8';
       const rank = gradeDef?.rank ?? 1;
       this.vfx.spawnArrivalFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
 
@@ -251,7 +344,8 @@ export class Game {
 
     this.sim.events.on('craft:done', (ev) => {
       const gradeDef = this.sim.data.gradesById.get(ev.grade);
-      const color = gradeDef?.color ?? '#fbbf24';
+      const skin = this.equippedHeroSkinsMap.get(ev.outputUnitId);
+      const color = skin?.primaryColor ?? gradeDef?.color ?? '#fbbf24';
       const rank = gradeDef?.rank ?? 2;
       const unitName = this.sim.data.unitsById.get(ev.outputUnitId)?.name ?? ev.outputUnitId;
 
@@ -284,6 +378,7 @@ export class Game {
     });
 
     this.sim.events.on('skill:impact', (ev) => {
+      const skin = this.equippedHeroSkinsMap.get(ev.unitId);
       this.vfx.spawnSkillTrack(
         ev.vfxTrack,
         ev.fromX,
@@ -291,9 +386,11 @@ export class Game {
         ev.x,
         ev.y,
         ev.radius,
-        ev.color,
+        skin?.primaryColor ?? ev.color,
         ev.gradeRank,
         ev.tick,
+        skin?.primaryColor,
+        skin?.secondaryColor,
       );
       const uDef = this.sim.data.unitsById.get(ev.unitId);
       this.vfx.spawnSkillCallout(
@@ -308,13 +405,14 @@ export class Game {
 
     this.sim.events.on('monster:hit', (ev) => {
       const uDef = this.sim.data.unitsById.get(ev.unitId);
+      const skin = this.equippedHeroSkinsMap.get(ev.unitId);
       this.sound.playHit(uDef?.faction ?? 'orthodox', ev.isCrit, ev.isSkill);
       this.vfx.spawnHitFx(
         ev.entityId,
         ev.x,
         ev.y,
         ev.damage,
-        ev.color,
+        skin?.primaryColor ?? ev.color,
         ev.slain,
         ev.isCrit,
         ev.tick,

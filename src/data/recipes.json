@@ -201,5 +201,28 @@
       { "unit": "flame_demon", "n": 1 }
     ],
     "priority": 210
+  },
+  {
+    "id": "r_sword_immortal",
+    "output": "sword_immortal",
+    "ingredients": [
+      { "unit": "sword_saint", "n": 1 },
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "mudang_master", "n": 1 }
+    ],
+    "priority": 205
+  },
+  {
+    "id": "r_asura_emperor",
+    "output": "asura_emperor",
+    "ingredients": [
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 }
+    ],
+    "priority": 208
   }
 ]
+

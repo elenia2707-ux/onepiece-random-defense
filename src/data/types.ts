@@ -55,6 +55,12 @@ export interface UnitSkillDef {
   readonly vfxTrack: VfxTrackKind;
 }
 
+export interface SupportAuraDef {
+  readonly name: string;
+  readonly atkPct: number;
+  readonly speedPct: number;
+}
+
 export interface RawUnitDef {
   readonly id: UnitId;
   readonly name: string;
@@ -68,6 +74,8 @@ export interface RawUnitDef {
   readonly critChance: number;
   readonly critMult: number;
   readonly sellCoin: number;
+  readonly armorShred?: number;
+  readonly supportAura?: SupportAuraDef;
   readonly skill: RawUnitSkillDef;
 }
 
@@ -84,6 +92,8 @@ export interface UnitDef {
   readonly critChance: number;
   readonly critMult: number;
   readonly sellCoin: number;
+  readonly armorShred: number;
+  readonly supportAura?: SupportAuraDef;
   readonly skill: UnitSkillDef;
 }
 
@@ -228,6 +238,45 @@ export interface MissionDef {
   readonly rewardWispGrade?: GradeId;
 }
 
+export type SkinRarity = 'rare' | 'legendary' | 'mythic' | 'achievement';
+export type SkinUnlockCond = 'any_clear' | 'hell_clear' | 'wave_35';
+export type SkinCrestKind = 'halo' | 'crown' | 'blades' | 'orbs';
+export type CourtSkinId =
+  | 'court_bamboo_dawn'
+  | 'court_crimson_sunset'
+  | 'court_blood_moon'
+  | 'court_golden_palace';
+
+export interface HeroSkinDef {
+  readonly id: string;
+  readonly unitId: UnitId;
+  readonly name: string;
+  readonly rarity: SkinRarity;
+  readonly unlockCond?: SkinUnlockCond;
+  readonly silkCost: number;
+  readonly desc: string;
+  readonly robeHue: number;
+  readonly satMult: number;
+  readonly lumOffset: number;
+  readonly primaryColor: string;
+  readonly secondaryColor: string;
+  readonly crestKind: SkinCrestKind;
+}
+
+export interface CourtSkinDef {
+  readonly id: CourtSkinId;
+  readonly name: string;
+  readonly rarity: SkinRarity;
+  readonly unlockCond?: SkinUnlockCond;
+  readonly silkCost: number;
+  readonly desc: string;
+  readonly tintColor: string;
+  readonly tintAlpha: number;
+  readonly lanternColor: string;
+  readonly petalPrimary: string;
+  readonly petalSecondary: string;
+}
+
 export interface GameDataBundle {
   readonly grades: readonly GradeDef[];
   readonly gradesById: ReadonlyMap<GradeId, GradeDef>;
@@ -243,4 +292,10 @@ export interface GameDataBundle {
   readonly relics: readonly RelicDef[];
   readonly relicsById: ReadonlyMap<RelicId, RelicDef>;
   readonly missions: readonly MissionDef[];
+  readonly heroSkins: readonly HeroSkinDef[];
+  readonly heroSkinsById: ReadonlyMap<string, HeroSkinDef>;
+  readonly heroSkinsByUnit: ReadonlyMap<UnitId, readonly HeroSkinDef[]>;
+  readonly courtSkins: readonly CourtSkinDef[];
+  readonly courtSkinsById: ReadonlyMap<CourtSkinId, CourtSkinDef>;
 }
+
