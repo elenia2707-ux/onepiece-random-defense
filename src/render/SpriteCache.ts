@@ -1,5 +1,5 @@
 import type { GradeDef, MonsterKind, UnitDef } from '../data/types';
-import { paintMonsterChibi, paintUnitChibi } from './ChibiPainter';
+import { paintMonsterChibi, paintUnitChibi, PIXEL_OUTLINE } from './ChibiPainter';
 
 export interface GlyphMetric {
   readonly sx: number;
@@ -11,15 +11,16 @@ export interface GlyphMetric {
 
 const GLYPH_CHARS = '0123456789+-x/%!FB:#.';
 
-/** Display font stack shared by every pre-rendered canvas text (glyph atlas & banners). */
-export const DISPLAY_FONT = '"Black Han Sans", "Jua", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif';
-export const BODY_FONT = '"Jua", "Black Han Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif';
+/** Display font stack shared by every pre-rendered canvas text (glyph atlas, seals & banners). */
+export const DISPLAY_FONT =
+  '"Black Han Sans", "Jua", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif';
+export const BODY_FONT =
+  '"Jua", "Black Han Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif';
 
-/** Native pixel-art canvas sizes (grid × integer scale) and the upgraded size for external PNG art. */
-const UNIT_PIXEL_SIZE = 160; // 32 × 5
-const MOB_PIXEL_SIZE = 144; // 24 × 6
-const BOSS_PIXEL_SIZE = 160; // 32 × 5
-const EXTERNAL_SPRITE_SIZE = 256;
+/** Crisp integer multiples of the 32x32 pixel-art grid. */
+const UNIT_PIXEL_SIZE = 128; // 32 x 4
+const MOB_PIXEL_SIZE = 128; // 32 x 4
+const BOSS_PIXEL_SIZE = 128; // 32 x 4
 
 interface BannerSpec {
   readonly kind: 'boss' | 'craft';
@@ -28,20 +29,24 @@ interface BannerSpec {
   readonly accent: string;
 }
 
+interface SealSpec {
+  readonly char: string;
+  readonly accent: string;
+}
+
 /**
  * Sole factory/owner for offscreen HTMLCanvasElements (AGENTS.md §2 & §6).
  * Releases canvas memory by zeroing width & height.
  *
- * Hybrid sprite loader: every unit / monster first gets an instant procedural pixel-art sprite.
- * In parallel, `public/sprites/{id}.png` is probed once; if it exists the SAME canvas object is
- * repainted with the illustration (so every holder of the reference upgrades transparently) and
- * listeners registered through {@link onSpriteUpdated} are notified (e.g. DOM portraits refresh).
+ * Hybrid pixel-sheet loader: every unit / monster first gets an instant procedural 32x32 pixel sprite.
+ * In parallel, `public/sprites/{id}.png` is probed once; if present, the SAME canvas is repainted
+ * with nearest-neighbor (`imageSmoothingEnabled = false`) and listeners are notified.
  */
 export class SpriteCache {
   private readonly cache = new Map<string, HTMLCanvasElement>();
   private readonly portraitUrls = new Map<string, string>();
   private readonly bannerSpecs = new Map<string, BannerSpec>();
-  private readonly smoothSprites = new WeakSet<HTMLCanvasElement>();
+  private readonly sealSpecs = new Map<string, SealSpec>();
   private readonly probed = new Set<string>();
   private readonly spriteListeners: Array<() => void> = [];
   private glyphCanvas: HTMLCanvasElement | null = null;
@@ -68,6 +73,7 @@ export class SpriteCache {
       this.cache.delete(key);
     }
     this.bannerSpecs.delete(key);
+    this.sealSpecs.delete(key);
   }
 
   public disposeAll(): void {
@@ -78,6 +84,7 @@ export class SpriteCache {
     this.cache.clear();
     this.portraitUrls.clear();
     this.bannerSpecs.clear();
+    this.sealSpecs.clear();
     if (this.glyphCanvas) {
       this.glyphCanvas.width = 0;
       this.glyphCanvas.height = 0;
@@ -94,8 +101,8 @@ export class SpriteCache {
     if (typeof document === 'undefined' || !('fonts' in document)) return;
     const fonts = document.fonts;
     Promise.all([
-      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789'),
-      fonts.load(`40px "Jua"`, '조합 성공 출현'),
+      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789 剛破天魔'),
+      fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현'),
     ])
       .catch(() => undefined)
       .then(() => fonts.ready)
@@ -105,12 +112,14 @@ export class SpriteCache {
 
   private onFontsReady(): void {
     this.fontsReady = true;
-    // Re-bake the glyph atlas IN PLACE so existing references stay valid.
     if (this.glyphCanvas) this.paintGlyphAtlas(this.glyphCanvas);
-    // Re-bake already-created banners in place (VfxSystem may hold a live reference).
     for (const [key, spec] of this.bannerSpecs) {
       const c = this.cache.get(key);
       if (c) this.paintBanner(c, spec);
+    }
+    for (const [key, spec] of this.sealSpecs) {
+      const c = this.cache.get(key);
+      if (c) this.paintKanjiSeal(c, spec);
     }
   }
 
@@ -119,17 +128,11 @@ export class SpriteCache {
   }
 
   /* ---------------------------------------------------------------- */
-  /*  Hybrid external sprite loader                                     */
+  /*  Hybrid external pixel-sheet loader (`public/sprites/{id}.png`)   */
   /* ---------------------------------------------------------------- */
 
-  /** Registers a callback fired whenever an external PNG replaces a procedural sprite. */
   public onSpriteUpdated(cb: () => void): void {
     this.spriteListeners.push(cb);
-  }
-
-  /** True when the canvas holds a smooth illustration (draw with smoothing ON) instead of pixel art. */
-  public isSmoothSprite(canvas: HTMLCanvasElement): boolean {
-    return this.smoothSprites.has(canvas);
   }
 
   private probeExternal(id: string, onLoad: (img: HTMLImageElement) => void): void {
@@ -141,25 +144,24 @@ export class SpriteCache {
       if (img.naturalWidth > 0 && img.naturalHeight > 0) onLoad(img);
     };
     img.onerror = () => {
-      /* No custom art for this id — keep the pixel-art sprite. */
+      /* No external sprite sheet for this id — keep procedural 32x32 pixel art. */
     };
     img.src = `${import.meta.env.BASE_URL}sprites/${id}.png`;
   }
 
-  /** Contain-fit, bottom-centred (feet on the bottom edge like the pixel art). */
+  /** Nearest-neighbor contain-fit, bottom-anchored so pixel edges never blur. */
   private paintExternal(canvas: HTMLCanvasElement, img: HTMLImageElement): void {
-    canvas.width = EXTERNAL_SPRITE_SIZE;
-    canvas.height = EXTERNAL_SPRITE_SIZE;
+    const targetSize = Math.max(UNIT_PIXEL_SIZE, img.naturalWidth, img.naturalHeight);
+    canvas.width = targetSize;
+    canvas.height = targetSize;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingEnabled = false;
     const k = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
-    const w = img.naturalWidth * k;
-    const h = img.naturalHeight * k;
-    ctx.drawImage(img, (canvas.width - w) / 2, canvas.height - h, w, h);
-    this.smoothSprites.add(canvas);
+    const w = Math.round(img.naturalWidth * k);
+    const h = Math.round(img.naturalHeight * k);
+    ctx.drawImage(img, Math.round((canvas.width - w) * 0.5), canvas.height - h, w, h);
   }
 
   private notifySpriteUpdated(): void {
@@ -170,9 +172,7 @@ export class SpriteCache {
   /*  Sprites                                                           */
   /* ---------------------------------------------------------------- */
 
-  /**
-   * Pre-rendered radial glow sprite (replaces forbidden shadowBlur / ctx.filter).
-   */
+  /** Pre-rendered radial glow sprite (replaces forbidden shadowBlur / ctx.filter). */
   public glow(color: string, radiusLogical: number): HTMLCanvasElement {
     const r = Math.max(8, Math.round(radiusLogical));
     const key = `glow:${color}:${r}`;
@@ -184,8 +184,8 @@ export class SpriteCache {
     const ctx = c.getContext('2d');
     if (ctx) {
       const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
-      grad.addColorStop(0, hexWithAlpha(color, 0.88));
-      grad.addColorStop(0.42, hexWithAlpha(color, 0.38));
+      grad.addColorStop(0, hexWithAlpha(color, 0.72));
+      grad.addColorStop(0.45, hexWithAlpha(color, 0.3));
       grad.addColorStop(1, hexWithAlpha(color, 0));
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, size, size);
@@ -195,7 +195,45 @@ export class SpriteCache {
   }
 
   /**
-   * Unit sprite: 32×32 retro pixel art at ×5 (160px), or `public/sprites/{id}.png` when present.
+   * Pre-rendered Hanja martial stamp (e.g. '剛' for 소림 금강권) so VfxSystem never calls fillText per frame.
+   */
+  public kanjiSeal(char: string, accentColor = '#f59e0b'): HTMLCanvasElement {
+    const key = `seal:${char}:${accentColor}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(96, 96);
+    const spec: SealSpec = { char, accent: accentColor };
+    this.paintKanjiSeal(c, spec);
+    this.cache.set(key, c);
+    this.sealSpecs.set(key, spec);
+    return c;
+  }
+
+  private paintKanjiSeal(c: HTMLCanvasElement, spec: SealSpec): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+    ctx.font = `bold 64px ${DISPLAY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 11;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(spec.char, 48, 50);
+
+    const g = ctx.createLinearGradient(0, 18, 0, 80);
+    g.addColorStop(0, '#fffbeb');
+    g.addColorStop(0.5, '#fde047');
+    g.addColorStop(1, spec.accent);
+    ctx.fillStyle = g;
+    ctx.fillText(spec.char, 48, 50);
+    ctx.restore();
+  }
+
+  /**
+   * Unit sprite: 32x32 SD pixel art at x4 (128px), or `public/sprites/{id}.png` when present.
    */
   public unitToken(unit: UnitDef, _grade: GradeDef): HTMLCanvasElement {
     const key = `unit:${unit.id}`;
@@ -204,7 +242,7 @@ export class SpriteCache {
 
     const c = this.createOffscreen(UNIT_PIXEL_SIZE, UNIT_PIXEL_SIZE);
     const ctx = c.getContext('2d');
-    if (ctx) paintUnitChibi(ctx, unit.id);
+    if (ctx) paintUnitChibi(ctx, unit.id, UNIT_PIXEL_SIZE);
     this.cache.set(key, c);
 
     this.probeExternal(unit.id, (img) => {
@@ -215,9 +253,7 @@ export class SpriteCache {
     return c;
   }
 
-  /**
-   * Generates a cached PNG data URL for DOM portrait badges without creating extra DOM canvases.
-   */
+  /** Cached PNG data URL for DOM portrait badges without creating extra DOM canvases. */
   public unitPortraitUrl(unit: UnitDef, grade: GradeDef): string {
     const key = `url:${unit.id}`;
     const existing = this.portraitUrls.get(key);
@@ -229,16 +265,16 @@ export class SpriteCache {
     return url;
   }
 
-  /**
-   * Pre-rendered monster sprite + pure-white hit-flash silhouette (zero ctx.filter).
-   */
+  /** Pre-rendered monster pixel sprite + pure-white hit-flash silhouette (zero ctx.filter). */
   public monsterSprite(kind: MonsterKind, hitFlash = false): HTMLCanvasElement {
     const baseKey = `monster:${kind}:base`;
     const flashKey = `monster:${kind}:flash`;
 
     let baseCanvas = this.cache.get(baseKey);
     if (!baseCanvas) {
-      const size = kind === 'sea_king' || kind === 'pacifista' ? BOSS_PIXEL_SIZE : MOB_PIXEL_SIZE;
+      const isBoss =
+        kind === 'white_tiger' || kind === 'black_serpent' || kind === 'blood_patriarch';
+      const size = isBoss ? BOSS_PIXEL_SIZE : MOB_PIXEL_SIZE;
       const created = this.createOffscreen(size, size);
       baseCanvas = created;
       const bctx = created.getContext('2d');
@@ -266,9 +302,9 @@ export class SpriteCache {
   private paintFlash(target: HTMLCanvasElement, base: HTMLCanvasElement): void {
     target.width = base.width;
     target.height = base.height;
-    if (this.smoothSprites.has(base)) this.smoothSprites.add(target);
     const fctx = target.getContext('2d');
     if (!fctx) return;
+    fctx.imageSmoothingEnabled = false;
     fctx.clearRect(0, 0, target.width, target.height);
     fctx.drawImage(base, 0, 0);
     fctx.globalCompositeOperation = 'source-in';
@@ -278,13 +314,9 @@ export class SpriteCache {
   }
 
   /* ---------------------------------------------------------------- */
-  /*  Overlay banners                                                   */
+  /*  Overlay banners (Oriental Dancheong Plaque)                       */
   /* ---------------------------------------------------------------- */
 
-  /**
-   * Pre-rendered #overlay-canvas banner (BOSS WAVE warning / Legendary+ craft celebration)
-   * so #overlay-canvas never executes fillText per frame (AGENTS.md §2).
-   */
   public overlayBanner(
     key: string,
     kind: 'boss' | 'craft',
@@ -313,32 +345,32 @@ export class SpriteCache {
     ctx.clearRect(0, 0, w, h);
     ctx.save();
 
-    // Drop plate (3D lip)
+    // 3D drop shadow lip
     ctx.beginPath();
-    ctx.roundRect(40, 40, w - 80, h - 56, 40);
-    ctx.fillStyle = '#060b18';
+    ctx.roundRect(40, 40, w - 80, h - 56, 36);
+    ctx.fillStyle = PIXEL_OUTLINE;
     ctx.fill();
 
-    // Body
+    // Oriental lacquer plaque body
     ctx.beginPath();
-    ctx.roundRect(40, 24, w - 80, h - 64, 40);
+    ctx.roundRect(40, 24, w - 80, h - 64, 36);
     const bg = ctx.createLinearGradient(0, 24, 0, h - 40);
     if (kind === 'boss') {
-      bg.addColorStop(0, '#d7263d');
-      bg.addColorStop(0.55, '#8e0f24');
-      bg.addColorStop(1, '#4a0612');
+      bg.addColorStop(0, '#b91c1c');
+      bg.addColorStop(0.55, '#7f1d1d');
+      bg.addColorStop(1, '#3b0808');
     } else {
-      bg.addColorStop(0, '#1e3a6e');
-      bg.addColorStop(0.55, '#13254a');
-      bg.addColorStop(1, '#0a1530');
+      bg.addColorStop(0, '#134e4a');
+      bg.addColorStop(0.55, '#0f3936');
+      bg.addColorStop(1, '#092220');
     }
     ctx.fillStyle = bg;
     ctx.fill();
 
-    // Diagonal hazard / celebration stripes
+    // Subtle silk diagonal sheen
     ctx.save();
     ctx.clip();
-    ctx.fillStyle = hexWithAlpha(kind === 'boss' ? '#000000' : accent, kind === 'boss' ? 0.18 : 0.16);
+    ctx.fillStyle = hexWithAlpha(kind === 'boss' ? '#000000' : accent, 0.16);
     for (let sx = -200; sx < w + 200; sx += 96) {
       ctx.beginPath();
       ctx.moveTo(sx, 24);
@@ -348,48 +380,48 @@ export class SpriteCache {
       ctx.closePath();
       ctx.fill();
     }
-    // Glossy top band
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
-    ctx.fillRect(40, 24, w - 80, 46);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.fillRect(40, 24, w - 80, 42);
     ctx.restore();
 
-    // Thick border + accent trim
+    // Outer dark ink border + inner golden dancheong frame
     ctx.beginPath();
-    ctx.roundRect(40, 24, w - 80, h - 64, 40);
+    ctx.roundRect(40, 24, w - 80, h - 64, 36);
     ctx.lineWidth = 9;
-    ctx.strokeStyle = '#060b18';
+    ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.stroke();
+
     ctx.beginPath();
-    ctx.roundRect(52, 36, w - 104, h - 88, 30);
+    ctx.roundRect(54, 38, w - 108, h - 92, 26);
     ctx.lineWidth = 4;
-    ctx.strokeStyle = kind === 'boss' ? '#ffd23f' : accent;
+    ctx.strokeStyle = kind === 'boss' ? '#facc15' : accent;
     ctx.stroke();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
 
-    ctx.font = `64px ${DISPLAY_FONT}`;
+    ctx.font = `62px ${DISPLAY_FONT}`;
     ctx.lineWidth = 14;
-    ctx.strokeStyle = '#060b18';
-    ctx.strokeText(title, w * 0.5, 98);
-    const tg = ctx.createLinearGradient(0, 70, 0, 126);
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(title, w * 0.5, 96);
+    const tg = ctx.createLinearGradient(0, 68, 0, 126);
     if (kind === 'boss') {
-      tg.addColorStop(0, '#fffbe0');
-      tg.addColorStop(0.5, '#ffe14a');
-      tg.addColorStop(1, '#ff9b1f');
+      tg.addColorStop(0, '#fffbeb');
+      tg.addColorStop(0.5, '#fde047');
+      tg.addColorStop(1, '#f97316');
     } else {
-      tg.addColorStop(0, '#ffffff');
+      tg.addColorStop(0, '#fffbeb');
       tg.addColorStop(1, accent);
     }
     ctx.fillStyle = tg;
-    ctx.fillText(title, w * 0.5, 98);
+    ctx.fillText(title, w * 0.5, 96);
 
     ctx.font = `40px ${BODY_FONT}`;
     ctx.lineWidth = 10;
-    ctx.strokeStyle = '#060b18';
+    ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.strokeText(subtitle, w * 0.5, 160);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#fffbeb';
     ctx.fillText(subtitle, w * 0.5, 160);
 
     ctx.restore();
@@ -399,10 +431,6 @@ export class SpriteCache {
   /*  Damage-number glyph atlas                                         */
   /* ---------------------------------------------------------------- */
 
-  /**
-   * Pre-builds 2-row glyph atlas once (Row 0: normal white, Row 1: crit gold-orange)
-   * so world-canvas never calls fillText per frame. Re-baked in place after web fonts load.
-   */
   public ensureGlyphAtlas(): HTMLCanvasElement {
     if (this.glyphCanvas) return this.glyphCanvas;
     const cellW = 40;
@@ -431,19 +459,19 @@ export class SpriteCache {
 
       const cy0 = cellH * 0.5;
       ctx.lineWidth = 8;
-      ctx.strokeStyle = '#0a0f1f';
+      ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.strokeText(ch, cx, cy0);
       ctx.fillStyle = '#ffffff';
       ctx.fillText(ch, cx, cy0);
 
       const cy1 = cellH * 1.5;
       ctx.lineWidth = 9;
-      ctx.strokeStyle = '#2a0800';
+      ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.strokeText(ch, cx, cy1);
       const critGrad = ctx.createLinearGradient(cx, cy1 - 16, cx, cy1 + 16);
       critGrad.addColorStop(0, '#fffbeb');
       critGrad.addColorStop(0.45, '#facc15');
-      critGrad.addColorStop(1, '#f97316');
+      critGrad.addColorStop(1, '#ea580c');
       ctx.fillStyle = critGrad;
       ctx.fillText(ch, cx, cy1);
 

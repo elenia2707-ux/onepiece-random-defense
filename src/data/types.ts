@@ -1,18 +1,25 @@
 export type GradeId = string;
 export type UnitId = string;
 export type RecipeId = string;
-export type UpgradeGroupId = 'common' | 'rare' | 'legendary' | 'mythic';
+export type FactionId = 'orthodox' | 'unorthodox' | 'demonic';
+export type UpgradeGroupId = FactionId;
 
 export type VfxTrackKind =
-  | 'gatling'
-  | 'red_hawk'
-  | 'crescent_slash'
-  | 'thunder_bolt'
-  | 'room_strike'
-  | 'conqueror_haki'
-  | 'quake_shatter';
+  | 'plum_blossom'
+  | 'emperor_thunder'
+  | 'golden_palm'
+  | 'poison_rain'
+  | 'blood_slash'
+  | 'demonic_flame'
+  | 'heavenly_demon';
 
-export type MonsterKind = 'marine_grunt' | 'pirate_raider' | 'sea_king' | 'pacifista';
+export type MonsterKind =
+  | 'bandit_minion'
+  | 'jiangshi'
+  | 'blood_zealot'
+  | 'white_tiger'
+  | 'black_serpent'
+  | 'blood_patriarch';
 
 export interface GradeDef {
   readonly id: GradeId;
@@ -52,6 +59,7 @@ export interface RawUnitDef {
   readonly id: UnitId;
   readonly name: string;
   readonly title: string;
+  readonly faction: FactionId;
   readonly grade: GradeId;
   readonly leaf: boolean;
   readonly atk: number;
@@ -67,6 +75,7 @@ export interface UnitDef {
   readonly id: UnitId;
   readonly name: string;
   readonly title: string;
+  readonly faction: FactionId;
   readonly grade: GradeId;
   readonly leaf: boolean;
   readonly atk: number;
@@ -164,7 +173,8 @@ export interface GambleRateDef {
 export interface UpgradeGroupDef {
   readonly id: UpgradeGroupId;
   readonly name: string;
-  readonly grades: readonly GradeId[];
+  readonly faction: FactionId;
+  readonly desc: string;
   readonly currency: 'coin' | 'luck';
   readonly baseCost: number;
   readonly costStep: number;
@@ -185,5 +195,5 @@ export interface GameDataBundle {
   readonly wispPools: WispPools;
   readonly gambleRates: readonly GambleRateDef[];
   readonly upgrades: readonly UpgradeGroupDef[];
-  readonly upgradesByGrade: ReadonlyMap<GradeId, UpgradeGroupDef>;
+  readonly upgradesByFaction: ReadonlyMap<FactionId, UpgradeGroupDef>;
 }

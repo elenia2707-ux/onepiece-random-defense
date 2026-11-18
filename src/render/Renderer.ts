@@ -6,15 +6,19 @@ import type { VfxSystem } from '../vfx/VfxSystem';
 import type { CanvasStack } from './CanvasStack';
 import { type IRenderable, RENDER_LAYER_COUNT, RenderLayer } from './RenderLayer';
 import { expandedSlotRect } from './BackgroundPainter';
+import { PIXEL_OUTLINE } from './ChibiPainter';
 import { hexWithAlpha, type SpriteCache } from './SpriteCache';
 
-/** On-board pixel-art sprite sizes (logical px) and foot offsets from the slot centre. */
-const FIELD_SPRITE = 92;
-const BENCH_SPRITE = 84;
-const FIELD_FOOT = 33;
-const BENCH_FOOT = 31;
-const MOB_SPRITE = 56;
-const BOSS_SPRITE = 100;
+/**
+ * Crisp nearest-neighbor sprite sizes (~95% of tile width) and foot offsets from slot center.
+ * Field expanded tile ~ 85px wide -> 82px sprite; Bench expanded tile ~ 100px wide -> 90px sprite.
+ */
+const FIELD_SPRITE = 82;
+const BENCH_SPRITE = 90;
+const FIELD_FOOT = 42;
+const BENCH_FOOT = 33;
+const MOB_SPRITE = 64;
+const BOSS_SPRITE = 104;
 
 export interface InteractionOverlayState {
   readonly selectedSlot: SlotRef | null;
@@ -26,7 +30,7 @@ export interface InteractionOverlayState {
 
 /**
  * Bucketed 7-layer world renderer.
- * Reads Simulation state strictly as read-only and interpolates prev -> curr with alpha.
+ * Enforces `ctx.imageSmoothingEnabled = false` strictly for razor-sharp pixel art.
  */
 export class Renderer {
   private readonly stack: CanvasStack;
@@ -53,6 +57,7 @@ export class Renderer {
     const ctx = this.stack.worldCtx;
     const baseScale = this.stack.getMatrixScale();
     ctx.setTransform(baseScale, 0, 0, baseScale, 0, 0);
+    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     const tick = sim.tickCount;
@@ -64,10 +69,10 @@ export class Renderer {
     // 2. Collect Monsters + Shadows + Hit Flash + Rounded HP bars
     this.collectMonsters(sim, tick, alpha);
 
-    // 3. Collect Units + Grade Aura Rings + Idle Bounce & Attack Lunge + Lock badges
+    // 3. Collect Units + Martial Grade Aura Rings + Idle Bounce & Attack Lunge + Lock badges
     this.collectUnits(sim, tick, alpha, simTimeSec, interaction);
 
-    // 4. Collect Projectiles
+    // 4. Collect Sword-Qi / Martial Projectiles
     this.collectProjectiles(sim, alpha);
 
     // 5. Collect VFX tracks & particles
@@ -77,21 +82,13 @@ export class Renderer {
     this.buckets[RenderLayer.Monster]!.sort((a, b) => a.sortY - b.sortY);
     this.buckets[RenderLayer.Unit]!.sort((a, b) => a.sortY - b.sortY);
 
-    // 7. Execute 7 render passes; switch globalCompositeOperation ONLY once for AirFx
+    // 7. Execute 7 render passes with 'source-over' so vivid ink/petal/crimson VFX pop on white jade
+    ctx.globalCompositeOperation = 'source-over';
     for (let layer = 0; layer < RENDER_LAYER_COUNT; layer++) {
       const list = this.buckets[layer]!;
       if (list.length === 0) continue;
-
-      if (layer === RenderLayer.AirFx) {
-        ctx.globalCompositeOperation = 'lighter';
-      }
-
       for (let j = 0; j < list.length; j++) {
         list[j]!.render(ctx, baseScale);
-      }
-
-      if (layer === RenderLayer.AirFx) {
-        ctx.globalCompositeOperation = 'source-over';
       }
     }
 
@@ -116,18 +113,18 @@ export class Renderer {
         layer: RenderLayer.GroundFx,
         sortY: rect.y - 10,
         render: (ctx) => {
-          // Attack range preview circle when a unit is selected on field
+          // Attack range preview circle on bright white-jade arena
           if (sel.area === 'field' && def) {
             const cx = rect.x + rect.w * 0.5;
             const cy = rect.y + rect.h * 0.5;
-            const accent = grade?.color ?? '#38bdf8';
+            const accent = grade?.color ?? '#0d9488';
 
             ctx.beginPath();
             ctx.arc(cx, cy, def.range, 0, Math.PI * 2);
             ctx.fillStyle = hexWithAlpha(accent, 0.14);
             ctx.fill();
-            ctx.lineWidth = 2.5;
-            ctx.strokeStyle = hexWithAlpha(accent, 0.72);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = hexWithAlpha(accent, 0.85);
             ctx.stroke();
 
             ctx.save();
@@ -135,23 +132,23 @@ export class Renderer {
             ctx.lineDashOffset = -simTimeSec * 24;
             ctx.beginPath();
             ctx.arc(cx, cy, Math.max(16, def.range - 5), 0, Math.PI * 2);
-            ctx.lineWidth = 1.6;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = 'rgba(26, 18, 36, 0.45)';
             ctx.stroke();
             ctx.restore();
           }
 
-          // Crisp selected slot highlight frame (pulsing gold)
+          // Crisp selected slot frame (pulsing imperial gold + ink outline)
           const pulse = 0.75 + Math.sin(simTimeSec * 6) * 0.25;
           ctx.beginPath();
-          ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 13);
-          ctx.fillStyle = `rgba(255, 210, 63, ${(0.12 * pulse).toFixed(3)})`;
+          ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 12);
+          ctx.fillStyle = `rgba(234, 179, 8, ${(0.18 * pulse).toFixed(3)})`;
           ctx.fill();
           ctx.lineWidth = 5;
-          ctx.strokeStyle = '#060b18';
+          ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
           ctx.lineWidth = 3;
-          ctx.strokeStyle = '#ffd23f';
+          ctx.strokeStyle = '#facc15';
           ctx.stroke();
         },
       });
@@ -166,11 +163,11 @@ export class Renderer {
         sortY: rect.y,
         render: (ctx) => {
           ctx.beginPath();
-          ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 13);
-          ctx.fillStyle = occupied ? 'rgba(250, 204, 21, 0.25)' : 'rgba(52, 211, 153, 0.28)';
+          ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 12);
+          ctx.fillStyle = occupied ? 'rgba(234, 179, 8, 0.26)' : 'rgba(16, 185, 129, 0.28)';
           ctx.fill();
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = occupied ? '#facc15' : '#10b981';
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = occupied ? '#d97706' : '#059669';
           ctx.stroke();
         },
       });
@@ -185,7 +182,7 @@ export class Renderer {
       layer: RenderLayer.Shadow,
       sortY: 0,
       render: (ctx) => {
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.36)';
+        ctx.fillStyle = 'rgba(26, 18, 36, 0.28)';
         for (let i = 0; i < monsters.length; i++) {
           const m = monsters[i]!;
           const x = m.prevX + (m.currX - m.prevX) * alpha;
@@ -204,20 +201,17 @@ export class Renderer {
       const y = m.prevY + (m.currY - m.prevY) * alpha;
       const distInterp = m.prevDistance + (m.currDistance - m.prevDistance) * alpha;
 
-      // Walking bob & tilt
       const isStunned = currentTick < m.stunUntilTick;
       const isSlowed = currentTick < m.slowUntilTick;
-      // Stepped 2-frame pixel walk bob (one art pixel)
       const drawSize = m.isBoss ? BOSS_SPRITE : MOB_SPRITE;
-      const artPx = drawSize / (m.isBoss ? 32 : 24);
+      const artPx = drawSize / 32;
       const walkFrame = isStunned ? 0 : Math.floor(distInterp * 0.09 + m.entityId) & 1;
       const bobY = walkFrame * -artPx;
       const facingLeft = m.currX - m.prevX < -0.05;
-      const footOff = m.radius * 0.8;
-      const spriteTop = footOff - drawSize * (31 / 32);
+      const footOff = Math.round(m.radius * 0.8);
+      const spriteTop = Math.round(footOff - drawSize * (31 / 32));
 
       const baseSprite = this.sprites.monsterSprite(m.kind, false);
-      const smooth = this.sprites.isSmoothSprite(baseSprite);
       const hitAgeSec = (currentTick + alpha - m.lastHitTick) * TICK_DT;
       const showHitFlash = hitAgeSec >= 0 && hitAgeSec < 0.1;
 
@@ -228,8 +222,8 @@ export class Renderer {
           render: (ctx) => {
             ctx.beginPath();
             ctx.ellipse(x, y + m.radius * 0.7, m.radius * 1.05, m.radius * 0.48, 0, 0, Math.PI * 2);
-            ctx.strokeStyle = '#38bdf8';
-            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = '#16a34a';
+            ctx.lineWidth = 2.5;
             ctx.stroke();
           },
         });
@@ -240,59 +234,57 @@ export class Renderer {
         sortY: y,
         render: (ctx) => {
           ctx.save();
-          ctx.imageSmoothingEnabled = smooth;
-          ctx.translate(x, y + bobY);
+          ctx.imageSmoothingEnabled = false;
+          ctx.translate(Math.round(x), Math.round(y + bobY));
           if (facingLeft) {
             ctx.scale(-1, 1);
           }
-          ctx.drawImage(baseSprite, -drawSize * 0.5, spriteTop, drawSize, drawSize);
+          const halfW = Math.round(drawSize * 0.5);
+          ctx.drawImage(baseSprite, -halfW, spriteTop, drawSize, drawSize);
 
           if (showHitFlash) {
             const flashSprite = this.sprites.monsterSprite(m.kind, true);
             const prevA = ctx.globalAlpha;
             ctx.globalAlpha = (1 - hitAgeSec / 0.1) * 0.82;
-            ctx.drawImage(flashSprite, -drawSize * 0.5, spriteTop, drawSize, drawSize);
+            ctx.drawImage(flashSprite, -halfW, spriteTop, drawSize, drawSize);
             ctx.globalAlpha = prevA;
           }
           ctx.restore();
         },
       });
 
-      // Rounded capsule HP bar (always shown on Bosses, shown when damaged on Mobs)
       if (m.isBoss || m.hp < m.maxHp || isStunned) {
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
           sortY: y + 1,
           render: (ctx) => {
-            const barW = m.isBoss ? 76 : 40;
+            const barW = m.isBoss ? 80 : 42;
             const barH = m.isBoss ? 10 : 6;
-            const bx = x - barW * 0.5;
-            const by = y + spriteTop + artPx * 2 - barH - 6;
+            const bx = Math.round(x - barW * 0.5);
+            const by = Math.round(y + spriteTop + artPx * 2 - barH - 6);
             const ratio = Math.max(0, Math.min(1, m.hp / m.maxHp));
 
-            // Rounded outer track
             ctx.beginPath();
             ctx.roundRect(bx - 1.5, by - 1.5, barW + 3, barH + 3, 99);
-            ctx.fillStyle = '#060b18';
+            ctx.fillStyle = PIXEL_OUTLINE;
             ctx.fill();
             ctx.beginPath();
             ctx.roundRect(bx, by, barW, barH, 99);
-            ctx.fillStyle = '#2a1420';
+            ctx.fillStyle = '#3b1d2e';
             ctx.fill();
 
             if (ratio > 0) {
               ctx.beginPath();
               ctx.roundRect(bx, by, Math.max(barH, barW * ratio), barH, 99);
               ctx.fillStyle = m.isBoss
-                ? '#f43f5e'
+                ? '#e11d48'
                 : ratio > 0.5
-                  ? '#22c55e'
+                  ? '#16a34a'
                   : ratio > 0.25
                     ? '#f59e0b'
-                    : '#ef4444';
+                    : '#dc2626';
               ctx.fill();
 
-              // Top gloss highlight
               ctx.beginPath();
               ctx.roundRect(bx + 1, by + 1, Math.max(2, barW * ratio - 2), barH * 0.36, 99);
               ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
@@ -304,9 +296,12 @@ export class Renderer {
               for (let s = 0; s < 3; s++) {
                 const sa = spin + (s * Math.PI * 2) / 3;
                 ctx.beginPath();
-                ctx.arc(x + Math.cos(sa) * 11, by - 6 + Math.sin(sa) * 3, 2.6, 0, Math.PI * 2);
-                ctx.fillStyle = '#fde047';
+                ctx.arc(x + Math.cos(sa) * 11, by - 6 + Math.sin(sa) * 3, 2.8, 0, Math.PI * 2);
+                ctx.fillStyle = '#facc15';
                 ctx.fill();
+                ctx.lineWidth = 1.2;
+                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.stroke();
               }
             }
           },
@@ -351,12 +346,11 @@ export class Renderer {
       let popScale = 1;
       if (spawnElapsedSec >= 0 && spawnElapsedSec < 0.2) {
         const st = spawnElapsedSec / 0.2;
-        popScale = 0.62 + Math.sin(st * Math.PI * 0.76) * 0.44;
+        popScale = 0.65 + Math.sin(st * Math.PI * 0.76) * 0.41;
       }
 
-      // Idle breathing: stepped 2-frame pixel bob (one art pixel), de-synced per unit
       const isField = u.slot.area === 'field';
-      const spriteSize = (isField ? FIELD_SPRITE : BENCH_SPRITE) * popScale;
+      const spriteSize = Math.round((isField ? FIELD_SPRITE : BENCH_SPRITE) * popScale);
       const artPx = spriteSize / 32;
       const idleFrame = Math.floor(simTimeSec * 2.4 + u.uid * 0.37) & 1;
       const bobY = idleFrame * -artPx;
@@ -382,48 +376,47 @@ export class Renderer {
       const footY = baseY + (isField ? FIELD_FOOT : BENCH_FOOT);
       const drawFootY = footY + lungeY;
       const sprite = this.sprites.unitToken(def, grade);
-      const smooth = this.sprites.isSmoothSprite(sprite);
       const facingLeft = isField && u.attackDirX < -0.2;
 
-      // 1. Grade-specific rotating/pulsing aura ring under feet
+      // 1. Martial grade aura ring under feet (high contrast on bright white jade)
       this.buckets[RenderLayer.GroundFx]!.push({
         layer: RenderLayer.GroundFx,
         sortY: baseY - 2,
         render: (ctx) => {
           const pulse = 1 + Math.sin(simTimeSec * 3.8 + u.uid) * 0.07;
-          const rx = (isField ? 30 : 28) * pulse;
-          const ry = rx * 0.4;
+          const rx = (isField ? 31 : 29) * pulse;
+          const ry = rx * 0.38;
 
           if (grade.rank >= 4) {
-            const glow = this.sprites.glow(grade.color, 40);
+            const glow = this.sprites.glow(grade.color, 38);
             const prevA = ctx.globalAlpha;
-            ctx.globalAlpha = grade.rank >= 5 ? 0.55 : 0.38;
-            ctx.drawImage(glow, baseX - 40, footY - 20, 80, 40);
+            ctx.globalAlpha = grade.rank >= 5 ? 0.52 : 0.36;
+            ctx.drawImage(glow, baseX - 38, footY - 19, 76, 38);
             ctx.globalAlpha = prevA;
           }
 
           ctx.beginPath();
           ctx.ellipse(baseX, footY, rx, ry, 0, 0, Math.PI * 2);
-          ctx.fillStyle = hexWithAlpha(grade.color, grade.rank >= 3 ? 0.3 : 0.2);
+          ctx.fillStyle = hexWithAlpha(grade.color, grade.rank >= 3 ? 0.3 : 0.22);
           ctx.fill();
           ctx.lineWidth = 4;
-          ctx.strokeStyle = '#060b18';
+          ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
           ctx.lineWidth = grade.rank >= 4 ? 2.6 : 2;
           ctx.strokeStyle = grade.color;
           ctx.stroke();
 
-          // Rotating segmented crest for Uncommon+
+          // Rotating martial formation arcs for 이류(rank 2)+
           if (grade.rank >= 2) {
             const segs = Math.min(6, grade.rank + 1);
             const rot = simTimeSec * (grade.rank >= 5 ? 2.4 : 1.5);
-            ctx.lineWidth = grade.rank >= 5 ? 2.8 : 2;
+            ctx.lineWidth = grade.rank >= 5 ? 2.8 : 2.1;
             ctx.strokeStyle =
               grade.fx === 'rainbow'
-                ? '#c084fc'
+                ? '#dc2626'
                 : grade.rank >= 4
-                  ? '#fffbeb'
-                  : hexWithAlpha(grade.color, 0.95);
+                  ? '#b45309'
+                  : grade.color;
             for (let s = 0; s < segs; s++) {
               const a0 = rot + (s * Math.PI * 2) / segs;
               const a1 = a0 + Math.PI / (segs + 1);
@@ -435,31 +428,41 @@ export class Renderer {
         },
       });
 
-      // 2. Crisp drop shadow
+      // 2. Crisp ink drop shadow on white jade
       this.buckets[RenderLayer.Shadow]!.push({
         layer: RenderLayer.Shadow,
         sortY: drawY,
         render: (ctx) => {
-          ctx.fillStyle = 'rgba(2, 6, 18, 0.5)';
+          ctx.fillStyle = 'rgba(26, 18, 36, 0.28)';
           ctx.beginPath();
-          ctx.ellipse(drawX, drawFootY + 1, spriteSize * 0.27, spriteSize * 0.085, 0, 0, Math.PI * 2);
+          ctx.ellipse(
+            drawX,
+            drawFootY + 1,
+            spriteSize * 0.28,
+            spriteSize * 0.088,
+            0,
+            0,
+            Math.PI * 2,
+          );
           ctx.fill();
         },
       });
 
-      // 3. Retro pixel-art sprite (nearest-neighbour) or external PNG illustration (smoothed)
+      // 3. Strictly nearest-neighbor pixel-art sprite
       this.buckets[RenderLayer.Unit]!.push({
         layer: RenderLayer.Unit,
         sortY: drawY,
         render: (ctx) => {
           ctx.save();
-          ctx.imageSmoothingEnabled = smooth;
+          ctx.imageSmoothingEnabled = false;
           if (isDraggedOrigin) {
             ctx.globalAlpha *= 0.38;
           }
-          ctx.translate(drawX, drawFootY + bobY - lungeLift);
+          ctx.translate(Math.round(drawX), Math.round(drawFootY + bobY - lungeLift));
           if (facingLeft) ctx.scale(-1, 1);
-          ctx.drawImage(sprite, -spriteSize * 0.5, -spriteSize * (31 / 32), spriteSize, spriteSize);
+          const halfW = Math.round(spriteSize * 0.5);
+          const topOff = Math.round(-spriteSize * (31 / 32));
+          ctx.drawImage(sprite, -halfW, topOff, spriteSize, spriteSize);
           ctx.restore();
         },
       });
@@ -470,16 +473,16 @@ export class Renderer {
           layer: RenderLayer.WorldUI,
           sortY: drawY + 2,
           render: (ctx) => {
-            const lx = drawX + spriteSize * 0.34;
-            const ly = drawFootY - spriteSize * 0.8;
+            const lx = drawX + spriteSize * 0.33;
+            const ly = drawFootY - spriteSize * 0.78;
             ctx.beginPath();
             ctx.arc(lx, ly, 10, 0, Math.PI * 2);
-            ctx.fillStyle = '#060b18';
+            ctx.fillStyle = PIXEL_OUTLINE;
             ctx.fill();
             ctx.lineWidth = 2.2;
-            ctx.strokeStyle = '#ffd23f';
+            ctx.strokeStyle = '#facc15';
             ctx.stroke();
-            ctx.fillStyle = '#ffd23f';
+            ctx.fillStyle = '#facc15';
             ctx.fillRect(lx - 4, ly - 1, 8, 6);
             ctx.beginPath();
             ctx.arc(lx, ly - 1.5, 2.8, Math.PI, 0);
@@ -489,17 +492,17 @@ export class Renderer {
         });
       }
 
-      // 5. Drag Ghost
+      // 5. Drag Ghost (crisp nearest-neighbor)
       if (isDraggedOrigin) {
         const ghostSize = 96;
-        const gx = interaction.dragLogicalX;
-        const gy = interaction.dragLogicalY + ghostSize * 0.3;
+        const gx = Math.round(interaction.dragLogicalX);
+        const gy = Math.round(interaction.dragLogicalY + ghostSize * 0.3);
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
           sortY: 9500,
           render: (ctx) => {
             ctx.save();
-            ctx.imageSmoothingEnabled = smooth;
+            ctx.imageSmoothingEnabled = false;
             ctx.globalAlpha = 0.94;
             ctx.drawImage(sprite, gx - ghostSize * 0.5, gy - ghostSize, ghostSize, ghostSize);
             ctx.restore();
@@ -521,30 +524,24 @@ export class Renderer {
           const p = projs[i]!;
           const x = p.prevX + (p.currX - p.prevX) * alpha;
           const y = p.prevY + (p.currY - p.prevY) * alpha;
-          const orbR = p.isSkill ? 7.5 : p.isCrit ? 6 : 4.8;
+          const ang = Math.atan2(y - p.fromY, x - p.fromX);
+          const len = p.isSkill ? 18 : p.isCrit ? 14 : 11;
 
-          // Trail streak
+          // Sword-qi / martial energy bolt with dark ink outline for crisp visibility on white jade
           ctx.beginPath();
-          ctx.moveTo(p.prevX, p.prevY);
-          ctx.lineTo(x, y);
-          ctx.lineWidth = p.isSkill ? 6 : 3.8;
+          ctx.moveTo(x - Math.cos(ang) * len, y - Math.sin(ang) * len);
+          ctx.lineTo(x + Math.cos(ang) * 4, y + Math.sin(ang) * 4);
           ctx.lineCap = 'round';
-          ctx.strokeStyle = p.isSkill ? '#facc15' : p.color;
+          ctx.lineWidth = p.isSkill ? 8.5 : 6;
+          ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
 
-          // Dark cartoon outline + bright core orb
-          ctx.beginPath();
-          ctx.arc(x, y, orbR + 2, 0, Math.PI * 2);
-          ctx.fillStyle = '#181122';
-          ctx.fill();
+          ctx.lineWidth = p.isSkill ? 5 : 3.4;
+          ctx.strokeStyle = p.isSkill ? '#f59e0b' : p.color;
+          ctx.stroke();
 
           ctx.beginPath();
-          ctx.arc(x, y, orbR, 0, Math.PI * 2);
-          ctx.fillStyle = p.isSkill ? '#fde047' : p.color;
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(x - orbR * 0.25, y - orbR * 0.25, orbR * 0.48, 0, Math.PI * 2);
+          ctx.arc(x, y, p.isSkill ? 4.2 : 3, 0, Math.PI * 2);
           ctx.fillStyle = '#ffffff';
           ctx.fill();
         }

@@ -1,42 +1,35 @@
 [
   {
-    "id": "common",
-    "name": "흔함 · 안흔함 전력 강화",
-    "grades": ["common", "uncommon"],
+    "id": "orthodox",
+    "name": "정파 내공",
+    "faction": "orthodox",
+    "desc": "구파일방 · 정파 전 제자 내공 공격력 증폭",
     "currency": "coin",
     "baseCost": 30,
     "costStep": 20,
-    "atkBonusPctPerLv": 20,
-    "maxLevel": 20
+    "atkBonusPctPerLv": 22,
+    "maxLevel": 25
   },
   {
-    "id": "rare",
-    "name": "희귀 무장색 강화",
-    "grades": ["rare"],
+    "id": "unorthodox",
+    "name": "사파 외공",
+    "faction": "unorthodox",
+    "desc": "녹림 · 당가 · 사파 전 고수 외공 공격력 증폭",
     "currency": "coin",
-    "baseCost": 55,
-    "costStep": 35,
-    "atkBonusPctPerLv": 25,
-    "maxLevel": 20
+    "baseCost": 30,
+    "costStep": 20,
+    "atkBonusPctPerLv": 22,
+    "maxLevel": 25
   },
   {
-    "id": "legendary",
-    "name": "전설 패기 단련",
-    "grades": ["legendary"],
-    "currency": "luck",
-    "baseCost": 1,
-    "costStep": 1,
-    "atkBonusPctPerLv": 30,
-    "maxLevel": 15
-  },
-  {
-    "id": "mythic",
-    "name": "초월 · 불멸 패왕색 각성",
-    "grades": ["transcendent", "immortal"],
-    "currency": "luck",
-    "baseCost": 2,
-    "costStep": 1,
-    "atkBonusPctPerLv": 35,
-    "maxLevel": 15
+    "id": "demonic",
+    "name": "마교 마공",
+    "faction": "demonic",
+    "desc": "천마신교 · 마교 전 마인 마공 공격력 증폭",
+    "currency": "coin",
+    "baseCost": 30,
+    "costStep": 20,
+    "atkBonusPctPerLv": 22,
+    "maxLevel": 25
   }
 ]

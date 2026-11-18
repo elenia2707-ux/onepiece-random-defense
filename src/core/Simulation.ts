@@ -13,6 +13,7 @@ import { InventoryIndex } from '../craft/InventoryIndex';
 import { RecipeGraph } from '../craft/RecipeGraph';
 import { type WispHint, WispSystem } from '../craft/WispSystem';
 import type {
+  FactionId,
   GameDataBundle,
   GradeDef,
   GradeId,
@@ -117,6 +118,7 @@ export interface SlotView {
   readonly uid: number;
   readonly unitId: UnitId;
   readonly name: string;
+  readonly faction: FactionId;
   readonly grade: GradeId;
   readonly locked: boolean;
   readonly sellCoin: number;
@@ -169,7 +171,7 @@ export interface UISnapshot {
   readonly rejects: readonly RejectNotice[];
 }
 
-const UPGRADE_ORDER: readonly UpgradeGroupId[] = ['common', 'rare', 'legendary', 'mythic'];
+const UPGRADE_ORDER: readonly UpgradeGroupId[] = ['orthodox', 'unorthodox', 'demonic'];
 
 export class Simulation {
   public readonly data: GameDataBundle;
@@ -208,10 +210,9 @@ export class Simulation {
     rare: 0,
   };
   private readonly upgradeLv: Record<UpgradeGroupId, number> = {
-    common: 0,
-    rare: 0,
-    legendary: 0,
-    mythic: 0,
+    orthodox: 0,
+    unorthodox: 0,
+    demonic: 0,
   };
   private lastGambleResult: GambleResultSnapshot | null = null;
 
@@ -288,7 +289,7 @@ export class Simulation {
   public getUnitEffectiveAtk(unitId: UnitId): { readonly baseAtk: number; readonly bonusAtk: number } {
     const def = this.data.unitsById.get(unitId);
     if (!def) return { baseAtk: 0, bonusAtk: 0 };
-    const upDef = this.data.upgradesByGrade.get(def.grade);
+    const upDef = this.data.upgradesByFaction.get(def.faction);
     if (!upDef) return { baseAtk: def.atk, bonusAtk: 0 };
     const lv = this.upgradeLv[upDef.id] ?? 0;
     if (lv <= 0) return { baseAtk: def.atk, bonusAtk: 0 };
@@ -375,12 +376,12 @@ export class Simulation {
       case 'summon': {
         const cost = this.getSummonCost();
         if (this.coin < cost) {
-          this.reject('summon', `코인이 부족합니다 (${cost} 필요)`);
+          this.reject('summon', `은자가 부족합니다 (${cost} 필요)`);
           return;
         }
         const slot = this.board.findPlacementSlot();
         if (!slot) {
-          this.reject('summon', '필드와 대기석이 모두 가득 찼습니다.');
+          this.reject('summon', '비무대와 문파 대기석이 모두 가득 찼습니다.');
           return;
         }
         this.coin -= cost;
@@ -394,21 +395,21 @@ export class Simulation {
       case 'gamble': {
         const rateDef = this.data.gambleRates.find((r) => r.tier === cmd.tier);
         if (!rateDef) {
-          this.reject('gamble', '유효하지 않은 도박 등급입니다.');
+          this.reject('gamble', '유효하지 않은 영약 단계입니다.');
           return;
         }
         if (this.luckStone < rateDef.costLuck) {
-          this.reject('gamble', `행운석이 부족합니다 (🍀 ${rateDef.costLuck} 필요)`);
+          this.reject('gamble', `영단이 부족합니다 (${rateDef.costLuck}개 필요)`);
           return;
         }
         const slot = this.board.findPlacementSlot();
         if (!slot) {
-          this.reject('gamble', '배치할 빈 슬롯이 없습니다.');
+          this.reject('gamble', '배치할 빈 자리가 없습니다.');
           return;
         }
         const pool = this.unitsByGrade.get(rateDef.tier);
         if (!pool || pool.length === 0) {
-          this.reject('gamble', '해당 등급 유닛 풀이 비어 있습니다.');
+          this.reject('gamble', '해당 경지의 협객 풀이 비어 있습니다.');
           return;
         }
 
@@ -449,24 +450,24 @@ export class Simulation {
       case 'upgrade': {
         const upDef = this.data.upgrades.find((u) => u.id === cmd.group);
         if (!upDef) {
-          this.reject('upgrade', '존재하지 않는 강화 항목입니다.');
+          this.reject('upgrade', '존재하지 않는 내공 심법입니다.');
           return;
         }
         const curLv = this.upgradeLv[cmd.group] ?? 0;
         if (curLv >= upDef.maxLevel) {
-          this.reject('upgrade', '이미 최대 강화 단계에 도달했습니다.');
+          this.reject('upgrade', '이미 내공 극의(최대 단계)에 도달했습니다.');
           return;
         }
         const cost = this.getUpgradeCost(cmd.group);
         if (upDef.currency === 'coin') {
           if (this.coin < cost) {
-            this.reject('upgrade', `코인이 부족합니다 (🪙 ${cost} 필요)`);
+            this.reject('upgrade', `은자가 부족합니다 (${cost} 필요)`);
             return;
           }
           this.coin -= cost;
         } else {
           if (this.luckStone < cost) {
-            this.reject('upgrade', `행운석이 부족합니다 (🍀 ${cost} 필요)`);
+            this.reject('upgrade', `영단이 부족합니다 (${cost}개 필요)`);
             return;
           }
           this.luckStone -= cost;
@@ -492,12 +493,12 @@ export class Simulation {
         }
         const fromUid = this.board.getUid(cmd.from);
         if (fromUid === null) {
-          this.reject('move', '이동할 유닛이 해당 슬롯에 없습니다.');
+          this.reject('move', '이동할 협객이 해당 자리에 없습니다.');
           return;
         }
         const fromUnit = this.unitsByUid.get(fromUid);
         if (!fromUnit) {
-          this.reject('move', '유닛 상태를 찾을 수 없습니다.');
+          this.reject('move', '협객 상태를 찾을 수 없습니다.');
           return;
         }
 
@@ -518,7 +519,7 @@ export class Simulation {
         } else {
           const toUnit = this.unitsByUid.get(toUid);
           if (!toUnit) {
-            this.reject('move', '교체 대상 유닛을 찾을 수 없습니다.');
+            this.reject('move', '교체 대상 협객을 찾을 수 없습니다.');
             return;
           }
           this.board.setUid(cmd.from, toUid);
@@ -556,11 +557,11 @@ export class Simulation {
       case 'sell': {
         const unit = this.unitsByUid.get(cmd.uid);
         if (!unit) {
-          this.reject('sell', '판매할 유닛이 존재하지 않습니다.');
+          this.reject('sell', '하산시킬 협객이 존재하지 않습니다.');
           return;
         }
         if (unit.locked) {
-          this.reject('sell', '잠금 상태인 유닛은 먼저 잠금을 해제해 주세요.');
+          this.reject('sell', '잠금 상태인 협객은 먼저 잠금을 해제해 주세요.');
           return;
         }
         const def = this.data.unitsById.get(unit.unitId);
@@ -573,7 +574,7 @@ export class Simulation {
       case 'lock': {
         const unit = this.unitsByUid.get(cmd.uid);
         if (!unit) {
-          this.reject('lock', '대상 유닛이 존재하지 않습니다.');
+          this.reject('lock', '대상 협객이 존재하지 않습니다.');
           return;
         }
         unit.locked = cmd.locked;
@@ -613,16 +614,16 @@ export class Simulation {
       case 'useWisp': {
         const owned = this.wisps[cmd.grade] ?? 0;
         if (owned <= 0) {
-          this.reject('useWisp', '보유한 해당 등급 위습이 없습니다.');
+          this.reject('useWisp', '보유한 해당 경지 기연이 없습니다.');
           return;
         }
         if (!this.wispSystem.isAllowedSelection(cmd.grade, cmd.unitId)) {
-          this.reject('useWisp', '해당 등급 위습 풀에 없는 유닛입니다.');
+          this.reject('useWisp', '해당 기연 목록에 없는 협객입니다.');
           return;
         }
         const slot = this.board.findPlacementSlot();
         if (!slot) {
-          this.reject('useWisp', '배치할 빈 슬롯이 없습니다.');
+          this.reject('useWisp', '배치할 빈 자리가 없습니다.');
           return;
         }
         this.wisps[cmd.grade] = owned - 1;
@@ -1032,13 +1033,13 @@ export class Simulation {
 
       if (m.isBoss) {
         this.luckStone += 2;
-        const rewardGrade: GradeId = m.kind === 'pacifista' ? 'rare' : 'uncommon';
+        const rewardGrade: GradeId = m.kind === 'white_tiger' ? 'uncommon' : 'rare';
         this.wisps[rewardGrade] = (this.wisps[rewardGrade] ?? 0) + 1;
         this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
         this.priorityDirty = true;
         this.events.emit('boss:slain', {
           wave: this.waveNumber,
-          bossName: m.bossName ?? '웨이브 보스',
+          bossName: m.bossName ?? '영물 보스',
           rewardWispGrade: rewardGrade,
           tick: this.currentTick,
         });
@@ -1094,7 +1095,7 @@ export class Simulation {
       isBossWave: waveDef.isBoss,
       boss: activeBoss
         ? {
-            name: activeBoss.bossName ?? '보스',
+            name: activeBoss.bossName ?? '영물 보스',
             hp: Math.max(0, activeBoss.hp),
             maxHp: activeBoss.maxHp,
           }
@@ -1126,13 +1127,14 @@ export class Simulation {
       uid: u.uid,
       unitId: u.unitId,
       name: def?.name ?? u.unitId,
+      faction: def?.faction ?? 'orthodox',
       grade: u.grade,
       locked: u.locked,
       sellCoin: def?.sellCoin ?? 10,
       baseAtk,
       bonusAtk,
       range: def?.range ?? 150,
-      skillName: def?.skill.name ?? '기본 공격',
+      skillName: def?.skill.name ?? '기본 초식',
     };
   }
 

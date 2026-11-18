@@ -9,6 +9,7 @@ import rawWispPools from './wisp_pools.json';
 import { secToTicks, TICK_DT } from '../core/time';
 import type {
   BoardConfig,
+  FactionId,
   GambleRateDef,
   GameDataBundle,
   GradeDef,
@@ -26,28 +27,35 @@ import type {
   WispPools,
 } from './types';
 
+const VALID_FACTIONS: ReadonlySet<string> = new Set<FactionId>([
+  'orthodox',
+  'unorthodox',
+  'demonic',
+]);
+
 const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
-  'gatling',
-  'red_hawk',
-  'crescent_slash',
-  'thunder_bolt',
-  'room_strike',
-  'conqueror_haki',
-  'quake_shatter',
+  'plum_blossom',
+  'emperor_thunder',
+  'golden_palm',
+  'poison_rain',
+  'blood_slash',
+  'demonic_flame',
+  'heavenly_demon',
 ]);
 
 const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
-  'marine_grunt',
-  'pirate_raider',
-  'sea_king',
-  'pacifista',
+  'bandit_minion',
+  'jiangshi',
+  'blood_zealot',
+  'white_tiger',
+  'black_serpent',
+  'blood_patriarch',
 ]);
 
 const VALID_UPGRADE_GROUPS: ReadonlySet<string> = new Set<UpgradeGroupId>([
-  'common',
-  'rare',
-  'legendary',
-  'mythic',
+  'orthodox',
+  'unorthodox',
+  'demonic',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -173,6 +181,10 @@ export function validateUnits(
 
     const name = assertNonEmptyString(row.name, `units[${i}].name`);
     const title = assertNonEmptyString(row.title, `units[${i}].title`);
+    const factionStr = assertNonEmptyString(row.faction, `units[${i}].faction`);
+    if (!VALID_FACTIONS.has(factionStr)) {
+      throw new Error(`[DataValidation] units[${i}].faction invalid: ${factionStr}`);
+    }
     const grade = assertNonEmptyString(row.grade, `units[${i}].grade`);
     if (!gradesById.has(grade)) {
       throw new Error(`[DataValidation] units[${i}] references unknown grade: ${grade}`);
@@ -195,6 +207,7 @@ export function validateUnits(
       id,
       name,
       title,
+      faction: factionStr as FactionId,
       grade,
       leaf: row.leaf,
       atk,
@@ -406,10 +419,7 @@ export function validateGambleRates(
   });
 }
 
-export function validateUpgrades(
-  input: unknown,
-  gradesById: ReadonlyMap<string, GradeDef>,
-): UpgradeGroupDef[] {
+export function validateUpgrades(input: unknown): UpgradeGroupDef[] {
   if (!Array.isArray(input) || input.length === 0) {
     throw new Error('[DataValidation] upgrades.json must be a non-empty array');
   }
@@ -425,16 +435,11 @@ export function validateUpgrades(
     }
     seen.add(id);
     const name = assertNonEmptyString(r.name, `upgrades[${i}].name`);
-    if (!Array.isArray(r.grades) || r.grades.length === 0) {
-      throw new Error(`[DataValidation] upgrades[${i}].grades must be non-empty array`);
+    const factionStr = assertNonEmptyString(r.faction, `upgrades[${i}].faction`);
+    if (!VALID_FACTIONS.has(factionStr)) {
+      throw new Error(`[DataValidation] upgrades[${i}].faction invalid: ${factionStr}`);
     }
-    const grades = r.grades.map((g, j) => {
-      const gid = assertNonEmptyString(g, `upgrades[${i}].grades[${j}]`);
-      if (!gradesById.has(gid)) {
-        throw new Error(`[DataValidation] upgrades[${i}] unknown grade: ${gid}`);
-      }
-      return gid;
-    });
+    const desc = assertNonEmptyString(r.desc, `upgrades[${i}].desc`);
     const currency = r.currency === 'luck' ? 'luck' : 'coin';
     const baseCost = assertPositiveNumber(r.baseCost, `upgrades[${i}].baseCost`);
     const costStep = assertNonNegativeNumber(r.costStep, `upgrades[${i}].costStep`);
@@ -446,7 +451,8 @@ export function validateUpgrades(
     return {
       id: id as UpgradeGroupId,
       name,
-      grades,
+      faction: factionStr as FactionId,
+      desc,
       currency,
       baseCost,
       costStep,
@@ -471,12 +477,10 @@ export function loadGameData(): GameDataBundle {
   const waves = validateWaves(rawWaves);
   const wispPools = validateWispPools(rawWispPools, gradesById, unitsById);
   const gambleRates = validateGambleRates(rawGambleRates, gradesById);
-  const upgrades = validateUpgrades(rawUpgrades, gradesById);
-  const upgradesByGrade = new Map<string, UpgradeGroupDef>();
+  const upgrades = validateUpgrades(rawUpgrades);
+  const upgradesByFaction = new Map<FactionId, UpgradeGroupDef>();
   for (const up of upgrades) {
-    for (const gid of up.grades) {
-      upgradesByGrade.set(gid, up);
-    }
+    upgradesByFaction.set(up.faction, up);
   }
 
   cachedBundle = {
@@ -490,7 +494,7 @@ export function loadGameData(): GameDataBundle {
     wispPools,
     gambleRates,
     upgrades,
-    upgradesByGrade,
+    upgradesByFaction,
   };
   return cachedBundle;
 }

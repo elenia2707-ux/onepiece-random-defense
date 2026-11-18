@@ -3,6 +3,7 @@ import type { SlotView, UISnapshot } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
+  FactionId,
   GameDataBundle,
   GradeId,
   RecipeDef,
@@ -26,29 +27,43 @@ type CraftTabId = 'all' | GradeId;
 const NORMAL_SYNC_INTERVAL_MS = 100; // Max 10Hz for non-priority HUD fields (AGENTS.md §4)
 
 const GAMBLE_REP_UNIT: Readonly<Record<string, UnitId>> = {
-  uncommon: 'luffy_gear2',
-  rare: 'ace',
-  legendary: 'luffy_gear4',
+  uncommon: 'plum_swordsman',
+  rare: 'plum_elder',
+  legendary: 'hwasan_master',
 };
 
 const UPGRADE_REP_UNIT: Readonly<Record<UpgradeGroupId, UnitId>> = {
-  common: 'luffy',
-  rare: 'law',
-  legendary: 'zoro_ashura',
-  mythic: 'luffy_nika',
+  orthodox: 'hwasan_master',
+  unorthodox: 'tang_patriarch',
+  demonic: 'cheonma',
 };
 
-/** Inline SVG game icons (thick dark outline + bright fill) — no emoji font dependency. */
+const FACTION_META: Readonly<Record<FactionId, { readonly label: string; readonly color: string }>> = {
+  orthodox: { label: '정파', color: '#0284c7' },
+  unorthodox: { label: '사파', color: '#15803d' },
+  demonic: { label: '마교', color: '#be123c' },
+};
+
+/** Inline Oriental Wuxia SVG game icons (thick #1a1224 ink outline + bright cel fill). */
 const SVG_OPEN = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">';
-const INK = '#0a0f1f';
+const INK = '#1a1224';
 const ICON = {
-  coin: `${SVG_OPEN}<circle cx="12" cy="12" r="9.5" fill="#ffd23f" stroke="${INK}" stroke-width="2.4"/><circle cx="12" cy="12" r="5.6" fill="none" stroke="#e09a12" stroke-width="2"/><path d="M8 7.6l1.6-1.2" stroke="#fff8c8" stroke-width="2" stroke-linecap="round"/></svg>`,
-  clover: `${SVG_OPEN}<g fill="#5ee36a" stroke="${INK}" stroke-width="2"><circle cx="8.2" cy="8.4" r="4.2"/><circle cx="15.8" cy="8.4" r="4.2"/><circle cx="8.2" cy="15.6" r="4.2"/><circle cx="15.8" cy="15.6" r="4.2"/></g><circle cx="12" cy="12" r="2.4" fill="#2fbf4a"/><path d="M7 6.8l1.2-.8M14.6 6.8l1.2-.8" stroke="#d9ffd6" stroke-width="1.6" stroke-linecap="round"/></svg>`,
-  wisp: `${SVG_OPEN}<path d="M12 1.8c3.8 4.6 7 7.6 7 12.2a7 7 0 0 1-14 0c0-2.6 1.4-4.6 3-6.2.2 1.8 1 3 2.2 3.4C9.8 8 10.6 4.8 12 1.8z" fill="#7cd3ff" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 11.5c1.8 2 3 3.2 3 4.8a3 3 0 0 1-6 0c0-1.4 1.2-2.8 3-4.8z" fill="#ffffff"/></svg>`,
-  anchor: `${SVG_OPEN}<g fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="${INK}" stroke-width="5.4"><circle cx="12" cy="5" r="2.4"/><path d="M12 7.4V21M7.5 11h9M4 14.5c.8 3.6 4 6.5 8 6.5s7.2-2.9 8-6.5"/></g><g stroke="#ffffff" stroke-width="2.4"><circle cx="12" cy="5" r="2.4"/><path d="M12 7.4V21M7.5 11h9M4 14.5c.8 3.6 4 6.5 8 6.5s7.2-2.9 8-6.5"/></g></g></svg>`,
-  dice: `${SVG_OPEN}<rect x="3" y="3" width="18" height="18" rx="4.5" fill="#ffffff" stroke="${INK}" stroke-width="2.4"/><path d="M5 17.5V7.5A2.5 2.5 0 0 1 7.5 5" stroke="#d6dcf0" stroke-width="0" fill="none"/><g fill="${INK}"><circle cx="8" cy="8" r="1.8"/><circle cx="16" cy="8" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="8" cy="16" r="1.8"/><circle cx="16" cy="16" r="1.8"/></g></svg>`,
-  swords: `${SVG_OPEN}<g stroke-linecap="round"><g stroke="${INK}" stroke-width="5.2"><path d="M4 4l11 11M20 4L9 15M14 18l4-4M6 14l4 4M17.5 17.5l2.5 2.5M6.5 17.5L4 20"/></g><g stroke="#e8eef8" stroke-width="2.4"><path d="M4 4l11 11M20 4L9 15"/></g><g stroke="#ffd23f" stroke-width="2.4"><path d="M14 18l4-4M6 14l4 4M17.5 17.5l2.5 2.5M6.5 17.5L4 20"/></g></g></svg>`,
-  up: `${SVG_OPEN}<path d="M12 2.5l8 8.5h-4.6v9.5H8.6V11H4z" fill="#ffffff" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 6l3.6 3.8" stroke="#ffe08a" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  // 엽전/은자 (Square-holed brass Oriental coin)
+  coin: `${SVG_OPEN}<circle cx="12" cy="12" r="9.5" fill="#ffd23f" stroke="${INK}" stroke-width="2.4"/><circle cx="12" cy="12" r="6.8" fill="none" stroke="#d97706" stroke-width="1.5"/><rect x="8.8" y="8.8" width="6.4" height="6.4" rx="1" fill="${INK}"/><path d="M7.5 7.2l1.8-1.2" stroke="#fffbeb" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  // 영단 (Glowing crimson-gold medicinal elixir pill)
+  elixir: `${SVG_OPEN}<circle cx="12" cy="12.5" r="8.8" fill="#f43f5e" stroke="${INK}" stroke-width="2.4"/><path d="M6.5 14.5a7 7 0 0 0 11.2 1.2" fill="none" stroke="#9f1239" stroke-width="2.2" stroke-linecap="round"/><circle cx="9.4" cy="9.2" r="2.6" fill="#fef08a"/><circle cx="16.5" cy="6" r="2" fill="#4ade80" stroke="${INK}" stroke-width="1.6"/></svg>`,
+  // 기연 비급 (Rolled jade-and-gold martial arts scroll)
+  wisp: `${SVG_OPEN}<path d="M6 4.5h11a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 6 4.5z" fill="#5eead4" stroke="${INK}" stroke-width="2.4"/><rect x="4" y="3.5" width="3.6" height="17" rx="1.6" fill="#facc15" stroke="${INK}" stroke-width="2"/><path d="M11 9h5M11 13h5M13.5 7v10" stroke="#0f766e" stroke-width="2" stroke-linecap="round"/></svg>`,
+  // 초출강호 (Bamboo satgat + martial sword)
+  summon: `${SVG_OPEN}<path d="M3 14.5L12 6l9 8.5H3z" fill="#fde047" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M6.5 14.5c1.5 3 3.5 4.5 5.5 4.5s4-1.5 5.5-4.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M7.5 11.5h9" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+  // 영약 호리병 (Double-bulb Wuxia elixir gourd)
+  gourd: `${SVG_OPEN}<path d="M10.2 3h3.6v2.5h-3.6z" fill="#b45309" stroke="${INK}" stroke-width="2"/><circle cx="12" cy="8.5" r="4" fill="#4ade80" stroke="${INK}" stroke-width="2.3"/><circle cx="12" cy="16" r="5.8" fill="#22c55e" stroke="${INK}" stroke-width="2.4"/><path d="M8.2 11.6h7.6" stroke="#dc2626" stroke-width="2.6" stroke-linecap="round"/><circle cx="9.8" cy="14.5" r="1.5" fill="#dcfce7"/></svg>`,
+  // 합공·등선 (Crossed jian & saber)
+  swords: `${SVG_OPEN}<g stroke-linecap="round"><g stroke="${INK}" stroke-width="5.2"><path d="M4 4l11 11M20 4L9 15M14 18l4-4M6 14l4 4M17.5 17.5l2.5 2.5M6.5 17.5L4 20"/></g><g stroke="#f8fafc" stroke-width="2.4"><path d="M4 4l11 11M20 4L9 15"/></g><g stroke="#facc15" stroke-width="2.4"><path d="M14 18l4-4M6 14l4 4M17.5 17.5l2.5 2.5M6.5 17.5L4 20"/></g></g></svg>`,
+  // 내공 수련 (Rising golden dantian qi flame)
+  qi: `${SVG_OPEN}<path d="M12 2.2c3.8 4.4 6.8 7.5 6.8 11.8a6.8 6.8 0 0 1-13.6 0c0-2.8 1.5-5 3.2-6.6.3 1.7 1.1 2.8 2.2 3.1C10.2 7.8 10.8 5 12 2.2z" fill="#fb923c" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 10.5c1.9 2.1 3.2 3.5 3.2 5.2a3.2 3.2 0 0 1-6.4 0c0-1.6 1.2-3.1 3.2-5.2z" fill="#fef08a"/></svg>`,
+  // 문파 대기석 (Oriental dancheong roof)
+  pavilion: `${SVG_OPEN}<path d="M2.5 11.5L12 4l9.5 7.5H2.5z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="5.5" y="11.5" width="13" height="8" rx="1.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M9.5 19.5v-5h5v5" fill="#991b1b" stroke="${INK}" stroke-width="1.8"/></svg>`,
 } as const;
 
 export class UIManager {
@@ -74,6 +89,7 @@ export class UIManager {
   private unitSelectBarEl!: HTMLElement;
   private unitPortraitImgEl!: HTMLImageElement;
   private unitGradePillEl!: HTMLElement;
+  private unitFactionPillEl!: HTMLElement;
   private unitNameEl!: HTMLElement;
   private unitStatEl!: HTMLElement;
   private unitShortcutsEl!: HTMLElement;
@@ -162,16 +178,17 @@ export class UIManager {
 
     this.wispTabs = data.grades
       .filter((g) => Boolean(data.wispPools[g.id]?.length))
-      .map((g) => ({ id: g.id, label: `${g.name} 위습` }));
+      .map((g) => ({ id: g.id, label: `${g.name} 기연` }));
     this.wispTab = this.wispTabs[0]?.id ?? data.grades[0]!.id;
 
-    // External PNG art arrived (public/sprites/{id}.png) → rebuild DOM portraits.
+    // External PNG pixel-sheet arrived (public/sprites/{id}.png) -> refresh DOM portraits.
     this.sprites.onSpriteUpdated(() => {
       this.prevSelectSignature = '';
       this.prevSheetSignature = '';
       this.prevRecommendSignature = '';
       if (this.lastSnapshot) {
         this.refreshSelectedUnitBar(this.lastSnapshot);
+        this.refreshRecommendBar(this.lastSnapshot);
         if (this.activeSheet) this.refreshSheet(this.lastSnapshot);
       }
     });
@@ -179,15 +196,15 @@ export class UIManager {
 
   public mount(): void {
     this.root.innerHTML = `
-      <header class="hud-bar" aria-label="전투 상태">
+      <header class="hud-bar" aria-label="무림 전황">
         <div id="hud-wave-box" class="wave-box">
-          <span id="hud-wave-badge" class="wave-badge">WAVE 01</span>
+          <span id="hud-wave-badge" class="wave-badge">제 01 장</span>
           <span id="hud-wave-timer" class="wave-timer">00:28</span>
         </div>
 
         <div id="hud-monster-gauge" class="monster-gauge">
           <div class="monster-gauge-top">
-            <span id="hud-monster-title" class="monster-gauge-title">몬스터</span>
+            <span id="hud-monster-title" class="monster-gauge-title">침입 마물</span>
             <span id="hud-monster-count" class="monster-gauge-count">0 / 100</span>
           </div>
           <div class="monster-gauge-track">
@@ -205,91 +222,92 @@ export class UIManager {
       <aside id="dev-popover" class="dev-popover interactive" aria-label="개발자 도구">
         <div id="dev-sim-meta" class="dev-popover-meta">30Hz · Tick 0</div>
         <div class="dev-popover-grid">
-          <button type="button" class="dev-chip-btn interactive" data-dev-action="coin">+500 코인</button>
-          <button type="button" class="dev-chip-btn interactive" data-dev-action="luck">+5 행운석</button>
-          <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-common">+1 흔함 위습</button>
-          <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-rare">+1 희귀 위습</button>
+          <button type="button" class="dev-chip-btn interactive" data-dev-action="coin">+500 은자</button>
+          <button type="button" class="dev-chip-btn interactive" data-dev-action="luck">+5 영단</button>
+          <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-common">+1 삼류 기연</button>
+          <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-rare">+1 일류 기연</button>
         </div>
       </aside>
 
       <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
 
-      <div id="bench-badge" class="bench-badge">${ICON.anchor}<span>대기석</span><b id="val-bench-count">0/12</b></div>
+      <div id="bench-badge" class="bench-badge">${ICON.pavilion}<span>문파 대기석</span><b id="val-bench-count">0/12</b></div>
 
-      <section id="recommend-bar" class="recommend-bar interactive" aria-label="추천 조합">
-        <span class="recommend-tag">추천</span>
+      <section id="recommend-bar" class="recommend-bar interactive" aria-label="추천 합공식">
+        <span class="recommend-tag">등선 추천</span>
         <div class="unit-portrait-box rec-portrait"><img id="rec-img" alt="" /></div>
         <div class="rec-meta">
           <div class="unit-title-row">
-            <span id="rec-grade" class="grade-pill">희귀</span>
+            <span id="rec-grade" class="grade-pill">이류</span>
             <span id="rec-name" class="unit-name-label">-</span>
           </div>
           <div id="rec-ings" class="rec-ings"></div>
         </div>
-        <button id="btn-rec-cta" type="button" class="rec-cta interactive">도감</button>
+        <button id="btn-rec-cta" type="button" class="rec-cta interactive">합공보</button>
       </section>
 
-      <section id="unit-select-bar" class="unit-select-bar" aria-label="선택 유닛">
+      <section id="unit-select-bar" class="unit-select-bar" aria-label="선택 협객">
         <div class="unit-select-left">
           <div class="unit-portrait-box">
             <img id="sel-unit-img" alt="" />
           </div>
           <div class="unit-meta-col">
             <div class="unit-title-row">
-              <span id="sel-unit-grade" class="grade-pill">흔함</span>
-              <span id="sel-unit-name" class="unit-name-label">루피</span>
-              <span id="sel-unit-stat" class="unit-stat-label">⚔ 26</span>
+              <span id="sel-unit-grade" class="grade-pill">삼류</span>
+              <span id="sel-unit-faction" class="grade-pill">정파</span>
+              <span id="sel-unit-name" class="unit-name-label">화산 막내도사</span>
+              <span id="sel-unit-stat" class="unit-stat-label">⚔ 27</span>
             </div>
             <div id="sel-unit-shortcuts" class="unit-recipe-shortcuts"></div>
           </div>
         </div>
         <div class="unit-select-actions">
           <button id="btn-unit-lock" type="button" class="mini-3d-btn interactive">잠금</button>
-          <button id="btn-unit-sell" type="button" class="mini-3d-btn sell-btn interactive">판매</button>
+          <button id="btn-unit-sell" type="button" class="mini-3d-btn sell-btn interactive">하산</button>
         </div>
       </section>
 
-      <footer class="bottom-dock" aria-label="하단 조작 바">
+      <footer class="bottom-dock" aria-label="무림 지휘 독">
         <div class="currency-bar">
           <div class="currency-group">
-            <span class="currency-pill coin">${ICON.coin}<span id="val-coin">0</span></span>
-            <span class="currency-pill luck">${ICON.clover}<span id="val-luck">0</span></span>
-            <span class="currency-pill wisp">${ICON.wisp}<span id="val-wisp">0</span></span>
+            <span class="currency-pill coin" title="은자">${ICON.coin}<span id="val-coin">0</span></span>
+            <span class="currency-pill luck" title="영단">${ICON.elixir}<span id="val-luck">0</span></span>
+            <span class="currency-pill wisp" title="기연 비급">${ICON.wisp}<span id="val-wisp">0</span></span>
           </div>
-          <span id="val-occupancy" class="slot-occupancy">0/18</span>
+          <span id="val-occupancy" class="slot-occupancy">비무대 0/18</span>
         </div>
 
         <div class="action-row">
           <button id="btn-summon" type="button" class="action-btn btn-summon interactive">
-            <span class="action-icon">${ICON.anchor}</span>
-            <span class="action-title">소환</span>
+            <span class="action-icon">${ICON.summon}</span>
+            <span class="action-title">초출강호</span>
             <span class="action-cost">${ICON.coin}<span id="val-summon-cost">20</span></span>
           </button>
 
           <button id="btn-gamble" type="button" class="action-btn btn-gamble interactive">
             <span id="badge-gamble" class="lamp-badge">0</span>
-            <span class="action-icon">${ICON.dice}</span>
-            <span class="action-title">도박</span>
-            <span class="action-cost">${ICON.clover}<span>1~4</span></span>
+            <span class="action-icon">${ICON.gourd}</span>
+            <span class="action-title">영약 복용</span>
+            <span class="action-cost">${ICON.elixir}<span>1~4</span></span>
           </button>
 
           <button id="btn-wisp" type="button" class="action-btn btn-wisp interactive">
             <span id="badge-wisp" class="lamp-badge">0</span>
             <span class="action-icon">${ICON.wisp}</span>
-            <span class="action-title">위습</span>
-            <span class="action-cost">선택</span>
+            <span class="action-title">기연</span>
+            <span class="action-cost">비급 초빙</span>
           </button>
 
           <button id="btn-craft" type="button" class="action-btn btn-craft interactive">
             <span id="badge-craft" class="lamp-badge">0</span>
             <span class="action-icon">${ICON.swords}</span>
-            <span class="action-title">조합</span>
-            <span id="val-craft-state" class="action-cost">도감</span>
+            <span class="action-title">합공·등선</span>
+            <span id="val-craft-state" class="action-cost">합공보</span>
           </button>
 
           <button id="btn-upgrade" type="button" class="action-btn btn-upgrade interactive">
-            <span class="action-icon">${ICON.up}</span>
-            <span class="action-title">강화</span>
+            <span class="action-icon">${ICON.qi}</span>
+            <span class="action-title">내공 수련</span>
             <span id="val-upgrade-state" class="action-cost">Lv.0</span>
           </button>
         </div>
@@ -299,7 +317,7 @@ export class UIManager {
         <div id="bottom-sheet" class="bottom-sheet">
           <div class="sheet-header">
             <div class="sheet-title-wrap">
-              <div id="sheet-title" class="sheet-title">조합</div>
+              <div id="sheet-title" class="sheet-title">합공 · 등선</div>
               <div id="sheet-subtitle" class="sheet-subtitle"></div>
             </div>
             <button id="btn-sheet-close" type="button" class="sheet-close-btn interactive" aria-label="닫기">✕</button>
@@ -311,11 +329,11 @@ export class UIManager {
 
       <div id="gameover-modal" class="gameover-modal interactive" role="alertdialog" aria-modal="true">
         <div class="gameover-card">
-          <div class="gameover-title">방어선 돌파!</div>
-          <div id="gameover-sub" class="gameover-sub">WAVE 01</div>
+          <div class="gameover-title">비무대 함락!</div>
+          <div id="gameover-sub" class="gameover-sub">제 01 장</div>
           <div class="gameover-actions">
-            <button id="btn-gameover-inspect" type="button" class="card-cta-btn interactive">전장 보기</button>
-            <button id="btn-gameover-restart" type="button" class="card-cta-btn cta-green interactive">다시 시작</button>
+            <button id="btn-gameover-inspect" type="button" class="card-cta-btn interactive">전장 확인</button>
+            <button id="btn-gameover-restart" type="button" class="card-cta-btn cta-green interactive">재출정</button>
           </div>
         </div>
       </div>
@@ -337,6 +355,7 @@ export class UIManager {
     this.unitSelectBarEl = this.mustGet('unit-select-bar');
     this.unitPortraitImgEl = this.mustGet('sel-unit-img') as HTMLImageElement;
     this.unitGradePillEl = this.mustGet('sel-unit-grade');
+    this.unitFactionPillEl = this.mustGet('sel-unit-faction');
     this.unitNameEl = this.mustGet('sel-unit-name');
     this.unitStatEl = this.mustGet('sel-unit-stat');
     this.unitShortcutsEl = this.mustGet('sel-unit-shortcuts');
@@ -397,20 +416,19 @@ export class UIManager {
       const act = btn.dataset.devAction;
       if (act === 'coin') {
         this.handlers.onDispatch({ type: 'grantTestCoin', amount: 500 });
-        this.showToast('DEV: +500 코인 지급');
+        this.showToast('DEV: +500 은자 지급');
       } else if (act === 'luck') {
         this.handlers.onDispatch({ type: 'grantTestResource', luck: 5 });
-        this.showToast('DEV: +5 행운석 지급');
+        this.showToast('DEV: +5 영단 지급');
       } else if (act === 'wisp-common') {
         this.handlers.onDispatch({ type: 'grantTestResource', wispGrade: 'common' });
-        this.showToast('DEV: +1 흔함 위습 지급');
+        this.showToast('DEV: +1 삼류 기연 지급');
       } else if (act === 'wisp-rare') {
         this.handlers.onDispatch({ type: 'grantTestResource', wispGrade: 'rare' });
-        this.showToast('DEV: +1 희귀 위습 지급');
+        this.showToast('DEV: +1 일류 기연 지급');
       }
     });
 
-    // Selected unit bar events
     this.unitLockBtnEl.addEventListener('click', () => {
       const slotView = this.getSelectedSlotView(this.lastSnapshot);
       if (!slotView) return;
@@ -421,7 +439,7 @@ export class UIManager {
       const slotView = this.getSelectedSlotView(this.lastSnapshot);
       if (!slotView) return;
       if (slotView.locked) {
-        this.showToast('잠금 상태인 유닛은 먼저 잠금을 해제해 주세요.', true);
+        this.showToast('잠금 상태인 협객은 먼저 잠금을 해제해 주세요.', true);
         return;
       }
       this.handlers.onDispatch({ type: 'sell', uid: slotView.uid });
@@ -452,7 +470,6 @@ export class UIManager {
       this.openSheet('craft');
     });
 
-    // Recommended craft preview bar (shown while no unit is selected)
     this.recommendBarEl.addEventListener('click', () => {
       const rid = this.recRecipeId;
       if (!rid || !this.lastSnapshot) return;
@@ -468,7 +485,7 @@ export class UIManager {
       this.openSheet('craft');
     });
 
-    // Bottom 5 Dock Buttons
+    // Bottom 5 Wuxia Dock Buttons
     this.summonBtnEl.addEventListener('click', () => {
       this.handlers.onDispatch({ type: 'summon' });
     });
@@ -496,7 +513,6 @@ export class UIManager {
       this.toggleSheet('upgrade');
     });
 
-    // BottomSheet backdrop & close & delegated actions
     this.mustGet('btn-sheet-close').addEventListener('click', () => this.closeSheet());
     this.sheetBackdropEl.addEventListener('click', (ev) => {
       if (ev.target === this.sheetBackdropEl) {
@@ -549,7 +565,6 @@ export class UIManager {
       }
     });
 
-    // GameOver buttons
     this.mustGet('btn-gameover-inspect').addEventListener('click', () => {
       this.gameOverDismissed = true;
       this.gameOverModalEl.classList.remove('open');
@@ -595,7 +610,7 @@ export class UIManager {
     this.waveBoxEl.classList.toggle('boss-mode', snapshot.isBossWave);
     this.setText(
       this.waveBadgeEl,
-      snapshot.isBossWave ? `BOSS ${waveStr}` : `WAVE ${waveStr}`,
+      snapshot.isBossWave ? `영물 ${waveStr}장` : `제 ${waveStr} 장`,
     );
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
     this.setText(this.devSimMetaEl, `30Hz · Tick ${snapshot.tick}`);
@@ -604,7 +619,7 @@ export class UIManager {
       const bossPct = Math.max(0, Math.round((snapshot.boss.hp / Math.max(1, snapshot.boss.maxHp)) * 100));
       this.setText(this.monsterTitleEl, `${snapshot.boss.name} ${bossPct}%`);
     } else {
-      this.setText(this.monsterTitleEl, '몬스터');
+      this.setText(this.monsterTitleEl, '침입 마물');
     }
 
     this.setText(this.monsterCountEl, `${snapshot.monsterCount} / ${snapshot.monsterCap}`);
@@ -628,7 +643,7 @@ export class UIManager {
     this.setText(this.gambleBadgeEl, String(snapshot.luckStone));
     this.gambleBadgeEl.classList.toggle('visible', snapshot.luckStone > 0);
 
-    this.setText(this.occupancyEl, `필드 ${snapshot.fieldOccupied}/18`);
+    this.setText(this.occupancyEl, `비무대 ${snapshot.fieldOccupied}/18`);
     this.setText(this.benchCountEl, `${snapshot.benchOccupied}/12`);
     this.setText(this.summonCostEl, String(snapshot.summonCost));
 
@@ -639,17 +654,16 @@ export class UIManager {
     this.setText(
       this.craftCostEl,
       snapshot.craft.readyCount > 0
-        ? `합성 ${snapshot.craft.readyCount}`
+        ? `합공 ${snapshot.craft.readyCount}`
         : snapshot.craft.chainReadyCount > 0
-          ? `연쇄 ${snapshot.craft.chainReadyCount}`
-          : '도감',
+          ? `등선 ${snapshot.craft.chainReadyCount}`
+          : '합공보',
     );
 
     const totalUpLv =
-      snapshot.upgradeLv.common +
-      snapshot.upgradeLv.rare +
-      snapshot.upgradeLv.legendary +
-      snapshot.upgradeLv.mythic;
+      snapshot.upgradeLv.orthodox +
+      snapshot.upgradeLv.unorthodox +
+      snapshot.upgradeLv.demonic;
     this.setText(this.upgradeCostEl, `Lv.${totalUpLv}`);
 
     // 3. Reject notices
@@ -657,7 +671,7 @@ export class UIManager {
       this.showToast(snapshot.rejects[i]!.reason, true);
     }
 
-    // 4. Selected unit bar (hidden when no unit is selected) / recommended craft bar otherwise
+    // 4. Selected unit bar / recommended ascension bar
     this.refreshSelectedUnitBar(snapshot);
     this.refreshRecommendBar(snapshot);
 
@@ -670,7 +684,7 @@ export class UIManager {
     if (snapshot.gameOver && !this.gameOverDismissed) {
       this.setText(
         this.gameOverSubEl,
-        `WAVE ${waveStr} · 몬스터 ${snapshot.monsterCap}마리 초과`,
+        `제 ${waveStr} 장 · 침입 마물 ${snapshot.monsterCap}기 돌파`,
       );
       this.gameOverModalEl.classList.add('open');
     } else if (!snapshot.gameOver) {
@@ -686,7 +700,6 @@ export class UIManager {
     }
   }
 
-  /** Picks the most valuable recipe to surface: highest-rank craftable, else the closest to completion. */
   private pickRecommendedRecipe(snapshot: UISnapshot): RecipeDef | null {
     let best: RecipeDef | null = null;
     let bestScore = -Infinity;
@@ -756,7 +769,7 @@ export class UIManager {
     const ready = st.lamp === 'ready';
     const chain = st.lamp === 'chainReady';
     this.recCtaEl.className = `rec-cta interactive${ready ? ' cta-ready' : chain ? ' cta-chain' : ''}`;
-    this.recCtaEl.textContent = ready ? '합성!' : chain ? '연쇄 합성' : `${st.have}/${st.need}`;
+    this.recCtaEl.textContent = ready ? '합공!' : chain ? '연쇄 등선' : `${st.have}/${st.need}`;
     this.recommendBarEl.classList.toggle('rec-lit', ready || chain);
   }
 
@@ -809,12 +822,16 @@ export class UIManager {
     const gradeDef = this.data.gradesById.get(slotView.grade);
     if (!unitDef || !gradeDef) return;
 
+    const fMeta = FACTION_META[slotView.faction];
+
     this.unitSelectBarEl.classList.add('visible');
     this.unitPortraitImgEl.src = this.sprites.unitPortraitUrl(unitDef, gradeDef);
     this.unitPortraitImgEl.alt = slotView.name;
 
     this.unitGradePillEl.textContent = gradeDef.name;
     this.unitGradePillEl.style.backgroundColor = gradeDef.color;
+    this.unitFactionPillEl.textContent = fMeta.label;
+    this.unitFactionPillEl.style.backgroundColor = fMeta.color;
     this.unitNameEl.textContent = slotView.name;
 
     const atkText =
@@ -824,13 +841,12 @@ export class UIManager {
     this.unitStatEl.textContent = `${atkText} · ◎${slotView.range}`;
     this.unitStatEl.title = slotView.skillName;
 
-    // Upper recipe shortcuts
     const upperRecipes = this.recipeGraph.byIngredient.get(slotView.unitId) ?? [];
     this.unitShortcutsEl.innerHTML = '';
     if (upperRecipes.length === 0) {
       const doneChip = document.createElement('span');
       doneChip.className = 'shortcut-chip ready';
-      doneChip.textContent = '★ 최종 등급';
+      doneChip.textContent = `★ 무림 지존 · ${slotView.skillName}`;
       this.unitShortcutsEl.appendChild(doneChip);
     } else {
       for (let i = 0; i < upperRecipes.length; i++) {
@@ -853,7 +869,7 @@ export class UIManager {
     this.unitLockBtnEl.innerHTML = slotView.locked
       ? '<span>🔒</span><span>해제</span>'
       : '<span>🔓</span><span>잠금</span>';
-    this.unitSellBtnEl.innerHTML = `<span>판매</span><span class="mini-price">${ICON.coin}${slotView.sellCoin}</span>`;
+    this.unitSellBtnEl.innerHTML = `<span>하산</span><span class="mini-price">${ICON.coin}${slotView.sellCoin}</span>`;
   }
 
   private refreshSheet(snapshot: UISnapshot): void {
@@ -869,7 +885,7 @@ export class UIManager {
     } else if (kind === 'gamble') {
       sig = `gamble:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${totalSlotsUsed}`;
     } else {
-      sig = `upgrade:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.common}:${snapshot.upgradeLv.rare}:${snapshot.upgradeLv.legendary}:${snapshot.upgradeLv.mythic}`;
+      sig = `upgrade:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}`;
     }
 
     if (sig === this.prevSheetSignature) {
@@ -906,13 +922,12 @@ export class UIManager {
   }
 
   private renderCraftSheet(snapshot: UISnapshot): void {
-    this.setText(this.sheetTitleEl, '조합');
+    this.setText(this.sheetTitleEl, '합공 · 등선');
     this.setText(
       this.sheetSubtitleEl,
-      `합성 ${snapshot.craft.readyCount} · 연쇄 ${snapshot.craft.chainReadyCount}`,
+      `즉시 합공 ${snapshot.craft.readyCount} · 연쇄 등선 ${snapshot.craft.chainReadyCount}`,
     );
 
-    // Grade tabs
     this.sheetTabsEl.style.display = 'flex';
     this.sheetTabsEl.innerHTML = this.craftTabs
       .map((tab) => {
@@ -931,14 +946,12 @@ export class UIManager {
 
     const unlocked = this.collectUnlockedCounts(snapshot);
 
-    // Gather all recipes sorted by grade rank
     const allRecipes: RecipeDef[] = [];
     for (let i = 0; i < this.recipeGraph.topo.length; i++) {
       const r = this.recipeGraph.recipesById.get(this.recipeGraph.topo[i]!);
       if (r) allRecipes.push(r);
     }
 
-    // 1) Pinned ready / chainReady recipes at the very top (highest rank first!)
     const readyList = allRecipes
       .filter((r) => {
         const st = snapshot.craft.recipes[r.id];
@@ -952,7 +965,6 @@ export class UIManager {
 
     const readyIds = new Set(readyList.map((r) => r.id));
 
-    // 2) Filtered recipe list
     const restRecipes = allRecipes.filter((r) => {
       const outUnit = this.data.unitsById.get(r.output);
       if (!outUnit) return false;
@@ -965,7 +977,7 @@ export class UIManager {
     const parts: string[] = [];
 
     if (readyList.length > 0 && this.craftTab === 'all') {
-      parts.push('<div class="sheet-section-label">⚡ 지금 합성 가능</div>');
+      parts.push('<div class="sheet-section-label">⚡ 지금 합공 · 등선 가능</div>');
       for (let i = 0; i < readyList.length; i++) {
         parts.push(this.buildRecipeCardHtml(readyList[i]!, snapshot, unlocked));
       }
@@ -973,8 +985,8 @@ export class UIManager {
 
     const sectionTitle =
       this.craftTab === 'all'
-        ? '전체 조합식'
-        : `${this.craftTabs.find((t) => t.id === this.craftTab)?.label ?? ''} 조합식`;
+        ? '전체 무림 합공보'
+        : `${this.craftTabs.find((t) => t.id === this.craftTab)?.label ?? ''} 경지 합공보`;
     parts.push(`<div class="sheet-section-label">${escapeHtml(sectionTitle)}</div>`);
 
     for (let i = 0; i < restRecipes.length; i++) {
@@ -994,6 +1006,7 @@ export class UIManager {
     const outGrade = this.data.gradesById.get(outUnit.grade);
     if (!outGrade) return '';
 
+    const fMeta = FACTION_META[outUnit.faction];
     const st = snapshot.craft.recipes[recipe.id];
     const lamp = st?.lamp ?? 'none';
     const cardStateClass =
@@ -1016,9 +1029,9 @@ export class UIManager {
 
     let ctaHtml = '';
     if (lamp === 'ready') {
-      ctaHtml = `<button type="button" class="card-cta-btn interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="0"><span>합성</span></button>`;
+      ctaHtml = `<button type="button" class="card-cta-btn interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="0"><span>합공</span></button>`;
     } else if (lamp === 'chainReady') {
-      ctaHtml = `<button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="1"><span>연쇄 합성</span></button>`;
+      ctaHtml = `<button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="1"><span>연쇄 등선</span></button>`;
     } else {
       ctaHtml = `<button type="button" class="card-cta-btn cta-disabled" disabled><span>${st?.have ?? 0}/${st?.need ?? recipe.ingredients.length}</span></button>`;
     }
@@ -1030,8 +1043,9 @@ export class UIManager {
           <div class="card-info">
             <div class="card-name-row">
               <span class="grade-pill" style="background:${outGrade.color}">${escapeHtml(outGrade.name)}</span>
+              <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
               <span class="card-name">${escapeHtml(outUnit.name)}</span>
-              <span class="card-sub">⚔${outUnit.atk}</span>
+              <span class="card-sub">⚔${outUnit.atk} · ${escapeHtml(outUnit.skill.name)}</span>
             </div>
             <div class="ing-list">${ingChips}</div>
           </div>
@@ -1043,8 +1057,8 @@ export class UIManager {
 
   private renderWispSheet(snapshot: UISnapshot): void {
     const totalWisps = Object.values(snapshot.wisps).reduce((s, n) => s + (n ?? 0), 0);
-    this.setText(this.sheetTitleEl, '위습 소환');
-    this.setText(this.sheetSubtitleEl, `보유 ${totalWisps}`);
+    this.setText(this.sheetTitleEl, '기연 초빙');
+    this.setText(this.sheetSubtitleEl, `비급 초빙권 ${totalWisps}장`);
 
     this.sheetTabsEl.style.display = 'flex';
     this.sheetTabsEl.innerHTML = this.wispTabs
@@ -1080,23 +1094,24 @@ export class UIManager {
         if (!u) return '';
         const g = this.data.gradesById.get(u.grade);
         if (!g) return '';
+        const fMeta = FACTION_META[u.faction];
         const portrait = this.sprites.unitPortraitUrl(u, g);
         const owned = unlocked.get(uid) ?? 0;
         const hint = hintMap.get(uid);
 
-        let hintBadge = '';
+        let hintBadge = `<span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>`;
         let recommendClass = '';
         if (hint?.completes) {
           const completedOut = this.recipeGraph.recipesById.get(hint.completes)?.output;
-          const outName = completedOut ? (this.data.unitsById.get(completedOut)?.name ?? '상위 유닛') : '상위 유닛';
+          const outName = completedOut ? (this.data.unitsById.get(completedOut)?.name ?? '상위 고수') : '상위 고수';
           hintBadge = `<span class="hint-pill">⚡ ${escapeHtml(outName)}</span>`;
           recommendClass = ' wisp-recommend';
         } else if (hint && hint.gain > 0) {
-          hintBadge = '<span class="hint-pill sub">재료</span>';
+          hintBadge += ' <span class="hint-pill sub">인연 재료</span>';
         }
 
         const canSummon = gradeCount > 0 && hasFreeSlot;
-        const btnLabel = !hasFreeSlot ? '가득참' : gradeCount > 0 ? '소환' : '위습 0';
+        const btnLabel = !hasFreeSlot ? '가득참' : gradeCount > 0 ? '초빙' : '기연 0';
 
         return `
           <div class="wisp-card${recommendClass}">
@@ -1130,24 +1145,24 @@ export class UIManager {
   }
 
   private renderGambleSheet(snapshot: UISnapshot): void {
-    this.setText(this.sheetTitleEl, '도박');
-    this.setText(this.sheetSubtitleEl, `행운석 ${snapshot.luckStone}`);
+    this.setText(this.sheetTitleEl, '영약 복용');
+    this.setText(this.sheetSubtitleEl, `보유 영단 ${snapshot.luckStone}개`);
     this.sheetTabsEl.style.display = 'none';
     this.sheetTabsEl.innerHTML = '';
 
     const res = snapshot.lastGambleResult;
     let bannerClass = 'gamble-result-box';
-    let bannerText = '🎲 행운을 시험해 보세요!';
+    let bannerText = '🧪 영약을 복용해 환골탈태의 경지에 도전하세요!';
 
     if (res) {
       const gName = this.data.gradesById.get(res.tier)?.name ?? res.tier;
       if (res.success && res.unitId) {
         const uName = this.data.unitsById.get(res.unitId)?.name ?? res.unitId;
         bannerClass = 'gamble-result-box win';
-        bannerText = `🎉 성공! ${gName} ${uName}`;
+        bannerText = `✨ 환골탈태 대성공! [${gName}] ${uName}`;
       } else {
         bannerClass = 'gamble-result-box lose';
-        bannerText = `💨 실패... (${gName})`;
+        bannerText = `🩸 주화입마! 기혈이 역류했습니다 (${gName})`;
       }
     }
 
@@ -1156,13 +1171,13 @@ export class UIManager {
     const rateCards = this.data.gambleRates
       .map((rate) => {
         const gradeDef = this.data.gradesById.get(rate.tier);
-        const repId = GAMBLE_REP_UNIT[rate.tier] ?? 'luffy_gear2';
+        const repId = GAMBLE_REP_UNIT[rate.tier] ?? 'plum_swordsman';
         const repUnit = this.data.unitsById.get(repId);
         const portrait =
           repUnit && gradeDef ? this.sprites.unitPortraitUrl(repUnit, gradeDef) : '';
 
         const canRoll = snapshot.luckStone >= rate.costLuck && hasFreeSlot;
-        const btnText = !hasFreeSlot ? '가득참' : snapshot.luckStone >= rate.costLuck ? '도전!' : '부족';
+        const btnText = !hasFreeSlot ? '가득참' : snapshot.luckStone >= rate.costLuck ? '복용!' : '영단 부족';
 
         return `
           <div class="sheet-card">
@@ -1170,10 +1185,10 @@ export class UIManager {
               <div class="card-avatar"><img src="${portrait}" alt="" /></div>
               <div class="card-info">
                 <div class="card-name-row">
-                  <span class="grade-pill" style="background:${gradeDef?.color ?? '#34d399'}">${escapeHtml(gradeDef?.name ?? rate.tier)}</span>
+                  <span class="grade-pill" style="background:${gradeDef?.color ?? '#16a34a'}">${escapeHtml(gradeDef?.name ?? rate.tier)}</span>
                   <span class="card-name">${escapeHtml(rate.label)}</span>
                 </div>
-                <div class="card-sub"><span class="rate-pct">${rate.chancePct}%</span></div>
+                <div class="card-sub"><span class="rate-pct">환골탈태 ${rate.chancePct}%</span> · ${escapeHtml(rate.desc)}</div>
               </div>
             </div>
             <button
@@ -1184,7 +1199,7 @@ export class UIManager {
               ${canRoll ? '' : 'disabled'}
             >
               <span>${btnText}</span>
-              <span class="mini-price">${ICON.clover}${rate.costLuck}</span>
+              <span class="mini-price">${ICON.elixir}${rate.costLuck}</span>
             </button>
           </div>
         `;
@@ -1196,7 +1211,6 @@ export class UIManager {
       ${rateCards}
     `;
 
-    // Re-trigger CSS keyframe animation when consecutive gamble rolls happen
     if (res && res.seq !== this.lastAnimatedGambleSeq) {
       this.lastAnimatedGambleSeq = res.seq;
       const bannerEl = document.getElementById('gamble-outcome-banner');
@@ -1209,10 +1223,10 @@ export class UIManager {
   }
 
   private renderUpgradeSheet(snapshot: UISnapshot): void {
-    this.setText(this.sheetTitleEl, '강화');
+    this.setText(this.sheetTitleEl, '내공 수련');
     this.setText(
       this.sheetSubtitleEl,
-      `코인 ${snapshot.coin.toLocaleString('ko-KR')} · 행운석 ${snapshot.luckStone}`,
+      `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 정파 내공 / 사파 외공 / 마교 마공`,
     );
     this.sheetTabsEl.style.display = 'none';
     this.sheetTabsEl.innerHTML = '';
@@ -1222,9 +1236,10 @@ export class UIManager {
         const lv = snapshot.upgradeLv[up.id] ?? 0;
         const isMax = lv >= up.maxLevel;
         const cost = up.baseCost + lv * up.costStep;
-        const icon = up.currency === 'coin' ? ICON.coin : ICON.clover;
+        const icon = up.currency === 'coin' ? ICON.coin : ICON.elixir;
         const affordable = up.currency === 'coin' ? snapshot.coin >= cost : snapshot.luckStone >= cost;
 
+        const fMeta = FACTION_META[up.faction];
         const repUnit = this.data.unitsById.get(UPGRADE_REP_UNIT[up.id]);
         const repGrade = repUnit ? this.data.gradesById.get(repUnit.grade) : undefined;
         const portrait = repUnit && repGrade ? this.sprites.unitPortraitUrl(repUnit, repGrade) : '';
@@ -1238,11 +1253,11 @@ export class UIManager {
               <div class="card-avatar"><img src="${portrait}" alt="" /></div>
               <div class="card-info">
                 <div class="card-name-row">
-                  <span class="grade-pill" style="background:${repGrade?.color ?? '#fb923c'}">Lv. ${lv}</span>
+                  <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label} · Lv.${lv}</span>
                   <span class="card-name">${escapeHtml(up.name)}</span>
                 </div>
                 <div class="card-sub">
-                  ${isMax ? `ATK +${curPct}% · MAX` : `ATK +${curPct}% → <b class="up-next">+${nextPct}%</b>`}
+                  ${escapeHtml(up.desc)} · ${isMax ? `공격력 +${curPct}% (극의)` : `공격력 +${curPct}% → <b class="up-next">+${nextPct}%</b>`}
                 </div>
               </div>
             </div>
@@ -1253,7 +1268,7 @@ export class UIManager {
               data-group="${up.id}"
               ${!isMax && affordable ? '' : 'disabled'}
             >
-              <span>${isMax ? 'MAX' : '강화'}</span>
+              <span>${isMax ? '극의' : '수련'}</span>
               ${isMax ? '' : `<span class="mini-price">${icon}${cost}</span>`}
             </button>
           </div>

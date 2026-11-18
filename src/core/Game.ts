@@ -125,7 +125,7 @@ export class Game {
 
       if (ev.source === 'wisp') {
         const unitName = this.sim.data.unitsById.get(ev.unitId)?.name ?? ev.unitId;
-        this.ui.showToast(`✦ 위습 선택 소환: ${unitName} 합류!`);
+        this.ui.showToast(`✦ 기연 초빙: ${unitName} 합류!`);
       }
     });
 
@@ -136,11 +136,11 @@ export class Game {
       const unitName = this.sim.data.unitsById.get(ev.outputUnitId)?.name ?? ev.outputUnitId;
 
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
-      this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 조합 완성!`);
+      this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 합공 등선!`);
 
       if (rank >= 4) {
         this.vfx.showCraftCelebrationBanner(
-          gradeDef?.name ?? '전설',
+          gradeDef?.name ?? '절정',
           unitName,
           color,
           performance.now(),
@@ -183,13 +183,13 @@ export class Game {
     this.sim.events.on('wave:boss', (ev) => {
       this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
       this.vfx.triggerScreenShake(8, 0.35, ev.tick);
-      this.vfx.triggerScreenFlash('#ef4444', 0.22, 0.28, ev.tick);
+      this.vfx.triggerScreenFlash('#dc2626', 0.2, 0.28, ev.tick);
     });
 
     this.sim.events.on('boss:slain', (ev) => {
       const wispGradeName =
         this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
-      this.ui.showToast(`🏆 ${ev.bossName} 격파! 보상: 🍀 +2 · ${wispGradeName} 위습 +1`);
+      this.ui.showToast(`🏆 ${ev.bossName} 토벌! 보상: 영단 +2 · ${wispGradeName} 기연 +1`);
     });
 
     this.sim.events.on('gamble:result', (ev) => {
@@ -198,22 +198,22 @@ export class Game {
       if (ev.success && ev.unitId) {
         const uName = this.sim.data.unitsById.get(ev.unitId)?.name ?? ev.unitId;
         const rank = gradeDef?.rank ?? 2;
-        const color = gradeDef?.color ?? '#34d399';
+        const color = gradeDef?.color ?? '#16a34a';
         if (ev.pos) {
           this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
         }
         if (rank >= 4) {
           this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
         }
-        this.ui.showToast(`🎉 [${gName}] 도박 대성공! ${uName} 합류!`);
+        this.ui.showToast(`✨ [${gName}] 환골탈태 대성공! ${uName} 합류!`);
       } else {
-        this.ui.showToast(`💨 [${gName}] 도박 실패...`, true);
+        this.ui.showToast(`🩸 [${gName}] 주화입마... 내상이 깊어집니다`, true);
       }
     });
 
     this.sim.events.on('upgrade:done', (ev) => {
       const upDef = this.sim.data.upgrades.find((u) => u.id === ev.group);
-      this.ui.showToast(`🔥 ${upDef?.name ?? ev.group} Lv.${ev.level} 강화 완료!`);
+      this.ui.showToast(`🔥 ${upDef?.name ?? ev.group} Lv.${ev.level} 수련 완료!`);
     });
   }
 

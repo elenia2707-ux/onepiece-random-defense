@@ -20,21 +20,21 @@
   "field": {
     "cols": 6,
     "rows": 3,
-    "originX": 112,
-    "originY": 250,
-    "cellW": 76,
-    "cellH": 96,
-    "gapX": 8,
-    "gapY": 10
+    "originX": 102,
+    "originY": 222,
+    "cellW": 80,
+    "cellH": 116,
+    "gapX": 7,
+    "gapY": 8
   },
   "bench": {
     "cols": 6,
     "rows": 2,
-    "originX": 59,
+    "originX": 55,
     "originY": 752,
-    "cellW": 92,
+    "cellW": 94,
     "cellH": 84,
-    "gapX": 10,
+    "gapX": 9,
     "gapY": 10
   },
   "economy": {

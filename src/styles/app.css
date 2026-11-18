@@ -1,30 +1,33 @@
 /* =========================================================
-   OnePiece Random Defense — Stage 3 commercial casual theme
-   Deep navy panels · thick ink outlines · 3D bottom lips · glossy highlights
+   운빨무림전 : 구파일방 vs 사파 vs 마교 — Oriental Casual UI Theme
+   Celadon-Jade & Vermilion Dancheong panels · White-Jade portrait frames
    Fonts: 'Black Han Sans' (numbers / titles) + 'Jua' (body)
    ========================================================= */
 :root {
-  --ink: #0a0f1f;
-  --navy-0: #060c1c;
-  --navy-1: #0d1a36;
-  --navy-2: #142a52;
-  --navy-3: #1d3a6e;
-  --navy-4: #2a4f8f;
-  --panel-hi: rgba(255, 255, 255, 0.16);
-  --text-light: #ffffff;
-  --text-dim: #9fb3d9;
-  --gold: #ffd23f;
-  --gold-deep: #c9850c;
-  --emerald: #2fd47a;
-  --emerald-deep: #0f8a49;
-  --sky: #3ab4ff;
-  --sky-deep: #1468c9;
-  --violet: #8f6bff;
-  --violet-deep: #4b2fc4;
-  --coral: #ff4d6d;
-  --coral-deep: #b3173c;
-  --orange: #ff8a2a;
-  --orange-deep: #c2520c;
+  --ink: #1a1224;
+  --jade-0: #082320;
+  --jade-1: #0d3632;
+  --jade-2: #144d47;
+  --jade-3: #1b655d;
+  --dancheong-red: #b91c1c;
+  --dancheong-deep: #7f1d1d;
+  --white-jade-hi: #fffdf7;
+  --white-jade-lo: #e6dbc4;
+  --panel-hi: rgba(255, 255, 255, 0.18);
+  --text-light: #fffdf9;
+  --text-dim: #cbe5df;
+  --gold: #facc15;
+  --gold-deep: #b45309;
+  --emerald: #22c55e;
+  --emerald-deep: #15803d;
+  --sky: #38bdf8;
+  --sky-deep: #0284c7;
+  --violet: #a855f7;
+  --violet-deep: #6b21a8;
+  --coral: #f43f5e;
+  --coral-deep: #9f1239;
+  --orange: #f97316;
+  --orange-deep: #c2410c;
   --scale: 1;
   --font-display: 'Black Han Sans', 'Jua', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
     'Noto Sans KR', sans-serif;
@@ -53,7 +56,7 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #050b18;
+  background-color: #07221f;
   color: var(--text-light);
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
@@ -89,7 +92,7 @@ button {
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at 50% 30%, #12305e 0%, #0a1a36 60%, #050b18 100%);
+  background: radial-gradient(circle at 50% 32%, #1d7066 0%, #0e3f3a 58%, #07221f 100%);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -106,7 +109,7 @@ button {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
-  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 20px 56px rgba(10, 8, 18, 0.65);
 }
 
 #shake-layer {
@@ -162,7 +165,7 @@ button {
   overflow: visible;
 }
 
-/* Pixel-art portraits stay crisp */
+/* Pixel-art portraits stay razor sharp */
 .unit-portrait-box img,
 .card-avatar img,
 .ing-chip img,
@@ -172,7 +175,7 @@ button {
 }
 
 /* =========================================================
-   Top HUD (y: 12..96)
+   Top HUD (y: 12..96) — Oriental Dancheong & Jade Lacquer
    ========================================================= */
 .hud-bar {
   position: absolute;
@@ -181,10 +184,10 @@ button {
   top: 12px;
   height: 84px;
   padding: 10px 12px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, var(--navy-3) 0%, var(--navy-2) 55%, var(--navy-1) 100%);
+  border-radius: 22px;
+  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-2) 55%, var(--jade-1) 100%);
   border: 3.5px solid var(--ink);
-  box-shadow: 0 6px 0 var(--ink), inset 0 2.5px 0 var(--panel-hi), inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: 0 6px 0 var(--ink), inset 0 2.5px 0 var(--panel-hi), inset 0 -2px 0 rgba(250, 204, 21, 0.28);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -194,10 +197,10 @@ button {
   min-width: 132px;
   height: 60px;
   padding: 4px 12px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #0a1430 0%, #060c1c 100%);
+  border-radius: 15px;
+  background: linear-gradient(180deg, #991b1b 0%, #581010 100%);
   border: 3px solid var(--ink);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.08), 0 2px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), 0 0 0 1.5px rgba(250, 204, 21, 0.45);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -206,9 +209,9 @@ button {
 }
 
 .wave-box.boss-mode {
-  background: linear-gradient(180deg, #d7263d 0%, #7a0b1e 100%);
+  background: linear-gradient(180deg, #e11d48 0%, #881337 100%);
   border-color: var(--ink);
-  box-shadow: 0 0 0 2px var(--gold), inset 0 2px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 2.5px var(--gold), inset 0 2px 0 rgba(255, 255, 255, 0.32);
   animation: bossPulse 0.7s ease-in-out infinite alternate;
 }
 
@@ -224,7 +227,7 @@ button {
 .wave-badge {
   font-family: var(--font-display);
   font-size: 17px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--gold);
   text-shadow: var(--outline-1);
   line-height: 1.1;
@@ -256,7 +259,7 @@ button {
 
 .monster-gauge-title {
   font-size: 16px;
-  color: var(--text-dim);
+  color: #fef3c7;
   text-shadow: var(--outline-1);
   white-space: nowrap;
   overflow: hidden;
@@ -276,10 +279,10 @@ button {
   position: relative;
   height: 20px;
   border-radius: 999px;
-  background: #050a18;
+  background: var(--jade-0);
   border: 3px solid var(--ink);
   overflow: hidden;
-  box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.5), 0 2px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.45), 0 2px 0 rgba(255, 255, 255, 0.12);
 }
 
 .monster-gauge-fill {
@@ -287,7 +290,7 @@ button {
   height: 100%;
   width: 0%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #2fd47a 0%, #ffd23f 62%, #ff4d6d 100%);
+  background: linear-gradient(90deg, #22c55e 0%, #facc15 62%, #ef4444 100%);
   transition: width 120ms linear;
 }
 
@@ -299,11 +302,11 @@ button {
   top: 2px;
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.48);
 }
 
 .monster-gauge.danger .monster-gauge-count {
-  color: #ff8fa3;
+  color: #fda4af;
   animation: dangerPulse 0.55s ease-in-out infinite alternate;
 }
 
@@ -327,9 +330,9 @@ button {
   min-width: 54px;
   height: 52px;
   padding: 0 10px;
-  border-radius: 15px;
+  border-radius: 14px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #4a6fb5 0%, #2c4a86 100%);
+  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.3);
   color: #ffffff;
   font-family: var(--font-display);
@@ -347,7 +350,7 @@ button {
 }
 
 .hud-btn.active {
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   color: #ffffff;
 }
 
@@ -359,15 +362,15 @@ button {
   border-width: 2px;
   font-size: 11px;
   letter-spacing: 0.04em;
-  background: rgba(10, 15, 31, 0.6);
+  background: rgba(8, 35, 32, 0.72);
   box-shadow: 0 2px 0 var(--ink);
-  color: #7f93bd;
+  color: #99f6e4;
   text-shadow: none;
   align-self: flex-start;
 }
 
 .hud-btn.dev-btn.active {
-  background: linear-gradient(180deg, #3ab4ff 0%, #1468c9 100%);
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
   color: #ffffff;
 }
 
@@ -376,10 +379,10 @@ button {
   position: absolute;
   right: 18px;
   top: 104px;
-  width: 244px;
+  width: 248px;
   padding: 12px;
   border-radius: 18px;
-  background: var(--navy-1);
+  background: var(--jade-1);
   border: 3px solid var(--ink);
   box-shadow: 0 6px 0 var(--ink), inset 0 2px 0 var(--panel-hi);
   display: none;
@@ -409,7 +412,7 @@ button {
   height: 38px;
   border-radius: 10px;
   border: 2.5px solid var(--ink);
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   box-shadow: 0 3px 0 var(--ink);
   color: var(--ink);
   font-size: 13px;
@@ -421,22 +424,22 @@ button {
 }
 
 /* =========================================================
-   Bench badge (sits on the bench tray frame, y≈718)
+   Bench badge (sits on the dancheong bench tray frame, y=716)
    ========================================================= */
 .bench-badge {
   position: absolute;
   left: 44px;
-  top: 716px;
+  top: 715px;
   height: 32px;
   padding: 0 12px 0 9px;
   border-radius: 999px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
-  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.55);
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 17px;
+  font-size: 16px;
   color: #ffffff;
   text-shadow: var(--outline-1);
   z-index: 2;
@@ -452,25 +455,25 @@ button {
   font-size: 14px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(10, 15, 31, 0.75);
-  color: #ffe9a8;
+  background: var(--ink);
+  color: #fef08a;
   text-shadow: none;
   font-variant-numeric: tabular-nums;
 }
 
 /* =========================================================
-   Shared info bar shell (recommend bar & selected unit bar, y: 952..1030)
+   Shared info bar shell (recommend bar & selected unit bar, y: 954..1032)
    ========================================================= */
 .recommend-bar,
 .unit-select-bar {
   position: absolute;
   left: 16px;
   right: 16px;
-  top: 952px;
+  top: 954px;
   height: 78px;
-  padding: 8px 10px 8px 10px;
+  padding: 8px 10px;
   border-radius: 20px;
-  background: linear-gradient(180deg, var(--navy-3) 0%, var(--navy-2) 60%, var(--navy-1) 100%);
+  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-2) 60%, var(--jade-1) 100%);
   border: 3px solid var(--ink);
   box-shadow: 0 5px 0 var(--ink), inset 0 2px 0 var(--panel-hi);
   color: #ffffff;
@@ -505,13 +508,14 @@ button {
   flex: 1;
 }
 
+/* Bright White-Jade portrait frame so #1a1224 pixel outlines pop! */
 .unit-portrait-box {
   width: 58px;
   height: 58px;
   border-radius: 14px;
   border: 3px solid var(--ink);
-  background: radial-gradient(circle at 50% 40%, #2a4f8f 0%, #0d1a36 100%);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.35);
+  background: radial-gradient(circle at 50% 38%, var(--white-jade-hi) 0%, var(--white-jade-lo) 100%);
+  box-shadow: inset 0 0 0 2px #b91c1c, inset 0 -3px 0 rgba(26, 18, 36, 0.16);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -536,7 +540,7 @@ button {
 .unit-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -544,7 +548,7 @@ button {
 .grade-pill {
   display: inline-flex;
   align-items: center;
-  padding: 1px 8px 2px;
+  padding: 1px 7px 2px;
   border-radius: 999px;
   border: 2px solid var(--ink);
   font-size: 13px;
@@ -555,7 +559,7 @@ button {
 }
 
 .unit-name-label {
-  font-size: 20px;
+  font-size: 19px;
   color: #ffffff;
   text-shadow: var(--outline-1);
   overflow: hidden;
@@ -589,7 +593,7 @@ button {
   padding: 0 9px;
   border-radius: 999px;
   border: 2px solid var(--ink);
-  background: #0a1430;
+  background: var(--jade-0);
   color: var(--text-dim);
   font-size: 13px;
   white-space: nowrap;
@@ -600,7 +604,7 @@ button {
 }
 
 .shortcut-chip.ready {
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   color: #ffffff;
   text-shadow: var(--outline-1);
   animation: chipGlow 0.8s ease-in-out infinite alternate;
@@ -629,7 +633,7 @@ button {
   padding: 0 10px;
   border-radius: 14px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #5b7cc0 0%, #2c4a86 100%);
+  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.35);
   color: #ffffff;
   text-shadow: var(--outline-1);
@@ -648,11 +652,11 @@ button {
 }
 
 .mini-3d-btn.lock-on {
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
 }
 
 .mini-3d-btn.sell-btn {
-  background: linear-gradient(180deg, #ff7a93 0%, #d6224a 100%);
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
 }
 
 .mini-price {
@@ -674,7 +678,7 @@ button {
 }
 
 .recommend-bar.rec-lit {
-  background: linear-gradient(180deg, #3a3f9e 0%, #262a7a 60%, #1a1d5a 100%);
+  background: linear-gradient(180deg, #991b1b 0%, #7f1d1d 60%, #4c0519 100%);
 }
 
 .recommend-tag {
@@ -685,10 +689,10 @@ button {
   height: 22px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: linear-gradient(180deg, #b48cff 0%, #6a3ff0 100%);
+  background: linear-gradient(180deg, #f43f5e 0%, #9f1239 100%);
   box-shadow: 0 2px 0 var(--ink);
   color: #ffffff;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 17px;
   text-shadow: var(--outline-1);
 }
@@ -713,13 +717,14 @@ button {
   overflow: hidden;
 }
 
+/* White-jade mini ingredient tiles so dark sprite outlines stand out! */
 .rec-ing {
   position: relative;
   width: 34px;
   height: 30px;
   border-radius: 9px;
   border: 2px solid var(--ink);
-  background: #0a1430;
+  background: #f5efe1;
   display: inline-flex;
   align-items: flex-end;
   justify-content: center;
@@ -751,8 +756,8 @@ button {
 }
 
 .rec-ing.ok {
-  border-color: #0f8a49;
-  background: #0c3a2a;
+  border-color: #15803d;
+  background: #dcfce7;
 }
 
 .rec-ing.ok b {
@@ -760,7 +765,8 @@ button {
 }
 
 .rec-ing.miss {
-  opacity: 0.75;
+  opacity: 0.85;
+  background: #efe7d6;
 }
 
 .rec-ing.miss b {
@@ -768,12 +774,12 @@ button {
 }
 
 .rec-cta {
-  min-width: 92px;
+  min-width: 94px;
   height: 54px;
   padding: 0 12px;
   border-radius: 15px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #4a6fb5 0%, #2c4a86 100%);
+  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.3);
   color: #ffffff;
   text-shadow: var(--outline-1);
@@ -784,12 +790,12 @@ button {
 }
 
 .rec-cta.cta-ready {
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   animation: chipGlow 0.7s ease-in-out infinite alternate;
 }
 
 .rec-cta.cta-chain {
-  background: linear-gradient(180deg, #5cc8ff 0%, #1468c9 100%);
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
 }
 
 .rec-cta:active {
@@ -798,7 +804,7 @@ button {
 }
 
 /* =========================================================
-   Bottom Dock (y: 1040..1266)
+   Bottom Dock (y: 1042..1264)
    ========================================================= */
 .bottom-dock {
   position: absolute;
@@ -813,11 +819,11 @@ button {
 
 .currency-bar {
   height: 44px;
-  padding: 0 10px 0 6px;
+  padding: 0 12px 0 6px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #0a1430 0%, #060c1c 100%);
+  background: linear-gradient(180deg, var(--jade-1) 0%, var(--jade-0) 100%);
   border: 3px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -834,9 +840,9 @@ button {
   min-width: 92px;
   padding: 0 12px 0 4px;
   border-radius: 999px;
-  background: var(--navy-2);
+  background: var(--jade-2);
   border: 2.5px solid var(--ink);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.14);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -859,24 +865,25 @@ button {
 
 .slot-occupancy {
   font-size: 15px;
-  color: var(--text-dim);
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
   font-variant-numeric: tabular-nums;
 }
 
 .action-row {
   flex: 1;
   display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr 1.15fr 1fr;
-  gap: 9px;
+  grid-template-columns: 1.12fr 1.08fr 0.92fr 1.12fr 1.08fr;
+  gap: 8px;
   padding-bottom: 8px;
 }
 
 .action-btn {
   position: relative;
   overflow: visible;
-  border-radius: 22px;
+  border-radius: 20px;
   border: 3.5px solid var(--ink);
-  padding: 14px 4px 12px;
+  padding: 13px 3px 11px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -894,9 +901,9 @@ button {
   left: 9px;
   right: 9px;
   top: 5px;
-  height: 9px;
+  height: 8px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.15) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.14) 100%);
   pointer-events: none;
 }
 
@@ -908,34 +915,34 @@ button {
   right: 3px;
   bottom: 3px;
   height: 38%;
-  border-radius: 0 0 18px 18px;
+  border-radius: 0 0 16px 16px;
   background: rgba(0, 0, 0, 0.12);
   pointer-events: none;
 }
 
 .action-btn.btn-summon {
-  background: linear-gradient(180deg, #ffe066 0%, #ffbf1f 45%, #f08a0c 100%);
-  box-shadow: 0 7px 0 #8f4a06, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #fde047 0%, #f59e0b 45%, #b45309 100%);
+  box-shadow: 0 7px 0 #78350f, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
 .action-btn.btn-gamble {
-  background: linear-gradient(180deg, #5ef0a0 0%, #2fd47a 45%, #109050 100%);
-  box-shadow: 0 7px 0 #075a31, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #6ee7b7 0%, #10b981 45%, #047857 100%);
+  box-shadow: 0 7px 0 #064e3b, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
 .action-btn.btn-wisp {
-  background: linear-gradient(180deg, #7ad2ff 0%, #3ab4ff 45%, #1468c9 100%);
-  box-shadow: 0 7px 0 #0b3f82, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #7dd3fc 0%, #0284c7 45%, #075985 100%);
+  box-shadow: 0 7px 0 #0c4a6e, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
 .action-btn.btn-craft {
-  background: linear-gradient(180deg, #b49bff 0%, #8f6bff 45%, #4b2fc4 100%);
-  box-shadow: 0 7px 0 #2b1880, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #d8b4fe 0%, #9333ea 45%, #581c87 100%);
+  box-shadow: 0 7px 0 #3b0764, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
 .action-btn.btn-craft.craft-lit {
-  background: linear-gradient(180deg, #ff9db0 0%, #ff4d6d 45%, #b3173c 100%);
-  box-shadow: 0 7px 0 #6e0b24, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #fda4af 0%, #e11d48 45%, #881337 100%);
+  box-shadow: 0 7px 0 #4c0519, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
   animation: craftBounce 0.9s ease-in-out infinite alternate;
 }
 
@@ -949,8 +956,8 @@ button {
 }
 
 .action-btn.btn-upgrade {
-  background: linear-gradient(180deg, #ffb070 0%, #ff8a2a 45%, #c2520c 100%);
-  box-shadow: 0 7px 0 #7a2f05, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #fdba74 0%, #ea580c 45%, #9a3412 100%);
+  box-shadow: 0 7px 0 #7c2d12, 0 10px 0 var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
 .action-btn:active {
@@ -961,39 +968,40 @@ button {
 .action-icon {
   position: relative;
   z-index: 1;
-  font-size: 40px;
+  font-size: 38px;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 42px;
+  height: 40px;
 }
 
 .action-title {
   position: relative;
   z-index: 1;
   font-family: var(--font-display);
-  font-size: 25px;
-  letter-spacing: 0.02em;
-  line-height: 1;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .action-cost {
   position: relative;
   z-index: 1;
   height: 26px;
-  min-width: 70%;
-  padding: 0 10px;
+  min-width: 72%;
+  padding: 0 9px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: rgba(10, 15, 31, 0.82);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.1);
+  background: rgba(26, 18, 36, 0.85);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: 14px;
   color: #ffffff;
   text-shadow: none;
   font-variant-numeric: tabular-nums;
@@ -1001,12 +1009,12 @@ button {
 }
 
 .action-cost .ico {
-  font-size: 17px;
-  margin-left: -4px;
+  font-size: 16px;
+  margin-left: -3px;
 }
 
 .action-btn.btn-summon .action-cost {
-  color: #ffe9a8;
+  color: #fef08a;
 }
 
 .lamp-badge {
@@ -1018,7 +1026,7 @@ button {
   padding: 0 8px;
   border-radius: 999px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #ff7a93 0%, #e01e48 100%);
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
   color: #ffffff;
   text-shadow: var(--outline-1);
   font-family: var(--font-display);
@@ -1036,12 +1044,12 @@ button {
 }
 
 /* =========================================================
-   BottomSheet Modal System (Craft / Wisp / Gamble / Upgrade)
+   BottomSheet Modal System (합공·등선 / 기연 / 영약 복용 / 내공 수련)
    ========================================================= */
 .sheet-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(3, 7, 18, 0.62);
+  background: rgba(8, 22, 20, 0.65);
   display: none;
   align-items: flex-end;
   justify-content: center;
@@ -1056,8 +1064,8 @@ button {
   width: 696px;
   max-height: 860px;
   margin-bottom: 14px;
-  border-radius: 30px;
-  background: linear-gradient(180deg, var(--navy-2) 0%, var(--navy-1) 100%);
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--jade-2) 0%, var(--jade-1) 100%);
   border: 4px solid var(--ink);
   box-shadow: 0 10px 0 var(--ink), inset 0 3px 0 var(--panel-hi);
   color: #ffffff;
@@ -1081,9 +1089,9 @@ button {
 .sheet-header {
   position: relative;
   padding: 14px 16px 14px 20px;
-  background: linear-gradient(180deg, #6a4cf0 0%, #4b2fc4 100%);
+  background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);
   border-bottom: 3.5px solid var(--ink);
-  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(250, 204, 21, 0.45);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1094,19 +1102,20 @@ button {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .sheet-title {
   font-family: var(--font-display);
   font-size: 30px;
-  color: #ffffff;
+  color: #fffbeb;
   text-shadow: var(--outline-2);
   letter-spacing: 0.02em;
 }
 
 .sheet-subtitle {
   font-size: 16px;
-  color: #ffe9a8;
+  color: #fef08a;
   text-shadow: var(--outline-1);
 }
 
@@ -1119,8 +1128,8 @@ button {
   height: 46px;
   border-radius: 14px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #ff7a93 0%, #d6224a 100%);
-  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
   color: #ffffff;
   font-family: var(--font-display);
   font-size: 22px;
@@ -1134,7 +1143,7 @@ button {
 
 .sheet-tabs {
   padding: 10px 14px;
-  background: var(--navy-0);
+  background: var(--jade-0);
   border-bottom: 3px solid var(--ink);
   display: flex;
   gap: 7px;
@@ -1152,8 +1161,8 @@ button {
   padding: 0 15px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: var(--navy-2);
-  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+  background: var(--jade-2);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
   color: var(--text-dim);
   font-size: 16px;
   white-space: nowrap;
@@ -1163,7 +1172,7 @@ button {
 }
 
 .sheet-tab-btn.active {
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   color: #ffffff;
   text-shadow: var(--outline-1);
 }
@@ -1199,9 +1208,9 @@ button {
 .sheet-card {
   padding: 10px 12px;
   border-radius: 20px;
-  background: linear-gradient(180deg, #1f3c72 0%, #162d58 100%);
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
   border: 3px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1209,12 +1218,12 @@ button {
 }
 
 .sheet-card.card-ready {
-  background: linear-gradient(180deg, #5a4210 0%, #3a2a08 100%);
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--gold), inset 0 3px 0 rgba(255, 255, 255, 0.2);
 }
 
 .sheet-card.card-chain {
-  background: linear-gradient(180deg, #144a7a 0%, #0d3358 100%);
+  background: linear-gradient(180deg, #0c4a6e 0%, #082f49 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--sky), inset 0 3px 0 rgba(255, 255, 255, 0.2);
 }
 
@@ -1226,13 +1235,14 @@ button {
   flex: 1;
 }
 
+/* Bright White-Jade + Red Dancheong portrait box inside sheets! */
 .card-avatar {
   width: 66px;
   height: 66px;
   border-radius: 16px;
   border: 3px solid var(--ink);
-  background: radial-gradient(circle at 50% 40%, #2a4f8f 0%, #0a1430 100%);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.35);
+  background: radial-gradient(circle at 50% 38%, var(--white-jade-hi) 0%, var(--white-jade-lo) 100%);
+  box-shadow: inset 0 0 0 2.5px #b91c1c, inset 0 -3px 0 rgba(26, 18, 36, 0.16);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -1268,15 +1278,15 @@ button {
 }
 
 .card-sub {
-  font-family: var(--font-display);
-  font-size: 15px;
+  font-family: var(--font-body);
+  font-size: 14px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
 .card-sub .up-next {
   font-weight: 400;
-  color: var(--emerald);
+  color: #86efac;
 }
 
 .rate-pct {
@@ -1284,9 +1294,10 @@ button {
   padding: 1px 10px;
   border-radius: 999px;
   border: 2px solid var(--ink);
-  background: var(--navy-0);
+  background: var(--jade-0);
   color: var(--gold);
-  font-size: 18px;
+  font-family: var(--font-display);
+  font-size: 16px;
 }
 
 .ing-list {
@@ -1300,12 +1311,12 @@ button {
   padding: 0 8px 0 3px;
   border-radius: 10px;
   border: 2px solid var(--ink);
-  background: var(--navy-0);
+  background: #f5efe1;
   font-size: 14px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #ffffff;
+  color: var(--ink);
 }
 
 .ing-chip img {
@@ -1317,14 +1328,16 @@ button {
 .ing-chip b {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 13px;
+  font-size: 12px;
   padding: 0 5px;
   border-radius: 999px;
   border: 1.5px solid var(--ink);
+  color: #ffffff;
 }
 
 .ing-chip.ing-ok {
-  background: #0c3a2a;
+  background: #dcfce7;
+  border-color: #15803d;
 }
 
 .ing-chip.ing-ok b {
@@ -1332,13 +1345,12 @@ button {
 }
 
 .ing-chip.ing-miss {
-  background: #3a0f1c;
-  color: #ffb3c1;
+  background: #f3ead8;
+  color: #574537;
 }
 
 .ing-chip.ing-miss b {
   background: var(--coral);
-  color: #ffffff;
 }
 
 .card-cta-btn {
@@ -1348,7 +1360,7 @@ button {
   padding: 0 14px;
   border-radius: 16px;
   border: 3px solid var(--ink);
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
   color: #ffffff;
   text-shadow: var(--outline-1);
@@ -1365,16 +1377,16 @@ button {
 }
 
 .card-cta-btn.cta-green {
-  background: linear-gradient(180deg, #5ef0a0 0%, #109050 100%);
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
 }
 
 .card-cta-btn.cta-sky {
-  background: linear-gradient(180deg, #7ad2ff 0%, #1468c9 100%);
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
 }
 
 .card-cta-btn.cta-disabled {
-  background: #26344f;
-  color: #7183a8;
+  background: #234743;
+  color: #7da6a0;
   text-shadow: none;
   box-shadow: 0 2px 0 var(--ink);
 }
@@ -1384,29 +1396,30 @@ button {
   box-shadow: 0 1px 0 var(--ink);
 }
 
-/* Gamble Result Banner inside Sheet */
+/* Elixir Gamble Result Banner (환골탈태 / 주화입마) */
 .gamble-result-box {
   padding: 12px 16px;
   border-radius: 18px;
   border: 3px solid var(--ink);
-  background: var(--navy-0);
+  background: var(--jade-0);
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.08);
   text-align: center;
-  font-size: 20px;
-  color: #ffffff;
+  font-size: 19px;
+  color: #fef3c7;
   text-shadow: var(--outline-1);
 }
 
 .gamble-result-box.win {
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 23px;
   animation: gamblePop 320ms ease;
 }
 
 .gamble-result-box.lose {
-  background: linear-gradient(180deg, #4a1424 0%, #2a0a14 100%);
-  color: #ffb3c1;
+  background: linear-gradient(180deg, #7f1d1d 0%, #3b0808 100%);
+  color: #fecdd3;
   animation: gambleShake 300ms ease;
 }
 
@@ -1444,9 +1457,9 @@ button {
 .wisp-card {
   padding: 9px 10px;
   border-radius: 20px;
-  background: linear-gradient(180deg, #1f3c72 0%, #162d58 100%);
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
   border: 3px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1454,7 +1467,7 @@ button {
 }
 
 .wisp-card.wisp-recommend {
-  background: linear-gradient(180deg, #5a4210 0%, #3a2a08 100%);
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--gold);
 }
 
@@ -1485,21 +1498,21 @@ button {
   padding: 1px 8px;
   border-radius: 999px;
   border: 2px solid var(--ink);
-  background: linear-gradient(180deg, #ffe066 0%, #f5a40c 100%);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
   color: #ffffff;
   text-shadow: var(--outline-1);
   font-size: 12px;
 }
 
 .hint-pill.sub {
-  background: linear-gradient(180deg, #7ad2ff 0%, #1468c9 100%);
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
 }
 
 /* Toast Layer */
 .toast-layer {
   position: absolute;
-  left: 60px;
-  right: 60px;
+  left: 50px;
+  right: 50px;
   top: 110px;
   display: flex;
   flex-direction: column;
@@ -1512,7 +1525,7 @@ button {
 .toast-item {
   padding: 9px 20px;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--navy-3) 0%, var(--navy-1) 100%);
+  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-1) 100%);
   border: 3px solid var(--ink);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 var(--panel-hi);
   color: #ffffff;
@@ -1529,14 +1542,14 @@ button {
 }
 
 .toast-item.reject {
-  background: linear-gradient(180deg, #ff7a93 0%, #b3173c 100%);
+  background: linear-gradient(180deg, #fb7185 0%, #9f1239 100%);
 }
 
 /* Game Over Banner */
 .gameover-modal {
   position: absolute;
   inset: 0;
-  background: rgba(3, 7, 18, 0.75);
+  background: rgba(8, 22, 20, 0.78);
   display: none;
   align-items: center;
   justify-content: center;
@@ -1550,8 +1563,8 @@ button {
 .gameover-card {
   width: 500px;
   padding: 28px 24px;
-  border-radius: 30px;
-  background: linear-gradient(180deg, var(--navy-3) 0%, var(--navy-1) 100%);
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-1) 100%);
   border: 4px solid var(--ink);
   box-shadow: 0 10px 0 var(--ink), inset 0 3px 0 var(--panel-hi);
   color: #ffffff;
@@ -1565,7 +1578,7 @@ button {
 .gameover-title {
   font-family: var(--font-display);
   font-size: 40px;
-  color: var(--coral);
+  color: var(--gold);
   text-shadow: var(--outline-2);
 }
 

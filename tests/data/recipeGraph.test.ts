@@ -4,13 +4,14 @@ import { loadGameData } from '../../src/data/loader';
 import type { RecipeDef, UnitDef } from '../../src/data/types';
 
 describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
-  it('validates production One Piece game data cleanly (R1..R5)', () => {
+  it('validates production Murim 3-faction game data cleanly (R1..R5)', () => {
     const data = loadGameData();
     const graph = new RecipeGraph(data.units, data.gradesById, data.recipes);
     expect(graph.topo.length).toBe(data.recipes.length);
-    expect(graph.byOutput.get('luffy_nika')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('shanks')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('whitebeard')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('cheonma')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('murim_lord')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('sword_saint')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('mad_demon')?.length).toBeGreaterThan(0);
   });
 
   it('R1: rejects recipes referencing non-existent unit IDs', () => {
@@ -19,9 +20,9 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       ...data.recipes,
       {
         id: 'r_bad_ref',
-        output: 'zoro_dual',
+        output: 'plum_swordsman',
         ingredients: [
-          { unit: 'zoro', n: 1 },
+          { unit: 'hwasan_novice', n: 1 },
           { unit: 'ghost_unit_404', n: 1 },
         ],
         priority: 999,
@@ -36,10 +37,10 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       ...data.recipes,
       {
         id: 'r_bad_rank',
-        output: 'zoro_dual', // uncommon (rank 2)
+        output: 'plum_swordsman', // uncommon (rank 2)
         ingredients: [
-          { unit: 'law', n: 1 }, // rare (rank 3) >= rank 2, acyclic
-          { unit: 'marine_gunner', n: 1 },
+          { unit: 'nokrim_chief', n: 1 }, // rare (rank 3) >= rank 2, acyclic
+          { unit: 'mudang_disciple', n: 1 },
         ],
         priority: 999,
       },
@@ -52,19 +53,19 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     const cyclicRecipes: RecipeDef[] = [
       {
         id: 'r_cycle_a',
-        output: 'zoro_dual',
+        output: 'plum_swordsman',
         ingredients: [
-          { unit: 'sanji_diable', n: 1 },
-          { unit: 'zoro', n: 1 },
+          { unit: 'poison_healer', n: 1 },
+          { unit: 'hwasan_novice', n: 1 },
         ],
         priority: 1,
       },
       {
         id: 'r_cycle_b',
-        output: 'sanji_diable',
+        output: 'poison_healer',
         ingredients: [
-          { unit: 'zoro_dual', n: 1 },
-          { unit: 'nami', n: 1 },
+          { unit: 'plum_swordsman', n: 1 },
+          { unit: 'tang_assassin', n: 1 },
         ],
         priority: 2,
       },
@@ -75,10 +76,11 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
   it('R4: rejects non-leaf units that have no valid expansion to leaf units', () => {
     const data = loadGameData();
     const extraNonLeaf: UnitDef = {
-      id: 'orphan_pirate',
-      name: '고립 해적',
-      title: '미확정',
+      id: 'orphan_warrior',
+      name: '은거 기인',
+      title: '무명객',
       grade: 'rare',
+      faction: 'orthodox',
       leaf: false,
       atk: 100,
       range: 180,
@@ -87,15 +89,15 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       critMult: 1.8,
       sellCoin: 50,
       skill: {
-        name: '테스트 베기',
-        desc: '테스트',
+        name: '무형검기',
+        desc: '테스트 초식',
         everyN: 4,
         atkRatio: 2,
         splashRadius: 60,
         stunTicks: 0,
         slowPct: 0,
         slowTicks: 0,
-        vfxTrack: 'crescent_slash',
+        vfxTrack: 'plum_blossom',
       },
     };
     expect(
@@ -108,11 +110,11 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     const dupRecipes: RecipeDef[] = [
       ...data.recipes,
       {
-        id: 'r_zoro_dual_duplicate',
-        output: 'zoro_dual',
+        id: 'r_plum_swordsman_duplicate',
+        output: 'plum_swordsman',
         ingredients: [
-          { unit: 'marine_saber', n: 1 },
-          { unit: 'zoro', n: 1 },
+          { unit: 'mudang_disciple', n: 1 },
+          { unit: 'hwasan_novice', n: 1 },
         ],
         priority: 999,
       },

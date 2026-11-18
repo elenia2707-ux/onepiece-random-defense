@@ -8,7 +8,7 @@
     "monsterSpeed": 128,
     "monsterRadius": 16,
     "rewardCoin": 5,
-    "monsterKind": "marine_grunt",
+    "monsterKind": "bandit_minion",
     "isBoss": false
   },
   {
@@ -17,10 +17,10 @@
     "spawnCount": 18,
     "spawnIntervalSec": 1.15,
     "monsterHp": 180,
-    "monsterSpeed": 136,
+    "monsterSpeed": 134,
     "monsterRadius": 16,
     "rewardCoin": 6,
-    "monsterKind": "pirate_raider",
+    "monsterKind": "jiangshi",
     "isBoss": false
   },
   {
@@ -32,7 +32,7 @@
     "monsterSpeed": 142,
     "monsterRadius": 17,
     "rewardCoin": 7,
-    "monsterKind": "marine_grunt",
+    "monsterKind": "blood_zealot",
     "isBoss": false
   },
   {
@@ -44,7 +44,7 @@
     "monsterSpeed": 146,
     "monsterRadius": 17,
     "rewardCoin": 8,
-    "monsterKind": "pirate_raider",
+    "monsterKind": "bandit_minion",
     "isBoss": false
   },
   {
@@ -56,9 +56,9 @@
     "monsterSpeed": 96,
     "monsterRadius": 27,
     "rewardCoin": 120,
-    "monsterKind": "sea_king",
+    "monsterKind": "white_tiger",
     "isBoss": true,
-    "bossName": "근해의 주인 거대 해왕류"
+    "bossName": "호산군 영물 백호"
   },
   {
     "wave": 6,
@@ -69,7 +69,7 @@
     "monsterSpeed": 150,
     "monsterRadius": 17,
     "rewardCoin": 10,
-    "monsterKind": "marine_grunt",
+    "monsterKind": "jiangshi",
     "isBoss": false
   },
   {
@@ -81,7 +81,7 @@
     "monsterSpeed": 154,
     "monsterRadius": 17,
     "rewardCoin": 12,
-    "monsterKind": "pirate_raider",
+    "monsterKind": "blood_zealot",
     "isBoss": false
   },
   {
@@ -93,7 +93,7 @@
     "monsterSpeed": 156,
     "monsterRadius": 18,
     "rewardCoin": 14,
-    "monsterKind": "marine_grunt",
+    "monsterKind": "bandit_minion",
     "isBoss": false
   },
   {
@@ -105,7 +105,7 @@
     "monsterSpeed": 160,
     "monsterRadius": 18,
     "rewardCoin": 16,
-    "monsterKind": "pirate_raider",
+    "monsterKind": "jiangshi",
     "isBoss": false
   },
   {
@@ -117,8 +117,69 @@
     "monsterSpeed": 94,
     "monsterRadius": 28,
     "rewardCoin": 280,
-    "monsterKind": "pacifista",
+    "monsterKind": "black_serpent",
     "isBoss": true,
-    "bossName": "인간병기 파시피스타 PX-0"
+    "bossName": "만년독룡 영물 묵린흑사"
+  },
+  {
+    "wave": 11,
+    "durationSec": 32,
+    "spawnCount": 28,
+    "spawnIntervalSec": 0.84,
+    "monsterHp": 2150,
+    "monsterSpeed": 162,
+    "monsterRadius": 18,
+    "rewardCoin": 18,
+    "monsterKind": "blood_zealot",
+    "isBoss": false
+  },
+  {
+    "wave": 12,
+    "durationSec": 32,
+    "spawnCount": 30,
+    "spawnIntervalSec": 0.82,
+    "monsterHp": 2850,
+    "monsterSpeed": 164,
+    "monsterRadius": 18,
+    "rewardCoin": 20,
+    "monsterKind": "jiangshi",
+    "isBoss": false
+  },
+  {
+    "wave": 13,
+    "durationSec": 34,
+    "spawnCount": 30,
+    "spawnIntervalSec": 0.8,
+    "monsterHp": 3700,
+    "monsterSpeed": 166,
+    "monsterRadius": 18,
+    "rewardCoin": 22,
+    "monsterKind": "bandit_minion",
+    "isBoss": false
+  },
+  {
+    "wave": 14,
+    "durationSec": 34,
+    "spawnCount": 32,
+    "spawnIntervalSec": 0.78,
+    "monsterHp": 4800,
+    "monsterSpeed": 168,
+    "monsterRadius": 19,
+    "rewardCoin": 25,
+    "monsterKind": "blood_zealot",
+    "isBoss": false
+  },
+  {
+    "wave": 15,
+    "durationSec": 48,
+    "spawnCount": 1,
+    "spawnIntervalSec": 2.0,
+    "monsterHp": 36000,
+    "monsterSpeed": 92,
+    "monsterRadius": 29,
+    "rewardCoin": 520,
+    "monsterKind": "blood_patriarch",
+    "isBoss": true,
+    "bossName": "혈해마군 혈교주"
   }
 ]

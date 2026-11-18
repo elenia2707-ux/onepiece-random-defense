@@ -1,137 +1,205 @@
 [
   {
-    "id": "r_luffy_gear2",
-    "output": "luffy_gear2",
+    "id": "r_plum_swordsman",
+    "output": "plum_swordsman",
     "ingredients": [
-      { "unit": "luffy", "n": 1 },
-      { "unit": "chopper", "n": 1 }
+      { "unit": "hwasan_novice", "n": 1 },
+      { "unit": "mudang_disciple", "n": 1 }
     ],
     "priority": 10
   },
   {
-    "id": "r_zoro_dual",
-    "output": "zoro_dual",
+    "id": "r_shaolin_monk",
+    "output": "shaolin_monk",
     "ingredients": [
-      { "unit": "zoro", "n": 1 },
-      { "unit": "marine_saber", "n": 1 }
+      { "unit": "shaolin_novice", "n": 1 },
+      { "unit": "gaebang_beggar", "n": 1 }
     ],
     "priority": 20
   },
   {
-    "id": "r_nami_clima",
-    "output": "nami_clima",
+    "id": "r_namgung_thunder",
+    "output": "namgung_thunder",
     "ingredients": [
-      { "unit": "nami", "n": 1 },
-      { "unit": "usopp", "n": 1 }
+      { "unit": "hwasan_novice", "n": 1 },
+      { "unit": "shaolin_novice", "n": 1 }
     ],
     "priority": 30
   },
   {
-    "id": "r_sanji_diable",
-    "output": "sanji_diable",
+    "id": "r_poison_healer",
+    "output": "poison_healer",
     "ingredients": [
-      { "unit": "sanji", "n": 1 },
-      { "unit": "marine_gunner", "n": 1 }
+      { "unit": "tang_assassin", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 }
     ],
     "priority": 40
   },
   {
-    "id": "r_luffy_ts",
-    "output": "luffy_ts",
+    "id": "r_blood_blade",
+    "output": "blood_blade",
     "ingredients": [
-      { "unit": "luffy_gear2", "n": 1 },
-      { "unit": "sanji_diable", "n": 1 },
-      { "unit": "luffy", "n": 1 }
+      { "unit": "nokrim_bandit", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 }
     ],
     "priority": 50
   },
   {
-    "id": "r_zoro_ts",
-    "output": "zoro_ts",
+    "id": "r_black_wind",
+    "output": "black_wind",
     "ingredients": [
-      { "unit": "zoro_dual", "n": 1 },
-      { "unit": "zoro", "n": 1 },
-      { "unit": "marine_saber", "n": 1 }
+      { "unit": "cult_initiate", "n": 1 },
+      { "unit": "bone_fiend", "n": 1 }
     ],
     "priority": 60
   },
   {
-    "id": "r_law",
-    "output": "law",
+    "id": "r_cult_protector",
+    "output": "cult_protector",
     "ingredients": [
-      { "unit": "nami_clima", "n": 1 },
-      { "unit": "chopper", "n": 1 },
-      { "unit": "marine_gunner", "n": 1 }
+      { "unit": "bone_fiend", "n": 1 },
+      { "unit": "nokrim_bandit", "n": 1 }
     ],
     "priority": 70
   },
   {
-    "id": "r_ace",
-    "output": "ace",
+    "id": "r_plum_elder",
+    "output": "plum_elder",
     "ingredients": [
-      { "unit": "sanji_diable", "n": 1 },
-      { "unit": "nami_clima", "n": 1 },
-      { "unit": "usopp", "n": 1 }
+      { "unit": "plum_swordsman", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 },
+      { "unit": "hwasan_novice", "n": 1 }
     ],
     "priority": 80
   },
   {
-    "id": "r_luffy_gear4",
-    "output": "luffy_gear4",
+    "id": "r_gaebang_elder",
+    "output": "gaebang_elder",
     "ingredients": [
-      { "unit": "luffy_ts", "n": 1 },
-      { "unit": "law", "n": 1 },
-      { "unit": "luffy_gear2", "n": 1 }
+      { "unit": "shaolin_monk", "n": 1 },
+      { "unit": "gaebang_beggar", "n": 1 },
+      { "unit": "mudang_disciple", "n": 1 }
     ],
     "priority": 90
   },
   {
-    "id": "r_zoro_ashura",
-    "output": "zoro_ashura",
+    "id": "r_nokrim_chief",
+    "output": "nokrim_chief",
     "ingredients": [
-      { "unit": "zoro_ts", "n": 1 },
-      { "unit": "zoro_dual", "n": 1 },
-      { "unit": "sanji_diable", "n": 1 }
+      { "unit": "blood_blade", "n": 1 },
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "nokrim_bandit", "n": 1 }
     ],
     "priority": 100
   },
   {
-    "id": "r_ace_flame",
-    "output": "ace_flame",
+    "id": "r_cult_elder",
+    "output": "cult_elder",
     "ingredients": [
-      { "unit": "ace", "n": 1 },
-      { "unit": "luffy_ts", "n": 1 },
-      { "unit": "nami_clima", "n": 1 }
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "cult_protector", "n": 1 },
+      { "unit": "cult_initiate", "n": 1 }
     ],
     "priority": 110
   },
   {
-    "id": "r_shanks",
-    "output": "shanks",
+    "id": "r_hwasan_master",
+    "output": "hwasan_master",
     "ingredients": [
-      { "unit": "zoro_ashura", "n": 1 },
-      { "unit": "law", "n": 1 },
-      { "unit": "zoro_ts", "n": 1 }
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "plum_swordsman", "n": 1 },
+      { "unit": "hwasan_novice", "n": 1 }
     ],
     "priority": 120
   },
   {
-    "id": "r_whitebeard",
-    "output": "whitebeard",
+    "id": "r_mudang_master",
+    "output": "mudang_master",
     "ingredients": [
-      { "unit": "ace_flame", "n": 1 },
-      { "unit": "luffy_ts", "n": 1 },
-      { "unit": "law", "n": 1 }
+      { "unit": "gaebang_elder", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 },
+      { "unit": "mudang_disciple", "n": 1 }
     ],
     "priority": 130
   },
   {
-    "id": "r_luffy_nika",
-    "output": "luffy_nika",
+    "id": "r_tang_patriarch",
+    "output": "tang_patriarch",
     "ingredients": [
-      { "unit": "luffy_gear4", "n": 1 },
-      { "unit": "shanks", "n": 1 }
+      { "unit": "nokrim_chief", "n": 1 },
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "tang_assassin", "n": 1 }
     ],
     "priority": 140
+  },
+  {
+    "id": "r_blood_demon",
+    "output": "blood_demon",
+    "ingredients": [
+      { "unit": "nokrim_chief", "n": 1 },
+      { "unit": "blood_blade", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 }
+    ],
+    "priority": 150
+  },
+  {
+    "id": "r_sword_demon",
+    "output": "sword_demon",
+    "ingredients": [
+      { "unit": "cult_elder", "n": 1 },
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "cult_initiate", "n": 1 }
+    ],
+    "priority": 160
+  },
+  {
+    "id": "r_flame_demon",
+    "output": "flame_demon",
+    "ingredients": [
+      { "unit": "cult_elder", "n": 1 },
+      { "unit": "cult_protector", "n": 1 },
+      { "unit": "bone_fiend", "n": 1 }
+    ],
+    "priority": 170
+  },
+  {
+    "id": "r_sword_saint",
+    "output": "sword_saint",
+    "ingredients": [
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 }
+    ],
+    "priority": 180
+  },
+  {
+    "id": "r_murim_lord",
+    "output": "murim_lord",
+    "ingredients": [
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 },
+      { "unit": "shaolin_monk", "n": 1 }
+    ],
+    "priority": 190
+  },
+  {
+    "id": "r_mad_demon",
+    "output": "mad_demon",
+    "ingredients": [
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "blood_demon", "n": 1 }
+    ],
+    "priority": 200
+  },
+  {
+    "id": "r_cheonma",
+    "output": "cheonma",
+    "ingredients": [
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "flame_demon", "n": 1 }
+    ],
+    "priority": 210
   }
 ]

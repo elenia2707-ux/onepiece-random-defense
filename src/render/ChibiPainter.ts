@@ -1,1268 +1,1102 @@
-import type { MonsterKind } from '../data/types';
+import type { MonsterKind, UnitId } from '../data/types';
 
 /**
- * Retro pixel-art sprite painter.
+ * 32x32 SD Wuxia pixel-art renderer ('King God Castle' / 'Guardian Tales' style).
  *
- * Every character is authored on a small logical grid (32x32 for units & bosses, 24x24 for mobs),
- * auto-shaded with a 4-tone cel ramp (light / base / shade / deep — light from top-left) and wrapped
- * in a 1-cell dark outline. The grid is rasterised ONCE into an offscreen canvas owned by SpriteCache
- * with plain fillRect calls (no filters, no shadowBlur) and is then blitted nearest-neighbour.
+ * Hard artistic rules enforced across every unit & monster:
+ * 1. Crisp dark brown-purple outline (#1a1224) + internal chin/collar separation.
+ * 2. Cute 1.5-head-tall big-head SD proportions (head y=6..18, body+feet y=19..30).
+ * 3. Strictly ZERO white sclera pixels in eyes — dark #1a1224 bean eyes + 1px catchlight only.
+ * 4. Asymmetric 3/4 diagonal combat poses & 4-stage cel shading on every material.
  */
 
-const OUTLINE = '#140d1c';
+const GRID = 32;
+export const PIXEL_OUTLINE = '#1a1224';
 
-type Ramp = readonly [string, string, string, string];
+type Ramp4 = readonly [string, string, string, string]; // [highlight, light, mid, shadow]
 
-const RAMPS = {
-  skin: ['#ffe2c4', '#f9c49a', '#e09a6e', '#b06a48'],
-  skinFlush: ['#ffc4b0', '#f79a86', '#d9675e', '#a8413f'],
-  skinTan: ['#f2c49b', '#d9a06e', '#b07448', '#7f4d2e'],
-  fur: ['#c98a5a', '#a8653a', '#7f4626', '#5a2e18'],
-  furLight: ['#fff0dc', '#f4d9b8', '#d9b08a', '#ad8160'],
-  hairBlack: ['#4a4560', '#2c2838', '#1c1926', '#100e17'],
-  hairGreen: ['#8fe39a', '#3fbf6a', '#23874a', '#145c34'],
-  hairOrange: ['#ffc07a', '#ff8c2e', '#dd5f14', '#a8400c'],
-  hairBlond: ['#fff3a8', '#ffd94a', '#e0a91f', '#a8760e'],
-  hairRed: ['#ff7a6a', '#e0332e', '#a81e24', '#701219'],
-  hairWhite: ['#ffffff', '#eef2ff', '#c5cde8', '#8f9bc4'],
-  straw: ['#fff2a6', '#f7d354', '#d9a72a', '#a8761a'],
-  red: ['#ff7b7b', '#e8323c', '#b41f2e', '#7c1424'],
-  orange: ['#ffb366', '#ff8a1f', '#d9620e', '#9c410a'],
-  yellow: ['#fff38a', '#ffd31f', '#e0a20e', '#a8700a'],
-  blue: ['#7cc4ff', '#2f8cf0', '#1f5fc0', '#163e86'],
-  denim: ['#8fb4f0', '#4f7fd0', '#355aa8', '#233c78'],
-  navy: ['#5468a8', '#2e3f7c', '#1f2a5a', '#141c3e'],
-  white: ['#ffffff', '#eef1f8', '#c9d0e2', '#9aa3bd'],
-  black: ['#5a5670', '#33303f', '#221f2c', '#14121b'],
-  green: ['#9fe870', '#5cc23c', '#3a8f28', '#26621c'],
-  darkGreen: ['#5fa86a', '#2f7a45', '#1f5532', '#133a22'],
-  olive: ['#c9c26a', '#9a9440', '#6f6a2a', '#4a461a'],
-  brown: ['#c08a5a', '#8f5a32', '#6a3e20', '#472914'],
-  wood: ['#d9a066', '#b07438', '#84522a', '#5a361a'],
-  pink: ['#ffb3d1', '#ff7aa8', '#e04a83', '#a82e5e'],
-  purple: ['#d9a8ff', '#a35cff', '#7433d9', '#4d1fa0'],
-  gold: ['#fff2a0', '#ffd23f', '#e0a020', '#a86e10'],
-  steel: ['#ffffff', '#dbe4f0', '#9fb0c8', '#6a7a94'],
-  gray: ['#c8ccd8', '#9aa0b4', '#6f7590', '#4a4f66'],
-  metal: ['#e6ecf5', '#aab6c8', '#76849c', '#4c586e'],
-  fire: ['#fff6b0', '#ffc93c', '#ff7a1a', '#d7261e'],
-  steam: ['#ffffff', '#e6ebf5', '#c3cbdc', '#9aa4ba'],
-  cloud: ['#ffffff', '#f4f6ff', '#d6dcf5', '#aab3dc'],
-  cloudGray: ['#9aa3b8', '#6f7890', '#4f566c', '#363b4c'],
-  haki: ['#5a3a6e', '#2e1f3c', '#1c1328', '#100a18'],
-  hakiRed: ['#ff6a6a', '#d81f3a', '#9a1028', '#5c0818'],
-  seaKing: ['#7fe3cf', '#2fb59c', '#1f8070', '#14544c'],
-  belly: ['#fff3c4', '#f2d98a', '#d1b25c', '#a8873a'],
-  water: ['#7fd6ff', '#2f9be0', '#1f6aad', '#16477a'],
-  pxCoat: ['#6a6080', '#433b56', '#2e283c', '#1e1a28'],
-} as const satisfies Record<string, Ramp>;
+const SKIN_WARM: Ramp4 = ['#fff4e8', '#ffdfc4', '#f0b890', '#c9855e'];
+const SKIN_TAN: Ramp4 = ['#fae5cf', '#ecc19c', '#d19568', '#9e623c'];
+const SKIN_PALE: Ramp4 = ['#fff5eb', '#f5d6be', '#d8a98b', '#a37358'];
+const SKIN_ZOMBIE: Ramp4 = ['#d9f2ee', '#9dd6ce', '#63a9a1', '#3b736f'];
+const BONE_RAMP: Ramp4 = ['#ffffff', '#f1ede4', '#cfc6b4', '#8f8470'];
 
-const FLATS = {
-  eye: '#1a1024',
-  glint: '#ffffff',
-  irisBrown: '#6b3a1f',
-  redIris: '#ff2a3c',
-  mouth: '#6e1f2e',
-  tongue: '#ff6f7f',
-  teeth: '#ffffff',
-  blush: '#ff8fa8',
-  scar: '#9b2d3b',
-  freckle: '#b9643a',
-  lens: '#9ee7ff',
-  redEye: '#ff2a2a',
-  ember: '#ff5a1f',
-  smoke: '#cfd6e4',
-  eyeBag: '#8a6a8a',
-} as const satisfies Record<string, string>;
+const HAIR_BLACK: Ramp4 = ['#584d70', '#392f4f', '#251d38', '#171126'];
+const HAIR_BROWN: Ramp4 = ['#8f6249', '#6b442f', '#4a2c1d', '#2e1a11'];
+const HAIR_SILVER: Ramp4 = ['#ffffff', '#e2e8f0', '#94a3b8', '#475569'];
+const HAIR_CRIMSON: Ramp4 = ['#fda4af', '#f43f5e', '#be123c', '#7f1d1d'];
+const HAIR_FLAME: Ramp4 = ['#fef08a', '#fb923c', '#ef4444', '#991b1b'];
 
-type RampMat = keyof typeof RAMPS;
-type FlatMat = keyof typeof FLATS;
-type Mat = RampMat | FlatMat;
-type Pt = readonly [number, number];
+const ROBE_GOLD: Ramp4 = ['#fef08a', '#facc15', '#d97706', '#92400e'];
+const ROBE_WHITE: Ramp4 = ['#ffffff', '#eef2f6', '#cbd5e1', '#64748b'];
+const ROBE_PLUM: Ramp4 = ['#ffe4e6', '#fda4af', '#f43f5e', '#9f1239'];
+const ROBE_VIOLET: Ramp4 = ['#f3e8ff', '#c084fc', '#7e22ce', '#4c1d95'];
+const ROBE_AZURE: Ramp4 = ['#e0f2fe', '#7dd3fc', '#0284c7', '#1e3a8a'];
+const ROBE_COBALT: Ramp4 = ['#dbeafe', '#60a5fa', '#2563eb', '#172554'];
+const ROBE_EARTH: Ramp4 = ['#fef3c7', '#d6a86e', '#9a6b3b', '#5c3a1b'];
+const ROBE_JADE: Ramp4 = ['#dcfce7', '#4ade80', '#16a34a', '#14532d'];
+const ROBE_CRIMSON: Ramp4 = ['#ffe4e6', '#fb7185', '#dc2626', '#7f1d1d'];
+const ROBE_OBSIDIAN: Ramp4 = ['#6d4c6b', '#472c4c', '#2b1733', '#190c21'];
+const ROBE_DEMON: Ramp4 = ['#881337', '#581028', '#360919', '#1f040e'];
+const STRAW_RAMP: Ramp4 = ['#fef9c3', '#eab308', '#a16207', '#633b05'];
+const STEEL_RAMP: Ramp4 = ['#ffffff', '#dbeafe', '#94a3b8', '#475569'];
+const CYAN_QI: Ramp4 = ['#ffffff', '#a5f3fc', '#06b6d4', '#0e7490'];
+const GOLD_QI: Ramp4 = ['#ffffff', '#fef08a', '#f59e0b', '#b45309'];
+const VENOM_QI: Ramp4 = ['#ecfccb', '#86efac', '#22c55e', '#15803d'];
 
-const NO_OUTLINE: ReadonlySet<Mat> = new Set<Mat>(['smoke']);
+const LAYER_BACK = 1;
+const LAYER_BODY = 2;
+const LAYER_HEAD = 3;
+const LAYER_FRONT = 4;
+const LAYER_FX = 5;
 
-function isRamp(m: Mat): m is RampMat {
-  return Object.prototype.hasOwnProperty.call(RAMPS, m);
-}
+class PixelCanvas {
+  private readonly colors = new Array<string | null>(GRID * GRID).fill(null);
+  private readonly layers = new Uint8Array(GRID * GRID);
 
-/* ------------------------------------------------------------------ */
-/*  Pixel grid with auto cel-shading + outline pass                    */
-/* ------------------------------------------------------------------ */
-
-class PixelGrid {
-  public readonly w: number;
-  public readonly h: number;
-  private readonly cells: (Mat | null)[];
-  private readonly forced: Int8Array;
-  private readonly groups: Int16Array;
-  private group = 0;
-
-  public constructor(w: number, h: number) {
-    this.w = w;
-    this.h = h;
-    this.cells = new Array<Mat | null>(w * h).fill(null);
-    this.forced = new Int8Array(w * h).fill(-1);
-    this.groups = new Int16Array(w * h);
-  }
-
-  /** Starts a new shading region: cells only shade against neighbours of the same region. */
-  public newGroup(): this {
-    this.group++;
-    return this;
-  }
-
-  public set(x: number, y: number, m: Mat, tone = -1): void {
-    const ix = Math.round(x);
-    const iy = Math.round(y);
-    if (ix < 0 || iy < 0 || ix >= this.w || iy >= this.h) return;
-    const i = iy * this.w + ix;
-    this.cells[i] = m;
-    this.forced[i] = tone;
-    this.groups[i] = this.group;
-  }
-
-  public clear(x: number, y: number): void {
-    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
-    this.cells[y * this.w + x] = null;
-  }
-
-  public rect(x: number, y: number, w: number, h: number, m: Mat, tone = -1): void {
-    for (let yy = y; yy < y + h; yy++) {
-      for (let xx = x; xx < x + w; xx++) this.set(xx, yy, m, tone);
+  public set(x: number, y: number, color: string, layer = LAYER_BODY): void {
+    const ix = x | 0;
+    const iy = y | 0;
+    if (ix < 0 || ix >= GRID || iy < 0 || iy >= GRID) return;
+    const idx = iy * GRID + ix;
+    if (layer >= this.layers[idx]!) {
+      this.colors[idx] = color;
+      this.layers[idx] = layer;
     }
   }
 
-  /** Inclusive horizontal span. */
-  public span(y: number, x0: number, x1: number, m: Mat, tone = -1): void {
-    for (let x = x0; x <= x1; x++) this.set(x, y, m, tone);
+  public rect(x: number, y: number, w: number, h: number, color: string, layer = LAYER_BODY): void {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        this.set(x + dx, y + dy, color, layer);
+      }
+    }
   }
 
-  public ellipse(
-    cx: number,
-    cy: number,
-    rx: number,
-    ry: number,
-    m: Mat,
-    yMin = -Infinity,
-    yMax = Infinity,
-    tone = -1,
+  public hline(x0: number, x1: number, y: number, color: string, layer = LAYER_BODY): void {
+    const a = Math.min(x0, x1);
+    const b = Math.max(x0, x1);
+    for (let x = a; x <= b; x++) this.set(x, y, color, layer);
+  }
+
+  public vline(x: number, y0: number, y1: number, color: string, layer = LAYER_BODY): void {
+    const a = Math.min(y0, y1);
+    const b = Math.max(y0, y1);
+    for (let y = a; y <= b; y++) this.set(x, y, color, layer);
+  }
+
+  public line(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    color: string,
+    layer = LAYER_FRONT,
+    thickness = 1,
   ): void {
-    const y0 = Math.max(0, Math.floor(cy - ry - 1));
-    const y1 = Math.min(this.h - 1, Math.ceil(cy + ry + 1));
-    const x0 = Math.max(0, Math.floor(cx - rx - 1));
-    const x1 = Math.min(this.w - 1, Math.ceil(cx + rx + 1));
-    for (let y = y0; y <= y1; y++) {
-      if (y < yMin || y > yMax) continue;
-      for (let x = x0; x <= x1; x++) {
-        const nx = (x + 0.5 - cx) / rx;
-        const ny = (y + 0.5 - cy) / ry;
-        if (nx * nx + ny * ny <= 1) this.set(x, y, m, tone);
+    let cx = Math.round(x0);
+    let cy = Math.round(y0);
+    const tx = Math.round(x1);
+    const ty = Math.round(y1);
+    const dx = Math.abs(tx - cx);
+    const dy = Math.abs(ty - cy);
+    const sx = cx < tx ? 1 : -1;
+    const sy = cy < ty ? 1 : -1;
+    let err = dx - dy;
+    while (true) {
+      if (thickness <= 1) {
+        this.set(cx, cy, color, layer);
+      } else {
+        this.rect(cx, cy, thickness, thickness, color, layer);
       }
-    }
-  }
-
-  /** Bresenham line; returns plotted points. */
-  public line(ax: number, ay: number, bx: number, by: number, m: Mat, tone = -1): Pt[] {
-    let x0 = Math.round(ax);
-    let y0 = Math.round(ay);
-    const x1 = Math.round(bx);
-    const y1 = Math.round(by);
-    const dx = Math.abs(x1 - x0);
-    const dy = -Math.abs(y1 - y0);
-    const sx = x0 < x1 ? 1 : -1;
-    const sy = y0 < y1 ? 1 : -1;
-    let err = dx + dy;
-    const out: Pt[] = [];
-    for (;;) {
-      this.set(x0, y0, m, tone);
-      out.push([x0, y0]);
-      if (x0 === x1 && y0 === y1) break;
-      const e2 = 2 * err;
-      if (e2 >= dy) {
-        err += dy;
-        x0 += sx;
+      if (cx === tx && cy === ty) break;
+      const e2 = err * 2;
+      if (e2 > -dy) {
+        err -= dy;
+        cx += sx;
       }
-      if (e2 <= dx) {
+      if (e2 < dx) {
         err += dx;
-        y0 += sy;
+        cy += sy;
       }
     }
-    return out;
   }
 
-  public polyline(pts: readonly Pt[], m: Mat, tone = -1): void {
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1]!;
-      const b = pts[i]!;
-      this.line(a[0], a[1], b[0], b[1], m, tone);
-    }
-  }
-
-  public pts(list: readonly Pt[], m: Mat, tone = -1): void {
-    for (const p of list) this.set(p[0], p[1], m, tone);
-  }
-
-  private at(x: number, y: number): number {
-    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return -1;
-    return y * this.w + x;
-  }
-
-  private same(x: number, y: number, m: Mat, g: number): boolean {
-    const i = this.at(x, y);
-    return i >= 0 && this.cells[i] === m && this.groups[i] === g;
-  }
-
-  private filled(x: number, y: number): Mat | null {
-    const i = this.at(x, y);
-    return i >= 0 ? (this.cells[i] ?? null) : null;
-  }
-
-  public render(ctx: CanvasRenderingContext2D, ox: number, oy: number, s: number): void {
-    // 1) Outline pass — every empty cell 4-adjacent to an outlined material.
-    ctx.fillStyle = OUTLINE;
-    for (let y = -1; y <= this.h; y++) {
-      for (let x = -1; x <= this.w; x++) {
-        if (this.filled(x, y)) continue;
-        const n = [this.filled(x - 1, y), this.filled(x + 1, y), this.filled(x, y - 1), this.filled(x, y + 1)];
-        let hit = false;
-        for (const c of n) {
-          if (c && !NO_OUTLINE.has(c)) {
-            hit = true;
-            break;
-          }
+  public disc(cx: number, cy: number, r: number, ramp: Ramp4, layer = LAYER_BODY): void {
+    const ir = Math.ceil(r);
+    for (let dy = -ir; dy <= ir; dy++) {
+      for (let dx = -ir; dx <= ir; dx++) {
+        if (dx * dx + dy * dy <= r * r + 0.25) {
+          const light = dx * -0.45 + dy * -0.65;
+          const tone =
+            light > r * 0.35
+              ? ramp[0]
+              : light > -r * 0.05
+                ? ramp[1]
+                : light > -r * 0.42
+                  ? ramp[2]
+                  : ramp[3];
+          this.set(Math.round(cx + dx), Math.round(cy + dy), tone, layer);
         }
-        if (hit) ctx.fillRect(ox + x * s, oy + y * s, s, s);
       }
     }
+  }
 
-    // 2) Fill pass with auto 4-tone cel shading.
-    for (let y = 0; y < this.h; y++) {
-      for (let x = 0; x < this.w; x++) {
-        const i = y * this.w + x;
-        const m = this.cells[i];
-        if (!m) continue;
-        let color: string;
-        if (isRamp(m)) {
-          let tone = this.forced[i]!;
-          if (tone < 0) {
-            const g = this.groups[i]!;
-            let score = 0;
-            if (!this.same(x, y - 1, m, g)) {
-              // Open sky above → rim light; something else above → cast shadow.
-              score += this.filled(x, y - 1) ? 1 : -1;
-            }
-            if (!this.same(x - 1, y, m, g)) score -= 1;
-            if (!this.same(x + 1, y, m, g)) score += 1;
-            if (!this.same(x, y + 1, m, g)) {
-              score += 1;
-            } else if (
-              !this.same(x, y + 2, m, g) &&
-              this.same(x, y - 1, m, g) &&
-              this.same(x, y - 2, m, g)
-            ) {
-              score += 1;
-            }
-            tone = Math.max(0, Math.min(3, score + 1));
-          }
-          color = RAMPS[m][tone as 0 | 1 | 2 | 3];
-        } else {
-          color = FLATS[m];
+  public flush(ctx: CanvasRenderingContext2D, canvasSize: number): void {
+    const out = this.colors.slice();
+
+    // 1. Internal jawline separation: crisp dark line directly under head chin over torso
+    for (let y = 1; y < GRID - 1; y++) {
+      for (let x = 1; x < GRID - 1; x++) {
+        const idx = y * GRID + x;
+        const myLayer = this.layers[idx]!;
+        if (myLayer === LAYER_BODY && this.layers[(y - 1) * GRID + x] === LAYER_HEAD) {
+          out[idx] = PIXEL_OUTLINE;
         }
-        ctx.fillStyle = color;
-        ctx.fillRect(ox + x * s, oy + y * s, s, s);
+      }
+    }
+
+    // 2. Outer 4-neighbour silhouette outline (#1a1224)
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        const idx = y * GRID + x;
+        if (this.layers[idx]! !== 0) continue;
+        const hasNeighbor =
+          (x > 0 && this.layers[idx - 1]! > 0) ||
+          (x < GRID - 1 && this.layers[idx + 1]! > 0) ||
+          (y > 0 && this.layers[idx - GRID]! > 0) ||
+          (y < GRID - 1 && this.layers[idx + GRID]! > 0);
+        if (hasNeighbor) {
+          out[idx] = PIXEL_OUTLINE;
+        }
+      }
+    }
+
+    const scale = Math.max(1, Math.floor(canvasSize / GRID));
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    ctx.imageSmoothingEnabled = false;
+
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        const col = out[y * GRID + x];
+        if (!col) continue;
+        ctx.fillStyle = col;
+        ctx.fillRect(x * scale, y * scale, scale, scale);
       }
     }
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*  Shared 32-grid unit template                                       */
-/* ------------------------------------------------------------------ */
+/* ========================================================================== */
+/*  Shared 1.5-head-tall 3/4 Chibi Anatomy & Martial Gear Helpers             */
+/* ========================================================================== */
 
-/** Mirror x around the 32-grid unit axis (column 16). */
-const mx = (x: number): number => 32 - x;
-
-interface BodyOpts {
-  readonly skin: Mat;
-  readonly shirt: Mat;
-  readonly pants: Mat;
-  readonly shoes: Mat;
-  readonly sleeve?: Mat;
-  readonly chest?: Mat;
-  readonly belt?: Mat;
-  readonly shorts?: boolean;
-  readonly noRightArm?: boolean;
+interface EyeSpec {
+  readonly glint?: string;
+  readonly browColor?: string;
+  readonly fierce?: boolean;
+  readonly blush?: string | null;
+  readonly scar?: boolean;
 }
 
-function body(g: PixelGrid, o: BodyOpts): void {
-  g.newGroup();
-  g.span(26, 12, 20, o.pants);
-  g.rect(12, 27, 4, 2, o.pants);
-  g.rect(17, 27, 4, 2, o.pants);
-  if (o.shorts) {
-    g.newGroup().rect(12, 28, 4, 1, o.skin);
-    g.newGroup().rect(17, 28, 4, 1, o.skin);
-  }
-  g.newGroup().rect(11, 29, 5, 2, o.shoes);
-  g.newGroup().rect(17, 29, 5, 2, o.shoes);
-
-  g.newGroup();
-  g.span(20, 12, 20, o.shirt);
-  g.rect(11, 21, 11, 5, o.shirt);
-  if (o.chest) {
-    g.newGroup();
-    g.rect(15, 20, 3, 4, o.chest);
-    g.set(16, 24, o.chest);
-  }
-  if (o.belt) g.newGroup().span(25, 11, 21, o.belt);
-
-  const sl = o.sleeve ?? o.skin;
-  g.newGroup().rect(9, 21, 2, 3, sl);
-  if (!o.noRightArm) g.newGroup().rect(22, 21, 2, 3, sl);
-  hands(g, o.skin, true, !o.noRightArm);
-}
-
-function hands(g: PixelGrid, skin: Mat, left = true, right = true): void {
-  if (left) g.newGroup().rect(9, 24, 2, 2, skin);
-  if (right) g.newGroup().rect(22, 24, 2, 2, skin);
-}
-
-function head(g: PixelGrid, skin: Mat): void {
-  g.newGroup().ellipse(16.5, 14, 7.5, 7, skin);
-  g.newGroup().rect(8, 14, 1, 2, skin);
-  g.newGroup().rect(24, 14, 1, 2, skin);
-}
-
-type EyeStyle = 'normal' | 'angry' | 'laugh' | 'closedR' | 'hiddenL';
-
-function eyes(g: PixelGrid, style: EyeStyle, iris: Mat = 'irisBrown'): void {
-  const eye = (x0: number): void => {
-    g.rect(x0, 14, 2, 3, 'eye');
-    g.set(x0, 14, 'glint');
-    g.set(x0 + 1, 16, iris);
-  };
-  switch (style) {
-    case 'normal':
-      eye(12);
-      eye(19);
-      break;
-    case 'angry':
-      eye(12);
-      eye(19);
-      g.pts([[11, 12], [12, 12], [13, 13], [14, 13]], 'eye');
-      g.pts([[21, 12], [20, 12], [19, 13], [18, 13]], 'eye');
-      break;
-    case 'laugh':
-      g.pts([[11, 16], [12, 15], [13, 15], [14, 16]], 'eye');
-      g.pts([[18, 16], [19, 15], [20, 15], [21, 16]], 'eye');
-      break;
-    case 'closedR':
-      eye(12);
-      g.pts([[11, 12], [12, 12], [13, 13]], 'eye');
-      g.span(15, 18, 21, 'eye');
-      g.line(20, 11, 19, 18, 'scar');
-      break;
-    case 'hiddenL':
-      eye(19);
-      break;
-  }
-}
-
-type MouthStyle = 'smile' | 'grin' | 'flat' | 'smirk' | 'teeth' | 'open';
-
-function mouth(g: PixelGrid, style: MouthStyle): void {
-  switch (style) {
-    case 'smile':
-      g.pts([[14, 18], [18, 18]], 'mouth');
-      g.span(19, 15, 17, 'mouth');
-      break;
-    case 'grin':
-      g.pts([[14, 18], [18, 18]], 'mouth');
-      g.span(18, 15, 17, 'teeth');
-      g.pts([[15, 19], [17, 19]], 'mouth');
-      g.set(16, 19, 'tongue');
-      break;
-    case 'flat':
-      g.span(19, 15, 17, 'mouth');
-      break;
-    case 'smirk':
-      g.pts([[15, 19], [16, 19], [17, 19], [18, 18]], 'mouth');
-      break;
-    case 'teeth':
-      g.pts([[13, 18], [19, 18]], 'mouth');
-      g.span(18, 14, 18, 'teeth');
-      g.span(19, 14, 18, 'mouth');
-      break;
-    case 'open':
-      g.pts([[13, 18], [19, 18], [14, 19], [18, 19]], 'mouth');
-      g.span(18, 14, 18, 'teeth');
-      g.span(19, 15, 17, 'tongue');
-      g.span(20, 15, 17, 'mouth');
-      break;
-  }
-}
-
-function blush(g: PixelGrid, left = true, right = true): void {
-  if (left) g.span(17, 10, 11, 'blush');
-  if (right) g.span(17, 21, 22, 'blush');
-}
-
-interface SwordOpts {
-  readonly blade?: Mat;
-  readonly hilt?: Mat;
-  readonly guard?: Mat;
-  readonly hiltLen?: number;
-}
-
-/** Katana / saber: guard point → tip, with hilt extending opposite the blade. */
-function sword(g: PixelGrid, gx: number, gy: number, tx: number, ty: number, o: SwordOpts = {}): void {
-  const dx = tx - gx;
-  const dy = ty - gy;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  g.newGroup();
-  const pts = g.line(gx + ux * 1.2, gy + uy * 1.2, tx, ty, o.blade ?? 'steel', 1);
-  for (let i = 0; i < pts.length; i += 3) {
-    const p = pts[i]!;
-    g.set(p[0], p[1], o.blade ?? 'steel', 0);
-  }
-  g.newGroup();
-  const hl = o.hiltLen ?? 3;
-  for (let k = 1; k <= hl; k++) g.set(gx - ux * k, gy - uy * k, o.hilt ?? 'black');
-  g.newGroup();
-  const px = -uy;
-  const py = ux;
-  g.set(gx, gy, o.guard ?? 'gold');
-  g.set(gx + px, gy + py, o.guard ?? 'gold');
-  g.set(gx - px, gy - py, o.guard ?? 'gold');
-}
-
-/** Pixel flame with forced inner tones (white-hot core → crimson tips). */
-function flame(g: PixelGrid, cx: number, baseY: number, h: number, hw: number): void {
-  g.newGroup();
-  for (let i = 0; i < h; i++) {
-    const y = baseY - i;
-    const t = i / h;
-    const w = Math.max(0, Math.round(hw * (1 - t * t) * (i < 1 ? 0.75 : 1)));
-    const wob = Math.round(Math.sin(i * 1.3 + cx) * 0.7);
-    for (let dx = -w; dx <= w; dx++) {
-      const edge = w === 0 ? 1 : Math.abs(dx) / w;
-      let tone = edge > 0.7 ? 2 : edge > 0.34 ? 1 : 0;
-      if (t > 0.62) tone = Math.min(3, tone + 1);
-      g.set(cx + dx + wob, y, 'fire', tone);
+/**
+ * 3/4 right-facing big chibi head (y=8..18, x=7..19) with 4-stage cel shading.
+ * Strictly dark #1a1224 bean eyes + single catchlight pixel (ZERO white sclera).
+ */
+function paintHead34(p: PixelCanvas, skin: Ramp4, eye: EyeSpec = {}): void {
+  // Chubby 3/4 face block (12px wide x 10px tall)
+  for (let y = 8; y <= 18; y++) {
+    const x0 = y <= 9 || y === 18 ? 9 : 8;
+    const x1 = y <= 9 ? 18 : y === 18 ? 17 : 19;
+    for (let x = x0; x <= x1; x++) {
+      let c = skin[1];
+      if (y <= 11 && x >= 10 && x <= 15) c = skin[0]; // Forehead highlight
+      else if (x === x0 || y === 17) c = skin[2]; // Left cheek & lower jaw mid-shade
+      if (x === x1 || y === 18 || (x <= 9 && y >= 16)) c = skin[3]; // Deep 3/4 shadow
+      p.set(x, y, c, LAYER_HEAD);
     }
   }
-  g.set(cx, baseY - h, 'fire', 3);
-  g.set(cx - hw, baseY - Math.round(h * 0.55), 'fire', 2);
-  g.set(cx + hw, baseY - Math.round(h * 0.45), 'fire', 2);
-}
+  // Left ear (3/4 perspective shows left ear clearly)
+  p.set(7, 13, skin[2], LAYER_HEAD);
+  p.set(7, 14, skin[3], LAYER_HEAD);
+  p.set(7, 15, skin[3], LAYER_HEAD);
 
-function puff(g: PixelGrid, cx: number, cy: number, m: Mat = 'steam'): void {
-  g.newGroup().ellipse(cx, cy, 1.7, 1.3, m);
-}
+  // Optional cute cheek blush or battle scar
+  if (eye.blush) {
+    p.set(10, 16, eye.blush, LAYER_HEAD);
+    p.set(11, 16, eye.blush, LAYER_HEAD);
+    p.set(18, 16, eye.blush, LAYER_HEAD);
+  }
+  if (eye.scar) {
+    p.set(10, 12, '#9f1239', LAYER_HEAD);
+    p.set(11, 13, '#9f1239', LAYER_HEAD);
+  }
 
-/* ------------------------------------------------------------------ */
-/*  Hair & hats                                                        */
-/* ------------------------------------------------------------------ */
+  // Dark bean eyes (2x3 vertical beans at x=12..13 and x=17..18, shifted right for 3/4 turn)
+  const glint = eye.glint ?? '#fef3c7';
+  // Left bean eye
+  p.rect(12, 13, 2, 3, PIXEL_OUTLINE, LAYER_HEAD);
+  p.set(12, 13, glint, LAYER_HEAD); // 1px upper-left catchlight ONLY
+  // Right bean eye
+  p.rect(17, 13, 2, 3, PIXEL_OUTLINE, LAYER_HEAD);
+  p.set(17, 13, glint, LAYER_HEAD); // 1px upper-left catchlight ONLY
 
-function strawHat(g: PixelGrid): void {
-  g.newGroup();
-  g.span(3, 13, 19, 'straw');
-  g.span(4, 12, 20, 'straw');
-  g.rect(11, 5, 11, 3, 'straw');
-  g.pts([[13, 5], [17, 6], [20, 5]], 'straw', 2);
-  g.newGroup().span(8, 11, 21, 'red');
-  g.newGroup();
-  g.span(9, 7, 25, 'straw');
-  g.span(10, 6, 26, 'straw');
-  g.pts([[9, 10], [14, 10], [19, 10], [24, 10]], 'straw', 3);
-}
-
-function luffyHair(g: PixelGrid): void {
-  g.newGroup();
-  g.span(11, 9, 23, 'hairBlack');
-  g.pts(
-    [[9, 12], [10, 12], [12, 12], [15, 12], [16, 12], [20, 12], [22, 12], [23, 12], [9, 13], [23, 13]],
-    'hairBlack',
-  );
-}
-
-function buzzHair(g: PixelGrid, m: Mat): void {
-  g.newGroup();
-  g.ellipse(16.5, 12.5, 8, 6.2, m, -Infinity, 10);
-  g.pts([[9, 11], [10, 11], [22, 11], [23, 11], [9, 12], [23, 12], [14, 11]], m);
-  g.pts([[12, 5], [16, 5], [20, 5]], m);
-}
-
-function marineCap(g: PixelGrid): void {
-  g.newGroup().pts([[9, 11], [9, 12], [23, 11], [23, 12], [10, 11], [22, 11]], 'brown');
-  g.newGroup();
-  g.span(5, 12, 20, 'white');
-  g.rect(10, 6, 13, 4, 'white');
-  g.newGroup().span(10, 9, 23, 'navy');
-  g.newGroup().pts([[16, 6], [16, 7], [16, 8], [15, 8], [17, 8], [15, 7], [17, 7]], 'blue', 1);
-}
-
-/* ------------------------------------------------------------------ */
-/*  Unit designs                                                       */
-/* ------------------------------------------------------------------ */
-
-interface LuffyOpts {
-  readonly skin: Mat;
-  readonly shirt: Mat;
-  readonly sleeve?: Mat;
-  readonly sash?: Mat;
-  readonly chestScar?: boolean;
-  readonly eyes: EyeStyle;
-  readonly mouth: MouthStyle;
-}
-
-function luffyBase(g: PixelGrid, o: LuffyOpts): void {
-  body(g, {
-    skin: o.skin,
-    shirt: o.shirt,
-    chest: o.skin,
-    pants: 'blue',
-    shorts: true,
-    shoes: 'wood',
-    ...(o.sleeve ? { sleeve: o.sleeve } : {}),
-    ...(o.sash ? { belt: o.sash } : {}),
-  });
-  if (o.chestScar) g.pts([[15, 21], [17, 21], [16, 22], [15, 23], [17, 23]], 'scar');
-  head(g, o.skin);
-  eyes(g, o.eyes);
-  mouth(g, o.mouth);
-  blush(g, true, false);
-  g.span(17, 19, 20, 'scar');
-  luffyHair(g);
-  strawHat(g);
-}
-
-function paintLuffy(g: PixelGrid): void {
-  luffyBase(g, { skin: 'skin', shirt: 'red', eyes: 'normal', mouth: 'grin' });
-}
-
-function paintLuffyGear2(g: PixelGrid): void {
-  luffyBase(g, { skin: 'skinFlush', shirt: 'red', eyes: 'angry', mouth: 'teeth' });
-  puff(g, 4, 19);
-  puff(g, 6, 15);
-  puff(g, 27, 13);
-  puff(g, 28, 21);
-  puff(g, 26, 26);
-}
-
-function paintLuffyTs(g: PixelGrid): void {
-  luffyBase(g, {
-    skin: 'skin',
-    shirt: 'red',
-    sleeve: 'red',
-    sash: 'yellow',
-    chestScar: true,
-    eyes: 'normal',
-    mouth: 'grin',
-  });
-}
-
-function paintLuffyGear4(g: PixelGrid): void {
-  g.newGroup();
-  g.span(26, 11, 21, 'blue');
-  g.rect(11, 27, 5, 2, 'blue');
-  g.rect(17, 27, 5, 2, 'blue');
-  g.newGroup().rect(10, 29, 6, 2, 'haki');
-  g.newGroup().rect(17, 29, 6, 2, 'haki');
-
-  g.newGroup();
-  g.span(19, 11, 21, 'skin');
-  g.rect(9, 20, 15, 5, 'skin');
-  g.newGroup().rect(9, 20, 3, 4, 'haki');
-  g.newGroup().rect(21, 20, 3, 4, 'haki');
-  g.pts([[10, 21], [11, 22], [22, 21], [21, 22], [14, 23], [18, 23]], 'hakiRed', 1);
-  g.newGroup().rect(12, 20, 2, 5, 'red');
-  g.newGroup().rect(19, 20, 2, 5, 'red');
-  g.newGroup().span(25, 10, 22, 'yellow');
-
-  // Huge haki-coated fists
-  g.newGroup().rect(2, 17, 7, 8, 'haki');
-  g.pts([[3, 19], [4, 19], [5, 19], [6, 19], [7, 19], [3, 21], [7, 21], [3, 23], [7, 23]], 'hakiRed', 1);
-  g.newGroup().rect(24, 17, 7, 8, 'haki');
-  g.pts([[25, 19], [26, 19], [27, 19], [28, 19], [29, 19], [25, 21], [29, 21], [25, 23], [29, 23]], 'hakiRed', 1);
-
-  head(g, 'skin');
-  eyes(g, 'angry');
-  mouth(g, 'teeth');
-  g.span(17, 19, 20, 'scar');
-  luffyHair(g);
-  strawHat(g);
-  puff(g, 4, 13);
-  puff(g, 28, 13);
-  puff(g, 2, 27);
-  puff(g, 30, 27);
-}
-
-function paintLuffyNika(g: PixelGrid): void {
-  body(g, { skin: 'skin', shirt: 'white', chest: 'skin', pants: 'white', shorts: true, shoes: 'wood' });
-  head(g, 'skin');
-  eyes(g, 'normal', 'redIris');
-  g.pts([[12, 15], [19, 15]], 'redIris');
-  mouth(g, 'open');
-  blush(g);
-  g.span(17, 19, 20, 'scar');
-  // Wild cloud-flame hair
-  g.newGroup();
-  g.ellipse(16.5, 10, 10, 6.5, 'hairWhite', -Infinity, 12);
-  g.line(10, 5, 8, 1, 'hairWhite');
-  g.line(13, 4, 12, 0, 'hairWhite');
-  g.line(16, 4, 16, 0, 'hairWhite');
-  g.line(20, 4, 21, 0, 'hairWhite');
-  g.line(23, 5, 25, 1, 'hairWhite');
-  g.pts([[6, 12], [7, 13], [26, 12], [25, 13], [10, 12], [13, 12], [19, 12], [22, 12]], 'hairWhite');
-  // Cloud scarf
-  g.newGroup();
-  g.span(19, 10, 22, 'cloud');
-  g.span(20, 9, 23, 'cloud');
-  g.span(21, 10, 22, 'cloud');
-  g.rect(24, 20, 2, 2, 'cloud');
-  g.rect(25, 22, 2, 2, 'cloud');
-  g.rect(26, 24, 3, 2, 'cloud');
-  g.newGroup().pts([[9, 20], [23, 20], [28, 25], [26, 21]], 'purple', 1);
-  // Purple haki bolts
-  g.newGroup().polyline([[3, 7], [5, 10], [3, 11], [5, 15]], 'purple', 1);
-  g.newGroup().polyline([[29, 3], [27, 6], [29, 7], [27, 10]], 'purple', 1);
-}
-
-function paintZoro(g: PixelGrid): void {
-  body(g, { skin: 'skin', shirt: 'white', sleeve: 'skin', pants: 'black', shoes: 'black', belt: 'darkGreen' });
-  g.newGroup().span(24, 11, 21, 'darkGreen');
-  sword(g, 9, 23, 3, 9, { hilt: 'white' });
-  hands(g, 'skin', true, false);
-  head(g, 'skin');
-  eyes(g, 'angry');
-  mouth(g, 'flat');
-  buzzHair(g, 'hairGreen');
-  g.newGroup().pts([[24, 16], [24, 17]], 'gold', 1);
-}
-
-function paintZoroDual(g: PixelGrid): void {
-  body(g, { skin: 'skin', shirt: 'white', pants: 'black', shoes: 'black', belt: 'darkGreen' });
-  g.newGroup().span(24, 11, 21, 'darkGreen');
-  sword(g, 9, 23, 2, 12, { hilt: 'white' });
-  sword(g, 23, 25, 30, 30, { hilt: 'black' });
-  hands(g, 'skin');
-  head(g, 'skin');
-  eyes(g, 'angry');
-  // Wado Ichimonji clenched in the teeth
-  g.newGroup().span(18, 9, 12, 'white');
-  g.newGroup().pts([[13, 17], [13, 18], [13, 19]], 'gold');
-  g.newGroup();
-  g.span(18, 14, 29, 'steel', 1);
-  g.pts([[17, 18], [21, 18], [25, 18]], 'steel', 0);
-  // Black bandana
-  g.newGroup();
-  g.ellipse(16.5, 12.5, 8, 6.2, 'black', -Infinity, 10);
-  g.pts([[9, 11], [23, 11]], 'black');
-  g.newGroup().pts([[24, 8], [25, 9], [25, 10], [26, 10]], 'black');
-  g.newGroup().pts([[24, 16], [24, 17]], 'gold', 1);
-}
-
-function paintZoroTs(g: PixelGrid): void {
-  // Sheathed swords at the hip
-  g.newGroup().line(9, 25, 5, 30, 'black');
-  g.newGroup().line(10, 25, 7, 30, 'red');
-  body(g, {
-    skin: 'skin',
-    shirt: 'darkGreen',
-    chest: 'skin',
-    sleeve: 'darkGreen',
-    pants: 'black',
-    shoes: 'black',
-    belt: 'red',
-  });
-  sword(g, 23, 23, 30, 9, { hilt: 'white' });
-  hands(g, 'skin');
-  head(g, 'skin');
-  eyes(g, 'closedR');
-  mouth(g, 'smirk');
-  buzzHair(g, 'hairGreen');
-  g.pts([[11, 5], [21, 5]], 'hairGreen');
-  g.newGroup().pts([[8, 16], [8, 17]], 'gold', 1);
-}
-
-function paintZoroAshura(g: PixelGrid): void {
-  // Purple ashura aura
-  g.newGroup().pts(
-    [[4, 3], [6, 1], [9, 2], [24, 2], [27, 1], [29, 4], [2, 14], [30, 15], [3, 27], [29, 28]],
-    'purple',
-    1,
-  );
-  body(g, { skin: 'skin', shirt: 'darkGreen', chest: 'skin', sleeve: 'darkGreen', pants: 'black', shoes: 'black', belt: 'red' });
-  // Upper extra arms + swords
-  g.newGroup().rect(6, 19, 3, 2, 'darkGreen');
-  g.newGroup().rect(24, 19, 3, 2, 'darkGreen');
-  sword(g, 5, 18, 1, 5, { hilt: 'white', hiltLen: 2 });
-  sword(g, 27, 18, 31, 5, { hilt: 'white', hiltLen: 2 });
-  g.newGroup().rect(4, 18, 2, 2, 'skin');
-  g.newGroup().rect(27, 18, 2, 2, 'skin');
-  // Lower extra arms + swords
-  g.newGroup().rect(7, 26, 2, 2, 'darkGreen');
-  g.newGroup().rect(24, 26, 2, 2, 'darkGreen');
-  sword(g, 5, 27, 1, 31, { hilt: 'black', hiltLen: 2 });
-  sword(g, 27, 27, 31, 31, { hilt: 'black', hiltLen: 2 });
-  g.newGroup().rect(5, 26, 2, 2, 'skin');
-  g.newGroup().rect(26, 26, 2, 2, 'skin');
-  // Middle arms + swords
-  sword(g, 8, 24, 1, 22, { hilt: 'red', hiltLen: 2 });
-  sword(g, 24, 24, 31, 22, { hilt: 'red', hiltLen: 2 });
-  hands(g, 'skin');
-  head(g, 'skin');
-  eyes(g, 'angry', 'redIris');
-  g.pts([[13, 15], [20, 15]], 'redIris');
-  mouth(g, 'teeth');
-  buzzHair(g, 'hairGreen');
-  g.newGroup().pts([[24, 16], [24, 17]], 'gold', 1);
-}
-
-function namiBase(g: PixelGrid): void {
-  // Long back hair
-  g.newGroup().ellipse(16.5, 15, 9, 9.5, 'hairOrange', 6, 24);
-  // Clima-Tact staff
-  g.newGroup();
-  g.line(8, 12, 8, 30, 'blue');
-  g.newGroup().rect(7, 11, 3, 2, 'blue');
-  g.newGroup();
-  g.span(20, 12, 20, 'white');
-  g.rect(11, 21, 11, 3, 'white');
-  g.span(21, 11, 21, 'blue');
-  g.span(23, 11, 21, 'blue');
-  g.newGroup().rect(12, 24, 9, 1, 'skin');
-  g.newGroup();
-  g.span(25, 12, 20, 'denim');
-  g.rect(12, 26, 4, 3, 'denim');
-  g.rect(17, 26, 4, 3, 'denim');
-  g.newGroup().rect(11, 29, 5, 2, 'orange');
-  g.newGroup().rect(17, 29, 5, 2, 'orange');
-  g.newGroup().rect(9, 21, 2, 3, 'skin');
-  g.newGroup().rect(22, 21, 2, 3, 'skin');
-  hands(g, 'skin');
-  g.newGroup().pts([[9, 26], [10, 26]], 'gold', 1);
-  head(g, 'skin');
-  eyes(g, 'normal');
-  mouth(g, 'smile');
-  blush(g);
-  // Front hair + bangs
-  g.newGroup();
-  g.ellipse(16.5, 12.8, 8.2, 6.6, 'hairOrange', -Infinity, 10);
-  g.span(11, 9, 14, 'hairOrange');
-  g.span(11, 18, 23, 'hairOrange');
-  g.pts([[9, 12], [10, 12], [11, 12], [21, 12], [22, 12], [23, 12]], 'hairOrange');
-  g.rect(8, 12, 2, 8, 'hairOrange');
-  g.rect(23, 12, 2, 8, 'hairOrange');
-}
-
-function paintNami(g: PixelGrid): void {
-  namiBase(g);
-}
-
-function paintNamiClima(g: PixelGrid): void {
-  namiBase(g);
-  g.newGroup();
-  g.ellipse(24, 4, 6, 2.6, 'cloudGray');
-  g.ellipse(20, 5, 3, 2, 'cloudGray');
-  g.newGroup().polyline([[25, 7], [23, 10], [26, 11], [24, 15]], 'yellow', 0);
-  g.newGroup().polyline([[20, 7], [19, 9]], 'yellow', 0);
-  g.newGroup().pts([[6, 10], [10, 10], [8, 9]], 'yellow', 0);
-}
-
-function paintUsopp(g: PixelGrid): void {
-  body(g, { skin: 'skinTan', shirt: 'olive', chest: 'skinTan', pants: 'brown', shoes: 'brown', belt: 'yellow' });
-  // Slingshot (Kabuto)
-  g.newGroup();
-  g.line(25, 21, 25, 26, 'wood');
-  g.pts([[24, 20], [26, 20], [24, 19], [26, 19]], 'wood');
-  g.newGroup().set(25, 19, 'black');
-  hands(g, 'skinTan');
-  head(g, 'skinTan');
-  eyes(g, 'normal');
-  mouth(g, 'grin');
-  // Signature long nose
-  g.newGroup();
-  g.span(17, 16, 27, 'skinTan');
-  g.set(27, 16, 'skinTan');
-  // Big curly hair
-  g.newGroup();
-  g.ellipse(16.5, 10, 9.5, 6, 'hairBlack', -Infinity, 12);
-  g.pts([[6, 7], [27, 7], [8, 3], [12, 3], [16, 3], [21, 3], [25, 4], [6, 12], [26, 12]], 'hairBlack');
-  // Goggles
-  g.newGroup().span(10, 8, 24, 'brown');
-  g.newGroup().rect(11, 8, 3, 3, 'gold');
-  g.newGroup().rect(19, 8, 3, 3, 'gold');
-  g.pts([[12, 9], [20, 9]], 'lens');
-}
-
-function sanjiBase(g: PixelGrid, kick: boolean): void {
-  g.newGroup();
-  g.span(26, 12, 20, 'black');
-  g.rect(12, 27, 4, 2, 'black');
-  g.newGroup().rect(11, 29, 5, 2, 'black');
-  if (kick) {
-    g.newGroup().rect(20, 26, 8, 2, 'fire', 1);
-    g.pts([[20, 26], [21, 26], [22, 26], [23, 26], [24, 26], [25, 26], [26, 26], [27, 26]], 'fire', 0);
-    g.newGroup().rect(28, 25, 2, 3, 'black');
+  // Expressive eyebrows
+  const brow = eye.browColor ?? '#2b1d38';
+  if (eye.fierce) {
+    p.set(11, 11, brow, LAYER_HEAD);
+    p.set(12, 12, brow, LAYER_HEAD);
+    p.set(13, 12, brow, LAYER_HEAD);
+    p.set(17, 12, brow, LAYER_HEAD);
+    p.set(18, 11, brow, LAYER_HEAD);
   } else {
-    g.newGroup().rect(17, 27, 4, 2, 'black');
-    g.newGroup().rect(17, 29, 5, 2, 'black');
+    p.hline(11, 13, 11, brow, LAYER_HEAD);
+    p.hline(17, 18, 11, brow, LAYER_HEAD);
   }
-  g.newGroup();
-  g.span(20, 12, 20, 'black');
-  g.rect(11, 21, 11, 5, 'black');
-  g.newGroup().rect(15, 20, 3, 3, 'white');
-  g.newGroup().pts([[16, 21], [16, 22], [16, 23], [16, 24]], 'blue', 1);
-  g.newGroup().rect(9, 21, 2, 3, 'black');
-  g.newGroup().rect(22, 21, 2, 3, 'black');
-  hands(g, 'skin');
-  head(g, 'skin');
-  eyes(g, 'hiddenL');
-  mouth(g, 'smirk');
-  g.newGroup().pts([[18, 18], [19, 18], [20, 18]], 'white', 0);
-  g.set(21, 18, 'ember');
-  g.newGroup().pts([[22, 16], [23, 15], [23, 14], [24, 13], [25, 12], [24, 11]], 'smoke');
-  // Blond hair curtain over one eye
-  g.newGroup();
-  g.ellipse(16.5, 12.5, 8, 6.2, 'hairBlond', -Infinity, 11);
-  g.rect(9, 11, 6, 6, 'hairBlond');
-  g.span(17, 10, 13, 'hairBlond');
-  g.pts([[23, 11], [23, 12], [23, 13], [22, 11]], 'hairBlond');
-  // Curly brow
-  g.pts([[19, 12], [20, 12], [21, 12], [21, 11], [20, 11]], 'hairBlond', 3);
 }
 
-function paintSanji(g: PixelGrid): void {
-  sanjiBase(g, false);
-}
+/**
+ * Compact 1.5-head SD martial robe & asymmetric 3/4 combat stride (y=19..30).
+ */
+function paintMartialBody34(
+  p: PixelCanvas,
+  robe: Ramp4,
+  collar: Ramp4,
+  sashColor: string,
+  bootColor = '#2d2238',
+): void {
+  // Asymmetric combat boots (back foot upper-left, front foot lunging lower-right)
+  p.rect(8, 28, 3, 2, bootColor, LAYER_BODY);
+  p.set(8, 28, '#524163', LAYER_BODY);
+  p.rect(16, 29, 4, 2, bootColor, LAYER_BODY);
+  p.set(17, 29, '#524163', LAYER_BODY);
 
-function paintSanjiDiable(g: PixelGrid): void {
-  flame(g, 24, 25, 9, 3);
-  flame(g, 29, 24, 6, 2);
-  sanjiBase(g, true);
-  g.newGroup().pts([[19, 23], [26, 22], [30, 19]], 'fire', 0);
-}
-
-function paintChopper(g: PixelGrid): void {
-  body(g, { skin: 'fur', shirt: 'fur', pants: 'pink', shorts: true, shoes: 'black' });
-  g.newGroup().rect(9, 24, 2, 2, 'black');
-  g.newGroup().rect(22, 24, 2, 2, 'black');
-  head(g, 'furLight');
-  g.newGroup().rect(8, 14, 1, 2, 'fur');
-  g.newGroup().rect(24, 14, 1, 2, 'fur');
-  eyes(g, 'normal');
-  g.newGroup().span(17, 15, 17, 'blue', 1);
-  g.set(16, 18, 'blue', 2);
-  g.pts([[15, 19], [17, 19]], 'mouth');
-  blush(g);
-  g.newGroup().span(11, 9, 23, 'fur');
-  // Antlers
-  g.newGroup();
-  g.polyline([[10, 8], [7, 5], [7, 2]], 'wood');
-  g.line(7, 5, 4, 4, 'wood');
-  g.newGroup();
-  g.polyline([[mx(10), 8], [mx(7), 5], [mx(7), 2]], 'wood');
-  g.line(mx(7), 5, mx(4), 4, 'wood');
-  // Pink top hat with white cross
-  g.newGroup();
-  g.span(2, 13, 19, 'pink');
-  g.rect(12, 3, 9, 6, 'pink');
-  g.newGroup().pts(
-    [[14, 3], [18, 3], [15, 4], [17, 4], [16, 5], [15, 6], [17, 6], [14, 7], [18, 7]],
-    'white',
-    0,
-  );
-  g.newGroup();
-  g.span(9, 9, 23, 'pink');
-  g.span(10, 10, 22, 'pink');
-}
-
-function marineBase(g: PixelGrid, angry: boolean): void {
-  body(g, { skin: 'skin', shirt: 'white', sleeve: 'white', pants: 'navy', shoes: 'black' });
-  g.newGroup().pts([[12, 20], [13, 21], [20, 20], [19, 21], [14, 22], [18, 22]], 'navy', 1);
-  g.newGroup().pts([[16, 21], [16, 22], [15, 22], [17, 22], [16, 23]], 'blue', 1);
-  head(g, 'skin');
-  eyes(g, angry ? 'angry' : 'normal');
-  mouth(g, angry ? 'teeth' : 'flat');
-  marineCap(g);
-}
-
-function paintMarineGunner(g: PixelGrid): void {
-  marineBase(g, false);
-  // Musket across the body
-  g.newGroup().line(5, 28, 11, 24, 'wood');
-  g.newGroup().line(12, 23, 27, 13, 'gray');
-  g.set(27, 13, 'gray', 3);
-  hands(g, 'skin');
-}
-
-function paintMarineSaber(g: PixelGrid): void {
-  marineBase(g, true);
-  sword(g, 23, 23, 29, 6, { hilt: 'navy', guard: 'gold' });
-  hands(g, 'skin');
-}
-
-function paintLaw(g: PixelGrid): void {
-  // Kikoku nodachi
-  g.newGroup().line(26, 3, 26, 22, 'black');
-  g.pts([[26, 6], [26, 10], [26, 14], [26, 18]], 'white', 1);
-  g.newGroup().span(23, 25, 27, 'gold');
-  g.newGroup().line(26, 24, 26, 29, 'white');
-  body(g, { skin: 'skin', shirt: 'yellow', sleeve: 'black', pants: 'denim', shoes: 'black' });
-  g.pts([[13, 27], [18, 27], [14, 28], [19, 28], [16, 26]], 'navy', 3);
-  g.newGroup().pts([[15, 22], [17, 22], [15, 23], [16, 24], [17, 23], [16, 22]], 'black', 1);
-  hands(g, 'skin');
-  head(g, 'skin');
-  eyes(g, 'normal');
-  g.span(17, 12, 13, 'eyeBag');
-  g.span(17, 19, 20, 'eyeBag');
-  mouth(g, 'smirk');
-  g.newGroup().span(20, 15, 17, 'hairBlack');
-  g.newGroup().pts([[9, 12], [9, 13], [9, 14], [23, 12], [23, 13], [23, 14], [10, 12], [22, 12]], 'hairBlack');
-  // Fluffy spotted hat
-  g.newGroup().ellipse(16.5, 8.2, 9.2, 4.6, 'white', -Infinity, 10);
-  g.pts([[12, 5], [16, 4], [20, 6], [14, 8], [19, 8], [10, 8], [23, 8]], 'brown', 1);
-  g.newGroup();
-  g.span(11, 8, 24, 'white');
-  for (let x = 8; x <= 24; x += 2) g.set(x, 12, 'white');
-}
-
-function aceHat(g: PixelGrid): void {
-  g.newGroup();
-  g.span(3, 12, 20, 'orange');
-  g.rect(11, 4, 11, 4, 'orange');
-  g.set(16, 3, 'orange', 3);
-  g.newGroup().span(8, 11, 21, 'black');
-  g.newGroup().set(13, 8, 'blue', 0);
-  g.newGroup().set(19, 8, 'red', 0);
-  g.newGroup();
-  g.span(9, 5, 27, 'orange');
-  g.span(10, 7, 25, 'orange');
-  g.pts([[4, 8], [5, 8], [27, 8], [28, 8]], 'orange');
-}
-
-function aceBase(g: PixelGrid): void {
-  body(g, { skin: 'skin', shirt: 'skin', pants: 'black', shoes: 'black', belt: 'brown' });
-  g.newGroup().span(25, 15, 17, 'gold');
-  g.newGroup().pts([[12, 20], [13, 21], [15, 21], [17, 21], [19, 21], [20, 20]], 'red', 1);
-  head(g, 'skin');
-  eyes(g, 'normal');
-  mouth(g, 'grin');
-  g.pts([[11, 17], [12, 18], [10, 18], [21, 17], [20, 18], [22, 18]], 'freckle');
-  g.newGroup();
-  g.span(11, 9, 23, 'hairBlack');
-  g.pts([[9, 12], [10, 12], [13, 12], [17, 12], [21, 12], [22, 12], [23, 12]], 'hairBlack');
-  g.rect(8, 12, 2, 6, 'hairBlack');
-  g.rect(23, 12, 2, 6, 'hairBlack');
-  aceHat(g);
-}
-
-function paintAce(g: PixelGrid): void {
-  aceBase(g);
-  flame(g, 9, 27, 9, 3);
-  g.newGroup().rect(9, 24, 2, 2, 'fire', 0);
-}
-
-function paintAceFlame(g: PixelGrid): void {
-  flame(g, 3, 31, 17, 3);
-  flame(g, 29, 31, 17, 3);
-  aceBase(g);
-  g.newGroup().rect(9, 21, 2, 3, 'fire', 1);
-  g.newGroup().rect(22, 21, 2, 3, 'fire', 1);
-  flame(g, 9, 27, 10, 3);
-  flame(g, 23, 27, 10, 3);
-  g.newGroup().pts([[6, 3], [26, 5], [12, 1], [21, 2]], 'ember');
-}
-
-function paintShanks(g: PixelGrid): void {
-  // Black captain's cape behind
-  g.newGroup().rect(7, 20, 19, 9, 'black');
-  body(g, { skin: 'skin', shirt: 'white', chest: 'skin', pants: 'brown', shoes: 'wood', belt: 'black', noRightArm: true });
-  // Cape drape over the missing arm side
-  g.newGroup();
-  g.rect(21, 19, 5, 10, 'black');
-  g.span(19, 18, 21, 'black');
-  g.newGroup().pts([[21, 19], [21, 20]], 'red', 1);
-  sword(g, 9, 24, 2, 11, { hilt: 'black', guard: 'gold' });
-  hands(g, 'skin', true, false);
-  head(g, 'skin');
-  eyes(g, 'normal');
-  mouth(g, 'smile');
-  g.pts([[18, 12], [19, 13], [20, 12], [21, 13], [19, 17], [20, 18], [21, 17]], 'scar');
-  g.newGroup().span(20, 15, 17, 'hairRed', 3);
-  g.newGroup();
-  g.ellipse(16.5, 12.3, 8.3, 6.4, 'hairRed', -Infinity, 11);
-  g.rect(8, 11, 2, 7, 'hairRed');
-  g.rect(23, 11, 2, 7, 'hairRed');
-  g.pts([[8, 18], [24, 18], [12, 12], [13, 12], [20, 12], [7, 9], [25, 9]], 'hairRed');
-  // Conqueror's haki bolts
-  g.newGroup().polyline([[3, 2], [5, 5], [3, 6], [5, 9]], 'hakiRed', 1);
-  g.newGroup().polyline([[29, 6], [27, 9], [29, 10], [27, 14]], 'hakiRed', 1);
-}
-
-function paintWhitebeard(g: PixelGrid): void {
-  // Bisento
-  g.newGroup().line(27, 6, 27, 30, 'wood');
-  g.newGroup();
-  g.rect(26, 1, 3, 5, 'steel');
-  g.pts([[29, 2], [29, 3], [29, 4], [25, 1]], 'steel');
-  g.newGroup().span(6, 26, 28, 'gold');
-  // Captain coat cape
-  g.newGroup().rect(6, 19, 21, 11, 'white');
-  body(g, { skin: 'skinTan', shirt: 'skinTan', pants: 'brown', shoes: 'black', belt: 'blue' });
-  g.newGroup().rect(7, 20, 3, 10, 'white');
-  g.newGroup().rect(23, 20, 3, 10, 'white');
-  g.pts([[13, 22], [14, 23], [18, 22], [19, 23], [16, 21]], 'scar');
-  g.newGroup().rect(26, 23, 2, 3, 'skinTan');
-  head(g, 'skinTan');
-  eyes(g, 'angry');
-  // Giant crescent moustache
-  g.newGroup();
-  g.span(18, 12, 20, 'white');
-  g.span(17, 10, 12, 'white');
-  g.span(17, 20, 22, 'white');
-  g.span(16, 8, 10, 'white');
-  g.span(16, 22, 24, 'white');
-  g.pts([[6, 15], [7, 15], [25, 15], [26, 15], [5, 14], [27, 14]], 'white');
-  // Black bandana
-  g.newGroup();
-  g.ellipse(16.5, 12.5, 8, 6, 'black', -Infinity, 10);
-  g.pts([[9, 11], [23, 11]], 'black');
-  g.newGroup().pts([[24, 8], [25, 9], [26, 9], [25, 10]], 'black');
-}
-
-function paintGenericPirate(g: PixelGrid): void {
-  body(g, { skin: 'skin', shirt: 'white', pants: 'brown', shoes: 'black', belt: 'black' });
-  g.span(22, 11, 21, 'red');
-  head(g, 'skin');
-  eyes(g, 'normal');
-  mouth(g, 'smile');
-  g.newGroup().ellipse(16.5, 12, 8, 5.5, 'red', -Infinity, 10);
-}
-
-const UNIT_PAINTERS: Readonly<Record<string, (g: PixelGrid) => void>> = {
-  luffy: paintLuffy,
-  luffy_gear2: paintLuffyGear2,
-  luffy_ts: paintLuffyTs,
-  luffy_gear4: paintLuffyGear4,
-  luffy_nika: paintLuffyNika,
-  zoro: paintZoro,
-  zoro_dual: paintZoroDual,
-  zoro_ts: paintZoroTs,
-  zoro_ashura: paintZoroAshura,
-  nami: paintNami,
-  nami_clima: paintNamiClima,
-  usopp: paintUsopp,
-  sanji: paintSanji,
-  sanji_diable: paintSanjiDiable,
-  chopper: paintChopper,
-  marine_gunner: paintMarineGunner,
-  marine_saber: paintMarineSaber,
-  law: paintLaw,
-  ace: paintAce,
-  ace_flame: paintAceFlame,
-  shanks: paintShanks,
-  whitebeard: paintWhitebeard,
-};
-
-/* ------------------------------------------------------------------ */
-/*  Monster designs                                                    */
-/* ------------------------------------------------------------------ */
-
-function mobBody(g: PixelGrid, shirt: Mat, pants: Mat, skin: Mat): void {
-  g.newGroup();
-  g.span(18, 8, 14, pants);
-  g.rect(8, 19, 3, 2, pants);
-  g.rect(12, 19, 3, 2, pants);
-  g.newGroup().rect(7, 21, 4, 2, 'black');
-  g.newGroup().rect(12, 21, 4, 2, 'black');
-  g.newGroup();
-  g.span(14, 9, 13, shirt);
-  g.rect(8, 15, 7, 3, shirt);
-  g.newGroup().rect(6, 15, 2, 2, shirt);
-  g.newGroup().rect(15, 15, 2, 2, shirt);
-  g.newGroup().span(17, 6, 7, skin);
-  g.newGroup().span(17, 15, 16, skin);
-  g.newGroup().ellipse(11.5, 9, 5.5, 5, skin);
-  g.newGroup().rect(5, 9, 1, 2, skin);
-  g.newGroup().rect(17, 9, 1, 2, skin);
-}
-
-function paintMarineGrunt(g: PixelGrid): void {
-  g.newGroup().line(3, 20, 8, 17, 'wood');
-  g.newGroup().line(9, 16, 19, 9, 'gray');
-  mobBody(g, 'white', 'navy', 'skin');
-  g.newGroup().pts([[9, 14], [10, 15], [13, 14], [12, 15]], 'navy', 1);
-  g.newGroup().pts([[11, 15], [11, 16]], 'blue', 1);
-  g.rect(8, 9, 2, 2, 'eye');
-  g.set(8, 9, 'glint');
-  g.rect(13, 9, 2, 2, 'eye');
-  g.set(13, 9, 'glint');
-  g.span(12, 10, 12, 'mouth');
-  g.newGroup().pts([[6, 7], [6, 8], [16, 7], [16, 8]], 'brown');
-  g.newGroup();
-  g.span(2, 8, 14, 'white');
-  g.rect(7, 3, 9, 3, 'white');
-  g.newGroup().span(6, 6, 16, 'navy');
-  g.newGroup().pts([[11, 3], [11, 4], [10, 4], [12, 4]], 'blue', 1);
-}
-
-function paintPirateRaider(g: PixelGrid): void {
-  g.newGroup().polyline([[5, 16], [3, 13], [2, 9], [3, 6]], 'steel', 1);
-  mobBody(g, 'white', 'brown', 'skinTan');
-  g.newGroup().span(15, 8, 14, 'red');
-  g.span(17, 8, 14, 'red');
-  g.newGroup().span(18, 8, 14, 'black');
-  g.newGroup().set(11, 18, 'gold', 0);
-  g.newGroup().pts([[5, 17], [6, 16], [7, 16]], 'gold');
-  g.rect(8, 9, 2, 2, 'eye');
-  g.set(8, 9, 'glint');
-  g.pts([[7, 8], [8, 7], [9, 8]], 'eye');
-  g.newGroup().rect(13, 9, 2, 2, 'black');
-  g.newGroup().polyline([[12, 8], [14, 7], [16, 7]], 'black');
-  g.span(12, 9, 13, 'mouth');
-  g.pts([[10, 12], [12, 12]], 'teeth');
-  g.pts([[9, 13], [11, 13], [13, 13]], 'eyeBag');
-  g.newGroup();
-  g.ellipse(11.5, 7.5, 6, 4.5, 'red', -Infinity, 6);
-  g.span(6, 6, 16, 'red');
-  g.newGroup().pts([[17, 5], [18, 6], [18, 7], [19, 7]], 'red');
-  g.newGroup().pts([[9, 4], [13, 3], [15, 5]], 'white', 0);
-}
-
-function paintSeaKing(g: PixelGrid): void {
-  // Coiled neck rising from the sea
-  g.newGroup();
-  for (let y = 12; y <= 27; y++) {
-    const cx = 11 + Math.round((27 - y) * 0.3);
-    g.span(y, cx - 4, cx + 4, 'seaKing');
+  // Upper martial tunic (y=19..24) + flared skirt hem (y=25..28)
+  for (let y = 19; y <= 27; y++) {
+    const x0 = y <= 22 ? 9 : 8;
+    const x1 = y <= 23 ? 18 : 19;
+    for (let x = x0; x <= x1; x++) {
+      const tone =
+        x <= 9 ? robe[3] : x <= 12 ? robe[2] : x <= 15 ? robe[0] : x <= 17 ? robe[1] : robe[2];
+      p.set(x, y, tone, LAYER_BODY);
+    }
   }
-  g.newGroup();
-  for (let y = 15; y <= 27; y++) {
-    const cx = 11 + Math.round((27 - y) * 0.3);
-    g.span(y, cx + 2, cx + 4, 'belly', y % 2 === 0 ? 1 : 2);
+
+  // Authentic Wuxia diagonal Y-lapel (교령)
+  p.set(11, 19, collar[0], LAYER_BODY);
+  p.set(12, 20, collar[0], LAYER_BODY);
+  p.set(13, 21, collar[1], LAYER_BODY);
+  p.set(14, 22, collar[1], LAYER_BODY);
+  p.set(16, 19, collar[1], LAYER_BODY);
+  p.set(15, 20, collar[2], LAYER_BODY);
+
+  // Back left arm in martial guard
+  p.rect(7, 20, 2, 4, robe[2], LAYER_BODY);
+  p.set(7, 23, robe[3], LAYER_BODY);
+
+  // Waist sash + trailing ribbon on left
+  p.hline(9, 18, 24, sashColor, LAYER_BODY);
+  p.set(13, 24, collar[0], LAYER_BODY);
+  p.set(7, 25, sashColor, LAYER_BACK);
+  p.set(6, 26, sashColor, LAYER_BACK);
+
+  // Front weapon-wielding sleeve & hand reaching right
+  p.rect(18, 21, 3, 3, robe[1], LAYER_FRONT);
+  p.set(18, 23, robe[2], LAYER_FRONT);
+  p.rect(20, 22, 2, 2, SKIN_WARM[1], LAYER_FRONT);
+}
+
+function paintCapeLeft(p: PixelCanvas, ramp: Ramp4, long = false): void {
+  const maxY = long ? 29 : 27;
+  for (let y = 16; y <= maxY; y++) {
+    const leftX = Math.max(2, 8 - Math.floor((y - 15) * 0.55));
+    for (let x = leftX; x <= 9; x++) {
+      if (y === maxY && (x + y) % 2 === 0) continue; // Tattered dynamic hem
+      const tone =
+        x === leftX ? ramp[0] : x <= leftX + 2 ? ramp[1] : x <= 7 ? ramp[2] : ramp[3];
+      p.set(x, y, tone, LAYER_BACK);
+    }
   }
-  // Head
-  g.newGroup().ellipse(18.5, 8.5, 10, 5.5, 'seaKing');
-  g.newGroup().rect(22, 7, 9, 4, 'seaKing');
-  g.newGroup().rect(15, 11, 15, 3, 'mouth');
-  g.newGroup();
-  g.span(14, 14, 29, 'seaKing');
-  g.span(15, 15, 28, 'seaKing');
-  g.span(16, 17, 26, 'seaKing');
-  g.pts([[17, 11], [19, 11], [21, 11], [23, 11], [25, 11], [27, 11], [29, 11]], 'teeth');
-  g.pts([[18, 13], [20, 13], [22, 13], [24, 13], [26, 13], [28, 13]], 'teeth');
-  g.newGroup().rect(19, 5, 3, 2, 'yellow', 0);
-  g.pts([[20, 5], [20, 6]], 'eye');
-  g.newGroup().span(4, 18, 22, 'seaKing', 3);
-  g.set(29, 8, 'eye');
-  // Red fins
-  g.newGroup();
-  g.line(11, 4, 9, 0, 'red');
-  g.line(14, 3, 13, 0, 'red');
-  g.line(17, 3, 17, 0, 'red');
-  g.line(20, 3, 21, 1, 'red');
-  g.newGroup();
-  g.rect(5, 8, 3, 4, 'red');
-  g.pts([[4, 9], [4, 10], [3, 10]], 'red');
-  // Sea + foam
-  g.newGroup().ellipse(16, 29.5, 15.5, 3.5, 'water');
-  g.newGroup().pts(
-    [[4, 27], [5, 26], [6, 27], [16, 26], [17, 26], [18, 27], [25, 27], [26, 26], [27, 27], [10, 28], [22, 28]],
-    'white',
-    0,
-  );
 }
 
-function paintPacifista(g: PixelGrid): void {
-  g.newGroup().rect(11, 27, 4, 2, 'pxCoat');
-  g.newGroup().rect(18, 27, 4, 2, 'pxCoat');
-  g.newGroup().rect(10, 29, 6, 2, 'black');
-  g.newGroup().rect(17, 29, 6, 2, 'black');
-  g.newGroup();
-  g.span(19, 10, 22, 'pxCoat');
-  g.rect(7, 20, 19, 7, 'pxCoat');
-  g.newGroup().rect(13, 21, 7, 5, 'metal');
-  g.pts([[14, 22], [14, 23], [14, 24], [15, 22], [15, 23]], 'red', 1);
-  g.pts([[17, 22], [19, 22], [18, 23], [17, 24], [19, 24]], 'red', 1);
-  // Metal paws
-  g.newGroup().rect(4, 20, 3, 3, 'pxCoat');
-  g.newGroup().rect(26, 20, 3, 3, 'pxCoat');
-  g.newGroup().rect(2, 23, 6, 5, 'metal');
-  g.newGroup().rect(25, 23, 6, 5, 'metal');
-  g.newGroup().rect(3, 25, 4, 2, 'pink', 1);
-  g.newGroup().rect(26, 25, 4, 2, 'pink', 1);
-  g.pts([[3, 23], [5, 23], [7, 23], [25, 23], [27, 23], [29, 23]], 'pink', 1);
-  // Head
-  g.newGroup().ellipse(16.5, 13.5, 7.5, 6.5, 'skinTan');
-  g.newGroup();
-  g.span(12, 10, 22, 'black');
-  g.span(13, 10, 22, 'black');
-  g.rect(11, 12, 3, 2, 'redEye');
-  g.rect(19, 12, 3, 2, 'redEye');
-  g.span(16, 15, 17, 'mouth');
-  g.newGroup().span(18, 14, 18, 'black', 2);
-  // Bear-ear cap
-  g.newGroup().ellipse(16.5, 8.5, 8.5, 4.5, 'black', -Infinity, 9);
-  g.newGroup().ellipse(9.5, 4, 2.3, 2.3, 'black');
-  g.newGroup().ellipse(23.5, 4, 2.3, 2.3, 'black');
-  g.pts([[9, 4], [23, 4]], 'gray', 2);
+function paintHairTopknot(
+  p: PixelCanvas,
+  hair: Ramp4,
+  ribbonColor: string,
+  longTail = false,
+): void {
+  // Voluminous hair framing forehead & left crown + asymmetric manhwa fringe
+  for (let y = 6; y <= 13; y++) {
+    const x0 = y <= 7 ? 9 : 7;
+    const x1 = y <= 7 ? 18 : 19;
+    for (let x = x0; x <= x1; x++) {
+      if (y >= 10 && x >= 10 && x <= 18) continue; // Face opening
+      const tone = y <= 7 && x <= 14 ? hair[0] : x <= 11 ? hair[1] : x <= 16 ? hair[2] : hair[3];
+      p.set(x, y, tone, LAYER_HEAD);
+    }
+  }
+  // Asymmetric Wuxia center-right bang lock & left temple sidelock (옆머리)
+  p.set(14, 10, hair[1], LAYER_HEAD);
+  p.set(15, 10, hair[2], LAYER_HEAD);
+  p.set(15, 11, hair[2], LAYER_HEAD);
+  p.set(9, 10, hair[1], LAYER_HEAD);
+  p.set(8, 13, hair[2], LAYER_HEAD);
+  p.set(8, 14, hair[3], LAYER_HEAD);
+
+  // Topknot bun (상투) shifted slightly left-back for 3/4 angle
+  p.rect(11, 3, 5, 3, hair[1], LAYER_HEAD);
+  p.hline(12, 14, 3, hair[0], LAYER_HEAD);
+  p.set(15, 5, hair[3], LAYER_HEAD);
+  // Sect ribbon / crown tie + fluttering tail to upper-left
+  p.hline(11, 15, 6, ribbonColor, LAYER_HEAD);
+  p.set(9, 5, ribbonColor, LAYER_BACK);
+  p.set(8, 6, ribbonColor, LAYER_BACK);
+  if (longTail) {
+    p.set(6, 5, ribbonColor, LAYER_BACK);
+    p.set(5, 6, ribbonColor, LAYER_BACK);
+    p.set(7, 7, ribbonColor, LAYER_BACK);
+    p.line(9, 7, 4, 13, hair[1], LAYER_BACK, 2);
+    p.line(8, 9, 4, 15, hair[2], LAYER_BACK, 1);
+  }
 }
 
-function paintMonsterGrid(kind: MonsterKind): PixelGrid {
-  switch (kind) {
-    case 'marine_grunt': {
-      const g = new PixelGrid(24, 24);
-      paintMarineGrunt(g);
-      return g;
+function paintFlowingMane(p: PixelCanvas, hair: Ramp4, crownColor?: string): void {
+  // Dramatic cascading Wuxia long hair (백발/혈발 장발) billowing left + swept bangs
+  for (let y = 5; y <= 14; y++) {
+    const x0 = y <= 6 ? 8 : 6;
+    const x1 = y <= 7 ? 19 : 20;
+    for (let x = x0; x <= x1; x++) {
+      if (y >= 10 && x >= 10 && x <= 18) continue;
+      const tone = y <= 7 && x <= 14 ? hair[0] : x <= 12 ? hair[1] : hair[2];
+      p.set(x, y, tone, LAYER_HEAD);
     }
-    case 'pirate_raider': {
-      const g = new PixelGrid(24, 24);
-      paintPirateRaider(g);
-      return g;
+  }
+  // Swept Wuxia bangs & long temple locks framing cheeks
+  p.set(14, 10, hair[0], LAYER_HEAD);
+  p.set(15, 10, hair[1], LAYER_HEAD);
+  p.set(15, 11, hair[2], LAYER_HEAD);
+  p.set(9, 10, hair[1], LAYER_HEAD);
+  p.set(8, 14, hair[2], LAYER_HEAD);
+  p.set(8, 15, hair[2], LAYER_HEAD);
+  p.set(19, 10, hair[2], LAYER_HEAD);
+
+  // Cascading mane behind shoulders (x=2..9, y=10..25)
+  for (let y = 10; y <= 25; y++) {
+    const lx = Math.max(1, 7 - Math.floor((y - 9) * 0.42));
+    for (let x = lx; x <= 8; x++) {
+      if (y >= 22 && (x + y) % 2 === 1) continue;
+      const tone = x === lx ? hair[0] : x <= lx + 2 ? hair[1] : hair[2];
+      p.set(x, y, tone, LAYER_BACK);
     }
-    case 'sea_king': {
-      const g = new PixelGrid(32, 32);
-      paintSeaKing(g);
-      return g;
+  }
+  if (crownColor) {
+    p.hline(11, 16, 5, crownColor, LAYER_HEAD);
+    p.set(13, 3, crownColor, LAYER_HEAD);
+    p.set(14, 4, '#ffffff', LAYER_HEAD);
+  }
+}
+
+/** Forward-lunging horizontal-diagonal sword thrust (검기 찌르기 자세) for variety. */
+function paintThrustSword(p: PixelCanvas, blade: Ramp4, hiltColor = '#eab308'): void {
+  p.set(18, 22, hiltColor, LAYER_FRONT);
+  p.vline(20, 19, 24, hiltColor, LAYER_FRONT);
+  for (let i = 0; i <= 9; i++) {
+    const bx = 21 + i;
+    const by = 21 - Math.floor(i * 0.45);
+    p.set(bx, by, blade[0], LAYER_FRONT);
+    p.set(bx, by + 1, blade[1], LAYER_FRONT);
+    p.set(bx - 1, by + 2, blade[2], LAYER_FRONT);
+  }
+}
+
+function paintSatgat(p: PixelCanvas, ramp: Ramp4, accentBand = '#dc2626'): void {
+  // Wide conical bamboo hat tilted stylishly in 3/4 view
+  p.hline(11, 16, 3, ramp[0], LAYER_FRONT);
+  p.hline(9, 18, 4, ramp[0], LAYER_FRONT);
+  p.hline(7, 20, 5, ramp[1], LAYER_FRONT);
+  p.hline(9, 18, 6, accentBand, LAYER_FRONT);
+  p.hline(4, 23, 7, ramp[1], LAYER_FRONT);
+  p.hline(3, 24, 8, ramp[2], LAYER_FRONT);
+  p.hline(5, 22, 9, ramp[3], LAYER_FRONT);
+}
+
+/** Crisp 3/4 diagonal straight sword (장검) from front hand (20,22) to upper-right (29,5). */
+function paintDiagonalSword(
+  p: PixelCanvas,
+  blade: Ramp4,
+  hiltColor = '#eab308',
+  wide = false,
+): void {
+  // Pommel & grip
+  p.set(19, 24, hiltColor, LAYER_FRONT);
+  p.set(20, 23, '#7c2d12', LAYER_FRONT);
+  // Crossguard
+  p.line(18, 20, 23, 23, hiltColor, LAYER_FRONT);
+  // Diagonal gleaming blade
+  for (let i = 0; i <= 15; i++) {
+    const bx = 21 + Math.floor(i * 0.56);
+    const by = 20 - i;
+    p.set(bx, by, blade[0], LAYER_FRONT);
+    p.set(bx + 1, by, blade[1], LAYER_FRONT);
+    if (wide) {
+      p.set(bx + 1, by + 1, blade[2], LAYER_FRONT);
+      p.set(bx + 2, by + 1, blade[3], LAYER_FRONT);
+    } else {
+      p.set(bx + 1, by + 1, blade[2], LAYER_FRONT);
     }
-    case 'pacifista': {
-      const g = new PixelGrid(32, 32);
-      paintPacifista(g);
-      return g;
+  }
+}
+
+/** Heavy curved unorthodox/demonic saber (혈도/대도) with wide curved belly. */
+function paintCurvedSaber(p: PixelCanvas, blade: Ramp4, hiltColor = '#eab308'): void {
+  p.set(19, 24, hiltColor, LAYER_FRONT);
+  p.line(18, 21, 22, 23, hiltColor, LAYER_FRONT);
+  for (let i = 0; i <= 15; i++) {
+    const curve = i >= 8 ? Math.floor((i - 7) * 0.45) : 0;
+    const bx = 21 + Math.floor(i * 0.5) - curve;
+    const by = 20 - i;
+    p.set(bx, by, blade[0], LAYER_FRONT);
+    p.set(bx + 1, by, blade[1], LAYER_FRONT);
+    p.set(bx + 2, by, blade[2], LAYER_FRONT);
+    if (i >= 5 && i <= 13) {
+      p.set(bx + 3, by + 1, blade[3], LAYER_FRONT);
     }
+  }
+}
+
+/** Double-bulb waist/back gourd (표주박) with red cord. */
+function paintGourd(p: PixelCanvas, x: number, y: number, ramp: Ramp4): void {
+  p.disc(x, y - 3, 2.2, ramp, LAYER_BACK);
+  p.disc(x, y + 2, 3.3, ramp, LAYER_BACK);
+  p.hline(x - 2, x + 2, y - 1, '#dc2626', LAYER_BACK);
+  p.set(x, y - 6, '#92400e', LAYER_BACK);
+}
+
+/** Floating plum blossom petals around Hwasan masters. */
+function paintPlumPetals(p: PixelCanvas): void {
+  const spots = [
+    [4, 9],
+    [27, 13],
+    [25, 24],
+    [5, 19],
+  ] as const;
+  for (const [px, py] of spots) {
+    p.set(px, py, '#fda4af', LAYER_FX);
+    p.set(px + 1, py, '#f43f5e', LAYER_FX);
+  }
+}
+
+/* ========================================================================== */
+/*  30 Wuxia Unit Pixel Painters                                              */
+/* ========================================================================== */
+
+export function paintUnitChibi(
+  ctx: CanvasRenderingContext2D,
+  unitId: UnitId,
+  canvasSize = ctx.canvas.width,
+): void {
+  const p = new PixelCanvas();
+
+  switch (unitId) {
+    /* -------------------- 구파일방 · 정파 (Orthodox) -------------------- */
+    case 'shaolin_novice': {
+      // Shaved shiny monk head + 6 golden ordination dots + giant prayer beads + wooden staff
+      paintHead34(p, SKIN_WARM, { blush: '#f4979c' });
+      // Round shaved crown (y=6..8)
+      p.hline(10, 17, 7, SKIN_WARM[0], LAYER_HEAD);
+      p.hline(11, 16, 6, SKIN_WARM[0], LAYER_HEAD);
+      p.rect(10, 7, 2, 2, '#ffffff', LAYER_HEAD); // Cute bald head shine!
+      // 6 monk dots (계바)
+      p.set(13, 9, '#d97706', LAYER_HEAD);
+      p.set(15, 9, '#d97706', LAYER_HEAD);
+      p.set(13, 10, '#d97706', LAYER_HEAD);
+      p.set(15, 10, '#d97706', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_GOLD, ROBE_CRIMSON, '#b45309');
+      // Oversized red prayer beads (염주) across torso
+      for (let i = 0; i < 4; i++) {
+        p.rect(10 + i * 2, 19 + i, 2, 2, i % 2 === 0 ? '#dc2626' : '#fef08a', LAYER_FRONT);
+      }
+      // Wooden monk staff diagonal right
+      p.line(19, 27, 28, 6, '#b45309', LAYER_FRONT, 2);
+      p.line(19, 26, 28, 5, '#fde68a', LAYER_FRONT, 1);
+      break;
+    }
+
+    case 'hwasan_novice': {
+      // Hwasan white uniform + pink plum topknot ribbon + steel jian
+      paintHead34(p, SKIN_WARM, { blush: '#f4979c' });
+      paintHairTopknot(p, HAIR_BLACK, '#f43f5e', false);
+      paintMartialBody34(p, ROBE_WHITE, ROBE_PLUM, '#f43f5e');
+      paintDiagonalSword(p, STEEL_RAMP, '#f43f5e', false);
+      p.set(27, 8, '#fda4af', LAYER_FX);
+      break;
+    }
+
+    case 'mudang_disciple': {
+      // Azure Taoist robe + jade crown + white horsehair whisk (불진) & sword
+      paintHead34(p, SKIN_WARM, { blush: '#f4979c' });
+      paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);
+      p.rect(12, 3, 3, 3, '#0284c7', LAYER_HEAD);
+      p.set(13, 4, '#bae6fd', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_AZURE, ROBE_WHITE, '#1e3a8a');
+      // White flowing horsetail whisk sweeping right
+      p.line(20, 23, 24, 15, '#92400e', LAYER_FRONT, 1);
+      p.line(24, 15, 29, 7, '#ffffff', LAYER_FRONT, 2);
+      p.line(25, 16, 30, 10, '#bae6fd', LAYER_FRONT, 2);
+      break;
+    }
+
+    case 'gaebang_beggar': {
+      // Messy spiky hair + bandana + big waist gourd (표주박) + green bamboo 타구봉
+      paintHead34(p, SKIN_TAN, { fierce: false, blush: '#e8998d' });
+      paintHairTopknot(p, HAIR_BROWN, '#16a34a', false);
+      // Spiky stray tufts
+      p.set(7, 8, HAIR_BROWN[1], LAYER_HEAD);
+      p.set(20, 8, HAIR_BROWN[2], LAYER_HEAD);
+      paintGourd(p, 5, 22, STRAW_RAMP);
+      paintMartialBody34(p, ROBE_EARTH, ROBE_JADE, '#15803d');
+      // Emerald bamboo Dog-Beating Staff (타구봉)
+      p.line(18, 28, 29, 5, '#16a34a', LAYER_FRONT, 2);
+      p.line(18, 27, 29, 4, '#86efac', LAYER_FRONT, 1);
+      p.set(23, 16, '#fef08a', LAYER_FRONT);
+      p.set(26, 10, '#fef08a', LAYER_FRONT);
+      break;
+    }
+
+    case 'plum_swordsman': {
+      // Flowing ponytail + twin pink plum ribbons + forward lunging plum-sword thrust + petals
+      paintCapeLeft(p, ROBE_PLUM, false);
+      paintHead34(p, SKIN_WARM, { glint: '#ffe4e6', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#f43f5e', true);
+      paintMartialBody34(p, ROBE_WHITE, ROBE_PLUM, '#e11d48');
+      paintThrustSword(p, ROBE_PLUM, '#facc15');
+      paintPlumPetals(p);
+      break;
+    }
+
+    case 'shaolin_monk': {
+      // Muscular warrior monk + giant crimson prayer beads + blazing golden brass staff/fist
+      paintCapeLeft(p, ROBE_CRIMSON, false);
+      paintHead34(p, SKIN_TAN, { fierce: true, glint: '#fef08a' });
+      p.hline(10, 17, 7, SKIN_TAN[0], LAYER_HEAD);
+      p.hline(11, 16, 6, SKIN_TAN[0], LAYER_HEAD);
+      p.rect(10, 7, 2, 2, '#fffbeb', LAYER_HEAD);
+      p.hline(9, 19, 10, '#dc2626', LAYER_HEAD); // Fierce red headband!
+      p.set(6, 10, '#dc2626', LAYER_BACK);
+      p.set(5, 11, '#dc2626', LAYER_BACK);
+      paintMartialBody34(p, ROBE_GOLD, ROBE_CRIMSON, '#7f1d1d');
+      // Giant prayer beads around shoulders
+      for (let i = 0; i < 5; i++) {
+        const bx = 9 + i * 2;
+        const by = 19 + (i % 2);
+        p.rect(bx, by, 2, 2, i % 2 === 0 ? '#991b1b' : '#fde047', LAYER_FRONT);
+      }
+      // Blazing golden fist + brass staff
+      p.disc(23, 19, 3.2, GOLD_QI, LAYER_FRONT);
+      p.line(19, 28, 29, 5, '#f59e0b', LAYER_FRONT, 2);
+      p.disc(29, 5, 2.2, GOLD_QI, LAYER_FRONT);
+      break;
+    }
+
+    case 'namgung_thunder': {
+      // Royal cobalt cloak + silver-gold coronet + broad cyan thunder greatsword
+      paintCapeLeft(p, ROBE_COBALT, true);
+      paintHead34(p, SKIN_WARM, { glint: '#bae6fd', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#38bdf8', true);
+      p.hline(10, 17, 6, '#facc15', LAYER_HEAD);
+      p.set(14, 5, '#38bdf8', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_COBALT, ROBE_WHITE, '#facc15');
+      paintDiagonalSword(p, CYAN_QI, '#facc15', true);
+      // Crackling lightning sparks
+      p.set(24, 8, '#ffffff', LAYER_FX);
+      p.set(25, 9, '#38bdf8', LAYER_FX);
+      p.set(28, 13, '#fef08a', LAYER_FX);
+      break;
+    }
+
+    case 'plum_elder': {
+      // Silver-streaked elder + plum-blossom cloak + crimson-rose elder sword
+      paintCapeLeft(p, ROBE_WHITE, true);
+      paintHead34(p, SKIN_WARM, { browColor: '#e2e8f0', fierce: true });
+      paintHairTopknot(p, HAIR_SILVER, '#e11d48', true);
+      // Dignified short white goatee
+      p.rect(15, 18, 2, 2, '#f1f5f9', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_PLUM, ROBE_WHITE, '#facc15');
+      paintDiagonalSword(p, ROBE_PLUM, '#facc15', true);
+      paintPlumPetals(p);
+      break;
+    }
+
+    case 'gaebang_elder': {
+      // Wide bamboo satgat + giant golden gourd + jade dragon Dog-Beating Staff
+      paintGourd(p, 5, 21, GOLD_QI);
+      paintHead34(p, SKIN_TAN, { browColor: '#f1f5f9', fierce: true });
+      paintSatgat(p, STRAW_RAMP, '#16a34a');
+      p.rect(14, 18, 3, 2, '#e2e8f0', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_EARTH, ROBE_JADE, '#eab308');
+      p.line(18, 29, 29, 4, '#16a34a', LAYER_FRONT, 2);
+      p.line(18, 28, 29, 3, '#bbf7d0', LAYER_FRONT, 1);
+      p.disc(29, 5, 2.4, ROBE_JADE, LAYER_FRONT);
+      break;
+    }
+
+    case 'hwasan_master': {
+      // Purple-mist (자하진기) sect leader + golden plum crown + violet-rose divine sword
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_WARM, { glint: '#f5d0fe', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#facc15');
+      p.set(14, 3, '#f43f5e', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_WHITE, ROBE_VIOLET, '#f43f5e');
+      paintDiagonalSword(p, ROBE_VIOLET, '#facc15', true);
+      paintPlumPetals(p);
+      p.set(27, 4, '#f43f5e', LAYER_FX);
+      p.set(29, 8, '#e879f9', LAYER_FX);
+      break;
+    }
+
+    case 'mudang_master': {
+      // Snowy-haired Taiji Sword Immortal + levitating Yin-Yang orbs + cyan jade sword
+      paintCapeLeft(p, ROBE_AZURE, true);
+      paintHead34(p, SKIN_WARM, { browColor: '#ffffff', glint: '#bae6fd' });
+      paintFlowingMane(p, HAIR_SILVER, '#38bdf8');
+      p.rect(15, 18, 2, 3, '#ffffff', LAYER_FRONT); // Long Taoist beard
+      paintMartialBody34(p, ROBE_AZURE, ROBE_WHITE, '#eab308');
+      paintDiagonalSword(p, CYAN_QI, '#eab308', true);
+      // Floating Yin-Yang qi orbs behind shoulders
+      p.disc(5, 10, 2.3, ROBE_WHITE, LAYER_FX);
+      p.set(5, 10, PIXEL_OUTLINE, LAYER_FX);
+      p.disc(25, 5, 2.3, CYAN_QI, LAYER_FX);
+      break;
+    }
+
+    case 'sword_saint': {
+      // Transcendent Sword Saint: snow-white mane + 3 levitating spirit swords (어검) + divine blade
+      paintCapeLeft(p, ROBE_AZURE, true);
+      paintHead34(p, SKIN_WARM, { browColor: '#ffffff', glint: '#e0f2fe', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#bae6fd');
+      paintMartialBody34(p, ROBE_WHITE, ROBE_AZURE, '#0284c7');
+      paintDiagonalSword(p, CYAN_QI, '#fef08a', true);
+      // Floating spirit swords hovering on left & top
+      p.line(3, 14, 7, 4, '#7dd3fc', LAYER_FX, 1);
+      p.line(4, 14, 8, 4, '#ffffff', LAYER_FX, 1);
+      p.line(21, 9, 25, 2, '#7dd3fc', LAYER_FX, 1);
+      break;
+    }
+
+    case 'murim_lord': {
+      // Alliance Lord: imperial dragon crown + crimson-gold cape + blazing Golden Dragon Greatsword
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      paintHead34(p, SKIN_WARM, { glint: '#fef08a', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#facc15');
+      // Tall golden dragon crown
+      p.rect(11, 2, 6, 4, '#eab308', LAYER_HEAD);
+      p.hline(12, 15, 2, '#fef08a', LAYER_HEAD);
+      p.set(13, 4, '#dc2626', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_GOLD, ROBE_CRIMSON, '#dc2626');
+      paintDiagonalSword(p, GOLD_QI, '#dc2626', true);
+      p.set(25, 4, '#fef08a', LAYER_FX);
+      p.set(29, 9, '#f59e0b', LAYER_FX);
+      break;
+    }
+
+    /* ---------------------- 사파 (Unorthodox) ---------------------- */
+    case 'nokrim_bandit': {
+      // Green bandit bandana + battle scar + fur pauldron + chunky notched saber
+      paintHead34(p, SKIN_TAN, { fierce: true, scar: true });
+      paintHairTopknot(p, HAIR_BROWN, '#16a34a', false);
+      p.hline(8, 19, 9, '#16a34a', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_EARTH, ROBE_JADE, '#991b1b');
+      paintCurvedSaber(p, STEEL_RAMP, '#b45309');
+      break;
+    }
+
+    case 'tang_assassin': {
+      // Signature purple face mask (보라색 복면) + violet hood + green poison daggers (독침 비수)
+      paintCapeLeft(p, ROBE_VIOLET, false);
+      paintHead34(p, SKIN_PALE, { glint: '#86efac', fierce: true });
+      // Hood & purple ninja mask covering lower face (y=15..18)
+      paintHairTopknot(p, HAIR_BLACK, '#9333ea', false);
+      p.rect(9, 15, 11, 3, '#6b21a8', LAYER_FRONT);
+      p.hline(10, 18, 15, '#a855f7', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_VIOLET, ROBE_JADE, '#22c55e');
+      // Fan of 3 emerald-venom throwing daggers
+      p.line(21, 22, 29, 12, '#4ade80', LAYER_FRONT, 1);
+      p.line(21, 22, 30, 17, '#86efac', LAYER_FRONT, 1);
+      p.line(21, 23, 29, 22, '#22c55e', LAYER_FRONT, 1);
+      p.set(29, 10, '#4ade80', LAYER_FX);
+      break;
+    }
+
+    case 'haomun_ronin': {
+      // Tilted dark straw satgat + tattered wanderer cloak + long drawn katana/dao
+      paintCapeLeft(p, ROBE_EARTH, false);
+      paintHead34(p, SKIN_TAN, { fierce: true });
+      paintSatgat(p, STRAW_RAMP, '#dc2626');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_EARTH, '#eab308');
+      paintDiagonalSword(p, STEEL_RAMP, '#eab308', false);
+      break;
+    }
+
+    case 'poison_healer': {
+      // Violet apothecary hat + toxic green calabash gourd + venom mist
+      paintGourd(p, 5, 21, VENOM_QI);
+      paintHead34(p, SKIN_PALE, { glint: '#86efac', fierce: true });
+      paintHairTopknot(p, HAIR_SILVER, '#22c55e', false);
+      p.rect(9, 5, 10, 4, '#6b21a8', LAYER_HEAD);
+      p.hline(10, 17, 5, '#a855f7', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_JADE, ROBE_VIOLET, '#7e22ce');
+      // Venom staff + bubbling poison orb
+      p.line(19, 28, 28, 8, '#4c1d95', LAYER_FRONT, 2);
+      p.disc(28, 8, 3, VENOM_QI, LAYER_FRONT);
+      p.set(25, 4, '#86efac', LAYER_FX);
+      p.set(30, 12, '#a855f7', LAYER_FX);
+      break;
+    }
+
+    case 'blood_blade': {
+      // Wild crimson-black hair + red scarf + oversized Giant Blood Saber (거대 혈도)
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      paintHead34(p, SKIN_TAN, { glint: '#fda4af', fierce: true, scar: true });
+      paintHairTopknot(p, HAIR_CRIMSON, '#1f2937', true);
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#ef4444');
+      paintCurvedSaber(p, ROBE_CRIMSON, '#facc15');
+      break;
+    }
+
+    case 'nokrim_chief': {
+      // Beast-horn pelt crown + tiger-gold mantle + colossal Demon-Head Heavy Saber
+      paintCapeLeft(p, STRAW_RAMP, true);
+      paintHead34(p, SKIN_TAN, { glint: '#fde047', fierce: true, scar: true });
+      paintFlowingMane(p, HAIR_BROWN, '#eab308');
+      // Twin beast horns on crown
+      p.line(9, 6, 7, 3, '#fef3c7', LAYER_HEAD);
+      p.line(18, 6, 20, 3, '#fef3c7', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_JADE, STRAW_RAMP, '#dc2626');
+      paintCurvedSaber(p, GOLD_QI, '#dc2626');
+      break;
+    }
+
+    case 'tang_patriarch': {
+      // Tang Lord: ornate purple-gold mask & crest + floating emerald needle wheel (만천화우)
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_PALE, { glint: '#4ade80', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#a855f7');
+      p.rect(9, 15, 11, 3, '#4c1d95', LAYER_FRONT);
+      p.hline(10, 18, 15, '#eab308', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_VIOLET, ROBE_JADE, '#eab308');
+      // Golden mechanism box + radial green poison needles
+      p.rect(20, 18, 5, 5, '#eab308', LAYER_FRONT);
+      p.rect(21, 19, 3, 3, '#22c55e', LAYER_FRONT);
+      p.line(24, 17, 30, 7, '#4ade80', LAYER_FX, 1);
+      p.line(25, 19, 30, 14, '#86efac', LAYER_FX, 1);
+      p.line(25, 21, 30, 22, '#22c55e', LAYER_FX, 1);
+      break;
+    }
+
+    case 'blood_demon': {
+      // Blood Demon: crimson mane + demonic horns + monstrous blood blade & blood orbs
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#fb7185', fierce: true });
+      paintFlowingMane(p, HAIR_CRIMSON, '#dc2626');
+      p.line(9, 6, 7, 2, '#fda4af', LAYER_HEAD);
+      p.line(18, 6, 20, 2, '#fda4af', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_CRIMSON, ROBE_DEMON, '#fde047');
+      paintCurvedSaber(p, ROBE_CRIMSON, '#fde047');
+      p.disc(5, 11, 2.1, ROBE_CRIMSON, LAYER_FX);
+      break;
+    }
+
+    case 'mad_demon': {
+      // Mad Demon (광마): wild snow-white & crimson mane + broken chains + twin berserk blades
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', browColor: '#ffffff', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#e11d48');
+      // Wild spiky hair strands
+      p.line(10, 5, 8, 2, '#ffffff', LAYER_HEAD);
+      p.line(15, 5, 17, 2, '#fda4af', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#f43f5e');
+      // Twin chaotic crimson-black blades (left & right!)
+      paintCurvedSaber(p, ROBE_CRIMSON, '#94a3b8');
+      p.line(6, 22, 2, 12, '#f43f5e', LAYER_FRONT, 2);
+      p.set(27, 4, '#f43f5e', LAYER_FX);
+      break;
+    }
+
+    /* -------------------- 마교 · 천마신교 (Demonic Cult) -------------------- */
+    case 'cult_initiate': {
+      // Horned cult hood + dark crimson robe + jagged demonic scimitar
+      paintHead34(p, SKIN_PALE, { glint: '#fda4af', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#dc2626', false);
+      p.hline(9, 18, 8, '#7f1d1d', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_DEMON, ROBE_CRIMSON, '#dc2626');
+      paintCurvedSaber(p, STEEL_RAMP, '#dc2626');
+      break;
+    }
+
+    case 'bone_fiend': {
+      // Pale 4-tone skull mask over cowl + bone pauldrons + spiked bone sword
+      paintCapeLeft(p, ROBE_OBSIDIAN, false);
+      paintHead34(p, BONE_RAMP, { glint: '#f43f5e', fierce: true });
+      // Skull jaw teeth detail
+      p.set(12, 17, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(14, 17, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(16, 17, PIXEL_OUTLINE, LAYER_HEAD);
+      paintMartialBody34(p, ROBE_DEMON, BONE_RAMP, '#94a3b8');
+      paintDiagonalSword(p, BONE_RAMP, '#dc2626', true);
+      break;
+    }
+
+    case 'black_wind': {
+      // Black-Wind Trooper: obsidian visor mask + red plume + dark crescent halberd
+      paintCapeLeft(p, ROBE_OBSIDIAN, true);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#e11d48', true);
+      p.rect(9, 15, 11, 3, '#1f1630', LAYER_FRONT);
+      p.hline(10, 18, 15, '#e11d48', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#e11d48');
+      paintCurvedSaber(p, ROBE_OBSIDIAN, '#e11d48');
+      break;
+    }
+
+    case 'cult_protector': {
+      // Horned dark-gold Protector crown + heavy crimson-obsidian armor + demonic palm/blade
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#fde047', fierce: true });
+      paintHairTopknot(p, HAIR_SILVER, '#eab308', true);
+      p.line(9, 6, 7, 3, '#eab308', LAYER_HEAD);
+      p.line(18, 6, 20, 3, '#eab308', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_DEMON, ROBE_GOLD, '#eab308');
+      paintCurvedSaber(p, ROBE_VIOLET, '#eab308');
+      break;
+    }
+
+    case 'cult_elder': {
+      // Silver-haired Cult Elder + crimson diadem + levitating blood-violet orb & staff
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#e879f9', browColor: '#ffffff', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#e11d48');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#a855f7');
+      p.line(19, 28, 27, 9, '#581c87', LAYER_FRONT, 2);
+      p.disc(27, 8, 3.2, ROBE_CRIMSON, LAYER_FRONT);
+      p.set(27, 7, '#ffffff', LAYER_FX);
+      break;
+    }
+
+    case 'sword_demon': {
+      // Sword Demon (검마): cascading pure white mane + obsidian-crimson cloak + colossal Demonic Greatsword
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', browColor: '#ffffff', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#f43f5e');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#e11d48');
+      paintDiagonalSword(p, ROBE_CRIMSON, '#a855f7', true);
+      p.set(24, 5, '#e879f9', LAYER_FX);
+      p.set(29, 10, '#f43f5e', LAYER_FX);
+      break;
+    }
+
+    case 'flame_demon': {
+      // Flame Demon (염마): blazing scarlet-gold hair + black horns + roaring hellfire fists
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      paintHead34(p, SKIN_TAN, { glint: '#fef08a', fierce: true });
+      paintFlowingMane(p, HAIR_FLAME, '#fde047');
+      p.line(9, 6, 7, 2, '#271738', LAYER_HEAD);
+      p.line(18, 6, 20, 2, '#271738', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_DEMON, GOLD_QI, '#f97316');
+      // Giant roaring flame orb in front hand + rising flame pillar right
+      p.disc(24, 18, 4.2, HAIR_FLAME, LAYER_FRONT);
+      p.disc(27, 10, 3.2, GOLD_QI, LAYER_FX);
+      p.set(27, 5, '#ef4444', LAYER_FX);
+      break;
+    }
+
+    case 'cheonma': {
+      // Absolute Heavenly Demon (절대천마): waist-length silver hair + black-crimson mantle +
+      // heavenly dark-crimson halo + Heavenly Demon Divine Greatsword tearing crimson lightning!
+      // Floating dark-crimson halo behind crown
+      for (let a = 0; a < 12; a++) {
+        const ang = (a * Math.PI * 2) / 12;
+        const hx = Math.round(13 + Math.cos(ang) * 9);
+        const hy = Math.round(11 + Math.sin(ang) * 8);
+        p.set(hx, hy, a % 2 === 0 ? '#f43f5e' : '#a855f7', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#fde047', browColor: '#ffffff', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#facc15');
+      // Imperial Heavenly Demon horned crown
+      p.rect(11, 2, 6, 4, '#eab308', LAYER_HEAD);
+      p.line(10, 4, 8, 1, '#f43f5e', LAYER_HEAD);
+      p.line(17, 4, 19, 1, '#f43f5e', LAYER_HEAD);
+      p.set(14, 3, '#ffffff', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_OBSIDIAN, GOLD_QI, '#e11d48');
+      paintDiagonalSword(p, ROBE_CRIMSON, '#fde047', true);
+      // Black-crimson lightning arcs around sword
+      p.line(23, 14, 30, 3, '#fef08a', LAYER_FX, 1);
+      p.set(29, 7, '#a855f7', LAYER_FX);
+      p.set(4, 8, '#f43f5e', LAYER_FX);
+      break;
+    }
+
     default: {
-      const g = new PixelGrid(24, 24);
-      paintPirateRaider(g);
-      return g;
+      paintHead34(p, SKIN_WARM);
+      paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);
+      paintMartialBody34(p, ROBE_WHITE, ROBE_AZURE, '#0284c7');
+      paintDiagonalSword(p, STEEL_RAMP, '#eab308', false);
+      break;
     }
   }
+
+  p.flush(ctx, canvasSize);
 }
 
-/* ------------------------------------------------------------------ */
-/*  Public API (consumed exclusively by SpriteCache)                   */
-/* ------------------------------------------------------------------ */
+/* ========================================================================== */
+/*  6 Wuxia Wave Monster & Boss Pixel Painters (32x32)                        */
+/* ========================================================================== */
 
-function blitGrid(ctx: CanvasRenderingContext2D, g: PixelGrid, size: number): void {
-  const scale = Math.max(1, Math.floor(size / g.w));
-  const ox = Math.floor((size - g.w * scale) / 2);
-  const oy = size - g.h * scale;
-  g.render(ctx, ox, oy, scale);
-}
+export function paintMonsterChibi(
+  ctx: CanvasRenderingContext2D,
+  kind: MonsterKind,
+  canvasSize = ctx.canvas.width,
+): void {
+  const p = new PixelCanvas();
 
-/** Paints a unit's pixel-art sprite into a square canvas (feet on the bottom edge). */
-export function paintUnitChibi(ctx: CanvasRenderingContext2D, unitId: string): void {
-  const g = new PixelGrid(32, 32);
-  (UNIT_PAINTERS[unitId] ?? paintGenericPirate)(g);
-  blitGrid(ctx, g, ctx.canvas.width);
-}
+  switch (kind) {
+    case 'bandit_minion': {
+      // Mountain Bandit Minion (산적 졸개): green headband + cheeky grin + spiked club
+      paintHead34(p, SKIN_TAN, { fierce: true, scar: true });
+      p.hline(8, 19, 8, '#15803d', LAYER_HEAD);
+      p.hline(9, 18, 7, '#4ade80', LAYER_HEAD);
+      p.set(6, 8, '#15803d', LAYER_BACK);
+      paintMartialBody34(p, ROBE_EARTH, STRAW_RAMP, '#7f1d1d');
+      // Heavy wooden spiked club
+      p.line(20, 23, 28, 10, '#92400e', LAYER_FRONT, 3);
+      p.line(20, 22, 27, 10, '#d97706', LAYER_FRONT, 1);
+      p.set(29, 11, '#e2e8f0', LAYER_FRONT);
+      p.set(26, 8, '#e2e8f0', LAYER_FRONT);
+      break;
+    }
 
-/** Paints a monster's pixel-art sprite into a square canvas of `size` pixels. */
-export function paintMonsterChibi(ctx: CanvasRenderingContext2D, kind: MonsterKind, size: number): void {
-  blitGrid(ctx, paintMonsterGrid(kind), size);
+    case 'jiangshi': {
+      // Hopping Jiangshi (강시): Qing mandarin cap + yellow talisman (부적) + outstretched arms!
+      paintHead34(p, SKIN_ZOMBIE, { glint: '#fda4af', blush: '#fb7185' });
+      // Black Qing mandarin hat + red pom-pom
+      p.hline(7, 20, 8, '#1e1b4b', LAYER_HEAD);
+      p.rect(9, 5, 10, 3, '#312e81', LAYER_HEAD);
+      p.rect(13, 3, 3, 2, '#ef4444', LAYER_HEAD);
+      // Iconic yellow paper talisman dangling down center-right of forehead!
+      p.rect(14, 8, 3, 7, '#fde047', LAYER_FRONT);
+      p.vline(15, 9, 13, '#dc2626', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_VIOLET, ROBE_CRIMSON, '#eab308');
+      // Both stiff hopping arms stretched straight out right!
+      p.rect(19, 19, 9, 3, '#4c1d95', LAYER_FRONT);
+      p.hline(19, 27, 19, '#a855f7', LAYER_FRONT);
+      p.rect(28, 19, 2, 2, SKIN_ZOMBIE[1], LAYER_FRONT);
+      break;
+    }
+
+    case 'blood_zealot': {
+      // Blood Cult Zealot (혈교 광신도): pointed crimson hood + ritual curved blood dagger
+      paintCapeLeft(p, ROBE_DEMON, false);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', fierce: true });
+      // Pointed crimson cult cowl
+      p.hline(8, 19, 8, '#991b1b', LAYER_HEAD);
+      p.hline(9, 17, 6, '#dc2626', LAYER_HEAD);
+      p.hline(10, 15, 4, '#ef4444', LAYER_HEAD);
+      p.set(11, 3, '#fca5a5', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_DEMON, ROBE_CRIMSON, '#fde047');
+      paintCurvedSaber(p, ROBE_CRIMSON, '#fde047');
+      break;
+    }
+
+    case 'white_tiger': {
+      // BOSS: Spirit Beast White Tiger (영물 백호) — fierce 32x32 quadrupedal/rearing guardian beast
+      // Thick muscular white-fur body + black stripes + cyan spirit flames
+      p.disc(13, 21, 8, ROBE_WHITE, LAYER_BODY);
+      p.disc(16, 13, 7.5, ROBE_WHITE, LAYER_HEAD);
+      // Tiger ears
+      p.rect(9, 5, 3, 3, '#ffffff', LAYER_HEAD);
+      p.set(10, 6, '#fda4af', LAYER_HEAD);
+      p.rect(20, 5, 3, 3, '#cbd5e1', LAYER_HEAD);
+      // Forehead '王' tiger mark in dark outline
+      p.hline(14, 18, 7, PIXEL_OUTLINE, LAYER_HEAD);
+      p.hline(15, 17, 9, PIXEL_OUTLINE, LAYER_HEAD);
+      p.vline(16, 7, 10, PIXEL_OUTLINE, LAYER_HEAD);
+      // Fierce dark bean eyes with cyan spirit glint (zero white sclera!)
+      p.rect(13, 11, 2, 3, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(13, 11, '#38bdf8', LAYER_HEAD);
+      p.rect(19, 11, 2, 3, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(19, 11, '#38bdf8', LAYER_HEAD);
+      // Roaring maw & fangs
+      p.rect(14, 15, 6, 3, '#9f1239', LAYER_HEAD);
+      p.set(14, 15, '#fef08a', LAYER_HEAD);
+      p.set(19, 15, '#fef08a', LAYER_HEAD);
+      // Black tiger stripes on body & tail
+      p.hline(7, 10, 19, PIXEL_OUTLINE, LAYER_BODY);
+      p.hline(8, 11, 22, PIXEL_OUTLINE, LAYER_BODY);
+      p.line(5, 22, 2, 12, '#e2e8f0', LAYER_BACK, 2);
+      // Giant swiping forepaws + cyan celestial flames
+      p.rect(9, 27, 4, 3, '#e2e8f0', LAYER_BODY);
+      p.rect(19, 26, 6, 4, '#ffffff', LAYER_FRONT);
+      p.set(25, 27, '#38bdf8', LAYER_FRONT);
+      p.set(25, 29, '#38bdf8', LAYER_FRONT);
+      p.disc(6, 13, 2.5, CYAN_QI, LAYER_FX);
+      p.disc(26, 15, 2.5, CYAN_QI, LAYER_FX);
+      break;
+    }
+
+    case 'black_serpent': {
+      // BOSS: Obsidian-Scale Black Serpent Dragon (묵린흑사) — coiled horned poison cobra-dragon
+      // Coiled S-body with bright jade-obsidian scale highlights
+      p.disc(10, 24, 6.5, ROBE_OBSIDIAN, LAYER_BACK);
+      p.disc(20, 25, 5.8, ROBE_OBSIDIAN, LAYER_BODY);
+      p.disc(14, 18, 6.2, ROBE_JADE, LAYER_BODY);
+      // Scale shine spots on coils
+      p.rect(8, 22, 3, 2, '#4ade80', LAYER_BACK);
+      p.rect(18, 23, 3, 2, '#4ade80', LAYER_BODY);
+      // Flared emerald-violet cobra hood behind head!
+      p.disc(17, 11, 8.2, ROBE_VIOLET, LAYER_BACK);
+      p.disc(18, 10, 6.2, ROBE_OBSIDIAN, LAYER_HEAD);
+      // Golden dragon horns + crown crest
+      p.line(13, 6, 8, 2, '#facc15', LAYER_HEAD, 2);
+      p.line(21, 6, 26, 2, '#facc15', LAYER_HEAD, 2);
+      p.set(18, 4, '#4ade80', LAYER_HEAD);
+      // Fierce dark bean eyes with toxic green glint
+      p.rect(15, 9, 2, 3, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(15, 9, '#86efac', LAYER_HEAD);
+      p.rect(20, 9, 2, 3, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(20, 9, '#86efac', LAYER_HEAD);
+      // Venomous fangs & forked crimson tongue
+      p.rect(16, 13, 6, 2, '#9f1239', LAYER_FRONT);
+      p.set(16, 13, '#ffffff', LAYER_FRONT);
+      p.set(21, 13, '#ffffff', LAYER_FRONT);
+      p.line(22, 14, 29, 16, '#f43f5e', LAYER_FX, 1);
+      p.set(29, 15, '#f43f5e', LAYER_FX);
+      p.set(29, 17, '#f43f5e', LAYER_FX);
+      // Segmented golden-emerald belly plates
+      p.hline(11, 17, 17, '#fef08a', LAYER_BODY);
+      p.hline(12, 18, 19, '#86efac', LAYER_BODY);
+      p.hline(13, 18, 21, '#22c55e', LAYER_BODY);
+      break;
+    }
+
+    case 'blood_patriarch': {
+      // BOSS: Blood-Sea Demon Patriarch (혈교주) — towering horned overlord with giant blood halberd
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      // Extra wide boss mantle
+      p.disc(14, 22, 8.5, ROBE_DEMON, LAYER_BODY);
+      paintHead34(p, SKIN_PALE, { glint: '#fef08a', browColor: '#fda4af', fierce: true });
+      paintFlowingMane(p, HAIR_CRIMSON, '#facc15');
+      // Giant twin blood horns
+      p.line(8, 7, 4, 2, '#facc15', LAYER_HEAD, 2);
+      p.line(19, 7, 23, 2, '#facc15', LAYER_HEAD, 2);
+      paintMartialBody34(p, ROBE_DEMON, GOLD_QI, '#facc15');
+      // Colossal crimson halberd + floating blood orbs
+      p.line(19, 29, 29, 3, '#eab308', LAYER_FRONT, 2);
+      paintCurvedSaber(p, ROBE_CRIMSON, '#fde047');
+      p.disc(5, 11, 2.6, ROBE_CRIMSON, LAYER_FX);
+      p.disc(27, 19, 2.4, ROBE_CRIMSON, LAYER_FX);
+      break;
+    }
+  }
+
+  p.flush(ctx, canvasSize);
 }

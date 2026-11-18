@@ -1,14 +1,23 @@
 {
   "common": [
-    "luffy",
-    "zoro",
-    "nami",
-    "usopp",
-    "sanji",
-    "chopper",
-    "marine_gunner",
-    "marine_saber"
+    "shaolin_novice",
+    "hwasan_novice",
+    "mudang_disciple",
+    "gaebang_beggar",
+    "nokrim_bandit",
+    "tang_assassin",
+    "haomun_ronin",
+    "cult_initiate",
+    "bone_fiend"
   ],
-  "uncommon": ["luffy_gear2", "zoro_dual", "nami_clima", "sanji_diable"],
-  "rare": ["luffy_ts", "zoro_ts", "law", "ace"]
+  "uncommon": [
+    "plum_swordsman",
+    "shaolin_monk",
+    "namgung_thunder",
+    "poison_healer",
+    "blood_blade",
+    "black_wind",
+    "cult_protector"
+  ],
+  "rare": ["plum_elder", "gaebang_elder", "nokrim_chief", "cult_elder"]
 }
