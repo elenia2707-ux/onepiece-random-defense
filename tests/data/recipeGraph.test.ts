@@ -4,11 +4,13 @@ import { loadGameData } from '../../src/data/loader';
 import type { RecipeDef, UnitDef } from '../../src/data/types';
 
 describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
-  it('validates production game data cleanly (R1..R5)', () => {
+  it('validates production One Piece game data cleanly (R1..R5)', () => {
     const data = loadGameData();
     const graph = new RecipeGraph(data.units, data.gradesById, data.recipes);
     expect(graph.topo.length).toBe(data.recipes.length);
-    expect(graph.byOutput.get('pirate_king')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('luffy_nika')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('shanks')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('whitebeard')?.length).toBeGreaterThan(0);
   });
 
   it('R1: rejects recipes referencing non-existent unit IDs', () => {
@@ -17,12 +19,12 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       ...data.recipes,
       {
         id: 'r_bad_ref',
-        output: 'dual_blade',
+        output: 'zoro_dual',
         ingredients: [
-          { unit: 'swordsman', n: 1 },
+          { unit: 'zoro', n: 1 },
           { unit: 'ghost_unit_404', n: 1 },
         ],
-        priority: 99,
+        priority: 999,
       },
     ];
     expect(() => new RecipeGraph(data.units, data.gradesById, badRecipes)).toThrow(/\[R1\]/);
@@ -34,12 +36,12 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       ...data.recipes,
       {
         id: 'r_bad_rank',
-        output: 'dual_blade', // uncommon (rank 2)
+        output: 'zoro_dual', // uncommon (rank 2)
         ingredients: [
-          { unit: 'storm_mage', n: 1 }, // rare (rank 3) >= rank 2, acyclic
-          { unit: 'gunner', n: 1 },
+          { unit: 'law', n: 1 }, // rare (rank 3) >= rank 2, acyclic
+          { unit: 'marine_gunner', n: 1 },
         ],
-        priority: 99,
+        priority: 999,
       },
     ];
     expect(() => new RecipeGraph(data.units, data.gradesById, badRecipes)).toThrow(/\[R2\]/);
@@ -50,19 +52,19 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     const cyclicRecipes: RecipeDef[] = [
       {
         id: 'r_cycle_a',
-        output: 'dual_blade',
+        output: 'zoro_dual',
         ingredients: [
-          { unit: 'pyro_cook', n: 1 },
-          { unit: 'swordsman', n: 1 },
+          { unit: 'sanji_diable', n: 1 },
+          { unit: 'zoro', n: 1 },
         ],
         priority: 1,
       },
       {
         id: 'r_cycle_b',
-        output: 'pyro_cook',
+        output: 'sanji_diable',
         ingredients: [
-          { unit: 'dual_blade', n: 1 },
-          { unit: 'navigator', n: 1 },
+          { unit: 'zoro_dual', n: 1 },
+          { unit: 'nami', n: 1 },
         ],
         priority: 2,
       },
@@ -73,15 +75,28 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
   it('R4: rejects non-leaf units that have no valid expansion to leaf units', () => {
     const data = loadGameData();
     const extraNonLeaf: UnitDef = {
-      id: 'orphan_hero',
-      name: '고립 영웅',
+      id: 'orphan_pirate',
+      name: '고립 해적',
+      title: '미확정',
       grade: 'rare',
       leaf: false,
-      emblem: 'crest',
       atk: 100,
       range: 180,
       attackIntervalTicks: 20,
+      critChance: 10,
+      critMult: 1.8,
       sellCoin: 50,
+      skill: {
+        name: '테스트 베기',
+        desc: '테스트',
+        everyN: 4,
+        atkRatio: 2,
+        splashRadius: 60,
+        stunTicks: 0,
+        slowPct: 0,
+        slowTicks: 0,
+        vfxTrack: 'crescent_slash',
+      },
     };
     expect(
       () => new RecipeGraph([...data.units, extraNonLeaf], data.gradesById, data.recipes),
@@ -93,11 +108,11 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     const dupRecipes: RecipeDef[] = [
       ...data.recipes,
       {
-        id: 'r_dual_blade_duplicate',
-        output: 'dual_blade',
+        id: 'r_zoro_dual_duplicate',
+        output: 'zoro_dual',
         ingredients: [
-          { unit: 'gunner', n: 1 },
-          { unit: 'swordsman', n: 1 },
+          { unit: 'marine_saber', n: 1 },
+          { unit: 'zoro', n: 1 },
         ],
         priority: 999,
       },

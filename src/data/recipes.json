@@ -1,76 +1,137 @@
 [
   {
-    "id": "r_dual_blade",
-    "output": "dual_blade",
+    "id": "r_luffy_gear2",
+    "output": "luffy_gear2",
     "ingredients": [
-      { "unit": "swordsman", "n": 1 },
-      { "unit": "gunner", "n": 1 }
+      { "unit": "luffy", "n": 1 },
+      { "unit": "chopper", "n": 1 }
     ],
     "priority": 10
   },
   {
-    "id": "r_pyro_cook",
-    "output": "pyro_cook",
+    "id": "r_zoro_dual",
+    "output": "zoro_dual",
     "ingredients": [
-      { "unit": "navigator", "n": 1 },
-      { "unit": "shieldman", "n": 1 }
+      { "unit": "zoro", "n": 1 },
+      { "unit": "marine_saber", "n": 1 }
     ],
     "priority": 20
   },
   {
-    "id": "r_sharpshooter",
-    "output": "sharpshooter",
+    "id": "r_nami_clima",
+    "output": "nami_clima",
     "ingredients": [
-      { "unit": "gunner", "n": 1 },
-      { "unit": "shieldman", "n": 1 }
+      { "unit": "nami", "n": 1 },
+      { "unit": "usopp", "n": 1 }
     ],
     "priority": 30
   },
   {
-    "id": "r_sword_saint",
-    "output": "sword_saint",
+    "id": "r_sanji_diable",
+    "output": "sanji_diable",
     "ingredients": [
-      { "unit": "dual_blade", "n": 1 },
-      { "unit": "swordsman", "n": 1 },
-      { "unit": "shieldman", "n": 1 }
+      { "unit": "sanji", "n": 1 },
+      { "unit": "marine_gunner", "n": 1 }
     ],
     "priority": 40
   },
   {
-    "id": "r_storm_mage",
-    "output": "storm_mage",
+    "id": "r_luffy_ts",
+    "output": "luffy_ts",
     "ingredients": [
-      { "unit": "pyro_cook", "n": 1 },
-      { "unit": "sharpshooter", "n": 1 }
+      { "unit": "luffy_gear2", "n": 1 },
+      { "unit": "sanji_diable", "n": 1 },
+      { "unit": "luffy", "n": 1 }
     ],
     "priority": 50
   },
   {
-    "id": "r_flame_admiral",
-    "output": "flame_admiral",
+    "id": "r_zoro_ts",
+    "output": "zoro_ts",
     "ingredients": [
-      { "unit": "sword_saint", "n": 1 },
-      { "unit": "storm_mage", "n": 1 },
-      { "unit": "brawler", "n": 1 }
+      { "unit": "zoro_dual", "n": 1 },
+      { "unit": "zoro", "n": 1 },
+      { "unit": "marine_saber", "n": 1 }
     ],
     "priority": 60
   },
   {
-    "id": "r_thunder_emperor",
-    "output": "thunder_emperor",
+    "id": "r_law",
+    "output": "law",
     "ingredients": [
-      { "unit": "flame_admiral", "n": 1 },
-      { "unit": "storm_mage", "n": 1 }
+      { "unit": "nami_clima", "n": 1 },
+      { "unit": "chopper", "n": 1 },
+      { "unit": "marine_gunner", "n": 1 }
     ],
     "priority": 70
   },
   {
-    "id": "r_pirate_king",
-    "output": "pirate_king",
+    "id": "r_ace",
+    "output": "ace",
     "ingredients": [
-      { "unit": "thunder_emperor", "n": 1 },
-      { "unit": "sword_saint", "n": 1 }
+      { "unit": "sanji_diable", "n": 1 },
+      { "unit": "nami_clima", "n": 1 },
+      { "unit": "usopp", "n": 1 }
     ],
     "priority": 80
+  },
+  {
+    "id": "r_luffy_gear4",
+    "output": "luffy_gear4",
+    "ingredients": [
+      { "unit": "luffy_ts", "n": 1 },
+      { "unit": "law", "n": 1 },
+      { "unit": "luffy_gear2", "n": 1 }
+    ],
+    "priority": 90
+  },
+  {
+    "id": "r_zoro_ashura",
+    "output": "zoro_ashura",
+    "ingredients": [
+      { "unit": "zoro_ts", "n": 1 },
+      { "unit": "zoro_dual", "n": 1 },
+      { "unit": "sanji_diable", "n": 1 }
+    ],
+    "priority": 100
+  },
+  {
+    "id": "r_ace_flame",
+    "output": "ace_flame",
+    "ingredients": [
+      { "unit": "ace", "n": 1 },
+      { "unit": "luffy_ts", "n": 1 },
+      { "unit": "nami_clima", "n": 1 }
+    ],
+    "priority": 110
+  },
+  {
+    "id": "r_shanks",
+    "output": "shanks",
+    "ingredients": [
+      { "unit": "zoro_ashura", "n": 1 },
+      { "unit": "law", "n": 1 },
+      { "unit": "zoro_ts", "n": 1 }
+    ],
+    "priority": 120
+  },
+  {
+    "id": "r_whitebeard",
+    "output": "whitebeard",
+    "ingredients": [
+      { "unit": "ace_flame", "n": 1 },
+      { "unit": "luffy_ts", "n": 1 },
+      { "unit": "law", "n": 1 }
+    ],
+    "priority": 130
+  },
+  {
+    "id": "r_luffy_nika",
+    "output": "luffy_nika",
+    "ingredients": [
+      { "unit": "luffy_gear4", "n": 1 },
+      { "unit": "shanks", "n": 1 }
+    ],
+    "priority": 140
   }
 ]

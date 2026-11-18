@@ -12,7 +12,17 @@ import { CraftSystem } from '../craft/CraftSystem';
 import { InventoryIndex } from '../craft/InventoryIndex';
 import { RecipeGraph } from '../craft/RecipeGraph';
 import { type WispHint, WispSystem } from '../craft/WispSystem';
-import type { GameDataBundle, GradeDef, GradeId, UnitId, Vec2 } from '../data/types';
+import type {
+  GameDataBundle,
+  GradeDef,
+  GradeId,
+  MonsterKind,
+  UnitId,
+  UpgradeGroupId,
+  Vec2,
+  VfxTrackKind,
+  WaveDef,
+} from '../data/types';
 import { Board } from '../world/Board';
 import { LoopPath } from '../world/Path';
 import type { MonsterEntity, ProjectileEntity, UnitEntity } from '../world/entities';
@@ -23,7 +33,7 @@ export interface SimEventMap {
     readonly unitId: UnitId;
     readonly grade: GradeId;
     readonly slot: SlotRef;
-    readonly source: 'summon' | 'craft' | 'wisp';
+    readonly source: 'summon' | 'craft' | 'wisp' | 'gamble';
     readonly pos: Vec2;
     readonly tick: number;
   };
@@ -47,6 +57,21 @@ export interface SimEventMap {
     readonly damage: number;
     readonly color: string;
     readonly slain: boolean;
+    readonly isCrit: boolean;
+    readonly isSkill: boolean;
+    readonly tick: number;
+  };
+  'skill:impact': {
+    readonly unitId: UnitId;
+    readonly skillName: string;
+    readonly vfxTrack: VfxTrackKind;
+    readonly fromX: number;
+    readonly fromY: number;
+    readonly x: number;
+    readonly y: number;
+    readonly radius: number;
+    readonly color: string;
+    readonly gradeRank: number;
     readonly tick: number;
   };
   'craft:done': {
@@ -54,6 +79,31 @@ export interface SimEventMap {
     readonly outputUnitId: UnitId;
     readonly grade: GradeId;
     readonly pos: Vec2;
+    readonly tick: number;
+  };
+  'gamble:result': {
+    readonly seq: number;
+    readonly tier: GradeId;
+    readonly success: boolean;
+    readonly unitId: UnitId | null;
+    readonly pos: Vec2 | null;
+    readonly tick: number;
+  };
+  'upgrade:done': {
+    readonly group: UpgradeGroupId;
+    readonly level: number;
+    readonly tick: number;
+  };
+  'wave:boss': {
+    readonly wave: number;
+    readonly bossName: string;
+    readonly monsterKind: MonsterKind;
+    readonly tick: number;
+  };
+  'boss:slain': {
+    readonly wave: number;
+    readonly bossName: string;
+    readonly rewardWispGrade: GradeId;
     readonly tick: number;
   };
   'command:rejected': {
@@ -70,12 +120,23 @@ export interface SlotView {
   readonly grade: GradeId;
   readonly locked: boolean;
   readonly sellCoin: number;
+  readonly baseAtk: number;
+  readonly bonusAtk: number;
+  readonly range: number;
+  readonly skillName: string;
 }
 
 export interface RejectNotice {
   readonly cmd: GameCommand['type'];
   readonly reason: string;
   readonly tick: number;
+}
+
+export interface GambleResultSnapshot {
+  readonly seq: number;
+  readonly tier: GradeId;
+  readonly success: boolean;
+  readonly unitId: UnitId | null;
 }
 
 export interface UISnapshot {
@@ -85,12 +146,20 @@ export interface UISnapshot {
   readonly gameOver: boolean;
   readonly wave: number;
   readonly waveTicksLeft: number;
+  readonly isBossWave: boolean;
+  readonly boss?: {
+    readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
+  };
   readonly monsterCount: number;
   readonly monsterCap: number;
   readonly coin: number;
   readonly luckStone: number;
   readonly summonCost: number;
   readonly wisps: Readonly<Record<GradeId, number>>;
+  readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
+  readonly lastGambleResult: GambleResultSnapshot | null;
   readonly field: readonly (SlotView | null)[];
   readonly bench: readonly (SlotView | null)[];
   readonly fieldOccupied: number;
@@ -99,6 +168,8 @@ export interface UISnapshot {
   readonly wispHints: Partial<Record<GradeId, readonly WispHint[]>>;
   readonly rejects: readonly RejectNotice[];
 }
+
+const UPGRADE_ORDER: readonly UpgradeGroupId[] = ['common', 'rare', 'legendary', 'mythic'];
 
 export class Simulation {
   public readonly data: GameDataBundle;
@@ -114,13 +185,14 @@ export class Simulation {
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
-  private readonly summonableUnitsByGrade: ReadonlyMap<GradeId, readonly UnitId[]>;
+  private readonly unitsByGrade: ReadonlyMap<GradeId, readonly UnitId[]>;
   private readonly scheduledReplay = new Map<number, GameCommand[]>();
 
   private currentTick = 0;
   private nextUid = 1;
   private nextMonsterId = 1;
   private nextProjectileId = 1;
+  private gambleSeq = 0;
 
   private readonly units: UnitEntity[] = [];
   private readonly unitsByUid = new Map<number, UnitEntity>();
@@ -131,9 +203,17 @@ export class Simulation {
   private luckStone: number;
   private summonCount = 0;
   private readonly wisps: Record<GradeId, number> = {
-    common: 1,
+    common: 2,
     uncommon: 1,
+    rare: 0,
   };
+  private readonly upgradeLv: Record<UpgradeGroupId, number> = {
+    common: 0,
+    rare: 0,
+    legendary: 0,
+    mythic: 0,
+  };
+  private lastGambleResult: GambleResultSnapshot | null = null;
 
   private waveNumber = 1;
   private waveTicksLeft: number;
@@ -156,17 +236,16 @@ export class Simulation {
 
     this.coin = data.board.economy.initialCoin;
     this.luckStone = data.board.economy.initialLuckStone;
-    this.waveTicksLeft = data.waves[0]?.durationTicks ?? 900;
+    this.waveTicksLeft = data.waves[0]?.durationTicks ?? 840;
 
     this.summonableGrades = data.grades.filter((g) => g.summonable && g.summonWeight > 0);
     const byGrade = new Map<GradeId, UnitId[]>();
     for (const u of data.units) {
-      if (!u.leaf) continue;
       const list = byGrade.get(u.grade) ?? [];
       list.push(u.id);
       byGrade.set(u.grade, list);
     }
-    this.summonableUnitsByGrade = byGrade;
+    this.unitsByGrade = byGrade;
     this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
   }
 
@@ -197,6 +276,24 @@ export class Simulation {
   public getSummonCost(): number {
     const econ = this.data.board.economy;
     return econ.baseSummonCost + this.summonCount * econ.summonCostStep;
+  }
+
+  public getUpgradeCost(groupId: UpgradeGroupId): number {
+    const def = this.data.upgrades.find((u) => u.id === groupId);
+    if (!def) return 999;
+    const lv = this.upgradeLv[groupId] ?? 0;
+    return def.baseCost + lv * def.costStep;
+  }
+
+  public getUnitEffectiveAtk(unitId: UnitId): { readonly baseAtk: number; readonly bonusAtk: number } {
+    const def = this.data.unitsById.get(unitId);
+    if (!def) return { baseAtk: 0, bonusAtk: 0 };
+    const upDef = this.data.upgradesByGrade.get(def.grade);
+    if (!upDef) return { baseAtk: def.atk, bonusAtk: 0 };
+    const lv = this.upgradeLv[upDef.id] ?? 0;
+    if (lv <= 0) return { baseAtk: def.atk, bonusAtk: 0 };
+    const bonusAtk = Math.round((def.atk * lv * upDef.atkBonusPctPerLv) / 100);
+    return { baseAtk: def.atk, bonusAtk };
   }
 
   public scheduleCommandsForReplay(log: readonly StampedCommand[]): void {
@@ -290,6 +387,97 @@ export class Simulation {
         this.summonCount++;
         const unitId = this.rollSummonUnit();
         this.createUnit(unitId, slot, 'summon');
+        this.priorityDirty = true;
+        return;
+      }
+
+      case 'gamble': {
+        const rateDef = this.data.gambleRates.find((r) => r.tier === cmd.tier);
+        if (!rateDef) {
+          this.reject('gamble', '유효하지 않은 도박 등급입니다.');
+          return;
+        }
+        if (this.luckStone < rateDef.costLuck) {
+          this.reject('gamble', `행운석이 부족합니다 (🍀 ${rateDef.costLuck} 필요)`);
+          return;
+        }
+        const slot = this.board.findPlacementSlot();
+        if (!slot) {
+          this.reject('gamble', '배치할 빈 슬롯이 없습니다.');
+          return;
+        }
+        const pool = this.unitsByGrade.get(rateDef.tier);
+        if (!pool || pool.length === 0) {
+          this.reject('gamble', '해당 등급 유닛 풀이 비어 있습니다.');
+          return;
+        }
+
+        this.luckStone -= rateDef.costLuck;
+        const roll = this.rng.nextInt(100);
+        const success = roll < rateDef.chancePct;
+        const seq = ++this.gambleSeq;
+
+        if (success) {
+          const pickedUnitId = pool[this.rng.nextInt(pool.length)]!;
+          const uid = this.createUnit(pickedUnitId, slot, 'gamble');
+          const created = this.unitsByUid.get(uid);
+          const pos = created ? { x: created.currX, y: created.currY } : null;
+          this.lastGambleResult = { seq, tier: rateDef.tier, success: true, unitId: pickedUnitId };
+          this.events.emit('gamble:result', {
+            seq,
+            tier: rateDef.tier,
+            success: true,
+            unitId: pickedUnitId,
+            pos,
+            tick: this.currentTick,
+          });
+        } else {
+          this.lastGambleResult = { seq, tier: rateDef.tier, success: false, unitId: null };
+          this.events.emit('gamble:result', {
+            seq,
+            tier: rateDef.tier,
+            success: false,
+            unitId: null,
+            pos: null,
+            tick: this.currentTick,
+          });
+        }
+        this.priorityDirty = true;
+        return;
+      }
+
+      case 'upgrade': {
+        const upDef = this.data.upgrades.find((u) => u.id === cmd.group);
+        if (!upDef) {
+          this.reject('upgrade', '존재하지 않는 강화 항목입니다.');
+          return;
+        }
+        const curLv = this.upgradeLv[cmd.group] ?? 0;
+        if (curLv >= upDef.maxLevel) {
+          this.reject('upgrade', '이미 최대 강화 단계에 도달했습니다.');
+          return;
+        }
+        const cost = this.getUpgradeCost(cmd.group);
+        if (upDef.currency === 'coin') {
+          if (this.coin < cost) {
+            this.reject('upgrade', `코인이 부족합니다 (🪙 ${cost} 필요)`);
+            return;
+          }
+          this.coin -= cost;
+        } else {
+          if (this.luckStone < cost) {
+            this.reject('upgrade', `행운석이 부족합니다 (🍀 ${cost} 필요)`);
+            return;
+          }
+          this.luckStone -= cost;
+        }
+        const nextLv = curLv + 1;
+        this.upgradeLv[cmd.group] = nextLv;
+        this.events.emit('upgrade:done', {
+          group: cmd.group,
+          level: nextLv,
+          tick: this.currentTick,
+        });
         this.priorityDirty = true;
         return;
       }
@@ -450,6 +638,18 @@ export class Simulation {
         this.priorityDirty = true;
         return;
       }
+
+      case 'grantTestResource': {
+        if (typeof cmd.luck === 'number' && cmd.luck > 0) {
+          this.luckStone += Math.min(50, Math.floor(cmd.luck));
+        }
+        if (cmd.wispGrade && this.data.wispPools[cmd.wispGrade]) {
+          this.wisps[cmd.wispGrade] = (this.wisps[cmd.wispGrade] ?? 0) + 1;
+          this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+        }
+        this.priorityDirty = true;
+        return;
+      }
     }
   }
 
@@ -471,9 +671,9 @@ export class Simulation {
       roll -= g.summonWeight;
     }
 
-    const pool = this.summonableUnitsByGrade.get(chosenGrade);
+    const pool = this.unitsByGrade.get(chosenGrade);
     if (!pool || pool.length === 0) {
-      const fallback = this.summonableUnitsByGrade.get('common');
+      const fallback = this.unitsByGrade.get('common');
       return fallback?.[0] ?? this.data.units[0]!.id;
     }
     const idx = this.rng.nextInt(pool.length);
@@ -483,7 +683,7 @@ export class Simulation {
   private createUnit(
     unitId: UnitId,
     slot: SlotRef,
-    source: 'summon' | 'craft' | 'wisp',
+    source: 'summon' | 'craft' | 'wisp' | 'gamble',
   ): number {
     const def = this.data.unitsById.get(unitId);
     if (!def) {
@@ -506,7 +706,11 @@ export class Simulation {
       prevY: center.y,
       currX: center.x,
       currY: center.y,
-      cooldownTicks: Math.min(12, def.attackIntervalTicks),
+      cooldownTicks: Math.min(10, def.attackIntervalTicks),
+      attackCount: 0,
+      lastAttackTick: -100,
+      attackDirX: 0,
+      attackDirY: 1,
     };
 
     this.board.setUid(slot, uid);
@@ -548,22 +752,32 @@ export class Simulation {
     return oldSlot;
   }
 
+  private getWaveDef(waveNum: number): WaveDef {
+    return this.data.waves[(waveNum - 1) % this.data.waves.length] ?? this.data.waves[0]!;
+  }
+
   private stepWaveAndSpawn(): void {
-    const waveDef =
-      this.data.waves[(this.waveNumber - 1) % this.data.waves.length] ?? this.data.waves[0]!;
-    const cycleScale = 1 + Math.floor((this.waveNumber - 1) / this.data.waves.length) * 0.45;
+    const waveDef = this.getWaveDef(this.waveNumber);
+    const cycleScale = 1 + Math.floor((this.waveNumber - 1) / this.data.waves.length) * 0.55;
 
     if (this.spawnedInWave < waveDef.spawnCount && this.currentTick >= this.nextSpawnTick) {
       const startPos = this.path.sample(0);
       const scaledHp = Math.round(waveDef.monsterHp * cycleScale);
       const monster: MonsterEntity = {
         entityId: this.nextMonsterId++,
+        kind: waveDef.monsterKind,
+        isBoss: waveDef.isBoss,
+        bossName: waveDef.bossName,
         hp: scaledHp,
         maxHp: scaledHp,
         speedPerTick: waveDef.monsterSpeedPerTick,
         radius: waveDef.monsterRadius,
         rewardCoin: waveDef.rewardCoin,
         spawnTick: this.currentTick,
+        stunUntilTick: 0,
+        slowUntilTick: 0,
+        slowFactor: 1,
+        lastHitTick: -100,
         prevDistance: 0,
         currDistance: 0,
         prevX: startPos.x,
@@ -585,20 +799,33 @@ export class Simulation {
     this.waveTicksLeft--;
     if (this.waveTicksLeft <= 0) {
       this.waveNumber++;
-      const nextWaveDef =
-        this.data.waves[(this.waveNumber - 1) % this.data.waves.length] ?? this.data.waves[0]!;
+      const nextWaveDef = this.getWaveDef(this.waveNumber);
       this.waveTicksLeft = nextWaveDef.durationTicks;
       this.spawnedInWave = 0;
-      this.nextSpawnTick = this.currentTick + 12;
-      this.coin += 15;
+      this.nextSpawnTick = this.currentTick + 15;
+      this.coin += 20;
+      this.luckStone += 1;
       this.priorityDirty = true;
+
+      if (nextWaveDef.isBoss) {
+        this.events.emit('wave:boss', {
+          wave: this.waveNumber,
+          bossName: nextWaveDef.bossName ?? '웨이브 보스',
+          monsterKind: nextWaveDef.monsterKind,
+          tick: this.currentTick,
+        });
+      }
     }
   }
 
   private stepMonsters(): void {
     for (let i = 0; i < this.monsters.length; i++) {
       const m = this.monsters[i]!;
-      m.currDistance += m.speedPerTick;
+      if (this.currentTick < m.stunUntilTick) {
+        continue;
+      }
+      const mult = this.currentTick < m.slowUntilTick ? m.slowFactor : 1;
+      m.currDistance += m.speedPerTick * mult;
       const pos = this.path.sample(m.currDistance);
       m.currX = pos.x;
       m.currY = pos.y;
@@ -606,7 +833,6 @@ export class Simulation {
   }
 
   private stepCombat(): void {
-    // Field units engage monsters within range; bench units never attack
     if (this.monsters.length > 0) {
       for (let i = 0; i < this.units.length; i++) {
         const u = this.units[i]!;
@@ -645,12 +871,36 @@ export class Simulation {
 
         if (bestTarget !== null) {
           u.cooldownTicks = def.attackIntervalTicks;
-          const dist = Math.hypot(bestTarget.currX - u.currX, bestTarget.currY - u.currY);
-          const travelTicks = Math.max(2, Math.min(12, Math.round(dist / 28)));
-          const gradeColor = this.data.gradesById.get(u.grade)?.color ?? '#cfd6e0';
+          u.attackCount++;
+          u.lastAttackTick = this.currentTick;
+
+          const dx = bestTarget.currX - u.currX;
+          const dy = bestTarget.currY - u.currY;
+          const dist = Math.hypot(dx, dy);
+          u.attackDirX = dist > 0.001 ? dx / dist : 0;
+          u.attackDirY = dist > 0.001 ? dy / dist : 1;
+
+          const travelTicks = Math.max(2, Math.min(10, Math.round(dist / 32)));
+          const gradeDef = this.data.gradesById.get(u.grade);
+          const gradeColor = gradeDef?.color ?? '#94a3b8';
+          const gradeRank = gradeDef?.rank ?? 1;
+
+          const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId);
+          const totalAtk = baseAtk + bonusAtk;
+          const isSkill = u.attackCount % def.skill.everyN === 0;
+          const isCrit = this.rng.nextInt(1000) < Math.round(def.critChance * 1000);
+
+          let damage = totalAtk;
+          if (isSkill) {
+            damage = Math.round(damage * def.skill.atkRatio);
+          }
+          if (isCrit) {
+            damage = Math.round(damage * def.critMult);
+          }
 
           this.projectiles.push({
             id: this.nextProjectileId++,
+            unitId: u.unitId,
             startTick: this.currentTick,
             arriveTick: this.currentTick + travelTicks,
             fromX: u.currX,
@@ -662,8 +912,17 @@ export class Simulation {
             prevY: u.currY - 8,
             currX: u.currX,
             currY: u.currY - 8,
-            damage: def.atk,
+            damage: Math.max(1, damage),
             color: gradeColor,
+            gradeRank,
+            isCrit,
+            isSkill,
+            skillName: def.skill.name,
+            vfxTrack: def.skill.vfxTrack,
+            splashRadius: isSkill ? def.skill.splashRadius : 0,
+            stunTicks: isSkill ? def.skill.stunTicks : 0,
+            slowPct: isSkill ? def.skill.slowPct : 0,
+            slowTicks: isSkill ? def.skill.slowTicks : 0,
           });
         }
       }
@@ -693,30 +952,110 @@ export class Simulation {
       p.currY = p.fromY + (p.targetY - p.fromY) * prog;
 
       if (this.currentTick >= p.arriveTick) {
-        if (target && targetIdx !== -1) {
-          target.hp -= p.damage;
-          const slain = target.hp <= 0;
-          const hitX = target.currX;
-          const hitY = target.currY;
+        const impactX = target ? target.currX : p.targetX;
+        const impactY = target ? target.currY : p.targetY;
 
-          if (slain) {
-            this.coin += target.rewardCoin;
-            this.monsters.splice(targetIdx, 1);
-          }
-
-          this.events.emit('monster:hit', {
-            entityId: p.targetEntityId,
-            x: hitX,
-            y: hitY,
-            damage: p.damage,
+        if (p.isSkill) {
+          this.events.emit('skill:impact', {
+            unitId: p.unitId,
+            skillName: p.skillName,
+            vfxTrack: p.vfxTrack,
+            fromX: p.fromX,
+            fromY: p.fromY,
+            x: impactX,
+            y: impactY,
+            radius: Math.max(48, p.splashRadius),
             color: p.color,
-            slain,
+            gradeRank: p.gradeRank,
             tick: this.currentTick,
           });
         }
+
+        if (p.splashRadius > 0) {
+          const rSq = p.splashRadius * p.splashRadius;
+          // Deterministic hit ordering: path progress desc -> entityId asc
+          const victims = this.monsters
+            .filter((m) => {
+              const dx = m.currX - impactX;
+              const dy = m.currY - impactY;
+              return dx * dx + dy * dy <= rSq;
+            })
+            .sort((a, b) =>
+              b.currDistance !== a.currDistance
+                ? b.currDistance - a.currDistance
+                : a.entityId - b.entityId,
+            );
+
+          for (let v = 0; v < victims.length; v++) {
+            const m = victims[v]!;
+            // Primary target takes 100%, splash neighbors take 75%
+            const dealt =
+              m.entityId === p.targetEntityId ? p.damage : Math.max(1, Math.round(p.damage * 0.75));
+            this.applyHitToMonster(m, dealt, p);
+          }
+        } else if (target) {
+          this.applyHitToMonster(target, p.damage, p);
+        }
+
         this.projectiles.splice(i, 1);
       }
     }
+  }
+
+  private applyHitToMonster(
+    m: MonsterEntity,
+    damage: number,
+    p: ProjectileEntity,
+  ): void {
+    const idx = this.monsters.indexOf(m);
+    if (idx === -1) return;
+
+    m.hp -= damage;
+    m.lastHitTick = this.currentTick;
+
+    if (p.stunTicks > 0) {
+      const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * 0.45)) : p.stunTicks;
+      m.stunUntilTick = Math.max(m.stunUntilTick, this.currentTick + stunDur);
+    }
+    if (p.slowTicks > 0 && p.slowPct > 0) {
+      m.slowUntilTick = Math.max(m.slowUntilTick, this.currentTick + p.slowTicks);
+      m.slowFactor = Math.min(m.slowFactor, Math.max(0.3, 1 - p.slowPct));
+    }
+
+    const slain = m.hp <= 0;
+    const hitX = m.currX;
+    const hitY = m.currY;
+
+    if (slain) {
+      this.coin += m.rewardCoin;
+      this.monsters.splice(idx, 1);
+
+      if (m.isBoss) {
+        this.luckStone += 2;
+        const rewardGrade: GradeId = m.kind === 'pacifista' ? 'rare' : 'uncommon';
+        this.wisps[rewardGrade] = (this.wisps[rewardGrade] ?? 0) + 1;
+        this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+        this.priorityDirty = true;
+        this.events.emit('boss:slain', {
+          wave: this.waveNumber,
+          bossName: m.bossName ?? '웨이브 보스',
+          rewardWispGrade: rewardGrade,
+          tick: this.currentTick,
+        });
+      }
+    }
+
+    this.events.emit('monster:hit', {
+      entityId: m.entityId,
+      x: hitX,
+      y: hitY,
+      damage,
+      color: p.color,
+      slain,
+      isCrit: p.isCrit,
+      isSkill: p.isSkill,
+      tick: this.currentTick,
+    });
   }
 
   private reject(cmd: GameCommand['type'], reason: string): void {
@@ -742,6 +1081,9 @@ export class Simulation {
     const rejects = this.pendingRejects.slice();
     this.pendingRejects.length = 0;
 
+    const waveDef = this.getWaveDef(this.waveNumber);
+    const activeBoss = this.monsters.find((m) => m.isBoss);
+
     return {
       tick: this.currentTick,
       speed,
@@ -749,12 +1091,22 @@ export class Simulation {
       gameOver: this.gameOver,
       wave: this.waveNumber,
       waveTicksLeft: this.waveTicksLeft,
+      isBossWave: waveDef.isBoss,
+      boss: activeBoss
+        ? {
+            name: activeBoss.bossName ?? '보스',
+            hp: Math.max(0, activeBoss.hp),
+            maxHp: activeBoss.maxHp,
+          }
+        : undefined,
       monsterCount: this.monsters.length,
       monsterCap: this.data.board.path.monsterCap,
       coin: this.coin,
       luckStone: this.luckStone,
       summonCost: this.getSummonCost(),
       wisps: { ...this.wisps },
+      upgradeLv: { ...this.upgradeLv },
+      lastGambleResult: this.lastGambleResult,
       field: fieldViews,
       bench: benchViews,
       fieldOccupied: this.board.field.countOccupied(),
@@ -769,6 +1121,7 @@ export class Simulation {
     const u = this.unitsByUid.get(uid);
     if (!u) return null;
     const def = this.data.unitsById.get(u.unitId);
+    const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(u.unitId);
     return {
       uid: u.uid,
       unitId: u.unitId,
@@ -776,6 +1129,10 @@ export class Simulation {
       grade: u.grade,
       locked: u.locked,
       sellCoin: def?.sellCoin ?? 10,
+      baseAtk,
+      bonusAtk,
+      range: def?.range ?? 150,
+      skillName: def?.skill.name ?? '기본 공격',
     };
   }
 
@@ -816,6 +1173,10 @@ export class Simulation {
     feedInt(this.waveTicksLeft);
     feedInt(this.gameOver ? 1 : 0);
 
+    for (const g of UPGRADE_ORDER) {
+      feedInt(this.upgradeLv[g] ?? 0);
+    }
+
     for (let i = 0; i < this.board.field.capacity; i++) {
       feedInt(this.board.field.getUidAt(i) ?? -1);
     }
@@ -831,6 +1192,7 @@ export class Simulation {
       feedInt(u.slot.index);
       feedInt(u.locked ? 1 : 0);
       feedInt(u.cooldownTicks);
+      feedInt(u.attackCount);
       feedInt(Math.round(u.currX * 100));
       feedInt(Math.round(u.currY * 100));
     }
@@ -839,6 +1201,8 @@ export class Simulation {
       const m = this.monsters[i]!;
       feedInt(m.entityId);
       feedInt(m.hp);
+      feedInt(m.stunUntilTick);
+      feedInt(m.slowUntilTick);
       feedInt(Math.round(m.currDistance * 1000));
     }
 
@@ -848,6 +1212,8 @@ export class Simulation {
       feedInt(p.arriveTick);
       feedInt(p.targetEntityId);
       feedInt(p.damage);
+      feedInt(p.isSkill ? 1 : 0);
+      feedInt(p.isCrit ? 1 : 0);
     }
 
     const craftView = this.craftIndex.getView();

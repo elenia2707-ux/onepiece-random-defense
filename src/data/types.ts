@@ -1,6 +1,18 @@
 export type GradeId = string;
 export type UnitId = string;
 export type RecipeId = string;
+export type UpgradeGroupId = 'common' | 'rare' | 'legendary' | 'mythic';
+
+export type VfxTrackKind =
+  | 'gatling'
+  | 'red_hawk'
+  | 'crescent_slash'
+  | 'thunder_bolt'
+  | 'room_strike'
+  | 'conqueror_haki'
+  | 'quake_shatter';
+
+export type MonsterKind = 'marine_grunt' | 'pirate_raider' | 'sea_king' | 'pacifista';
 
 export interface GradeDef {
   readonly id: GradeId;
@@ -12,43 +24,58 @@ export interface GradeDef {
   readonly fx?: string;
 }
 
-export type EmblemKind =
-  | 'sword'
-  | 'crosshair'
-  | 'compass'
-  | 'shield'
-  | 'fist'
-  | 'twinblade'
-  | 'flame'
-  | 'bow'
-  | 'crest'
-  | 'bolt'
-  | 'sun'
-  | 'crown'
-  | 'star';
+export interface RawUnitSkillDef {
+  readonly name: string;
+  readonly desc: string;
+  readonly everyN: number;
+  readonly atkRatio: number;
+  readonly splashRadius: number;
+  readonly stunSec: number;
+  readonly slowPct: number;
+  readonly slowSec: number;
+  readonly vfxTrack: VfxTrackKind;
+}
+
+export interface UnitSkillDef {
+  readonly name: string;
+  readonly desc: string;
+  readonly everyN: number;
+  readonly atkRatio: number;
+  readonly splashRadius: number;
+  readonly stunTicks: number;
+  readonly slowPct: number;
+  readonly slowTicks: number;
+  readonly vfxTrack: VfxTrackKind;
+}
 
 export interface RawUnitDef {
   readonly id: UnitId;
   readonly name: string;
+  readonly title: string;
   readonly grade: GradeId;
   readonly leaf: boolean;
-  readonly emblem: EmblemKind;
   readonly atk: number;
   readonly range: number;
   readonly attackIntervalSec: number;
+  readonly critChance: number;
+  readonly critMult: number;
   readonly sellCoin: number;
+  readonly skill: RawUnitSkillDef;
 }
 
 export interface UnitDef {
   readonly id: UnitId;
   readonly name: string;
+  readonly title: string;
   readonly grade: GradeId;
   readonly leaf: boolean;
-  readonly emblem: EmblemKind;
   readonly atk: number;
   readonly range: number;
   readonly attackIntervalTicks: number;
+  readonly critChance: number;
+  readonly critMult: number;
   readonly sellCoin: number;
+  readonly skill: UnitSkillDef;
 }
 
 export interface RecipeIngredient {
@@ -107,6 +134,9 @@ export interface RawWaveDef {
   readonly monsterSpeed: number;
   readonly monsterRadius: number;
   readonly rewardCoin: number;
+  readonly monsterKind: MonsterKind;
+  readonly isBoss: boolean;
+  readonly bossName?: string;
 }
 
 export interface WaveDef {
@@ -118,6 +148,28 @@ export interface WaveDef {
   readonly monsterSpeedPerTick: number;
   readonly monsterRadius: number;
   readonly rewardCoin: number;
+  readonly monsterKind: MonsterKind;
+  readonly isBoss: boolean;
+  readonly bossName?: string;
+}
+
+export interface GambleRateDef {
+  readonly tier: GradeId;
+  readonly label: string;
+  readonly costLuck: number;
+  readonly chancePct: number;
+  readonly desc: string;
+}
+
+export interface UpgradeGroupDef {
+  readonly id: UpgradeGroupId;
+  readonly name: string;
+  readonly grades: readonly GradeId[];
+  readonly currency: 'coin' | 'luck';
+  readonly baseCost: number;
+  readonly costStep: number;
+  readonly atkBonusPctPerLv: number;
+  readonly maxLevel: number;
 }
 
 export type WispPools = Readonly<Record<GradeId, readonly UnitId[]>>;
@@ -131,4 +183,7 @@ export interface GameDataBundle {
   readonly board: BoardConfig;
   readonly waves: readonly WaveDef[];
   readonly wispPools: WispPools;
+  readonly gambleRates: readonly GambleRateDef[];
+  readonly upgrades: readonly UpgradeGroupDef[];
+  readonly upgradesByGrade: ReadonlyMap<GradeId, UpgradeGroupDef>;
 }

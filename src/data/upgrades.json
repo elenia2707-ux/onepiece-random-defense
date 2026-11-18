@@ -1,0 +1,42 @@
+[
+  {
+    "id": "common",
+    "name": "흔함 · 안흔함 전력 강화",
+    "grades": ["common", "uncommon"],
+    "currency": "coin",
+    "baseCost": 30,
+    "costStep": 20,
+    "atkBonusPctPerLv": 20,
+    "maxLevel": 20
+  },
+  {
+    "id": "rare",
+    "name": "희귀 무장색 강화",
+    "grades": ["rare"],
+    "currency": "coin",
+    "baseCost": 55,
+    "costStep": 35,
+    "atkBonusPctPerLv": 25,
+    "maxLevel": 20
+  },
+  {
+    "id": "legendary",
+    "name": "전설 패기 단련",
+    "grades": ["legendary"],
+    "currency": "luck",
+    "baseCost": 1,
+    "costStep": 1,
+    "atkBonusPctPerLv": 30,
+    "maxLevel": 15
+  },
+  {
+    "id": "mythic",
+    "name": "초월 · 불멸 패왕색 각성",
+    "grades": ["transcendent", "immortal"],
+    "currency": "luck",
+    "baseCost": 2,
+    "costStep": 1,
+    "atkBonusPctPerLv": 35,
+    "maxLevel": 15
+  }
+]

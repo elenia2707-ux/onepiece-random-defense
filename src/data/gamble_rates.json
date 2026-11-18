@@ -1,0 +1,23 @@
+[
+  {
+    "tier": "uncommon",
+    "label": "안흔함 도박",
+    "costLuck": 1,
+    "chancePct": 60,
+    "desc": "기어2 · 이도류 · 크리마택트 · 디아블잠브 중 1기 랜덤 획득"
+  },
+  {
+    "tier": "rare",
+    "label": "희귀 도박",
+    "costLuck": 2,
+    "chancePct": 30,
+    "desc": "2년 후 루피 · 2년 후 조로 · 로우 · 에이스 중 1기 랜덤 획득"
+  },
+  {
+    "tier": "legendary",
+    "label": "전설 도박",
+    "costLuck": 4,
+    "chancePct": 12,
+    "desc": "기어4 바운드맨 · 조로 아수라 · 불주먹 에이스 중 1기 랜덤 획득"
+  }
+]

@@ -1,4 +1,4 @@
-import type { GradeId, RecipeId, UnitId } from '../data/types';
+import type { GradeId, RecipeId, UnitId, UpgradeGroupId } from '../data/types';
 
 export type SlotArea = 'field' | 'bench';
 
@@ -14,7 +14,14 @@ export type GameCommand =
   | { readonly type: 'lock'; readonly uid: number; readonly locked: boolean }
   | { readonly type: 'craft'; readonly recipeId: RecipeId; readonly chain: boolean }
   | { readonly type: 'useWisp'; readonly grade: GradeId; readonly unitId: UnitId }
-  | { readonly type: 'grantTestCoin'; readonly amount: number };
+  | { readonly type: 'gamble'; readonly tier: GradeId }
+  | { readonly type: 'upgrade'; readonly group: UpgradeGroupId }
+  | { readonly type: 'grantTestCoin'; readonly amount: number }
+  | {
+      readonly type: 'grantTestResource';
+      readonly luck?: number;
+      readonly wispGrade?: GradeId;
+    };
 
 export interface StampedCommand {
   readonly tick: number;

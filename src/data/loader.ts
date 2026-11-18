@@ -1,38 +1,53 @@
 import rawBoard from './board.json';
+import rawGambleRates from './gamble_rates.json';
 import rawGrades from './grades.json';
 import rawRecipes from './recipes.json';
 import rawUnits from './units.json';
+import rawUpgrades from './upgrades.json';
 import rawWaves from './waves.json';
 import rawWispPools from './wisp_pools.json';
 import { secToTicks, TICK_DT } from '../core/time';
 import type {
   BoardConfig,
-  EmblemKind,
+  GambleRateDef,
   GameDataBundle,
   GradeDef,
   GridSpec,
+  MonsterKind,
   RawUnitDef,
   RawWaveDef,
   RecipeDef,
   UnitDef,
+  UnitSkillDef,
+  UpgradeGroupDef,
+  UpgradeGroupId,
+  VfxTrackKind,
   WaveDef,
   WispPools,
 } from './types';
 
-const VALID_EMBLEMS: ReadonlySet<string> = new Set<EmblemKind>([
-  'sword',
-  'crosshair',
-  'compass',
-  'shield',
-  'fist',
-  'twinblade',
-  'flame',
-  'bow',
-  'crest',
-  'bolt',
-  'sun',
-  'crown',
-  'star',
+const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
+  'gatling',
+  'red_hawk',
+  'crescent_slash',
+  'thunder_bolt',
+  'room_strike',
+  'conqueror_haki',
+  'quake_shatter',
+]);
+
+const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
+  'marine_grunt',
+  'pirate_raider',
+  'sea_king',
+  'pacifista',
+]);
+
+const VALID_UPGRADE_GROUPS: ReadonlySet<string> = new Set<UpgradeGroupId>([
+  'common',
+  'rare',
+  'legendary',
+  'mythic',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -107,6 +122,37 @@ export function validateGrades(input: unknown): GradeDef[] {
   return out;
 }
 
+function validateUnitSkill(input: unknown, label: string): UnitSkillDef {
+  const r = assertRecord(input, label);
+  const name = assertNonEmptyString(r.name, `${label}.name`);
+  const desc = assertNonEmptyString(r.desc, `${label}.desc`);
+  const everyN = assertPositiveNumber(r.everyN, `${label}.everyN`);
+  if (!Number.isInteger(everyN)) {
+    throw new Error(`[DataValidation] ${label}.everyN must be an integer`);
+  }
+  const atkRatio = assertPositiveNumber(r.atkRatio, `${label}.atkRatio`);
+  const splashRadius = assertNonNegativeNumber(r.splashRadius, `${label}.splashRadius`);
+  const stunSec = assertNonNegativeNumber(r.stunSec, `${label}.stunSec`);
+  const slowPct = assertNonNegativeNumber(r.slowPct, `${label}.slowPct`);
+  const slowSec = assertNonNegativeNumber(r.slowSec, `${label}.slowSec`);
+  const vfxStr = assertNonEmptyString(r.vfxTrack, `${label}.vfxTrack`);
+  if (!VALID_VFX_TRACKS.has(vfxStr)) {
+    throw new Error(`[DataValidation] ${label}.vfxTrack invalid: ${vfxStr}`);
+  }
+
+  return {
+    name,
+    desc,
+    everyN,
+    atkRatio,
+    splashRadius,
+    stunTicks: stunSec > 0 ? Math.max(1, secToTicks(stunSec)) : 0,
+    slowPct: Math.min(0.85, slowPct),
+    slowTicks: slowSec > 0 ? Math.max(1, secToTicks(slowSec)) : 0,
+    vfxTrack: vfxStr as VfxTrackKind,
+  };
+}
+
 export function validateUnits(
   input: unknown,
   gradesById: ReadonlyMap<string, GradeDef>,
@@ -126,6 +172,7 @@ export function validateUnits(
     seen.add(id);
 
     const name = assertNonEmptyString(row.name, `units[${i}].name`);
+    const title = assertNonEmptyString(row.title, `units[${i}].title`);
     const grade = assertNonEmptyString(row.grade, `units[${i}].grade`);
     if (!gradesById.has(grade)) {
       throw new Error(`[DataValidation] units[${i}] references unknown grade: ${grade}`);
@@ -133,28 +180,30 @@ export function validateUnits(
     if (typeof row.leaf !== 'boolean') {
       throw new Error(`[DataValidation] units[${i}].leaf must be boolean`);
     }
-    const emblemStr = assertNonEmptyString(row.emblem, `units[${i}].emblem`);
-    if (!VALID_EMBLEMS.has(emblemStr)) {
-      throw new Error(`[DataValidation] units[${i}].emblem invalid: ${emblemStr}`);
-    }
     const atk = assertPositiveNumber(row.atk, `units[${i}].atk`);
     const range = assertPositiveNumber(row.range, `units[${i}].range`);
     const attackIntervalSec = assertPositiveNumber(
       row.attackIntervalSec,
       `units[${i}].attackIntervalSec`,
     );
+    const critChance = assertNonNegativeNumber(row.critChance, `units[${i}].critChance`);
+    const critMult = assertPositiveNumber(row.critMult, `units[${i}].critMult`);
     const sellCoin = assertNonNegativeNumber(row.sellCoin, `units[${i}].sellCoin`);
+    const skill = validateUnitSkill(row.skill, `units[${i}].skill`);
 
     out.push({
       id,
       name,
+      title,
       grade,
       leaf: row.leaf,
-      emblem: emblemStr as EmblemKind,
       atk,
       range,
       attackIntervalTicks: Math.max(1, secToTicks(attackIntervalSec)),
+      critChance: Math.min(1, critChance),
+      critMult,
       sellCoin,
+      skill,
     });
   }
   return out;
@@ -282,6 +331,12 @@ export function validateWaves(input: unknown): WaveDef[] {
     const monsterSpeed = assertPositiveNumber(row.monsterSpeed, `waves[${i}].monsterSpeed`);
     const monsterRadius = assertPositiveNumber(row.monsterRadius, `waves[${i}].monsterRadius`);
     const rewardCoin = assertNonNegativeNumber(row.rewardCoin, `waves[${i}].rewardCoin`);
+    const kindStr = assertNonEmptyString(row.monsterKind, `waves[${i}].monsterKind`);
+    if (!VALID_MONSTER_KINDS.has(kindStr)) {
+      throw new Error(`[DataValidation] waves[${i}].monsterKind invalid: ${kindStr}`);
+    }
+    const isBoss = Boolean(row.isBoss);
+    const bossName = typeof row.bossName === 'string' && row.bossName.trim() ? row.bossName : undefined;
 
     return {
       wave,
@@ -292,6 +347,9 @@ export function validateWaves(input: unknown): WaveDef[] {
       monsterSpeedPerTick: monsterSpeed * TICK_DT,
       monsterRadius,
       rewardCoin,
+      monsterKind: kindStr as MonsterKind,
+      isBoss,
+      bossName,
     };
   });
 }
@@ -327,6 +385,77 @@ export function validateWispPools(
   return out;
 }
 
+export function validateGambleRates(
+  input: unknown,
+  gradesById: ReadonlyMap<string, GradeDef>,
+): GambleRateDef[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] gamble_rates.json must be a non-empty array');
+  }
+  return input.map((item, i) => {
+    const r = assertRecord(item, `gamble_rates[${i}]`);
+    const tier = assertNonEmptyString(r.tier, `gamble_rates[${i}].tier`);
+    if (!gradesById.has(tier)) {
+      throw new Error(`[DataValidation] gamble_rates[${i}] unknown grade tier: ${tier}`);
+    }
+    const label = assertNonEmptyString(r.label, `gamble_rates[${i}].label`);
+    const costLuck = assertPositiveNumber(r.costLuck, `gamble_rates[${i}].costLuck`);
+    const chancePct = assertPositiveNumber(r.chancePct, `gamble_rates[${i}].chancePct`);
+    const desc = assertNonEmptyString(r.desc, `gamble_rates[${i}].desc`);
+    return { tier, label, costLuck, chancePct, desc };
+  });
+}
+
+export function validateUpgrades(
+  input: unknown,
+  gradesById: ReadonlyMap<string, GradeDef>,
+): UpgradeGroupDef[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] upgrades.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `upgrades[${i}]`);
+    const id = assertNonEmptyString(r.id, `upgrades[${i}].id`);
+    if (!VALID_UPGRADE_GROUPS.has(id)) {
+      throw new Error(`[DataValidation] upgrades[${i}].id invalid: ${id}`);
+    }
+    if (seen.has(id)) {
+      throw new Error(`[DataValidation] duplicate upgrade group: ${id}`);
+    }
+    seen.add(id);
+    const name = assertNonEmptyString(r.name, `upgrades[${i}].name`);
+    if (!Array.isArray(r.grades) || r.grades.length === 0) {
+      throw new Error(`[DataValidation] upgrades[${i}].grades must be non-empty array`);
+    }
+    const grades = r.grades.map((g, j) => {
+      const gid = assertNonEmptyString(g, `upgrades[${i}].grades[${j}]`);
+      if (!gradesById.has(gid)) {
+        throw new Error(`[DataValidation] upgrades[${i}] unknown grade: ${gid}`);
+      }
+      return gid;
+    });
+    const currency = r.currency === 'luck' ? 'luck' : 'coin';
+    const baseCost = assertPositiveNumber(r.baseCost, `upgrades[${i}].baseCost`);
+    const costStep = assertNonNegativeNumber(r.costStep, `upgrades[${i}].costStep`);
+    const atkBonusPctPerLv = assertPositiveNumber(
+      r.atkBonusPctPerLv,
+      `upgrades[${i}].atkBonusPctPerLv`,
+    );
+    const maxLevel = assertPositiveNumber(r.maxLevel, `upgrades[${i}].maxLevel`);
+    return {
+      id: id as UpgradeGroupId,
+      name,
+      grades,
+      currency,
+      baseCost,
+      costStep,
+      atkBonusPctPerLv,
+      maxLevel,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -341,6 +470,14 @@ export function loadGameData(): GameDataBundle {
   const board = validateBoard(rawBoard);
   const waves = validateWaves(rawWaves);
   const wispPools = validateWispPools(rawWispPools, gradesById, unitsById);
+  const gambleRates = validateGambleRates(rawGambleRates, gradesById);
+  const upgrades = validateUpgrades(rawUpgrades, gradesById);
+  const upgradesByGrade = new Map<string, UpgradeGroupDef>();
+  for (const up of upgrades) {
+    for (const gid of up.grades) {
+      upgradesByGrade.set(gid, up);
+    }
+  }
 
   cachedBundle = {
     grades,
@@ -351,6 +488,9 @@ export function loadGameData(): GameDataBundle {
     board,
     waves,
     wispPools,
+    gambleRates,
+    upgrades,
+    upgradesByGrade,
   };
   return cachedBundle;
 }

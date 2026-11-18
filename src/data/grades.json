@@ -3,7 +3,7 @@
     "id": "common",
     "name": "흔함",
     "rank": 1,
-    "color": "#cfd6e0",
+    "color": "#94a3b8",
     "summonable": true,
     "summonWeight": 78
   },
@@ -11,7 +11,7 @@
     "id": "uncommon",
     "name": "안흔함",
     "rank": 2,
-    "color": "#5ee07a",
+    "color": "#22c55e",
     "summonable": true,
     "summonWeight": 22
   },
@@ -19,7 +19,7 @@
     "id": "rare",
     "name": "희귀",
     "rank": 3,
-    "color": "#4aa8ff",
+    "color": "#3b82f6",
     "summonable": false,
     "summonWeight": 0
   },
@@ -27,7 +27,7 @@
     "id": "legendary",
     "name": "전설",
     "rank": 4,
-    "color": "#ffb02e",
+    "color": "#f59e0b",
     "summonable": false,
     "summonWeight": 0
   },
@@ -35,7 +35,7 @@
     "id": "transcendent",
     "name": "초월",
     "rank": 5,
-    "color": "#ff4d6d",
+    "color": "#f43f5e",
     "summonable": false,
     "summonWeight": 0
   },
@@ -43,7 +43,7 @@
     "id": "immortal",
     "name": "불멸",
     "rank": 6,
-    "color": "#f5d76e",
+    "color": "#eab308",
     "summonable": false,
     "summonWeight": 0,
     "fx": "rainbow"

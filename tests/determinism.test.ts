@@ -5,7 +5,7 @@ import { Simulation } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
 
 describe('Simulation fixed-timestep determinism (1x vs 3x)', () => {
-  it('produces identical hashState() at tick 600 across 1x and 3x GameLoop speeds', () => {
+  it('produces identical hashState() at tick 660 across 1x and 3x speeds including craft, wisp, gamble, and upgrade', () => {
     const data = loadGameData();
     const seed = 0x99887766;
 
@@ -39,17 +39,21 @@ describe('Simulation fixed-timestep determinism (1x vs 3x)', () => {
         },
       },
       { tick: 60, command: { type: 'lock', uid: 2, locked: true } },
-      { tick: 75, command: { type: 'useWisp', grade: 'common', unitId: 'swordsman' } },
-      { tick: 90, command: { type: 'useWisp', grade: 'uncommon', unitId: 'dual_blade' } },
-      { tick: 120, command: { type: 'summon' } },
+      { tick: 72, command: { type: 'useWisp', grade: 'common', unitId: 'zoro' } },
+      { tick: 80, command: { type: 'useWisp', grade: 'common', unitId: 'marine_saber' } },
+      { tick: 92, command: { type: 'useWisp', grade: 'uncommon', unitId: 'sanji_diable' } },
+      { tick: 110, command: { type: 'gamble', tier: 'uncommon' } },
+      { tick: 130, command: { type: 'gamble', tier: 'rare' } },
       { tick: 150, command: { type: 'lock', uid: 2, locked: false } },
-      { tick: 185, command: { type: 'craft', recipeId: 'r_dual_blade', chain: true } },
+      { tick: 185, command: { type: 'craft', recipeId: 'r_zoro_dual', chain: false } },
+      { tick: 215, command: { type: 'upgrade', group: 'common' } },
       { tick: 240, command: { type: 'sell', uid: 1 } },
       { tick: 310, command: { type: 'summon' } },
       { tick: 420, command: { type: 'summon' } },
+      { tick: 510, command: { type: 'upgrade', group: 'rare' } },
     ];
 
-    const targetTicks = 600;
+    const targetTicks = 660;
 
     // Run A: 1x speed driven by 60Hz frames
     const sim1x = new Simulation(data, seed);
@@ -64,7 +68,6 @@ describe('Simulation fixed-timestep determinism (1x vs 3x)', () => {
     loop1x.stepFrame(now1x);
     while (sim1x.tickCount < targetTicks) {
       const remainingTicks = targetTicks - sim1x.tickCount;
-      // Step by ~16ms until final tick boundary so both stop at exact targetTicks
       const stepMs = remainingTicks === 1 ? 4 : 16;
       now1x += stepMs;
       loop1x.stepFrame(now1x);

@@ -50,7 +50,7 @@ export class Game {
       () => this.ui.forceRefreshSelection(),
     );
 
-    this.ui = new UIManager(data, {
+    this.ui = new UIManager(data, this.sim.recipeGraph, this.sprites, {
       onDispatch: (cmd) => this.sim.commands.enqueue(cmd),
       onCycleSpeed: () => {
         const next = this.loop.cycleSpeed();
@@ -67,10 +67,8 @@ export class Game {
           true,
         );
       },
-      onTriggerTestFx: () => {
-        const t = this.sim.tickCount;
-        this.vfx.spawnArrivalFx(360, 404, '#ffb02e', 4, t);
-        this.ui.showToast('화면 흔들림(#shake-layer) + 플래시(#overlay-canvas) 테스트');
+      onRestart: () => {
+        window.location.reload();
       },
       getSelectedSlot: () => this.drag.getSelectedSlot(),
       clearSelection: () => this.drag.clearSelection(),
@@ -121,13 +119,32 @@ export class Game {
   private bindSimulationEvents(): void {
     this.sim.events.on('unit:added', (ev) => {
       const gradeDef = this.sim.data.gradesById.get(ev.grade);
-      const color = gradeDef?.color ?? '#cfd6e0';
+      const color = gradeDef?.color ?? '#94a3b8';
       const rank = gradeDef?.rank ?? 1;
       this.vfx.spawnArrivalFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
 
-      if (ev.source === 'craft') {
+      if (ev.source === 'wisp') {
         const unitName = this.sim.data.unitsById.get(ev.unitId)?.name ?? ev.unitId;
-        this.ui.showToast(`${gradeDef?.name ?? ''} 조합 완성: ${unitName}!`);
+        this.ui.showToast(`✦ 위습 선택 소환: ${unitName} 합류!`);
+      }
+    });
+
+    this.sim.events.on('craft:done', (ev) => {
+      const gradeDef = this.sim.data.gradesById.get(ev.grade);
+      const color = gradeDef?.color ?? '#fbbf24';
+      const rank = gradeDef?.rank ?? 2;
+      const unitName = this.sim.data.unitsById.get(ev.outputUnitId)?.name ?? ev.outputUnitId;
+
+      this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
+      this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 조합 완성!`);
+
+      if (rank >= 4) {
+        this.vfx.showCraftCelebrationBanner(
+          gradeDef?.name ?? '전설',
+          unitName,
+          color,
+          performance.now(),
+        );
       }
     });
 
@@ -136,8 +153,67 @@ export class Game {
       this.vfx.spawnMovePulse(dest.x, dest.y, ev.tick);
     });
 
+    this.sim.events.on('skill:impact', (ev) => {
+      this.vfx.spawnSkillTrack(
+        ev.vfxTrack,
+        ev.fromX,
+        ev.fromY,
+        ev.x,
+        ev.y,
+        ev.radius,
+        ev.color,
+        ev.gradeRank,
+        ev.tick,
+      );
+    });
+
     this.sim.events.on('monster:hit', (ev) => {
-      this.vfx.spawnHitFx(ev.entityId, ev.x, ev.y, ev.damage, ev.color, ev.slain, ev.tick);
+      this.vfx.spawnHitFx(
+        ev.entityId,
+        ev.x,
+        ev.y,
+        ev.damage,
+        ev.color,
+        ev.slain,
+        ev.isCrit,
+        ev.tick,
+      );
+    });
+
+    this.sim.events.on('wave:boss', (ev) => {
+      this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
+      this.vfx.triggerScreenShake(8, 0.35, ev.tick);
+      this.vfx.triggerScreenFlash('#ef4444', 0.22, 0.28, ev.tick);
+    });
+
+    this.sim.events.on('boss:slain', (ev) => {
+      const wispGradeName =
+        this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
+      this.ui.showToast(`🏆 ${ev.bossName} 격파! 보상: 🍀 +2 · ${wispGradeName} 위습 +1`);
+    });
+
+    this.sim.events.on('gamble:result', (ev) => {
+      const gradeDef = this.sim.data.gradesById.get(ev.tier);
+      const gName = gradeDef?.name ?? ev.tier;
+      if (ev.success && ev.unitId) {
+        const uName = this.sim.data.unitsById.get(ev.unitId)?.name ?? ev.unitId;
+        const rank = gradeDef?.rank ?? 2;
+        const color = gradeDef?.color ?? '#34d399';
+        if (ev.pos) {
+          this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
+        }
+        if (rank >= 4) {
+          this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
+        }
+        this.ui.showToast(`🎉 [${gName}] 도박 대성공! ${uName} 합류!`);
+      } else {
+        this.ui.showToast(`💨 [${gName}] 도박 실패...`, true);
+      }
+    });
+
+    this.sim.events.on('upgrade:done', (ev) => {
+      const upDef = this.sim.data.upgrades.find((u) => u.id === ev.group);
+      this.ui.showToast(`🔥 ${upDef?.name ?? ev.group} Lv.${ev.level} 강화 완료!`);
     });
   }
 
