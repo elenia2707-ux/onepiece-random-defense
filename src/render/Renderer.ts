@@ -87,9 +87,9 @@ const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> = {
   mudang_disciple: { style: 'sword', sect: 'mudang', primary: '#06b6d4', secondary: '#e0f2fe' },
   mudang_master: { style: 'sword', sect: 'mudang', primary: '#0284c7', secondary: '#bae6fd' },
 
-  // 구파일방 · 정파 (소림사 봉법·금강장)
-  shaolin_novice: { style: 'spear_staff', sect: 'shaolin', primary: '#d97706', secondary: '#fef08a' },
-  shaolin_monk: { style: 'palm_fist', sect: 'shaolin', primary: '#f59e0b', secondary: '#fef9c3' },
+  // 구파일방 · 정파 (소림사 나한권·금강권 정권 지르기)
+  shaolin_novice: { style: 'palm_fist', sect: 'shaolin', primary: '#f59e0b', secondary: '#fef08a' },
+  shaolin_monk: { style: 'palm_fist', sect: 'shaolin', primary: '#fbbf24', secondary: '#fffbeb' },
 
   // 구파일방 · 정파 (남궁세가 & 무림맹 뇌전패검)
   namgung_thunder: { style: 'sword', sect: 'namgung', primary: '#0284c7', secondary: '#fde047' },
@@ -611,57 +611,63 @@ export class Renderer {
 
       if (isAttacking) {
         const style = profile.style;
+        const isFist = style === 'palm_fist';
+        const windUpTilt = isFist ? -0.04 : style === 'sorcery_qi' ? -0.08 : -0.18;
         const peakTilt =
           style === 'saber'
-            ? 0.32
+            ? 0.3
             : style === 'sword'
               ? comboSide > 0
-                ? 0.27
-                : 0.19
+                ? 0.25
+                : 0.18
               : style === 'spear_staff'
-                ? 0.23
-                : style === 'palm_fist'
-                  ? 0.25
+                ? 0.09
+                : isFist
+                  ? 0.03 // Upright horse-stance spine (마보충권) — zero headbutt!
                   : style === 'dagger_hidden'
-                    ? 0.22
-                    : 0.1;
+                    ? 0.16
+                    : 0.06;
 
         let stepDist = 0;
         if (atkP < 0.22) {
-          // Phase 1: Wind-up back-coil (pull weapon back behind shoulder)
+          // Phase 1: Wind-up chamber (sink into horse stance / pull weapon back)
           const t = easeOutQuad(atkP / 0.22);
-          stepDist = -3.2 * t;
-          bodyTilt = -0.19 * t;
-          animScaleX = 1 + 0.055 * t;
-          animScaleY = 1 - 0.065 * t;
-          hopY = style === 'sorcery_qi' ? 4.5 * t : isSkillStrike ? 2.5 * t : 0;
+          stepDist = (isFist ? -2.2 : -3.2) * t;
+          bodyTilt = windUpTilt * t;
+          animScaleX = 1 + (isFist ? 0.068 : 0.055) * t;
+          animScaleY = 1 - (isFist ? 0.075 : 0.062) * t;
+          hopY = isFist ? 0 : style === 'sorcery_qi' ? 4.5 * t : isSkillStrike ? 2.2 * t : 0;
         } else if (atkP < 0.5) {
-          // Phase 2: Explosive rotational whip-cleave / thrust
+          // Phase 2: Explosive straight punch thrust / rotational blade cleave
           const t = easeOutCubic((atkP - 0.22) / 0.28);
-          stepDist = -3.2 + 7.8 * t; // max +4.6px grounded martial footwork step
-          bodyTilt = -0.19 + (peakTilt + 0.19) * t;
-          const reachX = style === 'spear_staff' || style === 'palm_fist' ? 0.09 : 0.045;
-          animScaleX = 1.055 - 0.03 * t + reachX * t;
-          animScaleY =
-            0.935 + (comboSide < 0 && style === 'sword' ? 0.115 * t : 0.045 * t);
-          hopY =
-            style === 'sorcery_qi'
+          stepDist = isFist ? -2.2 + 6.0 * t : -3.2 + 7.8 * t;
+          bodyTilt = windUpTilt + (peakTilt - windUpTilt) * t;
+          const reachX = isFist ? 0.06 : style === 'spear_staff' ? 0.075 : 0.045;
+          animScaleX = (isFist ? 1.068 : 1.055) - 0.03 * t + reachX * t;
+          animScaleY = isFist
+            ? 0.925 + 0.055 * t
+            : 0.938 + (comboSide < 0 && style === 'sword' ? 0.11 * t : 0.045 * t);
+          hopY = isFist
+            ? 0
+            : style === 'sorcery_qi'
               ? 4.5 + 4.5 * t
               : style === 'dagger_hidden'
                 ? Math.sin(t * Math.PI) * 6.5
-                : (isSkillStrike ? 5.5 : 2.5) * Math.sin(t * Math.PI);
+                : (isSkillStrike ? 5.0 : 2.2) * Math.sin(t * Math.PI);
         } else if (atkP < 0.7) {
           // Phase 3: Martial follow-through hold (잔심)
           const t = (atkP - 0.5) / 0.2;
-          stepDist = 4.6 - 1.6 * t;
+          const holdFrom = isFist ? 3.8 : 4.6;
+          stepDist = holdFrom - 1.4 * t;
           bodyTilt = peakTilt * (1 - 0.42 * t);
-          animScaleX = 1.05 * (1 - 0.03 * t);
-          animScaleY = 0.99;
+          animScaleX = (isFist ? 1.08 : 1.05) * (1 - 0.035 * t);
+          animScaleY = isFist ? 0.98 : 0.99;
           hopY = style === 'sorcery_qi' ? 9 * (1 - 0.35 * t) : 0;
         } else {
           // Phase 4: Smooth recovery ease back into idle breathing stance
           const t = smoothstep((atkP - 0.7) / 0.3);
-          stepDist = 3.0 * (1 - t);
+          const recFrom = isFist ? 2.4 : 3.2;
+          stepDist = recFrom * (1 - t);
           bodyTilt = peakTilt * 0.58 * (1 - t);
           animScaleX = 1.02 + (1 - breath * 0.018 - 1.02) * t;
           animScaleY = 0.99 + (1 + breath * 0.024 - 0.99) * t;
@@ -1123,14 +1129,21 @@ export class Renderer {
       ctx.strokeStyle = profile.secondary;
       ctx.stroke();
     } else if (style === 'palm_fist') {
-      const pushX = (14 + easeOutCubic(sp) * 28) * rankScale;
+      const punchExt =
+        sp < 0.55
+          ? easeOutCubic(Math.min(1, sp / 0.36))
+          : 1 - smoothstep((sp - 0.55) / 0.45) * 0.35;
+      const fistReach = (10 + punchExt * 36) * rankScale;
+
       if (profile.sect === 'mad_demon') {
-        // Berserker triple crimson claw rend (광마혈조)!
+        // Berserker savage fist + triple crimson claw rend (광마혈조)!
+        const yMain = comboSide * 3;
+        drawClenchedFist(ctx, fistReach * 0.88, yMain, 0.95 * rankScale, '#fda4af', '#e11d48', '#44403c');
         for (let k = -1; k <= 1; k++) {
           const yOff = k * 9;
           ctx.beginPath();
-          ctx.moveTo(6, yOff - 5 * comboSide);
-          ctx.quadraticCurveTo(pushX * 0.7, yOff, pushX + 12, yOff + 6 * comboSide);
+          ctx.moveTo(8, yOff - 4 * comboSide);
+          ctx.quadraticCurveTo(fistReach * 0.72, yOff, fistReach + 14, yOff + 5 * comboSide);
           ctx.lineCap = 'round';
           ctx.lineWidth = 5.5;
           ctx.strokeStyle = PIXEL_OUTLINE;
@@ -1140,20 +1153,91 @@ export class Renderer {
           ctx.stroke();
         }
       } else {
-        // Explosive Dharma / Demonic palm shockwave (금강장풍 / 마염장)!
-        const waveR = (18 + easeOutCubic(sp) * 18) * rankScale;
+        // Authentic Straight Fist Punch (소림 나한권·금강권 / 마교 흑염권 정권 지르기)!
+        const isShaolin = profile.sect === 'shaolin';
+        const yOff = comboSide * 4;
+        const knuckleCol = isShaolin ? '#fde047' : '#fda4af';
+        const auraCol = isShaolin ? '#f59e0b' : '#db2777';
+        const cuffCol = isShaolin ? '#c2410c' : '#312e81';
+
+        // 1. Tapered punch qi piston cone + 3 crisp speed streaks from shoulder to wrist
         ctx.beginPath();
-        ctx.arc(pushX * 0.55, 0, waveR, -Math.PI * 0.38, Math.PI * 0.38);
+        ctx.moveTo(4, yOff - 4.5);
+        ctx.lineTo(Math.max(8, fistReach - 6), yOff - 8.5 * rankScale);
+        ctx.lineTo(Math.max(8, fistReach - 6), yOff + 8.5 * rankScale);
+        ctx.lineTo(4, yOff + 4.5);
+        ctx.closePath();
+        ctx.fillStyle = hexWithAlpha(auraCol, 0.36);
+        ctx.fill();
+
         ctx.lineCap = 'round';
-        ctx.lineWidth = 7.5;
+        for (let s = -1; s <= 1; s++) {
+          const sy = yOff + s * 5.2;
+          ctx.beginPath();
+          ctx.moveTo(4 + Math.abs(s) * 4, sy);
+          ctx.lineTo(Math.max(8, fistReach - 7), sy);
+          ctx.lineWidth = s === 0 ? 3.4 : 2.2;
+          ctx.strokeStyle = s === 0 ? '#ffffff' : profile.secondary;
+          ctx.stroke();
+        }
+
+        // 2. Sonic compression ring around punching forearm
+        const ringX = fistReach * 0.5;
+        ctx.beginPath();
+        ctx.ellipse(ringX, yOff, 4.8, 12.5 * rankScale, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 3.2;
         ctx.strokeStyle = PIXEL_OUTLINE;
         ctx.stroke();
-        ctx.lineWidth = 4.2;
-        ctx.strokeStyle = profile.primary;
-        ctx.stroke();
         ctx.lineWidth = 1.8;
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = profile.secondary;
         ctx.stroke();
+
+        // 3. Skill secondary barrage fist (쌍권 연타) on everyN proc
+        if (isSkill && sp > 0.08) {
+          drawClenchedFist(
+            ctx,
+            fistReach * 0.68,
+            -yOff * 1.55,
+            0.88 * rankScale,
+            knuckleCol,
+            auraCol,
+            cuffCol,
+          );
+        }
+
+        // 4. Primary cel-shaded Clenched Martial Fist (정권 주먹)
+        drawClenchedFist(
+          ctx,
+          fistReach,
+          yOff,
+          (isSkill ? 1.18 : 1.02) * rankScale,
+          knuckleCol,
+          auraCol,
+          cuffCol,
+        );
+
+        // 5. Front knuckle shockwave arc + 4-point impact spark at full extension
+        if (sp >= 0.14 && sp <= 0.72) {
+          const tipX = fistReach + 9 * rankScale;
+          ctx.beginPath();
+          ctx.arc(fistReach + 2, yOff, 13 * rankScale, -Math.PI * 0.36, Math.PI * 0.36);
+          ctx.lineWidth = 4.6;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.lineWidth = 2.4;
+          ctx.strokeStyle = isSkill ? '#ffffff' : profile.secondary;
+          ctx.stroke();
+
+          const sparkR = (isSkill ? 9 : 6.5) * rankScale;
+          ctx.beginPath();
+          ctx.moveTo(tipX - sparkR, yOff);
+          ctx.lineTo(tipX + sparkR, yOff);
+          ctx.moveTo(tipX, yOff - sparkR);
+          ctx.lineTo(tipX, yOff + sparkR);
+          ctx.lineWidth = 2.2;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+        }
       }
     } else if (style === 'dagger_hidden') {
       // Swift wrist-flick fan arc + triple glinting throwing blades
@@ -1305,9 +1389,30 @@ export class Renderer {
               break;
             }
 
-            case 'shaolin':
+            case 'shaolin': {
+              // Flying Golden Arhat / Vajra Qi Fist (황금 나한권강 주먹)!
+              ctx.rotate(ang);
+              ctx.beginPath();
+              ctx.moveTo(-15 * scale, 0);
+              ctx.lineTo(0, 0);
+              ctx.lineCap = 'round';
+              ctx.lineWidth = 8.5 * scale;
+              ctx.strokeStyle = hexWithAlpha('#f59e0b', 0.55);
+              ctx.stroke();
+              drawClenchedFist(
+                ctx,
+                2 * scale,
+                0,
+                0.78 * scale,
+                p.isSkill ? '#fef08a' : '#fbbf24',
+                '#f59e0b',
+                '#c2410c',
+              );
+              break;
+            }
+
             case 'gaebang': {
-              // Golden Dharma palm wave / Emerald bamboo-dragon shock crescent
+              // Emerald bamboo-dragon shock crescent
               ctx.rotate(ang);
               const r = 9.5 * scale;
               ctx.beginPath();
@@ -1317,11 +1422,11 @@ export class Renderer {
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 4 * scale;
-              ctx.strokeStyle = p.isSkill ? '#facc15' : profile.primary;
+              ctx.strokeStyle = p.isSkill ? '#4ade80' : profile.primary;
               ctx.stroke();
               ctx.beginPath();
               ctx.arc(1, 0, 3.2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = '#fffbeb';
+              ctx.fillStyle = '#dcfce7';
               ctx.fill();
               break;
             }
@@ -1435,6 +1540,76 @@ export class Renderer {
       },
     });
   }
+}
+
+/**
+ * Draws a crisp cel-shaded clenched martial fist (정권 주먹) oriented along +X:
+ * wrist cuff + clenched 4-knuckle head + tucked thumb + blazing qi halo.
+ */
+function drawClenchedFist(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  fistScale: number,
+  knuckleColor: string,
+  auraColor: string,
+  cuffColor: string,
+): void {
+  const s = fistScale;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // 1. Blazing qi aura wrapping the fist
+  ctx.beginPath();
+  ctx.ellipse(0.5 * s, 0, 11.5 * s, 10.5 * s, 0, 0, Math.PI * 2);
+  ctx.fillStyle = hexWithAlpha(auraColor, 0.45);
+  ctx.fill();
+
+  // 2. Forearm cuff / monk sleeve band
+  ctx.beginPath();
+  ctx.roundRect(-12.5 * s, -5.4 * s, 7.5 * s, 10.8 * s, 2.5 * s);
+  ctx.fillStyle = cuffColor;
+  ctx.fill();
+  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = PIXEL_OUTLINE;
+  ctx.stroke();
+
+  // 3. Clenched 4-knuckle fist block
+  ctx.beginPath();
+  ctx.roundRect(-6.2 * s, -7.8 * s, 13.8 * s, 15.6 * s, [3 * s, 5.2 * s, 5.2 * s, 3 * s]);
+  ctx.fillStyle = knuckleColor;
+  ctx.fill();
+  ctx.lineWidth = 2.7;
+  ctx.strokeStyle = PIXEL_OUTLINE;
+  ctx.stroke();
+
+  // 4. Top specular knuckle highlight
+  ctx.beginPath();
+  ctx.roundRect(-3.8 * s, -5.8 * s, 8.8 * s, 3.6 * s, 1.8 * s);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.fill();
+
+  // 5. Three crisp finger-knuckle creases along front face
+  ctx.beginPath();
+  for (let k = -1; k <= 1; k++) {
+    const ky = k * 3.8 * s;
+    ctx.moveTo(2.4 * s, ky);
+    ctx.lineTo(6.6 * s, ky);
+  }
+  ctx.lineWidth = 1.7;
+  ctx.strokeStyle = PIXEL_OUTLINE;
+  ctx.stroke();
+
+  // 6. Tucked martial thumb locked across lower palm
+  ctx.beginPath();
+  ctx.roundRect(-4.6 * s, 2.2 * s, 8.2 * s, 4.6 * s, 2.2 * s);
+  ctx.fillStyle = knuckleColor;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = PIXEL_OUTLINE;
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function easeOutQuad(t: number): number {
