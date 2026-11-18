@@ -150,6 +150,7 @@ export interface UISnapshot {
   readonly waveTicksLeft: number;
   readonly isBossWave: boolean;
   readonly boss?: {
+    readonly kind: MonsterKind;
     readonly name: string;
     readonly hp: number;
     readonly maxHp: number;
@@ -1095,6 +1096,7 @@ export class Simulation {
       isBossWave: waveDef.isBoss,
       boss: activeBoss
         ? {
+            kind: activeBoss.kind,
             name: activeBoss.bossName ?? '영물 보스',
             hp: Math.max(0, activeBoss.hp),
             maxHp: activeBoss.maxHp,

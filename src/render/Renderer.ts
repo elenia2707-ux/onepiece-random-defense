@@ -13,12 +13,12 @@ import { hexWithAlpha, type SpriteCache } from './SpriteCache';
  * Crisp nearest-neighbor sprite sizes (~110% of tile width) and foot offsets from slot center.
  * Field expanded tile ~ 85px wide -> 94px sprite; Bench expanded tile ~ 99px wide -> 108px sprite.
  */
-const FIELD_SPRITE = 94;
+const FIELD_SPRITE = 96;
 const BENCH_SPRITE = 104;
-const FIELD_FOOT = 44;
+const FIELD_FOOT = 40;
 const BENCH_FOOT = 34;
-const MOB_SPRITE = 64;
-const BOSS_SPRITE = 104;
+const MOB_SPRITE = 76;
+const BOSS_SPRITE = 118;
 
 export interface InteractionOverlayState {
   readonly selectedSlot: SlotRef | null;
@@ -204,16 +204,17 @@ export class Renderer {
       const isStunned = currentTick < m.stunUntilTick;
       const isSlowed = currentTick < m.slowUntilTick;
       const drawSize = m.isBoss ? BOSS_SPRITE : MOB_SPRITE;
-      const artPx = drawSize / 32;
-      const walkFrame = isStunned ? 0 : Math.floor(distInterp * 0.09 + m.entityId) & 1;
-      const bobY = walkFrame * -artPx;
+      const strideSin = isStunned
+        ? 0
+        : Math.abs(Math.sin(distInterp * (m.kind === 'jiangshi' ? 0.13 : 0.11) + m.entityId * 0.9));
+      const walkHop = strideSin * (m.kind === 'jiangshi' ? 6.5 : m.isBoss ? 2.6 : 3.4);
       const facingLeft = m.currX - m.prevX < -0.05;
-      const footOff = Math.round(m.radius * 0.8);
-      const spriteTop = Math.round(footOff - drawSize * (31 / 32));
+      const footOff = Math.round(m.radius * 0.85);
 
       const baseSprite = this.sprites.monsterSprite(m.kind, false);
       const hitAgeSec = (currentTick + alpha - m.lastHitTick) * TICK_DT;
-      const showHitFlash = hitAgeSec >= 0 && hitAgeSec < 0.1;
+      const showHitFlash = hitAgeSec >= 0 && hitAgeSec < 0.11;
+      const hitT = showHitFlash ? 1 - hitAgeSec / 0.11 : 0;
 
       if (isSlowed) {
         this.buckets[RenderLayer.GroundFx]!.push({
@@ -235,17 +236,19 @@ export class Renderer {
         render: (ctx) => {
           ctx.save();
           ctx.imageSmoothingEnabled = false;
-          ctx.translate(Math.round(x), Math.round(y + bobY));
-          if (facingLeft) {
-            ctx.scale(-1, 1);
-          }
+          const sx = (facingLeft ? -1 : 1) * (1 - strideSin * 0.02 + hitT * 0.15);
+          const sy = 1 + strideSin * 0.026 - hitT * 0.13;
+          ctx.translate(Math.round(x), Math.round(y + footOff - walkHop));
+          ctx.scale(sx, sy);
+
           const halfW = Math.round(drawSize * 0.5);
+          const spriteTop = Math.round(-drawSize * (47 / 48));
           ctx.drawImage(baseSprite, -halfW, spriteTop, drawSize, drawSize);
 
           if (showHitFlash) {
             const flashSprite = this.sprites.monsterSprite(m.kind, true);
             const prevA = ctx.globalAlpha;
-            ctx.globalAlpha = (1 - hitAgeSec / 0.1) * 0.82;
+            ctx.globalAlpha = hitT * 0.78;
             ctx.drawImage(flashSprite, -halfW, spriteTop, drawSize, drawSize);
             ctx.globalAlpha = prevA;
           }
@@ -258,10 +261,11 @@ export class Renderer {
           layer: RenderLayer.WorldUI,
           sortY: y + 1,
           render: (ctx) => {
-            const barW = m.isBoss ? 80 : 42;
+            const barW = m.isBoss ? 82 : 44;
             const barH = m.isBoss ? 10 : 6;
             const bx = Math.round(x - barW * 0.5);
-            const by = Math.round(y + spriteTop + artPx * 2 - barH - 6);
+            const rawBy = Math.round(y + footOff - drawSize * 0.92 - barH - 4);
+            const by = Math.max(102, rawBy);
             const ratio = Math.max(0, Math.min(1, m.hp / m.maxHp));
 
             ctx.beginPath();
@@ -351,24 +355,24 @@ export class Renderer {
 
       const isField = u.slot.area === 'field';
       const spriteSize = Math.round((isField ? FIELD_SPRITE : BENCH_SPRITE) * popScale);
-      const artPx = spriteSize / 32;
-      const idleFrame = Math.floor(simTimeSec * 2.4 + u.uid * 0.37) & 1;
-      const bobY = idleFrame * -artPx;
+      const breath = Math.sin(simTimeSec * 3.4 + u.uid * 0.87);
 
-      // Attack lunge toward target on simulation clock
+      // Attack lunge + crisp martial strike snap on simulation clock
       let lungeX = 0;
       let lungeY = 0;
       let lungeLift = 0;
+      let lungeSnap = 0;
       const atkElapsedSec = (currentTick + alpha - u.lastAttackTick) * TICK_DT;
       if (isField && atkElapsedSec >= 0 && atkElapsedSec < 0.18) {
         const lungeCurve =
           atkElapsedSec < 0.045
             ? atkElapsedSec / 0.045
             : Math.max(0, 1 - (atkElapsedSec - 0.045) / 0.135);
-        const distLunge = lungeCurve * 13;
+        const distLunge = lungeCurve * 14;
         lungeX = u.attackDirX * distLunge;
         lungeY = u.attackDirY * distLunge;
-        lungeLift = lungeCurve * artPx * 2;
+        lungeLift = lungeCurve * 5;
+        lungeSnap = lungeCurve;
       }
 
       const drawX = baseX + lungeX;
@@ -448,7 +452,7 @@ export class Renderer {
         },
       });
 
-      // 3. Strictly nearest-neighbor pixel-art sprite
+      // 3. Strictly nearest-neighbor pixel-art sprite with smooth breathing & strike snap
       this.buckets[RenderLayer.Unit]!.push({
         layer: RenderLayer.Unit,
         sortY: drawY,
@@ -458,10 +462,12 @@ export class Renderer {
           if (isDraggedOrigin) {
             ctx.globalAlpha *= 0.38;
           }
-          ctx.translate(Math.round(drawX), Math.round(drawFootY + bobY - lungeLift));
-          if (facingLeft) ctx.scale(-1, 1);
+          const sx = (facingLeft ? -1 : 1) * (1 - breath * 0.02 + lungeSnap * 0.065);
+          const sy = 1 + breath * 0.026 - lungeSnap * 0.045;
+          ctx.translate(Math.round(drawX), Math.round(drawFootY - lungeLift));
+          ctx.scale(sx, sy);
           const halfW = Math.round(spriteSize * 0.5);
-          const topOff = Math.round(-spriteSize * (31 / 32));
+          const topOff = Math.round(-spriteSize * (47 / 48));
           ctx.drawImage(sprite, -halfW, topOff, spriteSize, spriteSize);
           ctx.restore();
         },
@@ -494,7 +500,7 @@ export class Renderer {
 
       // 5. Drag Ghost (crisp nearest-neighbor)
       if (isDraggedOrigin) {
-        const ghostSize = 96;
+        const ghostSize = 98;
         const gx = Math.round(interaction.dragLogicalX);
         const gy = Math.round(interaction.dragLogicalY + ghostSize * 0.3);
         this.buckets[RenderLayer.WorldUI]!.push({
@@ -525,23 +531,23 @@ export class Renderer {
           const x = p.prevX + (p.currX - p.prevX) * alpha;
           const y = p.prevY + (p.currY - p.prevY) * alpha;
           const ang = Math.atan2(y - p.fromY, x - p.fromX);
-          const len = p.isSkill ? 18 : p.isCrit ? 14 : 11;
+          const len = p.isSkill ? 22 : p.isCrit ? 16 : 12;
 
           // Sword-qi / martial energy bolt with dark ink outline for crisp visibility on white jade
           ctx.beginPath();
           ctx.moveTo(x - Math.cos(ang) * len, y - Math.sin(ang) * len);
-          ctx.lineTo(x + Math.cos(ang) * 4, y + Math.sin(ang) * 4);
+          ctx.lineTo(x + Math.cos(ang) * 5, y + Math.sin(ang) * 5);
           ctx.lineCap = 'round';
-          ctx.lineWidth = p.isSkill ? 8.5 : 6;
+          ctx.lineWidth = p.isSkill ? 9.5 : p.isCrit ? 7.5 : 6;
           ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
 
-          ctx.lineWidth = p.isSkill ? 5 : 3.4;
-          ctx.strokeStyle = p.isSkill ? '#f59e0b' : p.color;
+          ctx.lineWidth = p.isSkill ? 5.6 : p.isCrit ? 4.2 : 3.4;
+          ctx.strokeStyle = p.isSkill ? '#facc15' : p.color;
           ctx.stroke();
 
           ctx.beginPath();
-          ctx.arc(x, y, p.isSkill ? 4.2 : 3, 0, Math.PI * 2);
+          ctx.arc(x, y, p.isSkill ? 4.6 : p.isCrit ? 3.8 : 3, 0, Math.PI * 2);
           ctx.fillStyle = '#ffffff';
           ctx.fill();
         }

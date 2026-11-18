@@ -9,7 +9,7 @@ export interface GlyphMetric {
   readonly advance: number;
 }
 
-const GLYPH_CHARS = '0123456789+-x/%!FB:#.';
+const GLYPH_CHARS = '0123456789+-x/%!FB:#.KM,';
 
 /** Display font stack shared by every pre-rendered canvas text (glyph atlas, seals & banners). */
 export const DISPLAY_FONT =
@@ -22,45 +22,7 @@ const UNIT_PIXEL_SIZE = 128; // 32 x 4
 const MOB_PIXEL_SIZE = 128; // 32 x 4
 const BOSS_PIXEL_SIZE = 128; // 32 x 4
 
-/**
- * Maps all 30 Wuxia roster IDs onto the 18 high-resolution transparent PNG sprites
- * cropped from the Orthodox (9) & Unorthodox/Demonic (9) 3x3 sprite sheets.
- */
-const SPRITE_SHEET_ALIAS: Readonly<Record<string, string>> = {
-  // 구파일방 · 정파 (IMG_2821)
-  shaolin_novice: 'shaolin_novice',
-  hwasan_novice: 'hwasan_novice',
-  gaebang_beggar: 'gaebang_beggar',
-  mudang_disciple: 'mudang_disciple',
-  namgung_thunder: 'namgung_thunder',
-  plum_swordsman: 'plum_swordsman',
-  gaebang_elder: 'gaebang_elder',
-  shaolin_monk: 'shaolin_monk',
-  murim_lord: 'murim_lord',
-  plum_elder: 'plum_swordsman',
-  hwasan_master: 'plum_swordsman',
-  mudang_master: 'mudang_disciple',
-  sword_saint: 'namgung_thunder',
-
-  // 사파 · 마교 (IMG_2820)
-  nokrim_bandit: 'nokrim_bandit',
-  tang_assassin: 'tang_assassin',
-  haomun_ronin: 'haomun_ronin',
-  blood_blade: 'blood_blade',
-  tang_patriarch: 'tang_patriarch',
-  mad_demon: 'mad_demon',
-  sword_demon: 'sword_demon',
-  flame_demon: 'flame_demon',
-  cheonma: 'cheonma',
-  poison_healer: 'tang_patriarch',
-  nokrim_chief: 'nokrim_bandit',
-  blood_demon: 'blood_blade',
-  cult_initiate: 'sword_demon',
-  bone_fiend: 'flame_demon',
-  black_wind: 'sword_demon',
-  cult_protector: 'flame_demon',
-  cult_elder: 'flame_demon',
-};
+export type GlyphStyle = 'normal' | 'skill' | 'crit';
 
 interface BannerSpec {
   readonly kind: 'boss' | 'craft';
@@ -183,7 +145,7 @@ export class SpriteCache {
     if (this.probed.has(id) || typeof Image === 'undefined') return;
     this.probed.add(id);
 
-    const fileId = SPRITE_SHEET_ALIAS[id] ?? id;
+    const fileId = id;
     const cached = this.loadedSheetImages.get(fileId);
     if (cached) {
       onLoad(cached);
@@ -331,6 +293,18 @@ export class SpriteCache {
     return url;
   }
 
+  /** Cached PNG data URL for boss / monster pixel portrait badges in DOM HUD. */
+  public monsterPortraitUrl(kind: MonsterKind): string {
+    const key = `url:monster:${kind}`;
+    const existing = this.portraitUrls.get(key);
+    if (existing) return existing;
+
+    const sprite = this.monsterSprite(kind, false);
+    const url = sprite.width > 0 ? sprite.toDataURL('image/png') : '';
+    this.portraitUrls.set(key, url);
+    return url;
+  }
+
   /** Pre-rendered monster pixel sprite + pure-white hit-flash silhouette (zero ctx.filter). */
   public monsterSprite(kind: MonsterKind, hitFlash = false): HTMLCanvasElement {
     const baseKey = `monster:${kind}:base`;
@@ -351,6 +325,7 @@ export class SpriteCache {
         this.paintExternal(created, img);
         const flash = this.cache.get(flashKey);
         if (flash) this.paintFlash(flash, created);
+        this.portraitUrls.delete(`url:monster:${kind}`);
         this.notifySpriteUpdated();
       });
     }
@@ -499,10 +474,10 @@ export class SpriteCache {
 
   public ensureGlyphAtlas(): HTMLCanvasElement {
     if (this.glyphCanvas) return this.glyphCanvas;
-    const cellW = 40;
-    const cellH = 52;
+    const cellW = 46;
+    const cellH = 60;
     this.glyphRowHeight = cellH;
-    const c = this.createOffscreen(GLYPH_CHARS.length * cellW, cellH * 2);
+    const c = this.createOffscreen(GLYPH_CHARS.length * cellW, cellH * 3);
     this.paintGlyphAtlas(c);
     this.glyphCanvas = c;
     return c;
@@ -511,10 +486,10 @@ export class SpriteCache {
   private paintGlyphAtlas(c: HTMLCanvasElement): void {
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    const cellW = 40;
+    const cellW = 46;
     const cellH = this.glyphRowHeight;
     ctx.clearRect(0, 0, c.width, c.height);
-    ctx.font = `36px ${DISPLAY_FONT}`;
+    ctx.font = `40px ${DISPLAY_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -523,23 +498,46 @@ export class SpriteCache {
       const ch = GLYPH_CHARS[i]!;
       const cx = i * cellW + cellW * 0.5;
 
+      // Row 0: Normal attack — crisp ivory-white with heavy dark ink outline & subtle bottom drop
       const cy0 = cellH * 0.5;
-      ctx.lineWidth = 8;
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.lineWidth = 10;
       ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.strokeText(ch, cx, cy0 + 2);
       ctx.strokeText(ch, cx, cy0);
-      ctx.fillStyle = '#ffffff';
+      const normGrad = ctx.createLinearGradient(cx, cy0 - 18, cx, cy0 + 18);
+      normGrad.addColorStop(0, '#ffffff');
+      normGrad.addColorStop(0.65, '#f8fafc');
+      normGrad.addColorStop(1, '#cbd5e1');
+      ctx.fillStyle = normGrad;
       ctx.fillText(ch, cx, cy0);
 
+      // Row 1: Martial skill hit (non-crit) — radiant celadon-azure qi gradient
       const cy1 = cellH * 1.5;
-      ctx.lineWidth = 9;
+      ctx.lineWidth = 11;
       ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.strokeText(ch, cx, cy1 + 2);
       ctx.strokeText(ch, cx, cy1);
-      const critGrad = ctx.createLinearGradient(cx, cy1 - 16, cx, cy1 + 16);
-      critGrad.addColorStop(0, '#fffbeb');
-      critGrad.addColorStop(0.45, '#facc15');
-      critGrad.addColorStop(1, '#ea580c');
-      ctx.fillStyle = critGrad;
+      const skillGrad = ctx.createLinearGradient(cx, cy1 - 18, cx, cy1 + 18);
+      skillGrad.addColorStop(0, '#f0fdfa');
+      skillGrad.addColorStop(0.48, '#67e8f9');
+      skillGrad.addColorStop(1, '#0284c7');
+      ctx.fillStyle = skillGrad;
       ctx.fillText(ch, cx, cy1);
+
+      // Row 2: Critical strike (회심일격!) — blazing imperial gold-to-vermilion gradient
+      const cy2 = cellH * 2.5;
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.strokeText(ch, cx, cy2 + 2.5);
+      ctx.strokeText(ch, cx, cy2);
+      const critGrad = ctx.createLinearGradient(cx, cy2 - 19, cx, cy2 + 19);
+      critGrad.addColorStop(0, '#fffbeb');
+      critGrad.addColorStop(0.38, '#fde047');
+      critGrad.addColorStop(0.75, '#f97316');
+      critGrad.addColorStop(1, '#dc2626');
+      ctx.fillStyle = critGrad;
+      ctx.fillText(ch, cx, cy2);
 
       const measured = ctx.measureText(ch).width;
       this.glyphMap.set(ch, {
@@ -547,7 +545,7 @@ export class SpriteCache {
         sy: 0,
         sw: cellW,
         sh: cellH,
-        advance: Math.max(15, Math.ceil(measured) + 3),
+        advance: Math.max(14, Math.ceil(measured) + 2),
       });
     }
   }
@@ -559,7 +557,7 @@ export class SpriteCache {
     centerY: number,
     scale = 0.5,
     alpha = 1,
-    isCrit = false,
+    style: boolean | GlyphStyle = false,
   ): void {
     const atlas = this.ensureGlyphAtlas();
     let totalW = 0;
@@ -571,7 +569,14 @@ export class SpriteCache {
     let cursorX = centerX - totalW * 0.5;
     const prevAlpha = ctx.globalAlpha;
     ctx.globalAlpha = prevAlpha * alpha;
-    const rowSy = isCrit ? this.glyphRowHeight : 0;
+    const resolved: GlyphStyle =
+      typeof style === 'boolean' ? (style ? 'crit' : 'normal') : style;
+    const rowSy =
+      resolved === 'crit'
+        ? this.glyphRowHeight * 2
+        : resolved === 'skill'
+          ? this.glyphRowHeight
+          : 0;
 
     for (let i = 0; i < text.length; i++) {
       const m = this.glyphMap.get(text[i]!);

@@ -7,10 +7,10 @@ import { PIXEL_OUTLINE } from '../render/ChibiPainter';
 import { type IRenderable, RenderLayer } from '../render/RenderLayer';
 import type { SpriteCache } from '../render/SpriteCache';
 
-const MAX_VFX_INSTANCES = 64;
+const MAX_VFX_INSTANCES = 96;
 const MAX_PARTICLES = 1500;
 
-type InternalVfxKind = 'ring' | 'craft_pillar' | VfxTrackKind;
+type InternalVfxKind = 'ring' | 'craft_pillar' | 'hit_slash' | 'qi_resonance' | VfxTrackKind;
 
 interface TrackVfxInstance {
   kind: InternalVfxKind;
@@ -36,8 +36,11 @@ interface FloatingDamageItem {
   startTick: number;
   x: number;
   y: number;
+  offsetX: number;
+  driftVx: number;
   value: number;
   isCrit: boolean;
+  isSkill: boolean;
 }
 
 interface ScreenFlashState {
@@ -45,12 +48,6 @@ interface ScreenFlashState {
   durationSec: number;
   color: string;
   peakAlpha: number;
-}
-
-interface ScreenShakeState {
-  startTick: number;
-  durationSec: number;
-  intensity: number;
 }
 
 interface OverlayBannerState {
@@ -63,6 +60,7 @@ interface OverlayBannerState {
  * Pure presentation Wuxia VFX system synchronized to simulation clock:
  * t = (currentTick + alpha - startTick) * TICK_DT (AGENTS.md §3 & §4).
  * Screen banners use timeBase: 'real' (timestamp difference, never dt accumulation).
+ * Screen shake is permanently disabled so the board remains rock-steady.
  * Never mutates simulation state.
  */
 export class VfxSystem {
@@ -85,7 +83,6 @@ export class VfxSystem {
 
   private readonly damageTexts: FloatingDamageItem[] = [];
   private flash: ScreenFlashState | null = null;
-  private shake: ScreenShakeState | null = null;
   private banner: OverlayBannerState | null = null;
   private currentSimTimeSec = 0;
 
@@ -127,18 +124,21 @@ export class VfxSystem {
       (inst) => {
         inst.progress = 0;
       },
-      24,
+      36,
     );
 
-    for (let i = 0; i < 56; i++) {
+    for (let i = 0; i < 84; i++) {
       this.damageTexts.push({
         active: false,
         entityId: -1,
         startTick: 0,
         x: 0,
         y: 0,
+        offsetX: 0,
+        driftVx: 0,
         value: 0,
         isCrit: false,
+        isSkill: false,
       });
     }
 
@@ -224,8 +224,7 @@ export class VfxSystem {
     }
 
     if (gradeRank >= 4) {
-      this.triggerScreenShake(gradeRank >= 5 ? 9 : 6, 0.28, startTick);
-      this.triggerScreenFlash(pillarColor, gradeRank >= 5 ? 0.26 : 0.18, 0.22, startTick);
+      this.triggerScreenFlash(pillarColor, gradeRank >= 5 ? 0.16 : 0.11, 0.2, startTick);
     }
   }
 
@@ -237,7 +236,7 @@ export class VfxSystem {
    * - poison_rain: 사천당문 만천화우 (venom needle barrage + toxic jade mist)
    * - blood_slash: 사파 혈도/광마참 (crossed crimson-ink saber slashes)
    * - demonic_flame: 마교 마염 (obsidian-scarlet hellfire vortex)
-   * - heavenly_demon: 마교 천마군림보 (black-crimson lightning spatial fracture + heavy shake)
+   * - heavenly_demon: 마교 천마군림보 (black-crimson lightning spatial fracture)
    */
   public spawnSkillTrack(
     track: VfxTrackKind,
@@ -288,9 +287,6 @@ export class VfxSystem {
           glowRadius: Math.min(88, radius * 0.85),
         });
         this.emitRadialBurst(x, y, '#38bdf8', 18, 175, 0.32, 20, startTick);
-        if (gradeRank >= 4) {
-          this.triggerScreenShake(5, 0.18, startTick);
-        }
         break;
       }
 
@@ -310,9 +306,6 @@ export class VfxSystem {
           glowRadius: Math.min(88, radius * 0.85),
         });
         this.emitRadialBurst(x, y, '#f59e0b', 18, 155, 0.34, 0, startTick);
-        if (gradeRank >= 5) {
-          this.triggerScreenShake(7, 0.22, startTick);
-        }
         break;
       }
 
@@ -352,9 +345,6 @@ export class VfxSystem {
           glowRadius: Math.min(90, radius * 0.85),
         });
         this.emitRadialBurst(x, y, '#e11d48', 20, 175, 0.34, 0, startTick);
-        if (gradeRank >= 4) {
-          this.triggerScreenShake(gradeRank >= 5 ? 8 : 5, 0.2, startTick);
-        }
         break;
       }
 
@@ -375,9 +365,6 @@ export class VfxSystem {
         });
         this.emitRadialBurst(x, y, '#dc2626', 18, 150, 0.38, -95, startTick);
         this.emitRadialBurst(x, y, '#9333ea', 10, 105, 0.34, -110, startTick);
-        if (gradeRank >= 4) {
-          this.triggerScreenShake(6, 0.2, startTick);
-        }
         break;
       }
 
@@ -398,8 +385,7 @@ export class VfxSystem {
         });
         this.emitRadialBurst(x, y, '#e11d48', 26, 210, 0.44, 0, startTick);
         this.emitRadialBurst(x, y, PIXEL_OUTLINE, 16, 165, 0.4, 0, startTick);
-        this.triggerScreenShake(gradeRank >= 6 ? 12 : 8, 0.34, startTick);
-        this.triggerScreenFlash('#be123c', gradeRank >= 6 ? 0.24 : 0.16, 0.18, startTick);
+        this.triggerScreenFlash('#be123c', gradeRank >= 6 ? 0.14 : 0.09, 0.16, startTick);
         break;
       }
 
@@ -427,6 +413,48 @@ export class VfxSystem {
     });
   }
 
+  /** Inner-qi resonance aura under every hero of the upgraded faction (정파/사파/마교). */
+  public spawnUpgradeResonanceFx(
+    x: number,
+    y: number,
+    color: string,
+    level: number,
+    startTick: number,
+  ): void {
+    this.pushTrack({
+      kind: 'qi_resonance',
+      startTick,
+      durationSec: 0.62,
+      fromX: x,
+      fromY: y,
+      x,
+      y,
+      fromRadius: 14,
+      toRadius: Math.min(62, 44 + level * 1.5),
+      color,
+      lineWidth: 4.2,
+      glowRadius: 38,
+    });
+
+    const sparkCount = 12;
+    for (let i = 0; i < sparkCount; i++) {
+      const idx = this.particleCursor;
+      this.particleCursor = (this.particleCursor + 1) % MAX_PARTICLES;
+      const spread = (((i * 11 + startTick) % 19) - 9) * 3.1;
+      const upSpeed = 88 + ((i * 5) % 7) * 14;
+      this.pActive[idx] = 1;
+      this.pStartTick[idx] = startTick;
+      this.pLifeSec[idx] = 0.54;
+      this.pOriginX[idx] = x + spread;
+      this.pOriginY[idx] = y + 4;
+      this.pVx[idx] = spread * 0.35;
+      this.pVy[idx] = -upSpeed;
+      this.pGravity[idx] = -36;
+      this.pSize[idx] = 2.8 + (i % 3);
+      this.pColor[idx] = i % 3 === 0 ? '#fde047' : color;
+    }
+  }
+
   public spawnHitFx(
     entityId: number,
     x: number,
@@ -436,11 +464,40 @@ export class VfxSystem {
     slain: boolean,
     isCrit: boolean,
     startTick: number,
+    isSkill = false,
   ): void {
-    const burstCount = slain ? 13 : isCrit ? 9 : 4;
-    const burstColor = isCrit ? '#eab308' : color;
-    this.emitRadialBurst(x, y, burstColor, burstCount, slain ? 130 : 85, 0.25, 0, startTick);
-    this.spawnOrMergeDamageText(entityId, x, y - 18, damage, isCrit, startTick);
+    const burstCount = slain ? 15 : isCrit ? 12 : isSkill ? 9 : 5;
+    const burstColor = isCrit ? '#facc15' : color;
+    this.emitRadialBurst(
+      x,
+      y,
+      burstColor,
+      burstCount,
+      slain ? 155 : isCrit ? 135 : 96,
+      isCrit || slain ? 0.28 : 0.22,
+      18,
+      startTick,
+    );
+
+    if (isCrit || isSkill || slain) {
+      this.emitRadialBurst(x, y, '#fffbeb', isCrit ? 6 : 4, 115, 0.18, 0, startTick);
+      this.pushTrack({
+        kind: 'hit_slash',
+        startTick,
+        durationSec: isCrit ? 0.24 : 0.19,
+        fromX: x,
+        fromY: y,
+        x,
+        y,
+        fromRadius: 7,
+        toRadius: isCrit ? 44 : slain ? 38 : 30,
+        color: isCrit ? '#facc15' : color,
+        lineWidth: isCrit ? 4.8 : 3.2,
+        glowRadius: isCrit ? 34 : 20,
+      });
+    }
+
+    this.spawnOrMergeDamageText(entityId, x, y - 22, damage, isCrit, isSkill, startTick);
   }
 
   public showBossWaveBanner(wave: number, bossName: string, realNowMs: number): void {
@@ -478,8 +535,9 @@ export class VfxSystem {
     };
   }
 
-  public triggerScreenShake(intensity: number, durationSec: number, startTick: number): void {
-    this.shake = { startTick, durationSec, intensity };
+  /** Screen shake intentionally disabled so board & units remain completely steady. */
+  public triggerScreenShake(_intensity: number, _durationSec: number, _startTick: number): void {
+    // No-op by design
   }
 
   public triggerScreenFlash(
@@ -519,6 +577,8 @@ export class VfxSystem {
   }
 
   private renderTrackGround(ctx: CanvasRenderingContext2D, inst: TrackVfxInstance): void {
+    if (inst.kind === 'hit_slash') return;
+
     const p = inst.progress;
     const inv = 1 - p;
     const radius = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
@@ -538,6 +598,25 @@ export class VfxSystem {
       ctx.arc(inst.x, inst.y, radius * 0.88, 0, Math.PI * 2);
       ctx.fillStyle = PIXEL_OUTLINE;
       ctx.fill();
+    } else if (inst.kind === 'qi_resonance') {
+      // Elliptical martial cultivation resonance aura under hero's feet
+      ctx.globalAlpha = inv * 0.9;
+      ctx.beginPath();
+      ctx.ellipse(inst.x, inst.y, radius, radius * 0.42, 0, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(2, (inst.lineWidth + 3) * inv);
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = Math.max(1.4, inst.lineWidth * inv);
+      ctx.strokeStyle = inst.color;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.ellipse(inst.x, inst.y, radius * 0.65, radius * 0.27, 0, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1.2, 2.5 * inv);
+      ctx.strokeStyle = '#fde047';
+      ctx.stroke();
+      ctx.globalAlpha = prevAlpha;
+      return;
     }
 
     // Crisp outer dark-ink outline ring + colored shockwave ring for bright white-jade contrast
@@ -779,6 +858,69 @@ export class VfxSystem {
         break;
       }
 
+      case 'hit_slash': {
+        // Tactile martial hit-impact slash + starburst flash (replaces screen shake with crisp hit punch)
+        const isHeavy = inst.lineWidth >= 4.2;
+        const slashR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
+        const baseAng =
+          (((inst.startTick * 37 + Math.round(inst.x) * 7) % 10) - 5) * 0.24 - Math.PI * 0.24;
+        ctx.globalAlpha = inv * 0.98;
+
+        const strokeCut = (ang: number, len: number, w: number, col: string): void => {
+          const dx = Math.cos(ang) * len;
+          const dy = Math.sin(ang) * len;
+          ctx.beginPath();
+          ctx.moveTo(inst.x - dx, inst.y - dy);
+          ctx.lineTo(inst.x + dx, inst.y + dy);
+          ctx.lineCap = 'round';
+          ctx.lineWidth = Math.max(1, w * inv);
+          ctx.strokeStyle = col;
+          ctx.stroke();
+        };
+
+        strokeCut(baseAng, slashR, inst.lineWidth + 4.5, PIXEL_OUTLINE);
+        strokeCut(baseAng, slashR, inst.lineWidth + 1.2, inst.color);
+        strokeCut(baseAng, slashR * 0.82, 2.2, '#ffffff');
+
+        if (isHeavy) {
+          const crossAng = baseAng + Math.PI * 0.52;
+          strokeCut(crossAng, slashR * 0.78, inst.lineWidth + 3.5, PIXEL_OUTLINE);
+          strokeCut(crossAng, slashR * 0.78, inst.lineWidth, '#f97316');
+          strokeCut(crossAng, slashR * 0.62, 2, '#fffbeb');
+        }
+
+        // Sharp central impact star flash during initial impact frames
+        if (p < 0.55) {
+          const starInv = 1 - p / 0.55;
+          const sr = (isHeavy ? 14 : 9) * starInv;
+          ctx.beginPath();
+          ctx.arc(inst.x, inst.y, sr * 0.55, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+        }
+        break;
+      }
+
+      case 'qi_resonance': {
+        // Rising inner-qi cultivation pillars around matching faction units
+        const lift = easeOutCubic(p) * 56;
+        const w = Math.max(3, 12 * inv);
+        ctx.globalAlpha = inv * 0.86;
+        for (let k = -1; k <= 1; k++) {
+          const ox = inst.x + k * 20;
+          const oy = inst.y - 8 - lift - (k === 0 ? 10 : 0);
+          const h = (k === 0 ? 34 : 24) * (0.5 + inv * 0.5);
+          ctx.fillStyle = PIXEL_OUTLINE;
+          ctx.fillRect(ox - w * 0.5 - 1.5, oy - h, w + 3, h + 3);
+          ctx.fillStyle = k === 0 ? '#fde047' : inst.color;
+          ctx.fillRect(ox - w * 0.5, oy - h + 1.5, w, h);
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -822,15 +964,18 @@ export class VfxSystem {
     y: number,
     damage: number,
     isCrit: boolean,
+    isSkill: boolean,
     startTick: number,
   ): void {
+    // Only merge simultaneous same-tick multi-pellet hits on the exact same monster so rapid volleys fan out visibly
     for (let i = 0; i < this.damageTexts.length; i++) {
       const item = this.damageTexts[i]!;
-      if (item.active && item.entityId === entityId && startTick - item.startTick <= 3) {
+      if (item.active && item.entityId === entityId && startTick - item.startTick <= 1) {
         item.value += damage;
         item.x = x;
         item.y = y;
         item.isCrit = item.isCrit || isCrit;
+        item.isSkill = item.isSkill || isSkill;
         item.startTick = startTick;
         return;
       }
@@ -839,13 +984,17 @@ export class VfxSystem {
     for (let i = 0; i < this.damageTexts.length; i++) {
       const item = this.damageTexts[i]!;
       if (!item.active) {
+        const slotHash = (entityId * 13 + startTick * 29 + i * 7) & 63;
         item.active = true;
         item.entityId = entityId;
         item.startTick = startTick;
         item.x = x;
         item.y = y;
+        item.offsetX = ((slotHash % 9) - 4) * 4.5;
+        item.driftVx = ((slotHash % 5) - 2) * 10;
         item.value = damage;
         item.isCrit = isCrit;
+        item.isSkill = isSkill;
         return;
       }
     }
@@ -878,22 +1027,8 @@ export class VfxSystem {
     alpha: number,
     realNowMs = performance.now(),
   ): void {
-    // 1. CSS transform shake on #shake-layer
-    if (this.shake) {
-      const elapsed = (currentTick + alpha - this.shake.startTick) * TICK_DT;
-      if (elapsed >= this.shake.durationSec || elapsed < 0) {
-        this.shake = null;
-        stack.setShakeOffset(0, 0);
-      } else {
-        const decay = 1 - elapsed / this.shake.durationSec;
-        const phase = elapsed * 58;
-        const dx = Math.sin(phase) * this.shake.intensity * decay;
-        const dy = Math.cos(phase * 1.31) * this.shake.intensity * decay;
-        stack.setShakeOffset(dx, dy);
-      }
-    } else {
-      stack.setShakeOffset(0, 0);
-    }
+    // 1. Keep #shake-layer completely steady (zero screen shake)
+    stack.setShakeOffset(0, 0);
 
     // 2. #overlay-canvas flash + BOSS WAVE / Ascension celebration banner
     let flashActive = false;
@@ -1004,26 +1139,60 @@ export class VfxSystem {
     for (let i = 0; i < this.damageTexts.length; i++) {
       const item = this.damageTexts[i]!;
       if (!item.active) continue;
-      const life = item.isCrit ? 0.68 : 0.52;
+      const life = item.isCrit ? 0.76 : item.isSkill ? 0.64 : 0.54;
       const elapsed = this.currentSimTimeSec - item.startTick * TICK_DT;
       if (elapsed >= life || elapsed < 0) {
         item.active = false;
         continue;
       }
       const p = elapsed / life;
-      const riseY = item.y - easeOutCubic(p) * (item.isCrit ? 34 : 22);
-      const fade = p < 0.68 ? 1 : 1 - (p - 0.68) / 0.32;
+      const drawX = item.x + item.offsetX + item.driftVx * elapsed;
+      const riseDist = item.isCrit ? 42 : item.isSkill ? 32 : 25;
+      const riseY = item.y - easeOutCubic(p) * riseDist;
+      const fade = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
 
-      let scale = 0.42;
+      let scale: number;
       if (item.isCrit) {
-        const pop = p < 0.16 ? 0.96 - (0.16 - p) * 1.4 : 0.72 - p * 0.08;
-        scale = Math.max(0.62, pop);
+        scale =
+          p < 0.14
+            ? 0.68 + (p / 0.14) * 0.44
+            : p < 0.28
+              ? 1.12 - ((p - 0.14) / 0.14) * 0.32
+              : 0.8 - (p - 0.28) * 0.08;
+      } else if (item.isSkill) {
+        scale =
+          p < 0.14
+            ? 0.52 + (p / 0.14) * 0.3
+            : 0.82 - Math.min(0.2, (p - 0.14) * 0.34);
+      } else {
+        scale =
+          p < 0.14
+            ? 0.44 + (p / 0.14) * 0.24
+            : 0.68 - Math.min(0.18, (p - 0.14) * 0.32);
       }
 
-      const label = item.isCrit ? `${item.value}!` : String(item.value);
-      this.sprites.drawGlyphString(ctx, label, item.x, riseY, scale, fade, item.isCrit);
+      const formatted = formatDamageValue(item.value);
+      const label = item.isCrit ? `${formatted}!` : formatted;
+      const style = item.isCrit ? 'crit' : item.isSkill ? 'skill' : 'normal';
+      this.sprites.drawGlyphString(ctx, label, drawX, riseY, scale, fade, style);
     }
   }
+}
+
+function formatDamageValue(val: number): string {
+  const n = Math.max(0, Math.round(val));
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(2)}M`;
+  }
+  if (n >= 10_000) {
+    return `${(n / 1_000).toFixed(1)}K`;
+  }
+  if (n >= 1_000) {
+    const k = Math.floor(n / 1_000);
+    const rem = String(n % 1_000).padStart(3, '0');
+    return `${k},${rem}`;
+  }
+  return String(n);
 }
 
 function easeOutCubic(t: number): number {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Simulation } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
+import type { MonsterKind } from '../src/data/types';
 
 describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble (영약 복용) & faction upgrades (내공 수련)', () => {
   it('supports atomic chain synthesis from 삼류 leaves to 화산 장문인 and 3-faction fusion into 현경·신마 절대천마', () => {
@@ -117,5 +118,30 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.upgradeLv.demonic).toBe(1);
     expect(snap.lastGambleResult).not.toBeNull();
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
+  });
+
+  it('provides bespoke 1:1 pixel-art PNG sprites for all 30 units and all 6 monsters/bosses', () => {
+    const data = loadGameData();
+    const spriteFiles = Object.keys(import.meta.glob('../public/sprites/*.png'));
+    const spriteSet = new Set(
+      spriteFiles.map((p) => p.slice(p.lastIndexOf('/') + 1)),
+    );
+
+    for (const unit of data.units) {
+      expect(spriteSet.has(`${unit.id}.png`), `missing unit sprite: ${unit.id}.png`).toBe(true);
+    }
+
+    const monsterKinds: readonly MonsterKind[] = [
+      'bandit_minion',
+      'jiangshi',
+      'blood_zealot',
+      'white_tiger',
+      'black_serpent',
+      'blood_patriarch',
+    ];
+    for (const kind of monsterKinds) {
+      expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
+    }
+    expect(spriteSet.size).toBe(36);
   });
 });

@@ -177,13 +177,13 @@ export class Game {
         ev.slain,
         ev.isCrit,
         ev.tick,
+        ev.isSkill,
       );
     });
 
     this.sim.events.on('wave:boss', (ev) => {
       this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
-      this.vfx.triggerScreenShake(8, 0.35, ev.tick);
-      this.vfx.triggerScreenFlash('#dc2626', 0.2, 0.28, ev.tick);
+      this.vfx.triggerScreenFlash('#dc2626', 0.14, 0.24, ev.tick);
     });
 
     this.sim.events.on('boss:slain', (ev) => {
@@ -213,6 +213,27 @@ export class Game {
 
     this.sim.events.on('upgrade:done', (ev) => {
       const upDef = this.sim.data.upgrades.find((u) => u.id === ev.group);
+      const factionAccent =
+        ev.group === 'orthodox'
+          ? '#38bdf8'
+          : ev.group === 'unorthodox'
+            ? '#22c55e'
+            : '#e11d48';
+      const owned = this.sim.getUnits();
+      for (let i = 0; i < owned.length; i++) {
+        const u = owned[i]!;
+        const uDef = this.sim.data.unitsById.get(u.unitId);
+        if (uDef && uDef.faction === ev.group) {
+          const footOff = u.slot.area === 'field' ? 40 : 34;
+          this.vfx.spawnUpgradeResonanceFx(
+            u.currX,
+            u.currY + footOff,
+            factionAccent,
+            ev.level,
+            ev.tick,
+          );
+        }
+      }
       this.ui.showToast(`🔥 ${upDef?.name ?? ev.group} Lv.${ev.level} 수련 완료!`);
     });
   }

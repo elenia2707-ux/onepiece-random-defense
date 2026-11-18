@@ -86,6 +86,14 @@ export class UIManager {
   private devPopoverEl!: HTMLElement;
   private devSimMetaEl!: HTMLElement;
 
+  private bossHudBarEl!: HTMLElement;
+  private bossHudImgEl!: HTMLImageElement;
+  private bossHudNameEl!: HTMLElement;
+  private bossHudHpEl!: HTMLElement;
+  private bossHudTrailEl!: HTMLElement;
+  private bossHudFillEl!: HTMLElement;
+  private prevBossPortraitKind = '';
+
   private unitSelectBarEl!: HTMLElement;
   private unitPortraitImgEl!: HTMLImageElement;
   private unitGradePillEl!: HTMLElement;
@@ -186,7 +194,11 @@ export class UIManager {
       this.prevSelectSignature = '';
       this.prevSheetSignature = '';
       this.prevRecommendSignature = '';
+      this.prevBossPortraitKind = '';
       if (this.lastSnapshot) {
+        if (this.lastSnapshot.boss && this.bossHudImgEl) {
+          this.bossHudImgEl.src = this.sprites.monsterPortraitUrl(this.lastSnapshot.boss.kind);
+        }
         this.refreshSelectedUnitBar(this.lastSnapshot);
         this.refreshRecommendBar(this.lastSnapshot);
         if (this.activeSheet) this.refreshSheet(this.lastSnapshot);
@@ -218,6 +230,23 @@ export class UIManager {
           <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴">DEV</button>
         </div>
       </header>
+
+      <div id="boss-hud-bar" class="boss-hud-bar" aria-live="polite">
+        <div class="boss-hud-avatar">
+          <img id="boss-hud-img" alt="" />
+        </div>
+        <div class="boss-hud-main">
+          <div class="boss-hud-top">
+            <span class="boss-hud-tag">영물 강림</span>
+            <span id="boss-hud-name" class="boss-hud-name">영물 백호</span>
+            <span id="boss-hud-hp" class="boss-hud-hp">0 / 0</span>
+          </div>
+          <div class="boss-hud-track">
+            <div id="boss-hud-trail" class="boss-hud-trail"></div>
+            <div id="boss-hud-fill" class="boss-hud-fill"></div>
+          </div>
+        </div>
+      </div>
 
       <aside id="dev-popover" class="dev-popover interactive" aria-label="개발자 도구">
         <div id="dev-sim-meta" class="dev-popover-meta">30Hz · Tick 0</div>
@@ -351,6 +380,13 @@ export class UIManager {
     this.devBtnEl = this.mustGet('btn-dev') as HTMLButtonElement;
     this.devPopoverEl = this.mustGet('dev-popover');
     this.devSimMetaEl = this.mustGet('dev-sim-meta');
+
+    this.bossHudBarEl = this.mustGet('boss-hud-bar');
+    this.bossHudImgEl = this.mustGet('boss-hud-img') as HTMLImageElement;
+    this.bossHudNameEl = this.mustGet('boss-hud-name');
+    this.bossHudHpEl = this.mustGet('boss-hud-hp');
+    this.bossHudTrailEl = this.mustGet('boss-hud-trail');
+    this.bossHudFillEl = this.mustGet('boss-hud-fill');
 
     this.unitSelectBarEl = this.mustGet('unit-select-bar');
     this.unitPortraitImgEl = this.mustGet('sel-unit-img') as HTMLImageElement;
@@ -615,17 +651,33 @@ export class UIManager {
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
     this.setText(this.devSimMetaEl, `30Hz · Tick ${snapshot.tick}`);
 
-    if (snapshot.boss) {
-      const bossPct = Math.max(0, Math.round((snapshot.boss.hp / Math.max(1, snapshot.boss.maxHp)) * 100));
-      this.setText(this.monsterTitleEl, `${snapshot.boss.name} ${bossPct}%`);
-    } else {
-      this.setText(this.monsterTitleEl, '침입 마물');
-    }
-
+    this.setText(this.monsterTitleEl, '침입 마물');
     this.setText(this.monsterCountEl, `${snapshot.monsterCount} / ${snapshot.monsterCap}`);
     const pct = Math.min(100, Math.max(0, (snapshot.monsterCount / snapshot.monsterCap) * 100));
     this.monsterFillEl.style.width = `${pct.toFixed(1)}%`;
     this.monsterGaugeBoxEl.classList.toggle('danger', pct >= 75);
+
+    const hasBoss = Boolean(snapshot.boss);
+    this.bossHudBarEl.classList.toggle('visible', hasBoss);
+    this.toastLayerEl.classList.toggle('boss-active', hasBoss);
+    if (snapshot.boss) {
+      if (this.prevBossPortraitKind !== snapshot.boss.kind) {
+        this.prevBossPortraitKind = snapshot.boss.kind;
+        this.bossHudImgEl.src = this.sprites.monsterPortraitUrl(snapshot.boss.kind);
+      }
+      this.setText(this.bossHudNameEl, snapshot.boss.name);
+      this.setText(
+        this.bossHudHpEl,
+        `${Math.ceil(snapshot.boss.hp).toLocaleString('ko-KR')} / ${snapshot.boss.maxHp.toLocaleString('ko-KR')}`,
+      );
+      const bossPct = Math.min(
+        100,
+        Math.max(0, (snapshot.boss.hp / Math.max(1, snapshot.boss.maxHp)) * 100),
+      );
+      const wCss = `${bossPct.toFixed(1)}%`;
+      this.bossHudFillEl.style.width = wCss;
+      this.bossHudTrailEl.style.width = wCss;
+    }
 
     this.setText(this.speedBtnEl, `${snapshot.speed === 0 ? 1 : snapshot.speed}x`);
     this.setText(this.pauseBtnEl, snapshot.paused ? '▶' : '⏸');
