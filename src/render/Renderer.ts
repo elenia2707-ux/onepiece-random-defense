@@ -5,7 +5,16 @@ import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../platform/Viewport';
 import type { VfxSystem } from '../vfx/VfxSystem';
 import type { CanvasStack } from './CanvasStack';
 import { type IRenderable, RENDER_LAYER_COUNT, RenderLayer } from './RenderLayer';
+import { expandedSlotRect } from './BackgroundPainter';
 import { hexWithAlpha, type SpriteCache } from './SpriteCache';
+
+/** On-board pixel-art sprite sizes (logical px) and foot offsets from the slot centre. */
+const FIELD_SPRITE = 92;
+const BENCH_SPRITE = 84;
+const FIELD_FOOT = 33;
+const BENCH_FOOT = 31;
+const MOB_SPRITE = 56;
+const BOSS_SPRITE = 100;
 
 export interface InteractionOverlayState {
   readonly selectedSlot: SlotRef | null;
@@ -97,7 +106,7 @@ export class Renderer {
   ): void {
     const sel = interaction.selectedSlot;
     if (sel) {
-      const rect = sim.board.getSlotRect(sel);
+      const rect = expandedSlotRect(sim.board, sel);
       const uid = sim.board.getUid(sel);
       const unit = uid !== null ? sim.getUnitByUid(uid) : undefined;
       const def = unit ? sim.data.unitsById.get(unit.unitId) : undefined;
@@ -132,14 +141,17 @@ export class Renderer {
             ctx.restore();
           }
 
-          // Crisp selected slot highlight frame
+          // Crisp selected slot highlight frame (pulsing gold)
+          const pulse = 0.75 + Math.sin(simTimeSec * 6) * 0.25;
           ctx.beginPath();
-          ctx.roundRect(rect.x - 3, rect.y - 3, rect.w + 6, rect.h + 6, 15);
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = '#181122';
+          ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 13);
+          ctx.fillStyle = `rgba(255, 210, 63, ${(0.12 * pulse).toFixed(3)})`;
+          ctx.fill();
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = '#060b18';
           ctx.stroke();
-          ctx.lineWidth = 2.5;
-          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#ffd23f';
           ctx.stroke();
         },
       });
@@ -147,14 +159,14 @@ export class Renderer {
 
     const hover = interaction.hoverTargetSlot;
     if (hover && interaction.draggingFromSlot) {
-      const rect = sim.board.getSlotRect(hover);
+      const rect = expandedSlotRect(sim.board, hover);
       const occupied = sim.board.getUid(hover) !== null;
       this.buckets[RenderLayer.WorldUI]!.push({
         layer: RenderLayer.WorldUI,
         sortY: rect.y,
         render: (ctx) => {
           ctx.beginPath();
-          ctx.roundRect(rect.x - 3, rect.y - 3, rect.w + 6, rect.h + 6, 15);
+          ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 13);
           ctx.fillStyle = occupied ? 'rgba(250, 204, 21, 0.25)' : 'rgba(52, 211, 153, 0.28)';
           ctx.fill();
           ctx.lineWidth = 3;
@@ -195,12 +207,17 @@ export class Renderer {
       // Walking bob & tilt
       const isStunned = currentTick < m.stunUntilTick;
       const isSlowed = currentTick < m.slowUntilTick;
-      const walkCycle = isStunned ? 0 : Math.sin(distInterp * 0.16 + m.entityId);
-      const bobY = Math.abs(walkCycle) * -3.5;
+      // Stepped 2-frame pixel walk bob (one art pixel)
+      const drawSize = m.isBoss ? BOSS_SPRITE : MOB_SPRITE;
+      const artPx = drawSize / (m.isBoss ? 32 : 24);
+      const walkFrame = isStunned ? 0 : Math.floor(distInterp * 0.09 + m.entityId) & 1;
+      const bobY = walkFrame * -artPx;
       const facingLeft = m.currX - m.prevX < -0.05;
+      const footOff = m.radius * 0.8;
+      const spriteTop = footOff - drawSize * (31 / 32);
 
-      const drawSize = m.isBoss ? 78 : 48;
       const baseSprite = this.sprites.monsterSprite(m.kind, false);
+      const smooth = this.sprites.isSmoothSprite(baseSprite);
       const hitAgeSec = (currentTick + alpha - m.lastHitTick) * TICK_DT;
       const showHitFlash = hitAgeSec >= 0 && hitAgeSec < 0.1;
 
@@ -223,29 +240,18 @@ export class Renderer {
         sortY: y,
         render: (ctx) => {
           ctx.save();
+          ctx.imageSmoothingEnabled = smooth;
           ctx.translate(x, y + bobY);
           if (facingLeft) {
             ctx.scale(-1, 1);
           }
-          ctx.drawImage(
-            baseSprite,
-            -drawSize * 0.5,
-            -drawSize * 0.56,
-            drawSize,
-            drawSize,
-          );
+          ctx.drawImage(baseSprite, -drawSize * 0.5, spriteTop, drawSize, drawSize);
 
           if (showHitFlash) {
             const flashSprite = this.sprites.monsterSprite(m.kind, true);
             const prevA = ctx.globalAlpha;
             ctx.globalAlpha = (1 - hitAgeSec / 0.1) * 0.82;
-            ctx.drawImage(
-              flashSprite,
-              -drawSize * 0.5,
-              -drawSize * 0.56,
-              drawSize,
-              drawSize,
-            );
+            ctx.drawImage(flashSprite, -drawSize * 0.5, spriteTop, drawSize, drawSize);
             ctx.globalAlpha = prevA;
           }
           ctx.restore();
@@ -258,16 +264,20 @@ export class Renderer {
           layer: RenderLayer.WorldUI,
           sortY: y + 1,
           render: (ctx) => {
-            const barW = m.isBoss ? 68 : 36;
-            const barH = m.isBoss ? 9 : 6;
+            const barW = m.isBoss ? 76 : 40;
+            const barH = m.isBoss ? 10 : 6;
             const bx = x - barW * 0.5;
-            const by = y - (m.isBoss ? 44 : 29);
+            const by = y + spriteTop + artPx * 2 - barH - 6;
             const ratio = Math.max(0, Math.min(1, m.hp / m.maxHp));
 
             // Rounded outer track
             ctx.beginPath();
             ctx.roundRect(bx - 1.5, by - 1.5, barW + 3, barH + 3, 99);
-            ctx.fillStyle = '#181122';
+            ctx.fillStyle = '#060b18';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.roundRect(bx, by, barW, barH, 99);
+            ctx.fillStyle = '#2a1420';
             ctx.fill();
 
             if (ratio > 0) {
@@ -344,17 +354,19 @@ export class Renderer {
         popScale = 0.62 + Math.sin(st * Math.PI * 0.76) * 0.44;
       }
 
-      // Idle breathing bounce (squash & stretch)
-      const idlePhase = simTimeSec * 4.4 + u.uid * 1.37;
-      const breath = Math.sin(idlePhase);
-      let scaleX = 1 - breath * 0.032;
-      let scaleY = 1 + breath * 0.042;
+      // Idle breathing: stepped 2-frame pixel bob (one art pixel), de-synced per unit
+      const isField = u.slot.area === 'field';
+      const spriteSize = (isField ? FIELD_SPRITE : BENCH_SPRITE) * popScale;
+      const artPx = spriteSize / 32;
+      const idleFrame = Math.floor(simTimeSec * 2.4 + u.uid * 0.37) & 1;
+      const bobY = idleFrame * -artPx;
 
       // Attack lunge toward target on simulation clock
       let lungeX = 0;
       let lungeY = 0;
+      let lungeLift = 0;
       const atkElapsedSec = (currentTick + alpha - u.lastAttackTick) * TICK_DT;
-      if (u.slot.area === 'field' && atkElapsedSec >= 0 && atkElapsedSec < 0.18) {
+      if (isField && atkElapsedSec >= 0 && atkElapsedSec < 0.18) {
         const lungeCurve =
           atkElapsedSec < 0.045
             ? atkElapsedSec / 0.045
@@ -362,40 +374,42 @@ export class Renderer {
         const distLunge = lungeCurve * 13;
         lungeX = u.attackDirX * distLunge;
         lungeY = u.attackDirY * distLunge;
-        scaleX *= 1 + lungeCurve * 0.08;
-        scaleY *= 1 - lungeCurve * 0.06;
+        lungeLift = lungeCurve * artPx * 2;
       }
 
       const drawX = baseX + lungeX;
       const drawY = baseY + lungeY;
-      const baseSize = (u.slot.area === 'field' ? 72 : 64) * popScale;
+      const footY = baseY + (isField ? FIELD_FOOT : BENCH_FOOT);
+      const drawFootY = footY + lungeY;
       const sprite = this.sprites.unitToken(def, grade);
-      const facingLeft = u.slot.area === 'field' && u.attackDirX < -0.2;
+      const smooth = this.sprites.isSmoothSprite(sprite);
+      const facingLeft = isField && u.attackDirX < -0.2;
 
       // 1. Grade-specific rotating/pulsing aura ring under feet
-      const footY = baseY + (u.slot.area === 'field' ? 24 : 21);
       this.buckets[RenderLayer.GroundFx]!.push({
         layer: RenderLayer.GroundFx,
         sortY: baseY - 2,
         render: (ctx) => {
           const pulse = 1 + Math.sin(simTimeSec * 3.8 + u.uid) * 0.07;
-          const rx = (u.slot.area === 'field' ? 27 : 24) * pulse;
-          const ry = rx * 0.46;
+          const rx = (isField ? 30 : 28) * pulse;
+          const ry = rx * 0.4;
 
           if (grade.rank >= 4) {
-            const glow = this.sprites.glow(grade.color, 36);
+            const glow = this.sprites.glow(grade.color, 40);
             const prevA = ctx.globalAlpha;
-            ctx.globalAlpha = grade.rank >= 5 ? 0.52 : 0.36;
-            ctx.drawImage(glow, baseX - 34, footY - 18, 68, 36);
+            ctx.globalAlpha = grade.rank >= 5 ? 0.55 : 0.38;
+            ctx.drawImage(glow, baseX - 40, footY - 20, 80, 40);
             ctx.globalAlpha = prevA;
           }
 
-          // Base aura fill
           ctx.beginPath();
           ctx.ellipse(baseX, footY, rx, ry, 0, 0, Math.PI * 2);
-          ctx.fillStyle = hexWithAlpha(grade.color, grade.rank >= 3 ? 0.28 : 0.18);
+          ctx.fillStyle = hexWithAlpha(grade.color, grade.rank >= 3 ? 0.3 : 0.2);
           ctx.fill();
-          ctx.lineWidth = grade.rank >= 4 ? 3 : 2.2;
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#060b18';
+          ctx.stroke();
+          ctx.lineWidth = grade.rank >= 4 ? 2.6 : 2;
           ctx.strokeStyle = grade.color;
           ctx.stroke();
 
@@ -414,7 +428,7 @@ export class Renderer {
               const a0 = rot + (s * Math.PI * 2) / segs;
               const a1 = a0 + Math.PI / (segs + 1);
               ctx.beginPath();
-              ctx.ellipse(baseX, footY, rx + 3.5, ry + 2, 0, a0, a1);
+              ctx.ellipse(baseX, footY, rx + 4, ry + 2.5, 0, a0, a1);
               ctx.stroke();
             }
           }
@@ -426,34 +440,26 @@ export class Renderer {
         layer: RenderLayer.Shadow,
         sortY: drawY,
         render: (ctx) => {
-          ctx.fillStyle = 'rgba(24, 17, 34, 0.36)';
+          ctx.fillStyle = 'rgba(2, 6, 18, 0.5)';
           ctx.beginPath();
-          ctx.ellipse(
-            drawX,
-            drawY + baseSize * 0.33,
-            baseSize * 0.32 * scaleX,
-            baseSize * 0.13,
-            0,
-            0,
-            Math.PI * 2,
-          );
+          ctx.ellipse(drawX, drawFootY + 1, spriteSize * 0.27, spriteSize * 0.085, 0, 0, Math.PI * 2);
           ctx.fill();
         },
       });
 
-      // 3. Cel-shaded 2-head SD Character Sprite
+      // 3. Retro pixel-art sprite (nearest-neighbour) or external PNG illustration (smoothed)
       this.buckets[RenderLayer.Unit]!.push({
         layer: RenderLayer.Unit,
         sortY: drawY,
         render: (ctx) => {
           ctx.save();
+          ctx.imageSmoothingEnabled = smooth;
           if (isDraggedOrigin) {
             ctx.globalAlpha *= 0.38;
           }
-          const anchorFootY = drawY + baseSize * 0.34;
-          ctx.translate(drawX, anchorFootY);
-          ctx.scale(facingLeft ? -scaleX : scaleX, scaleY);
-          ctx.drawImage(sprite, -baseSize * 0.5, -baseSize * 0.92, baseSize, baseSize);
+          ctx.translate(drawX, drawFootY + bobY - lungeLift);
+          if (facingLeft) ctx.scale(-1, 1);
+          ctx.drawImage(sprite, -spriteSize * 0.5, -spriteSize * (31 / 32), spriteSize, spriteSize);
           ctx.restore();
         },
       });
@@ -464,16 +470,16 @@ export class Renderer {
           layer: RenderLayer.WorldUI,
           sortY: drawY + 2,
           render: (ctx) => {
-            const lx = drawX + baseSize * 0.31;
-            const ly = drawY - baseSize * 0.34;
+            const lx = drawX + spriteSize * 0.34;
+            const ly = drawFootY - spriteSize * 0.8;
             ctx.beginPath();
-            ctx.arc(lx, ly, 9.5, 0, Math.PI * 2);
-            ctx.fillStyle = '#181122';
+            ctx.arc(lx, ly, 10, 0, Math.PI * 2);
+            ctx.fillStyle = '#060b18';
             ctx.fill();
             ctx.lineWidth = 2.2;
-            ctx.strokeStyle = '#fde047';
+            ctx.strokeStyle = '#ffd23f';
             ctx.stroke();
-            ctx.fillStyle = '#fde047';
+            ctx.fillStyle = '#ffd23f';
             ctx.fillRect(lx - 4, ly - 1, 8, 6);
             ctx.beginPath();
             ctx.arc(lx, ly - 1.5, 2.8, Math.PI, 0);
@@ -485,23 +491,18 @@ export class Renderer {
 
       // 5. Drag Ghost
       if (isDraggedOrigin) {
-        const ghostSize = 80;
+        const ghostSize = 96;
         const gx = interaction.dragLogicalX;
-        const gy = interaction.dragLogicalY - 20;
+        const gy = interaction.dragLogicalY + ghostSize * 0.3;
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
           sortY: 9500,
           render: (ctx) => {
-            const prevAlpha = ctx.globalAlpha;
+            ctx.save();
+            ctx.imageSmoothingEnabled = smooth;
             ctx.globalAlpha = 0.94;
-            ctx.drawImage(
-              sprite,
-              gx - ghostSize * 0.5,
-              gy - ghostSize * 0.5,
-              ghostSize,
-              ghostSize,
-            );
-            ctx.globalAlpha = prevAlpha;
+            ctx.drawImage(sprite, gx - ghostSize * 0.5, gy - ghostSize, ghostSize, ghostSize);
+            ctx.restore();
           },
         });
       }
