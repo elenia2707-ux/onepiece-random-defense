@@ -16,6 +16,7 @@ export default defineConfig({
         name: 'OnePiece Random Defense',
         short_name: 'ORD Defense',
         description: '운빨존많겜 UI × 원랜디 다단계 조합 모바일 랜덤 디펜스',
+        lang: 'ko',
         start_url: '.',
         scope: '.',
         display: 'standalone',
