@@ -184,6 +184,24 @@ export interface UpgradeGroupDef {
 
 export type WispPools = Readonly<Record<GradeId, readonly UnitId[]>>;
 
+export type RelicId =
+  | 'golden_vault'
+  | 'million_sword_seal'
+  | 'bandit_dagger'
+  | 'immortal_furnace'
+  | 'founding_jade_seal'
+  | 'heavenly_scroll_chest';
+
+export interface RelicDef {
+  readonly id: RelicId;
+  readonly name: string;
+  readonly tag: string;
+  readonly desc: string;
+  readonly maxLevel: number;
+  readonly baseUpgradeGold: number;
+  readonly stepUpgradeGold: number;
+}
+
 export interface GameDataBundle {
   readonly grades: readonly GradeDef[];
   readonly gradesById: ReadonlyMap<GradeId, GradeDef>;
@@ -196,4 +214,6 @@ export interface GameDataBundle {
   readonly gambleRates: readonly GambleRateDef[];
   readonly upgrades: readonly UpgradeGroupDef[];
   readonly upgradesByFaction: ReadonlyMap<FactionId, UpgradeGroupDef>;
+  readonly relics: readonly RelicDef[];
+  readonly relicsById: ReadonlyMap<RelicId, RelicDef>;
 }

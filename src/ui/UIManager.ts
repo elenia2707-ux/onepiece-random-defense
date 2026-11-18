@@ -1,4 +1,5 @@
 import type { GameCommand, SlotRef } from '../core/CommandQueue';
+import { formatRelicStatSummary, getVaultInterestCap, getVaultInterestPct } from '../core/relicFormulas';
 import type { SlotView, UISnapshot } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import type { RecipeGraph } from '../craft/RecipeGraph';
@@ -7,9 +8,19 @@ import type {
   GameDataBundle,
   GradeId,
   RecipeDef,
+  RelicId,
   UnitId,
   UpgradeGroupId,
 } from '../data/types';
+import {
+  computeSettlementReward,
+  getRelicUpgradeGoldCost,
+  type MetaProfile,
+  RELIC_CHEST_GOLD_COST,
+  type RelicDrawResult,
+  type RelicUpgradeResult,
+  type SettlementRecord,
+} from '../platform/MetaStore';
 import type { SpriteCache } from '../render/SpriteCache';
 
 export interface UIControlHandlers {
@@ -17,11 +28,17 @@ export interface UIControlHandlers {
   onCycleSpeed(): void;
   onTogglePause(): void;
   onRestart(): void;
+  onSettleAndRestart(): void;
+  getMetaProfile(): MetaProfile;
+  getSettlementRecord(): SettlementRecord | null;
+  onDrawRelic(payWith: 'key' | 'gold'): RelicDrawResult;
+  onUpgradeRelic(relicId: RelicId): RelicUpgradeResult;
+  onGrantDevMeta(): void;
   getSelectedSlot(): SlotRef | null;
   clearSelection(): void;
 }
 
-type SheetKind = 'craft' | 'wisp' | 'gamble' | 'upgrade';
+type SheetKind = 'craft' | 'wisp' | 'gamble' | 'upgrade' | 'relic';
 type CraftTabId = 'all' | GradeId;
 
 const NORMAL_SYNC_INTERVAL_MS = 100; // Max 10Hz for non-priority HUD fields (AGENTS.md §4)
@@ -50,6 +67,12 @@ const INK = '#1a1224';
 const ICON = {
   // 엽전/은자 (Square-holed brass Oriental coin)
   coin: `${SVG_OPEN}<circle cx="12" cy="12" r="9.5" fill="#ffd23f" stroke="${INK}" stroke-width="2.4"/><circle cx="12" cy="12" r="6.8" fill="none" stroke="#d97706" stroke-width="1.5"/><rect x="8.8" y="8.8" width="6.4" height="6.4" rx="1" fill="${INK}"/><path d="M7.5 7.2l1.8-1.2" stroke="#fffbeb" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  // 천하주화 (Octagonal imperial gold coin with crimson jewel core)
+  goldCoin: `${SVG_OPEN}<polygon points="8.2,2.5 15.8,2.5 21.5,8.2 21.5,15.8 15.8,21.5 8.2,21.5 2.5,15.8 2.5,8.2" fill="#fde047" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><polygon points="9.2,5.2 14.8,5.2 18.8,9.2 18.8,14.8 14.8,18.8 9.2,18.8 5.2,14.8 5.2,9.2" fill="#f59e0b" stroke="#b45309" stroke-width="1.2"/><circle cx="12" cy="12" r="3.4" fill="#e11d48" stroke="${INK}" stroke-width="1.8"/><circle cx="11" cy="11" r="1.1" fill="#fef08a"/></svg>`,
+  // 기보함 열쇠 (Ornate golden treasury key with crimson tassel)
+  key: `${SVG_OPEN}<circle cx="8" cy="9" r="5.2" fill="#fde047" stroke="${INK}" stroke-width="2.3"/><circle cx="8" cy="9" r="2" fill="${INK}"/><path d="M12.2 12l8.3 6.5M16.5 15.4l-2.2 2.8M19.5 17.7l-2.3 2.9" stroke="${INK}" stroke-width="4.4" stroke-linecap="round"/><path d="M12.2 12l8.3 6.5M16.5 15.4l-2.2 2.8M19.5 17.7l-2.3 2.9" stroke="#facc15" stroke-width="2.1" stroke-linecap="round"/><path d="M4.2 13.2l-1.7 4.2" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+  // 기보함 (Lacquered Wuxia relic chest)
+  chest: `${SVG_OPEN}<rect x="3" y="8.5" width="18" height="12" rx="2.5" fill="#b45309" stroke="${INK}" stroke-width="2.3"/><path d="M3 9.5C3 6.5 6 5 12 5s9 1.5 9 4.5H3z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="3" y="10.5" width="18" height="2.6" fill="#facc15" stroke="${INK}" stroke-width="1.6"/><rect x="10" y="9.5" width="4" height="5" rx="1" fill="#fef08a" stroke="${INK}" stroke-width="1.8"/></svg>`,
   // 영단 (Glowing crimson-gold medicinal elixir pill)
   elixir: `${SVG_OPEN}<circle cx="12" cy="12.5" r="8.8" fill="#f43f5e" stroke="${INK}" stroke-width="2.4"/><path d="M6.5 14.5a7 7 0 0 0 11.2 1.2" fill="none" stroke="#9f1239" stroke-width="2.2" stroke-linecap="round"/><circle cx="9.4" cy="9.2" r="2.6" fill="#fef08a"/><circle cx="16.5" cy="6" r="2" fill="#4ade80" stroke="${INK}" stroke-width="1.6"/></svg>`,
   // 기연 비급 (Rolled jade-and-gold martial arts scroll)
@@ -66,6 +89,21 @@ const ICON = {
   pavilion: `${SVG_OPEN}<path d="M2.5 11.5L12 4l9.5 7.5H2.5z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="5.5" y="11.5" width="13" height="8" rx="1.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M9.5 19.5v-5h5v5" fill="#991b1b" stroke="${INK}" stroke-width="1.8"/></svg>`,
 } as const;
 
+const RELIC_ICON: Readonly<Record<RelicId, string>> = {
+  // 천하제일 전장 금고 — Golden treasury coffer overflowing with sycee ingots
+  golden_vault: `${SVG_OPEN}<rect x="3" y="9" width="18" height="11.5" rx="2.5" fill="#d97706" stroke="${INK}" stroke-width="2.2"/><path d="M4.5 9c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5H4.5z" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><circle cx="12" cy="14.5" r="3" fill="#fef08a" stroke="${INK}" stroke-width="1.8"/><rect x="11" y="13.5" width="2" height="2" fill="${INK}"/></svg>`,
+  // 만금쾌검패 — Imperial gold medallion crossed by glowing qi sword
+  million_sword_seal: `${SVG_OPEN}<polygon points="12,2 20,7 20,17 12,22 4,17 4,7" fill="#7c2d12" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><polygon points="12,4.5 17.5,8 17.5,16 12,19.5 6.5,16 6.5,8" fill="#f59e0b"/><path d="M12 3.5v13M8.5 13.5h7" stroke="${INK}" stroke-width="4.2" stroke-linecap="round"/><path d="M12 3.5v13" stroke="#e0f2fe" stroke-width="2.2" stroke-linecap="round"/><path d="M8.5 13.5h7" stroke="#fef08a" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+  // 야행도적의 비수 — Shadow stiletto with stolen brass coin gleam
+  bandit_dagger: `${SVG_OPEN}<path d="M18.5 3.5L7 14l3 3L20.5 5.5l-2-2z" fill="#38bdf8" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><path d="M5.5 15.5l4 4M4 19.5l3-3" stroke="#facc15" stroke-width="2.6" stroke-linecap="round"/><circle cx="16.5" cy="16.5" r="4" fill="#fde047" stroke="${INK}" stroke-width="2"/><rect x="15.5" y="15.5" width="2" height="2" fill="${INK}"/></svg>`,
+  // 태상노군 만년단로 — Taoist 3-legged bronze-gold alchemy furnace
+  immortal_furnace: `${SVG_OPEN}<path d="M7 18.5l-1.5 3M17 18.5l1.5 3M12 19v2.5" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/><ellipse cx="12" cy="13.5" rx="7.5" ry="5.8" fill="#ea580c" stroke="${INK}" stroke-width="2.3"/><path d="M7 8.5h10l-1.5-3.5h-7L7 8.5z" fill="#facc15" stroke="${INK}" stroke-width="2.1" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="2.5" fill="#fef08a"/></svg>`,
+  // 전설의 개국옥새 — Imperial white-jade seal with vermilion ink base
+  founding_jade_seal: `${SVG_OPEN}<rect x="4.5" y="12.5" width="15" height="8" rx="2" fill="#5eead4" stroke="${INK}" stroke-width="2.3"/><rect x="4.5" y="18" width="15" height="2.5" rx="1" fill="#e11d48" stroke="${INK}" stroke-width="1.6"/><path d="M8.5 12.5V8a3.5 3.5 0 0 1 7 0v4.5" fill="#ccfbf1" stroke="${INK}" stroke-width="2.3"/><circle cx="12" cy="8" r="1.6" fill="#facc15"/></svg>`,
+  // 천기비급함 — Celestial azure scroll case with golden talisman
+  heavenly_scroll_chest: `${SVG_OPEN}<rect x="3.5" y="6.5" width="17" height="12" rx="3" fill="#0284c7" stroke="${INK}" stroke-width="2.3"/><rect x="6" y="4" width="12" height="4" rx="1.5" fill="#38bdf8" stroke="${INK}" stroke-width="2"/><rect x="10" y="8" width="4" height="8.5" rx="1" fill="#fde047" stroke="${INK}" stroke-width="1.9"/><path d="M12 10v4.5" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+};
+
 export class UIManager {
   private readonly root: HTMLElement;
   private readonly data: GameDataBundle;
@@ -80,6 +118,8 @@ export class UIManager {
   private monsterTitleEl!: HTMLElement;
   private monsterCountEl!: HTMLElement;
   private monsterFillEl!: HTMLElement;
+  private relicBtnEl!: HTMLButtonElement;
+  private relicBadgeEl!: HTMLElement;
   private speedBtnEl!: HTMLButtonElement;
   private pauseBtnEl!: HTMLButtonElement;
   private devBtnEl!: HTMLButtonElement;
@@ -107,7 +147,9 @@ export class UIManager {
   private coinValEl!: HTMLElement;
   private luckValEl!: HTMLElement;
   private wispValEl!: HTMLElement;
+  private relicBuffStripEl!: HTMLElement;
   private occupancyEl!: HTMLElement;
+  private prevRelicStripSig = '';
 
   private summonBtnEl!: HTMLButtonElement;
   private summonCostEl!: HTMLElement;
@@ -153,6 +195,8 @@ export class UIManager {
   private toastLayerEl!: HTMLElement;
   private gameOverModalEl!: HTMLElement;
   private gameOverSubEl!: HTMLElement;
+  private gameOverLootEl!: HTMLElement;
+  private prevSettlementRenderedWave = -1;
 
   private lastSyncMs = -1000;
   private lastSnapshot: UISnapshot | null = null;
@@ -168,6 +212,10 @@ export class UIManager {
   private devOpen = false;
   private gameOverDismissed = false;
   private lastAnimatedGambleSeq = 0;
+  private lastRelicNotice: { readonly text: string; readonly isWin: boolean; readonly seq: number } | null =
+    null;
+  private relicNoticeSeq = 0;
+  private lastAnimatedRelicSeq = 0;
 
   public constructor(
     data: GameDataBundle,
@@ -238,6 +286,10 @@ export class UIManager {
         </div>
 
         <div class="hud-controls">
+          <button id="btn-relic" type="button" class="hud-btn relic-btn interactive" aria-label="무림 신물 기보고">
+            ${ICON.chest}<span>기보</span>
+            <span id="badge-relic" class="hud-mini-badge">0</span>
+          </button>
           <button id="btn-speed" type="button" class="hud-btn interactive active" aria-label="배속">1x</button>
           <button id="btn-pause" type="button" class="hud-btn interactive" aria-label="일시정지">⏸</button>
           <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴">DEV</button>
@@ -268,6 +320,7 @@ export class UIManager {
           <button type="button" class="dev-chip-btn interactive" data-dev-action="luck">+5 영단</button>
           <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-common">+1 삼류 기연</button>
           <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-rare">+1 일류 기연</button>
+          <button type="button" class="dev-chip-btn dev-span-2 interactive" data-dev-action="meta">+250 천하주화 · +2 기보함 열쇠</button>
         </div>
       </aside>
 
@@ -323,6 +376,7 @@ export class UIManager {
             <span class="currency-pill luck" title="영단">${ICON.elixir}<span id="val-luck">0</span></span>
             <span class="currency-pill wisp" title="기연 비급">${ICON.wisp}<span id="val-wisp">0</span></span>
           </div>
+          <button id="relic-buff-strip" type="button" class="relic-buff-strip interactive" title="무림 신물 기보고 열기"></button>
           <span id="val-occupancy" class="slot-occupancy">비무대 0/18</span>
         </div>
 
@@ -378,10 +432,12 @@ export class UIManager {
 
       <div id="gameover-modal" class="gameover-modal interactive" role="alertdialog" aria-modal="true">
         <div class="gameover-card">
-          <div class="gameover-title">비무대 함락!</div>
+          <div class="gameover-title">비무대 함락 · 출정 정산</div>
           <div id="gameover-sub" class="gameover-sub">제 01 장</div>
+          <div id="gameover-loot" class="gameover-loot"></div>
           <div class="gameover-actions">
             <button id="btn-gameover-inspect" type="button" class="card-cta-btn interactive">전장 확인</button>
+            <button id="btn-gameover-relic" type="button" class="card-cta-btn cta-sky interactive">무림 신물</button>
             <button id="btn-gameover-restart" type="button" class="card-cta-btn cta-green interactive">재출정</button>
           </div>
         </div>
@@ -395,6 +451,8 @@ export class UIManager {
     this.monsterTitleEl = this.mustGet('hud-monster-title');
     this.monsterCountEl = this.mustGet('hud-monster-count');
     this.monsterFillEl = this.mustGet('hud-monster-fill');
+    this.relicBtnEl = this.mustGet('btn-relic') as HTMLButtonElement;
+    this.relicBadgeEl = this.mustGet('badge-relic');
     this.speedBtnEl = this.mustGet('btn-speed') as HTMLButtonElement;
     this.pauseBtnEl = this.mustGet('btn-pause') as HTMLButtonElement;
     this.devBtnEl = this.mustGet('btn-dev') as HTMLButtonElement;
@@ -421,6 +479,7 @@ export class UIManager {
     this.coinValEl = this.mustGet('val-coin');
     this.luckValEl = this.mustGet('val-luck');
     this.wispValEl = this.mustGet('val-wisp');
+    this.relicBuffStripEl = this.mustGet('relic-buff-strip');
     this.occupancyEl = this.mustGet('val-occupancy');
 
     this.summonBtnEl = this.mustGet('btn-summon') as HTMLButtonElement;
@@ -460,11 +519,14 @@ export class UIManager {
     this.toastLayerEl = this.mustGet('toast-layer');
     this.gameOverModalEl = this.mustGet('gameover-modal');
     this.gameOverSubEl = this.mustGet('gameover-sub');
+    this.gameOverLootEl = this.mustGet('gameover-loot');
 
     this.bindEvents();
   }
 
   private bindEvents(): void {
+    this.relicBtnEl.addEventListener('click', () => this.toggleSheet('relic'));
+    this.relicBuffStripEl.addEventListener('click', () => this.toggleSheet('relic'));
     this.speedBtnEl.addEventListener('click', () => this.handlers.onCycleSpeed());
     this.pauseBtnEl.addEventListener('click', () => this.handlers.onTogglePause());
 
@@ -513,6 +575,9 @@ export class UIManager {
       } else if (act === 'wisp-rare') {
         this.handlers.onDispatch({ type: 'grantTestResource', wispGrade: 'rare' });
         this.showToast('DEV: +1 일류 기연 지급');
+      } else if (act === 'meta') {
+        this.handlers.onGrantDevMeta();
+        this.showToast('DEV: +250 천하주화 · +2 기보함 열쇠 지급');
       }
     });
 
@@ -611,6 +676,14 @@ export class UIManager {
       const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-tab-id]');
       if (!btn) return;
       const tabId = btn.dataset.tabId!;
+      if (tabId === 'sheet-upgrade') {
+        this.openSheet('upgrade');
+        return;
+      }
+      if (tabId === 'sheet-relic') {
+        this.openSheet('relic');
+        return;
+      }
       if (this.activeSheet === 'craft') {
         this.craftTab = tabId as CraftTabId;
         this.prevSheetSignature = '';
@@ -649,12 +722,55 @@ export class UIManager {
         if (group) {
           this.handlers.onDispatch({ type: 'upgrade', group });
         }
+      } else if (action === 'relic-draw') {
+        const payWith = btn.dataset.pay === 'key' ? 'key' : 'gold';
+        const res = this.handlers.onDrawRelic(payWith);
+        if (res.ok) {
+          const def = this.data.relicsById.get(res.relicId);
+          const rName = def?.name ?? res.relicId;
+          const msg = res.isNew
+            ? `✨ 신규 신물 해금! [${rName}] Lv.1`
+            : `⬆️ 신물 승급! [${rName}] Lv.${res.prevLevel} → Lv.${res.newLevel}`;
+          this.lastRelicNotice = { seq: ++this.relicNoticeSeq, isWin: true, text: msg };
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(msg);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'relic-upgrade') {
+        const relicId = btn.dataset.relicId as RelicId | undefined;
+        if (!relicId) return;
+        const res = this.handlers.onUpgradeRelic(relicId);
+        if (res.ok) {
+          const def = this.data.relicsById.get(res.relicId);
+          const rName = def?.name ?? res.relicId;
+          const msg = res.wasUnlock
+            ? `✨ 신물 지정 해금! [${rName}] Lv.1`
+            : `🔨 신물 제련 완료! [${rName}] Lv.${res.newLevel}`;
+          this.lastRelicNotice = { seq: ++this.relicNoticeSeq, isWin: true, text: msg };
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(msg);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'settle-run') {
+        this.handlers.onSettleAndRestart();
+      } else if (action === 'restart-run') {
+        this.handlers.onRestart();
       }
     });
 
     this.mustGet('btn-gameover-inspect').addEventListener('click', () => {
       this.gameOverDismissed = true;
       this.gameOverModalEl.classList.remove('open');
+    });
+
+    this.mustGet('btn-gameover-relic').addEventListener('click', () => {
+      this.gameOverDismissed = true;
+      this.gameOverModalEl.classList.remove('open');
+      this.openSheet('relic');
     });
 
     this.mustGet('btn-gameover-restart').addEventListener('click', () => {
@@ -691,6 +807,7 @@ export class UIManager {
     }
     this.lastSyncMs = nowMs;
     this.lastSnapshot = snapshot;
+    const meta = this.handlers.getMetaProfile();
 
     // 1. Top HUD Wave & Boss status
     const waveStr = String(snapshot.wave).padStart(2, '0');
@@ -730,11 +847,19 @@ export class UIManager {
       this.bossHudTrailEl.style.width = wCss;
     }
 
+    const canDrawGold =
+      meta.gold >= RELIC_CHEST_GOLD_COST &&
+      this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel);
+    const relicBadgeNum = meta.keys > 0 ? String(meta.keys) : canDrawGold ? '!' : '0';
+    this.setText(this.relicBadgeEl, relicBadgeNum);
+    this.relicBadgeEl.classList.toggle('visible', relicBadgeNum !== '0');
+    this.relicBtnEl.classList.toggle('active', this.activeSheet === 'relic');
+
     this.setText(this.speedBtnEl, `${snapshot.speed === 0 ? 1 : snapshot.speed}x`);
     this.setText(this.pauseBtnEl, snapshot.paused ? '▶' : '⏸');
     this.pauseBtnEl.classList.toggle('active', snapshot.paused);
 
-    // 2. Currencies & Dock badges
+    // 2. Currencies & Live Relic Buff Strip
     this.setText(this.coinValEl, snapshot.coin.toLocaleString('ko-KR'));
     this.setText(this.luckValEl, String(snapshot.luckStone));
 
@@ -745,6 +870,8 @@ export class UIManager {
 
     this.setText(this.gambleBadgeEl, String(snapshot.luckStone));
     this.gambleBadgeEl.classList.toggle('visible', snapshot.luckStone > 0);
+
+    this.refreshRelicBuffStrip(snapshot, meta);
 
     this.setText(this.occupancyEl, `비무대 ${snapshot.fieldOccupied}/18`);
     this.setText(this.benchCountEl, `${snapshot.benchOccupied}/12`);
@@ -827,17 +954,68 @@ export class UIManager {
       this.refreshSheet(snapshot);
     }
 
-    // 6. Game Over Modal
+    // 6. Game Over Settlement Modal
     if (snapshot.gameOver && !this.gameOverDismissed) {
-      this.setText(
-        this.gameOverSubEl,
-        `제 ${waveStr} 장 · 침입 마물 ${snapshot.monsterCap}기 돌파`,
-      );
+      const rec = this.handlers.getSettlementRecord();
+      const subTxt = rec
+        ? `제 ${waveStr} 장 도달${rec.isNewBest ? ' (최고 기록!)' : ''} · 마물 ${rec.monstersSlain}기 · 영물 ${rec.bossesSlain}기 토벌`
+        : `제 ${waveStr} 장 · 침입 마물 ${snapshot.monsterCap}기 돌파`;
+      this.setText(this.gameOverSubEl, subTxt);
+
+      if (rec && this.prevSettlementRenderedWave !== rec.totalGold + rec.totalKeys * 100000) {
+        this.prevSettlementRenderedWave = rec.totalGold + rec.totalKeys * 100000;
+        this.gameOverLootEl.innerHTML = `
+          <div class="settlement-loot-title">출정 정산 영구 보상</div>
+          <div class="settlement-loot-row">
+            <div class="settlement-loot-item">
+              ${ICON.goldCoin}
+              <div class="settlement-loot-meta">
+                <span class="settlement-loot-gain">+${rec.goldEarned.toLocaleString('ko-KR')} 천하주화</span>
+                <span class="settlement-loot-total">보유 ${rec.totalGold.toLocaleString('ko-KR')}</span>
+              </div>
+            </div>
+            <div class="settlement-loot-item">
+              ${ICON.key}
+              <div class="settlement-loot-meta">
+                <span class="settlement-loot-gain">+${rec.keysEarned} 기보함 열쇠</span>
+                <span class="settlement-loot-total">보유 ${rec.totalKeys}개</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
       this.gameOverModalEl.classList.add('open');
     } else if (!snapshot.gameOver) {
       this.gameOverDismissed = false;
+      this.prevSettlementRenderedWave = -1;
       this.gameOverModalEl.classList.remove('open');
     }
+  }
+
+  private refreshRelicBuffStrip(snapshot: UISnapshot, meta: MetaProfile): void {
+    const vaultPct = snapshot.relicBonus.interestPct;
+    const swordLv = snapshot.relics.million_sword_seal ?? 0;
+    const swordBps = snapshot.relicBonus.wealthAtkBps;
+    const sig = `${vaultPct}:${swordLv}:${swordBps}:${meta.keys}`;
+    if (sig === this.prevRelicStripSig) return;
+    this.prevRelicStripSig = sig;
+
+    const pills: string[] = [];
+    if (vaultPct > 0) {
+      pills.push(`<span class="relic-buff-pill vault">금고 +${vaultPct}%</span>`);
+    }
+    if (swordLv > 0) {
+      const pctStr = (swordBps / 100).toFixed(1);
+      pills.push(`<span class="relic-buff-pill sword">쾌검 +${pctStr}%</span>`);
+    }
+    if (pills.length === 0) {
+      if (meta.keys > 0) {
+        pills.push(`<span class="relic-buff-pill key-ready">${ICON.key}기보함 ${meta.keys}개</span>`);
+      } else {
+        pills.push(`<span class="relic-buff-pill subtle">${ICON.chest}무림 신물</span>`);
+      }
+    }
+    this.relicBuffStripEl.innerHTML = pills.join('');
   }
 
   public forceRefreshSelection(): void {
@@ -1023,6 +1201,7 @@ export class UIManager {
     const kind = this.activeSheet;
     if (!kind) return;
 
+    const meta = this.handlers.getMetaProfile();
     const totalSlotsUsed = snapshot.fieldOccupied + snapshot.benchOccupied;
     let sig = '';
     if (kind === 'craft') {
@@ -1030,9 +1209,11 @@ export class UIManager {
     } else if (kind === 'wisp') {
       sig = `wisp:${this.wispTab}:${snapshot.wisps.common ?? 0}:${snapshot.wisps.uncommon ?? 0}:${snapshot.wisps.rare ?? 0}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'gamble') {
-      sig = `gamble:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${totalSlotsUsed}`;
+      sig = `gamble:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
+    } else if (kind === 'upgrade') {
+      sig = `upgrade:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${meta.keys}`;
     } else {
-      sig = `upgrade:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}`;
+      sig = `relic:${meta.rev}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.coin}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}`;
     }
 
     if (sig === this.prevSheetSignature) {
@@ -1046,8 +1227,10 @@ export class UIManager {
       this.renderWispSheet(snapshot);
     } else if (kind === 'gamble') {
       this.renderGambleSheet(snapshot);
+    } else if (kind === 'upgrade') {
+      this.renderUpgradeSheet(snapshot, meta);
     } else {
-      this.renderUpgradeSheet(snapshot);
+      this.renderRelicSheet(snapshot, meta);
     }
   }
 
@@ -1292,8 +1475,15 @@ export class UIManager {
   }
 
   private renderGambleSheet(snapshot: UISnapshot): void {
+    const furnaceBonus = snapshot.relicBonus.gambleBonusPct;
+    const furnaceRefund = snapshot.relicBonus.gambleRefundPct;
     this.setText(this.sheetTitleEl, '영약 복용');
-    this.setText(this.sheetSubtitleEl, `보유 영단 ${snapshot.luckStone}개`);
+    this.setText(
+      this.sheetSubtitleEl,
+      furnaceBonus > 0
+        ? `보유 영단 ${snapshot.luckStone}개 · 만년단로 성공률 +${furnaceBonus}% / 실패 환급 ${furnaceRefund}%`
+        : `보유 영단 ${snapshot.luckStone}개`,
+    );
     this.sheetTabsEl.style.display = 'none';
     this.sheetTabsEl.innerHTML = '';
 
@@ -1307,6 +1497,9 @@ export class UIManager {
         const uName = this.data.unitsById.get(res.unitId)?.name ?? res.unitId;
         bannerClass = 'gamble-result-box win';
         bannerText = `✨ 환골탈태 대성공! [${gName}] ${uName}`;
+      } else if (res.refundedLuck) {
+        bannerClass = 'gamble-result-box win';
+        bannerText = `🔥 주화입마! 만년단로가 영단 1개를 환급했습니다 (${gName})`;
       } else {
         bannerClass = 'gamble-result-box lose';
         bannerText = `🩸 주화입마! 기혈이 역류했습니다 (${gName})`;
@@ -1325,6 +1518,11 @@ export class UIManager {
 
         const canRoll = snapshot.luckStone >= rate.costLuck && hasFreeSlot;
         const btnText = !hasFreeSlot ? '가득참' : snapshot.luckStone >= rate.costLuck ? '복용!' : '영단 부족';
+        const effectivePct = Math.min(95, rate.chancePct + furnaceBonus);
+        const pctLabel =
+          furnaceBonus > 0
+            ? `환골탈태 ${effectivePct}% (+${furnaceBonus}%)`
+            : `환골탈태 ${rate.chancePct}%`;
 
         return `
           <div class="sheet-card">
@@ -1335,7 +1533,7 @@ export class UIManager {
                   <span class="grade-pill" style="background:${gradeDef?.color ?? '#16a34a'}">${escapeHtml(gradeDef?.name ?? rate.tier)}</span>
                   <span class="card-name">${escapeHtml(rate.label)}</span>
                 </div>
-                <div class="card-sub"><span class="rate-pct">환골탈태 ${rate.chancePct}%</span> · ${escapeHtml(rate.desc)}</div>
+                <div class="card-sub"><span class="rate-pct">${pctLabel}</span> · ${escapeHtml(rate.desc)}</div>
               </div>
             </div>
             <button
@@ -1369,14 +1567,26 @@ export class UIManager {
     }
   }
 
-  private renderUpgradeSheet(snapshot: UISnapshot): void {
+  private renderGrowthTabs(active: 'upgrade' | 'relic', meta: MetaProfile): void {
+    const hasRelicNotif =
+      meta.keys > 0 ||
+      (meta.gold >= RELIC_CHEST_GOLD_COST &&
+        this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel));
+    const dot = hasRelicNotif ? '<span class="sheet-tab-dot"></span>' : '';
+    this.sheetTabsEl.style.display = 'flex';
+    this.sheetTabsEl.innerHTML = `
+      <button type="button" class="sheet-tab-btn interactive${active === 'upgrade' ? ' active' : ''}" data-tab-id="sheet-upgrade">문파 내공 (이번 판)</button>
+      <button type="button" class="sheet-tab-btn interactive${active === 'relic' ? ' active' : ''}" data-tab-id="sheet-relic">무림 신물 · 기보고 (영구)${dot}</button>
+    `;
+  }
+
+  private renderUpgradeSheet(snapshot: UISnapshot, meta: MetaProfile): void {
     this.setText(this.sheetTitleEl, '내공 수련');
     this.setText(
       this.sheetSubtitleEl,
       `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 정파 내공 / 사파 외공 / 마교 마공`,
     );
-    this.sheetTabsEl.style.display = 'none';
-    this.sheetTabsEl.innerHTML = '';
+    this.renderGrowthTabs('upgrade', meta);
 
     const cards = this.data.upgrades
       .map((up) => {
@@ -1424,6 +1634,175 @@ export class UIManager {
       .join('');
 
     this.sheetBodyEl.innerHTML = cards;
+  }
+
+  private renderRelicSheet(snapshot: UISnapshot, meta: MetaProfile): void {
+    const ownedCount = this.data.relics.filter((d) => (meta.relics[d.id] ?? 0) > 0).length;
+    const allMaxed = this.data.relics.every((d) => (meta.relics[d.id] ?? 0) >= d.maxLevel);
+    const bestWaveStr = String(meta.bestWave).padStart(2, '0');
+
+    this.setText(this.sheetTitleEl, '무림 신물 · 기보고');
+    this.setText(
+      this.sheetSubtitleEl,
+      `해금 ${ownedCount}/${this.data.relics.length} · 최고 기록 제 ${bestWaveStr} 장 · 영구 계승`,
+    );
+    this.renderGrowthTabs('relic', meta);
+
+    const canDrawKey = !allMaxed && meta.keys >= 1;
+    const canDrawGold = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST;
+
+    const noticeText = this.lastRelicNotice
+      ? this.lastRelicNotice.text
+      : '🏺 기보함을 개봉해 복리 이자(금고)·이자 데미지(만금쾌검패) 등 영구 신물을 획득하세요!';
+    const noticeClass = this.lastRelicNotice
+      ? 'relic-notice-banner win'
+      : 'relic-notice-banner';
+
+    const cardsHtml = this.data.relics
+      .map((def) => {
+        const lv = meta.relics[def.id] ?? 0;
+        const isOwned = lv > 0;
+        const isMax = lv >= def.maxLevel;
+        const cost = getRelicUpgradeGoldCost(def, lv);
+        const affordable = !isMax && meta.gold >= cost;
+
+        let liveBadgeHtml = '';
+        if (def.id === 'golden_vault' && isOwned) {
+          const pct = getVaultInterestPct(lv);
+          const cap = getVaultInterestCap(lv);
+          const est = Math.min(cap, Math.floor((snapshot.coin * pct) / 100));
+          liveBadgeHtml = `<span class="relic-live-chip">예상 이자 +${est} 은자</span>`;
+        } else if (def.id === 'million_sword_seal' && isOwned) {
+          const curPct = (snapshot.relicBonus.wealthAtkBps / 100).toFixed(1);
+          liveBadgeHtml = `<span class="relic-live-chip">현재 공증 +${curPct}%</span>`;
+        } else if (def.id === 'bandit_dagger' && snapshot.relicBonus.pilferedCoinTotal > 0) {
+          liveBadgeHtml = `<span class="relic-live-chip">강탈 +${snapshot.relicBonus.pilferedCoinTotal} 은자</span>`;
+        }
+
+        let statLine = '';
+        if (!isOwned) {
+          statLine = `해금 시(Lv.1): <b class="up-next">${escapeHtml(formatRelicStatSummary(def.id, 1))}</b>`;
+        } else if (isMax) {
+          statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} (극의 달성)`;
+        } else {
+          statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} → <b class="up-next">Lv.${lv + 1}: ${escapeHtml(formatRelicStatSummary(def.id, lv + 1))}</b>`;
+        }
+
+        const lvBadgeBg = isOwned ? '#d97706' : '#334155';
+        const lvBadgeTxt = isOwned ? `Lv.${lv}/${def.maxLevel}` : '미해금';
+        const ctaLabel = isMax ? '극의' : isOwned ? '제련' : '지정 해금';
+
+        return `
+          <div class="sheet-card relic-card${isOwned ? ' relic-owned' : ' relic-locked'}">
+            <div class="card-left">
+              <div class="card-avatar relic-avatar">${RELIC_ICON[def.id]}</div>
+              <div class="card-info">
+                <div class="card-name-row">
+                  <span class="grade-pill" style="background:${lvBadgeBg}">${lvBadgeTxt}</span>
+                  <span class="grade-pill relic-tag-pill">${escapeHtml(def.tag)}</span>
+                  <span class="card-name">${escapeHtml(def.name)}</span>
+                  ${liveBadgeHtml}
+                </div>
+                <div class="card-sub">${statLine}</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="card-cta-btn ${affordable ? (isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
+              data-sheet-action="relic-upgrade"
+              data-relic-id="${def.id}"
+              ${affordable ? '' : 'disabled'}
+            >
+              <span>${ctaLabel}</span>
+              ${isMax ? '' : `<span class="mini-price">${ICON.goldCoin}${cost}</span>`}
+            </button>
+          </div>
+        `;
+      })
+      .join('');
+
+    const settledRec = this.handlers.getSettlementRecord();
+    const preview = computeSettlementReward({
+      wave: snapshot.wave,
+      monstersSlain: snapshot.monstersSlain,
+      bossesSlain: snapshot.bossesSlain,
+    });
+    const canEarlySettle = !snapshot.gameOver && snapshot.wave >= 2;
+
+    const settleFooterHtml = snapshot.gameOver
+      ? `
+        <div class="settlement-preview-bar">
+          <div class="settlement-preview-info">
+            <span class="settlement-preview-title">이번 출정 정산 완료!</span>
+            <span class="settlement-preview-sub">획득 보상: 천하주화 +${settledRec?.goldEarned ?? preview.goldEarned} · 열쇠 +${settledRec?.keysEarned ?? preview.keysEarned}</span>
+          </div>
+          <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="restart-run">
+            <span>재출정</span>
+          </button>
+        </div>
+      `
+      : `
+        <div class="settlement-preview-bar">
+          <div class="settlement-preview-info">
+            <span class="settlement-preview-title">현재 출정 정산 예상 (제 ${String(snapshot.wave).padStart(2, '0')} 장 · 마물 ${snapshot.monstersSlain}기)</span>
+            <span class="settlement-preview-sub">회군 시 영구 보상: 천하주화 +${preview.goldEarned.toLocaleString('ko-KR')} · 기보함 열쇠 +${preview.keysEarned}개</span>
+          </div>
+          <button
+            type="button"
+            class="card-cta-btn ${canEarlySettle ? 'cta-green interactive' : 'cta-disabled'}"
+            data-sheet-action="settle-run"
+            ${canEarlySettle ? '' : 'disabled'}
+          >
+            <span>${canEarlySettle ? '회군 정산' : '2장부터'}</span>
+          </button>
+        </div>
+      `;
+
+    this.sheetBodyEl.innerHTML = `
+      <div class="relic-gacha-panel">
+        <div class="relic-wallet-row">
+          <div class="relic-wallet-pills">
+            <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
+            <span class="relic-wallet-pill key">${ICON.key}<span>기보함 열쇠</span><b>${meta.keys}</b></span>
+          </div>
+          <div class="relic-draw-btns">
+            <button
+              type="button"
+              class="card-cta-btn cta-green ${canDrawKey ? 'interactive' : 'cta-disabled'}"
+              data-sheet-action="relic-draw"
+              data-pay="key"
+              ${canDrawKey ? '' : 'disabled'}
+            >
+              <span>열쇠 개봉</span>
+              <span class="mini-price">${ICON.key}1</span>
+            </button>
+            <button
+              type="button"
+              class="card-cta-btn ${canDrawGold ? 'interactive' : 'cta-disabled'}"
+              data-sheet-action="relic-draw"
+              data-pay="gold"
+              ${canDrawGold ? '' : 'disabled'}
+            >
+              <span>주화 개봉</span>
+              <span class="mini-price">${ICON.goldCoin}${RELIC_CHEST_GOLD_COST}</span>
+            </button>
+          </div>
+        </div>
+        <div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>
+      </div>
+      ${cardsHtml}
+      ${settleFooterHtml}
+    `;
+
+    if (this.lastRelicNotice && this.lastRelicNotice.seq !== this.lastAnimatedRelicSeq) {
+      this.lastAnimatedRelicSeq = this.lastRelicNotice.seq;
+      const bannerEl = document.getElementById('relic-notice-banner');
+      if (bannerEl) {
+        bannerEl.style.animation = 'none';
+        void bannerEl.offsetWidth;
+        bannerEl.style.animation = '';
+      }
+    }
   }
 
   private setText(el: HTMLElement, next: string): void {

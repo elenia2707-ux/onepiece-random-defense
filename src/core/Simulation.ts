@@ -5,6 +5,19 @@ import {
   type StampedCommand,
 } from './CommandQueue';
 import { EventBus } from './EventBus';
+import {
+  getBanditPilferCoin,
+  getBanditProcPer1000,
+  getFurnaceChanceBonusPct,
+  getFurnaceRefundPct,
+  getJadeSealStartCoin,
+  getScrollChestBossLuckBonus,
+  getScrollChestStartWisps,
+  getVaultInterestCap,
+  getVaultInterestPct,
+  getWealthBonusBps,
+  RELIC_IDS_ORDERED,
+} from './relicFormulas';
 import { Rng } from './Rng';
 import type { Speed } from './time';
 import { CraftIndex, type CraftView } from '../craft/CraftIndex';
@@ -18,6 +31,7 @@ import type {
   GradeDef,
   GradeId,
   MonsterKind,
+  RelicId,
   UnitId,
   UpgradeGroupId,
   Vec2,
@@ -88,11 +102,19 @@ export interface SimEventMap {
     readonly success: boolean;
     readonly unitId: UnitId | null;
     readonly pos: Vec2 | null;
+    readonly refundedLuck: boolean;
     readonly tick: number;
   };
   'upgrade:done': {
     readonly group: UpgradeGroupId;
     readonly level: number;
+    readonly tick: number;
+  };
+  'wave:interest': {
+    readonly completedWave: number;
+    readonly interestCoin: number;
+    readonly pct: number;
+    readonly totalCoin: number;
     readonly tick: number;
   };
   'wave:boss': {
@@ -105,6 +127,7 @@ export interface SimEventMap {
     readonly wave: number;
     readonly bossName: string;
     readonly rewardWispGrade: GradeId;
+    readonly rewardLuck: number;
     readonly tick: number;
   };
   'command:rejected': {
@@ -139,6 +162,7 @@ export interface GambleResultSnapshot {
   readonly tier: GradeId;
   readonly success: boolean;
   readonly unitId: UnitId | null;
+  readonly refundedLuck: boolean;
 }
 
 export interface FactionSynergySnapshot {
@@ -147,6 +171,16 @@ export interface FactionSynergySnapshot {
   readonly unorthodoxTier: 0 | 1 | 2;
   readonly demonicTier: 0 | 1 | 2;
   readonly trinityActive: boolean;
+}
+
+export interface RelicBonusSnapshot {
+  readonly interestPct: number;
+  readonly interestCap: number;
+  readonly wealthAtkBps: number;
+  readonly gambleBonusPct: number;
+  readonly gambleRefundPct: number;
+  readonly lastWaveInterest: number;
+  readonly pilferedCoinTotal: number;
 }
 
 export interface UISnapshot {
@@ -165,11 +199,15 @@ export interface UISnapshot {
   };
   readonly monsterCount: number;
   readonly monsterCap: number;
+  readonly monstersSlain: number;
+  readonly bossesSlain: number;
   readonly coin: number;
   readonly luckStone: number;
   readonly summonCost: number;
   readonly wisps: Readonly<Record<GradeId, number>>;
   readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
+  readonly relics: Readonly<Record<RelicId, number>>;
+  readonly relicBonus: RelicBonusSnapshot;
   readonly synergy: FactionSynergySnapshot;
   readonly lastGambleResult: GambleResultSnapshot | null;
   readonly field: readonly (SlotView | null)[];
@@ -224,6 +262,21 @@ export class Simulation {
     unorthodox: 0,
     demonic: 0,
   };
+  private readonly relicLv: Record<RelicId, number> = {
+    golden_vault: 0,
+    million_sword_seal: 0,
+    bandit_dagger: 0,
+    immortal_furnace: 0,
+    founding_jade_seal: 0,
+    heavenly_scroll_chest: 0,
+  };
+  private appliedStartCoinBonus = 0;
+  private appliedStartCommonWisp = 0;
+  private appliedStartUncommonWisp = 0;
+  private lastWaveInterest = 0;
+  private pilferedCoinTotal = 0;
+  private monstersSlain = 0;
+  private bossesSlain = 0;
   private lastGambleResult: GambleResultSnapshot | null = null;
 
   private waveNumber = 1;
@@ -235,7 +288,11 @@ export class Simulation {
   private readonly pendingRejects: RejectNotice[] = [];
   private priorityDirty = true;
 
-  public constructor(data: GameDataBundle, seed = 0x20261118) {
+  public constructor(
+    data: GameDataBundle,
+    seed = 0x20261118,
+    initialRelics?: Readonly<Partial<Record<RelicId, number>>>,
+  ) {
     this.data = data;
     this.rng = new Rng(seed);
     this.board = new Board(data.board);
@@ -257,7 +314,49 @@ export class Simulation {
       byGrade.set(u.grade, list);
     }
     this.unitsByGrade = byGrade;
+    if (initialRelics) {
+      this.syncRelicsInternal(initialRelics, false);
+    }
     this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+  }
+
+  private syncRelicsInternal(
+    incoming: Readonly<Partial<Record<RelicId, number>>>,
+    recomputeHints = true,
+  ): void {
+    for (let i = 0; i < RELIC_IDS_ORDERED.length; i++) {
+      const id = RELIC_IDS_ORDERED[i]!;
+      const raw = incoming[id];
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        const maxLv = this.data.relicsById.get(id)?.maxLevel ?? 10;
+        this.relicLv[id] = Math.max(0, Math.min(maxLv, Math.floor(raw)));
+      }
+    }
+
+    const targetCoinBonus = getJadeSealStartCoin(this.relicLv.founding_jade_seal);
+    if (targetCoinBonus > this.appliedStartCoinBonus) {
+      this.coin += targetCoinBonus - this.appliedStartCoinBonus;
+      this.appliedStartCoinBonus = targetCoinBonus;
+    }
+
+    const targetWisps = getScrollChestStartWisps(this.relicLv.heavenly_scroll_chest);
+    let wispChanged = false;
+    if (targetWisps.common > this.appliedStartCommonWisp) {
+      this.wisps.common =
+        (this.wisps.common ?? 0) + (targetWisps.common - this.appliedStartCommonWisp);
+      this.appliedStartCommonWisp = targetWisps.common;
+      wispChanged = true;
+    }
+    if (targetWisps.uncommon > this.appliedStartUncommonWisp) {
+      this.wisps.uncommon =
+        (this.wisps.uncommon ?? 0) + (targetWisps.uncommon - this.appliedStartUncommonWisp);
+      this.appliedStartUncommonWisp = targetWisps.uncommon;
+      wispChanged = true;
+    }
+    if (wispChanged && recomputeHints) {
+      this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+    }
+    this.priorityDirty = true;
   }
 
   public get tickCount(): number {
@@ -345,10 +444,19 @@ export class Simulation {
       synPct += 25;
     }
 
-    const totalPct = upPct + synPct;
-    if (totalPct <= 0) return { baseAtk: def.atk, bonusAtk: 0 };
-    const bonusAtk = Math.round((def.atk * totalPct) / 100);
-    return { baseAtk: def.atk, bonusAtk };
+    const traitPct = upPct + synPct;
+    const wealthBps = getWealthBonusBps(this.relicLv.million_sword_seal, this.coin);
+    if (traitPct <= 0 && wealthBps <= 0) {
+      return { baseAtk: def.atk, bonusAtk: 0 };
+    }
+    if (wealthBps <= 0) {
+      const bonusAtk = Math.round((def.atk * traitPct) / 100);
+      return { baseAtk: def.atk, bonusAtk };
+    }
+    const effectiveTotal = Math.round(
+      (def.atk * (100 + traitPct) * (10000 + wealthBps)) / 1_000_000,
+    );
+    return { baseAtk: def.atk, bonusAtk: Math.max(0, effectiveTotal - def.atk) };
   }
 
   public scheduleCommandsForReplay(log: readonly StampedCommand[]): void {
@@ -421,6 +529,11 @@ export class Simulation {
   }
 
   private applyCommand(cmd: GameCommand): void {
+    if (cmd.type === 'syncRelics') {
+      this.syncRelicsInternal(cmd.relics, true);
+      return;
+    }
+
     if (this.gameOver) {
       this.reject(cmd.type, '이미 종료된 라운드입니다.');
       return;
@@ -468,8 +581,10 @@ export class Simulation {
         }
 
         this.luckStone -= rateDef.costLuck;
+        const chanceBonus = getFurnaceChanceBonusPct(this.relicLv.immortal_furnace);
+        const effectiveChance = Math.min(95, rateDef.chancePct + chanceBonus);
         const roll = this.rng.nextInt(100);
-        const success = roll < rateDef.chancePct;
+        const success = roll < effectiveChance;
         const seq = ++this.gambleSeq;
 
         if (success) {
@@ -477,23 +592,43 @@ export class Simulation {
           const uid = this.createUnit(pickedUnitId, slot, 'gamble');
           const created = this.unitsByUid.get(uid);
           const pos = created ? { x: created.currX, y: created.currY } : null;
-          this.lastGambleResult = { seq, tier: rateDef.tier, success: true, unitId: pickedUnitId };
+          this.lastGambleResult = {
+            seq,
+            tier: rateDef.tier,
+            success: true,
+            unitId: pickedUnitId,
+            refundedLuck: false,
+          };
           this.events.emit('gamble:result', {
             seq,
             tier: rateDef.tier,
             success: true,
             unitId: pickedUnitId,
             pos,
+            refundedLuck: false,
             tick: this.currentTick,
           });
         } else {
-          this.lastGambleResult = { seq, tier: rateDef.tier, success: false, unitId: null };
+          const refundPct = getFurnaceRefundPct(this.relicLv.immortal_furnace);
+          let refundedLuck = false;
+          if (refundPct > 0 && this.rng.nextInt(100) < refundPct) {
+            this.luckStone += 1;
+            refundedLuck = true;
+          }
+          this.lastGambleResult = {
+            seq,
+            tier: rateDef.tier,
+            success: false,
+            unitId: null,
+            refundedLuck,
+          };
           this.events.emit('gamble:result', {
             seq,
             tier: rateDef.tier,
             success: false,
             unitId: null,
             pos: null,
+            refundedLuck,
             tick: this.currentTick,
           });
         }
@@ -853,14 +988,33 @@ export class Simulation {
 
     this.waveTicksLeft--;
     if (this.waveTicksLeft <= 0) {
+      const completedWave = this.waveNumber;
+      const interestPct = getVaultInterestPct(this.relicLv.golden_vault);
+      const interestCap = getVaultInterestCap(this.relicLv.golden_vault);
+      const interestCoin =
+        interestPct > 0
+          ? Math.min(interestCap, Math.floor((this.coin * interestPct) / 100))
+          : 0;
+      this.lastWaveInterest = interestCoin;
+
       this.waveNumber++;
       const nextWaveDef = this.getWaveDef(this.waveNumber);
       this.waveTicksLeft = nextWaveDef.durationTicks;
       this.spawnedInWave = 0;
       this.nextSpawnTick = this.currentTick + 15;
-      this.coin += 20;
+      this.coin += 20 + interestCoin;
       this.luckStone += 1;
       this.priorityDirty = true;
+
+      if (interestCoin > 0) {
+        this.events.emit('wave:interest', {
+          completedWave,
+          interestCoin,
+          pct: interestPct,
+          totalCoin: this.coin,
+          tick: this.currentTick,
+        });
+      }
 
       if (nextWaveDef.isBoss) {
         this.events.emit('wave:boss', {
@@ -1115,11 +1269,22 @@ export class Simulation {
       m.slowFactor = Math.min(m.slowFactor, Math.max(0.3, 1 - p.slowPct));
     }
 
+    if (!p.isSkill && this.relicLv.bandit_dagger > 0) {
+      const procPer1000 = getBanditProcPer1000(this.relicLv.bandit_dagger);
+      if (this.rng.nextInt(1000) < procPer1000) {
+        const pilfer = getBanditPilferCoin(this.relicLv.bandit_dagger);
+        this.coin += pilfer;
+        this.pilferedCoinTotal += pilfer;
+        this.priorityDirty = true;
+      }
+    }
+
     const slain = m.hp <= 0;
     const hitX = m.currX;
     const hitY = m.currY;
 
     if (slain) {
+      this.monstersSlain++;
       let pillageBonus = 0;
       if (
         synergy.unorthodoxTier > 0 &&
@@ -1131,7 +1296,9 @@ export class Simulation {
       this.monsters.splice(idx, 1);
 
       if (m.isBoss) {
-        this.luckStone += 2;
+        this.bossesSlain++;
+        const rewardLuck = 2 + getScrollChestBossLuckBonus(this.relicLv.heavenly_scroll_chest);
+        this.luckStone += rewardLuck;
         const rewardGrade: GradeId = m.kind === 'white_tiger' ? 'uncommon' : 'rare';
         this.wisps[rewardGrade] = (this.wisps[rewardGrade] ?? 0) + 1;
         this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
@@ -1140,6 +1307,7 @@ export class Simulation {
           wave: this.waveNumber,
           bossName: m.bossName ?? '영물 보스',
           rewardWispGrade: rewardGrade,
+          rewardLuck,
           tick: this.currentTick,
         });
       }
@@ -1185,6 +1353,15 @@ export class Simulation {
 
     const waveDef = this.getWaveDef(this.waveNumber);
     const activeBoss = this.monsters.find((m) => m.isBoss);
+    const relicBonus: RelicBonusSnapshot = {
+      interestPct: getVaultInterestPct(this.relicLv.golden_vault),
+      interestCap: getVaultInterestCap(this.relicLv.golden_vault),
+      wealthAtkBps: getWealthBonusBps(this.relicLv.million_sword_seal, this.coin),
+      gambleBonusPct: getFurnaceChanceBonusPct(this.relicLv.immortal_furnace),
+      gambleRefundPct: getFurnaceRefundPct(this.relicLv.immortal_furnace),
+      lastWaveInterest: this.lastWaveInterest,
+      pilferedCoinTotal: this.pilferedCoinTotal,
+    };
 
     return {
       tick: this.currentTick,
@@ -1204,11 +1381,15 @@ export class Simulation {
         : undefined,
       monsterCount: this.monsters.length,
       monsterCap: this.data.board.path.monsterCap,
+      monstersSlain: this.monstersSlain,
+      bossesSlain: this.bossesSlain,
       coin: this.coin,
       luckStone: this.luckStone,
       summonCost: this.getSummonCost(),
       wisps: { ...this.wisps },
       upgradeLv: { ...this.upgradeLv },
+      relics: { ...this.relicLv },
+      relicBonus,
       synergy,
       lastGambleResult: this.lastGambleResult,
       field: fieldViews,
@@ -1277,9 +1458,15 @@ export class Simulation {
     feedInt(this.waveNumber);
     feedInt(this.waveTicksLeft);
     feedInt(this.gameOver ? 1 : 0);
+    feedInt(this.monstersSlain);
+    feedInt(this.bossesSlain);
 
     for (const g of UPGRADE_ORDER) {
       feedInt(this.upgradeLv[g] ?? 0);
+    }
+
+    for (const rid of RELIC_IDS_ORDERED) {
+      feedInt(this.relicLv[rid] ?? 0);
     }
 
     for (let i = 0; i < this.board.field.capacity; i++) {

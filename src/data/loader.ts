@@ -2,6 +2,7 @@ import rawBoard from './board.json';
 import rawGambleRates from './gamble_rates.json';
 import rawGrades from './grades.json';
 import rawRecipes from './recipes.json';
+import rawRelics from './relics.json';
 import rawUnits from './units.json';
 import rawUpgrades from './upgrades.json';
 import rawWaves from './waves.json';
@@ -18,6 +19,8 @@ import type {
   RawUnitDef,
   RawWaveDef,
   RecipeDef,
+  RelicDef,
+  RelicId,
   UnitDef,
   UnitSkillDef,
   UpgradeGroupDef,
@@ -56,6 +59,15 @@ const VALID_UPGRADE_GROUPS: ReadonlySet<string> = new Set<UpgradeGroupId>([
   'orthodox',
   'unorthodox',
   'demonic',
+]);
+
+const VALID_RELIC_IDS: ReadonlySet<string> = new Set<RelicId>([
+  'golden_vault',
+  'million_sword_seal',
+  'bandit_dagger',
+  'immortal_furnace',
+  'founding_jade_seal',
+  'heavenly_scroll_chest',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -462,6 +474,45 @@ export function validateUpgrades(input: unknown): UpgradeGroupDef[] {
   });
 }
 
+export function validateRelics(input: unknown): RelicDef[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] relics.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `relics[${i}]`);
+    const id = assertNonEmptyString(r.id, `relics[${i}].id`);
+    if (!VALID_RELIC_IDS.has(id)) {
+      throw new Error(`[DataValidation] relics[${i}].id invalid: ${id}`);
+    }
+    if (seen.has(id)) {
+      throw new Error(`[DataValidation] duplicate relic id: ${id}`);
+    }
+    seen.add(id);
+    const name = assertNonEmptyString(r.name, `relics[${i}].name`);
+    const tag = assertNonEmptyString(r.tag, `relics[${i}].tag`);
+    const desc = assertNonEmptyString(r.desc, `relics[${i}].desc`);
+    const maxLevel = assertPositiveNumber(r.maxLevel, `relics[${i}].maxLevel`);
+    const baseUpgradeGold = assertPositiveNumber(
+      r.baseUpgradeGold,
+      `relics[${i}].baseUpgradeGold`,
+    );
+    const stepUpgradeGold = assertNonNegativeNumber(
+      r.stepUpgradeGold,
+      `relics[${i}].stepUpgradeGold`,
+    );
+    return {
+      id: id as RelicId,
+      name,
+      tag,
+      desc,
+      maxLevel,
+      baseUpgradeGold,
+      stepUpgradeGold,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -482,6 +533,8 @@ export function loadGameData(): GameDataBundle {
   for (const up of upgrades) {
     upgradesByFaction.set(up.faction, up);
   }
+  const relics = validateRelics(rawRelics);
+  const relicsById = new Map<RelicId, RelicDef>(relics.map((rel) => [rel.id, rel]));
 
   cachedBundle = {
     grades,
@@ -495,6 +548,8 @@ export function loadGameData(): GameDataBundle {
     gambleRates,
     upgrades,
     upgradesByFaction,
+    relics,
+    relicsById,
   };
   return cachedBundle;
 }

@@ -1787,8 +1787,8 @@ button {
 }
 
 .gameover-card {
-  width: 500px;
-  padding: 28px 24px;
+  width: 560px;
+  padding: 26px 24px;
   border-radius: 28px;
   background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-1) 100%);
   border: 4px solid var(--ink);
@@ -1803,18 +1803,328 @@ button {
 
 .gameover-title {
   font-family: var(--font-display);
-  font-size: 40px;
+  font-size: 36px;
   color: var(--gold);
   text-shadow: var(--outline-2);
 }
 
 .gameover-sub {
-  font-size: 19px;
-  color: var(--text-dim);
+  font-size: 18px;
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
+}
+
+.gameover-loot {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(10, 35, 31, 0.88) 0%, rgba(5, 22, 19, 0.94) 100%);
+  border: 3px solid var(--ink);
+  box-shadow: inset 0 2px 0 rgba(250, 204, 21, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gameover-loot:empty {
+  display: none;
+}
+
+.settlement-loot-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--gold);
+  text-shadow: var(--outline-1);
+  letter-spacing: 0.03em;
+}
+
+.settlement-loot-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.settlement-loot-item {
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
+  border: 2.5px solid var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.settlement-loot-item .ico {
+  font-size: 32px;
+}
+
+.settlement-loot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.settlement-loot-gain {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+}
+
+.settlement-loot-total {
+  font-size: 13px;
+  color: #ccfbf1;
 }
 
 .gameover-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 4px;
 }
+
+/* =========================================================
+   Wuxia Relic (무림 신물 · 기보고) & Live Buff UI
+   ========================================================= */
+.hud-btn.relic-btn {
+  min-width: 72px;
+  gap: 4px;
+  padding: 0 9px;
+  background: linear-gradient(180deg, #f59e0b 0%, #9a3412 100%);
+  font-size: 17px;
+}
+
+.hud-btn.relic-btn .ico {
+  font-size: 20px;
+}
+
+.hud-mini-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fb7185 0%, #e11d48 100%);
+  border: 2.5px solid var(--ink);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1;
+  text-shadow: var(--outline-1);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.hud-mini-badge.visible {
+  display: inline-flex;
+}
+
+.dev-span-2 {
+  grid-column: span 2;
+  background: linear-gradient(180deg, #b45309 0%, #78350f 100%) !important;
+}
+
+.relic-buff-strip {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.relic-buff-pill {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+}
+
+.relic-buff-pill .ico {
+  font-size: 16px;
+}
+
+.relic-buff-pill.vault {
+  background: linear-gradient(180deg, #facc15 0%, #b45309 100%);
+}
+
+.relic-buff-pill.sword {
+  background: linear-gradient(180deg, #fb7185 0%, #9f1239 100%);
+}
+
+.relic-buff-pill.key-ready {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+  animation: chipGlow 0.8s ease-in-out infinite alternate;
+}
+
+.relic-buff-pill.subtle {
+  background: rgba(21, 82, 75, 0.85);
+  color: #ccfbf1;
+}
+
+.relic-gacha-panel {
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #581c0c 0%, #321007 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(253, 224, 71, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.relic-wallet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.relic-wallet-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.relic-wallet-pill {
+  height: 30px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  background: rgba(18, 10, 8, 0.65);
+  border: 2px solid var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
+}
+
+.relic-wallet-pill .ico {
+  font-size: 20px;
+}
+
+.relic-wallet-pill b {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: #fde047;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.relic-wallet-pill.key b {
+  color: #86efac;
+}
+
+.relic-draw-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.relic-notice-banner {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(15, 10, 8, 0.55);
+  border: 2px solid var(--ink);
+  color: #fde68a;
+  font-size: 15px;
+  text-align: center;
+  text-shadow: var(--outline-1);
+}
+
+.relic-notice-banner.win {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 18px;
+  animation: gamblePop 300ms ease;
+}
+
+.relic-card.relic-owned {
+  background: linear-gradient(180deg, #1f6e64 0%, #124841 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 1.5px rgba(250, 204, 21, 0.45);
+}
+
+.relic-card.relic-locked {
+  opacity: 0.92;
+}
+
+.card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 38%, #fef3c7 0%, #78350f 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-avatar.relic-avatar .ico {
+  font-size: 40px;
+}
+
+.relic-tag-pill {
+  background: #0f766e;
+}
+
+.relic-live-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  color: #ffffff;
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.settlement-preview-bar {
+  padding: 11px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #134e4a 0%, #092c29 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settlement-preview-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settlement-preview-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+}
+
+.settlement-preview-sub {
+  font-size: 14px;
+  color: #ccfbf1;
+  text-shadow: var(--outline-1);
+}
+

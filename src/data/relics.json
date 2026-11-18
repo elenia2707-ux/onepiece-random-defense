@@ -1,0 +1,56 @@
+[
+  {
+    "id": "golden_vault",
+    "name": "천하제일 전장 금고",
+    "tag": "복리 이자",
+    "desc": "매 장(웨이브) 종료 시 현재 보유 은자에 비례한 복리 이자를 추가 지급합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 70,
+    "stepUpgradeGold": 45
+  },
+  {
+    "id": "million_sword_seal",
+    "name": "만금쾌검패",
+    "tag": "이자 데미지",
+    "desc": "현재 보유 은자 100당 모든 출전 협객의 최종 공격력이 비례 증폭됩니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 80,
+    "stepUpgradeGold": 50
+  },
+  {
+    "id": "bandit_dagger",
+    "name": "야행도적의 비수",
+    "tag": "평타 약탈",
+    "desc": "기본 초식(평타) 적중 시 확률적으로 마물의 은자를 즉시 강탈합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 60,
+    "stepUpgradeGold": 40
+  },
+  {
+    "id": "immortal_furnace",
+    "name": "태상노군 만년단로",
+    "tag": "영약 보정",
+    "desc": "영약 환골탈태 성공률을 높이고 주화입마 실패 시 확률로 영단 1개를 환급합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 65,
+    "stepUpgradeGold": 40
+  },
+  {
+    "id": "founding_jade_seal",
+    "name": "전설의 개국옥새",
+    "tag": "초기 군자금",
+    "desc": "출정 시 초기 은자(종잣돈)를 추가 지급해 1장부터 복리 스노우볼을 앞당깁니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 55,
+    "stepUpgradeGold": 35
+  },
+  {
+    "id": "heavenly_scroll_chest",
+    "name": "천기비급함",
+    "tag": "기연·토벌",
+    "desc": "출정 시 추가 기연 비급을 지급하고 영물(보스) 토벌 시 추가 영단을 획득합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 75,
+    "stepUpgradeGold": 45
+  }
+]

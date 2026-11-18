@@ -1,10 +1,11 @@
 import { GameLoop } from './GameLoop';
-import { Simulation } from './Simulation';
+import { Simulation, type UISnapshot } from './Simulation';
 import { loadGameData } from '../data/loader';
 import { DragController } from '../input/DragController';
 import { InputManager } from '../input/InputManager';
 import { AudioUnlock } from '../platform/AudioUnlock';
 import { Lifecycle } from '../platform/Lifecycle';
+import { MetaStore, type SettlementRecord } from '../platform/MetaStore';
 import { Viewport } from '../platform/Viewport';
 import { BackgroundPainter } from '../render/BackgroundPainter';
 import { CanvasStack } from '../render/CanvasStack';
@@ -14,6 +15,7 @@ import { UIManager } from '../ui/UIManager';
 import { VfxSystem } from '../vfx/VfxSystem';
 
 export class Game {
+  private readonly meta: MetaStore;
   private readonly sim: Simulation;
   private readonly stack: CanvasStack;
   private readonly sprites: SpriteCache;
@@ -28,6 +30,7 @@ export class Game {
   private readonly lifecycle: Lifecycle;
   private readonly audioUnlock: AudioUnlock;
 
+  private settlementRecord: SettlementRecord | null = null;
   private slowFrameStreak = 0;
 
   public constructor() {
@@ -37,7 +40,9 @@ export class Game {
       throw new Error('[Game] Missing #app root');
     }
 
-    this.sim = new Simulation(data);
+    this.meta = new MetaStore();
+    const runSeed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 0x20261118;
+    this.sim = new Simulation(data, runSeed, this.meta.getRelicLevels());
     this.stack = new CanvasStack();
     this.sprites = new SpriteCache();
     this.bgPainter = new BackgroundPainter(() => {
@@ -72,6 +77,49 @@ export class Game {
       onRestart: () => {
         window.location.reload();
       },
+      onSettleAndRestart: () => {
+        const snap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
+        this.settleCurrentRun(snap);
+        window.location.reload();
+      },
+      getMetaProfile: () => this.meta.getProfile(),
+      getSettlementRecord: () => this.settlementRecord,
+      onDrawRelic: (payWith) => {
+        const res = this.meta.drawRelic(data.relics, payWith);
+        if (res.ok) {
+          this.sim.commands.enqueue({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onUpgradeRelic: (relicId) => {
+        const def = data.relicsById.get(relicId);
+        if (!def) {
+          return { ok: false, reason: '존재하지 않는 신물입니다.' };
+        }
+        const res = this.meta.upgradeRelic(def);
+        if (res.ok) {
+          this.sim.commands.enqueue({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onGrantDevMeta: () => {
+        this.meta.grantDevMeta(250, 2);
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+      },
       getSelectedSlot: () => this.drag.getSelectedSlot(),
       clearSelection: () => this.drag.clearSelection(),
     });
@@ -90,6 +138,9 @@ export class Game {
       onSyncUI: (nowMs, forcePriority) => {
         if (!forcePriority && nowMs % 1 < 0) return;
         const snap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
+        if (snap.gameOver && !this.settlementRecord) {
+          this.settleCurrentRun(snap);
+        }
         this.ui.sync(snap, nowMs, forcePriority);
       },
       onFrameCostMs: (frameMs) => {
@@ -116,6 +167,17 @@ export class Game {
     this.audioUnlock = new AudioUnlock();
 
     this.bindSimulationEvents();
+  }
+
+  private settleCurrentRun(snap: UISnapshot): SettlementRecord {
+    if (!this.settlementRecord) {
+      this.settlementRecord = this.meta.settleRun({
+        wave: snap.wave,
+        monstersSlain: snap.monstersSlain,
+        bossesSlain: snap.bossesSlain,
+      });
+    }
+    return this.settlementRecord;
   }
 
   private bindSimulationEvents(): void {
@@ -192,6 +254,12 @@ export class Game {
       );
     });
 
+    this.sim.events.on('wave:interest', (ev) => {
+      this.ui.showToast(
+        `🏦 전장 금고 복리 +${ev.pct}% 발동! 이자 +${ev.interestCoin.toLocaleString('ko-KR')} 은자`,
+      );
+    });
+
     this.sim.events.on('wave:boss', (ev) => {
       this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
       this.vfx.triggerScreenFlash('#dc2626', 0.14, 0.24, ev.tick);
@@ -200,7 +268,9 @@ export class Game {
     this.sim.events.on('boss:slain', (ev) => {
       const wispGradeName =
         this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
-      this.ui.showToast(`🏆 ${ev.bossName} 토벌! 보상: 영단 +2 · ${wispGradeName} 기연 +1`);
+      this.ui.showToast(
+        `🏆 ${ev.bossName} 토벌! 보상: 영단 +${ev.rewardLuck} · ${wispGradeName} 기연 +1`,
+      );
     });
 
     this.sim.events.on('gamble:result', (ev) => {
@@ -217,6 +287,8 @@ export class Game {
           this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
         }
         this.ui.showToast(`✨ [${gName}] 환골탈태 대성공! ${uName} 합류!`);
+      } else if (ev.refundedLuck) {
+        this.ui.showToast(`🔥 [${gName}] 주화입마! 만년단로가 영단 1개를 환급했습니다!`);
       } else {
         this.ui.showToast(`🩸 [${gName}] 주화입마... 내상이 깊어집니다`, true);
       }

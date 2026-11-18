@@ -1,4 +1,4 @@
-import type { GradeId, RecipeId, UnitId, UpgradeGroupId } from '../data/types';
+import type { GradeId, RecipeId, RelicId, UnitId, UpgradeGroupId } from '../data/types';
 
 export type SlotArea = 'field' | 'bench';
 
@@ -16,6 +16,7 @@ export type GameCommand =
   | { readonly type: 'useWisp'; readonly grade: GradeId; readonly unitId: UnitId }
   | { readonly type: 'gamble'; readonly tier: GradeId }
   | { readonly type: 'upgrade'; readonly group: UpgradeGroupId }
+  | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {
       readonly type: 'grantTestResource';
