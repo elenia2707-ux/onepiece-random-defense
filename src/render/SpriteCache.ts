@@ -17,10 +17,50 @@ export const DISPLAY_FONT =
 export const BODY_FONT =
   '"Jua", "Black Han Sans", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif';
 
-/** Crisp integer multiples of the 32x32 pixel-art grid. */
+/** Crisp integer multiples of the 32x32 pixel-art grid (instant placeholder before sheet PNG loads). */
 const UNIT_PIXEL_SIZE = 128; // 32 x 4
 const MOB_PIXEL_SIZE = 128; // 32 x 4
 const BOSS_PIXEL_SIZE = 128; // 32 x 4
+
+/**
+ * Maps all 30 Wuxia roster IDs onto the 18 high-resolution transparent PNG sprites
+ * cropped from the Orthodox (9) & Unorthodox/Demonic (9) 3x3 sprite sheets.
+ */
+const SPRITE_SHEET_ALIAS: Readonly<Record<string, string>> = {
+  // 구파일방 · 정파 (IMG_2821)
+  shaolin_novice: 'shaolin_novice',
+  hwasan_novice: 'hwasan_novice',
+  gaebang_beggar: 'gaebang_beggar',
+  mudang_disciple: 'mudang_disciple',
+  namgung_thunder: 'namgung_thunder',
+  plum_swordsman: 'plum_swordsman',
+  gaebang_elder: 'gaebang_elder',
+  shaolin_monk: 'shaolin_monk',
+  murim_lord: 'murim_lord',
+  plum_elder: 'plum_swordsman',
+  hwasan_master: 'plum_swordsman',
+  mudang_master: 'mudang_disciple',
+  sword_saint: 'namgung_thunder',
+
+  // 사파 · 마교 (IMG_2820)
+  nokrim_bandit: 'nokrim_bandit',
+  tang_assassin: 'tang_assassin',
+  haomun_ronin: 'haomun_ronin',
+  blood_blade: 'blood_blade',
+  tang_patriarch: 'tang_patriarch',
+  mad_demon: 'mad_demon',
+  sword_demon: 'sword_demon',
+  flame_demon: 'flame_demon',
+  cheonma: 'cheonma',
+  poison_healer: 'tang_patriarch',
+  nokrim_chief: 'nokrim_bandit',
+  blood_demon: 'blood_blade',
+  cult_initiate: 'sword_demon',
+  bone_fiend: 'flame_demon',
+  black_wind: 'sword_demon',
+  cult_protector: 'flame_demon',
+  cult_elder: 'flame_demon',
+};
 
 interface BannerSpec {
   readonly kind: 'boss' | 'craft';
@@ -38,9 +78,9 @@ interface SealSpec {
  * Sole factory/owner for offscreen HTMLCanvasElements (AGENTS.md §2 & §6).
  * Releases canvas memory by zeroing width & height.
  *
- * Hybrid pixel-sheet loader: every unit / monster first gets an instant procedural 32x32 pixel sprite.
- * In parallel, `public/sprites/{id}.png` is probed once; if present, the SAME canvas is repainted
- * with nearest-neighbor (`imageSmoothingEnabled = false`) and listeners are notified.
+ * Hybrid pixel-sheet loader: every unit / monster first gets an instant placeholder canvas,
+ * then `public/sprites/{id}.png` is loaded with nearest-neighbor (`imageSmoothingEnabled = false`)
+ * and listeners are notified cleanly.
  */
 export class SpriteCache {
   private readonly cache = new Map<string, HTMLCanvasElement>();
@@ -48,6 +88,8 @@ export class SpriteCache {
   private readonly bannerSpecs = new Map<string, BannerSpec>();
   private readonly sealSpecs = new Map<string, SealSpec>();
   private readonly probed = new Set<string>();
+  private readonly loadedSheetImages = new Map<string, HTMLImageElement>();
+  private readonly pendingSheetCallbacks = new Map<string, Array<(img: HTMLImageElement) => void>>();
   private readonly spriteListeners: Array<() => void> = [];
   private glyphCanvas: HTMLCanvasElement | null = null;
   private readonly glyphMap = new Map<string, GlyphMetric>();
@@ -85,6 +127,8 @@ export class SpriteCache {
     this.portraitUrls.clear();
     this.bannerSpecs.clear();
     this.sealSpecs.clear();
+    this.loadedSheetImages.clear();
+    this.pendingSheetCallbacks.clear();
     if (this.glyphCanvas) {
       this.glyphCanvas.width = 0;
       this.glyphCanvas.height = 0;
@@ -138,15 +182,37 @@ export class SpriteCache {
   private probeExternal(id: string, onLoad: (img: HTMLImageElement) => void): void {
     if (this.probed.has(id) || typeof Image === 'undefined') return;
     this.probed.add(id);
+
+    const fileId = SPRITE_SHEET_ALIAS[id] ?? id;
+    const cached = this.loadedSheetImages.get(fileId);
+    if (cached) {
+      onLoad(cached);
+      return;
+    }
+
+    const list = this.pendingSheetCallbacks.get(fileId);
+    if (list) {
+      list.push(onLoad);
+      return;
+    }
+
+    const callbacks: Array<(img: HTMLImageElement) => void> = [onLoad];
+    this.pendingSheetCallbacks.set(fileId, callbacks);
+
     const img = new Image();
     img.decoding = 'async';
     img.onload = () => {
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) onLoad(img);
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        this.loadedSheetImages.set(fileId, img);
+        const queued = this.pendingSheetCallbacks.get(fileId) ?? [];
+        this.pendingSheetCallbacks.delete(fileId);
+        for (const cb of queued) cb(img);
+      }
     };
     img.onerror = () => {
-      /* No external sprite sheet for this id — keep procedural 32x32 pixel art. */
+      this.pendingSheetCallbacks.delete(fileId);
     };
-    img.src = `${import.meta.env.BASE_URL}sprites/${id}.png`;
+    img.src = `${import.meta.env.BASE_URL}sprites/${fileId}.png`;
   }
 
   /** Nearest-neighbor contain-fit, bottom-anchored so pixel edges never blur. */

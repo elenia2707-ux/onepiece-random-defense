@@ -10,13 +10,13 @@ import { PIXEL_OUTLINE } from './ChibiPainter';
 import { hexWithAlpha, type SpriteCache } from './SpriteCache';
 
 /**
- * Crisp nearest-neighbor sprite sizes (~95% of tile width) and foot offsets from slot center.
- * Field expanded tile ~ 85px wide -> 82px sprite; Bench expanded tile ~ 100px wide -> 90px sprite.
+ * Crisp nearest-neighbor sprite sizes (~110% of tile width) and foot offsets from slot center.
+ * Field expanded tile ~ 85px wide -> 94px sprite; Bench expanded tile ~ 99px wide -> 108px sprite.
  */
-const FIELD_SPRITE = 82;
-const BENCH_SPRITE = 90;
-const FIELD_FOOT = 42;
-const BENCH_FOOT = 33;
+const FIELD_SPRITE = 94;
+const BENCH_SPRITE = 104;
+const FIELD_FOOT = 44;
+const BENCH_FOOT = 34;
 const MOB_SPRITE = 64;
 const BOSS_SPRITE = 104;
 

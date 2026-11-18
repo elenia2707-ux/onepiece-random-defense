@@ -5,15 +5,15 @@ import type { LoopPath } from '../world/Path';
 import type { CellRect } from '../world/SlotGrid';
 import { PIXEL_OUTLINE } from './ChibiPainter';
 
-/** Visual inflation of slot tiles into configured gaps (hit-testing still uses board.json). */
+/** Visual inflation of slot bounds for selection/hover highlights (hit-testing uses board.json). */
 const FIELD_INFLATE_X = 2.5;
 const FIELD_INFLATE_Y = 3;
 const BENCH_INFLATE = 2.5;
 
-/** Dancheong bench pavilion tray frame (logical px). */
-const TRAY = { x: 34, y: 734, w: 652, h: 214, r: 22 } as const;
+/** Pavilion bench tray frame (logical px). */
+const TRAY = { x: 36, y: 736, w: 648, h: 210, r: 20 } as const;
 
-/** Drawn (inflated) tile rect for a slot. Renderer uses it for selection/hover highlights. */
+/** Drawn tile rect for a slot. Renderer uses it for selection/hover highlights. */
 export function expandedSlotRect(board: Board, slot: SlotRef): CellRect {
   const r = board.getSlotRect(slot);
   const ix = slot.area === 'field' ? FIELD_INFLATE_X : BENCH_INFLATE;
@@ -39,12 +39,11 @@ interface RingGeom {
 }
 
 /**
- * Paints the bright '청죽림 백옥 비무대' (Azure Bamboo Forest & White-Jade Martial Arena):
- * 1. Refreshing celadon-jade lotus pond moat + green bamboo stalks & leaves along perimeter.
- * 2. White-granite & vermilion terrace foundation.
- * 3. Sunlit ochre & bluestone (황토·청석) flagstone monster track with red dancheong rails.
- * 4. Warm white-jade (백옥) courtyard plaza with engraved Taiji medallion.
- * 5. Bright ivory white-jade slot tiles framed by red dancheong wood on both 6x3 arena & 6x2 bench.
+ * Paints the atmospheric '청죽림 백옥 비무대':
+ * 1. Muted misty dawn/night bamboo forest & deep celadon pond so the central arena & heroes pop.
+ * 2. Smooth continuous ochre-sandstone martial earth loop path with delicate pebbles & edge grass tufts.
+ * 3. Open ancient white-jade / limestone slab courtyard for 6x3 비무대 & 6x2 대기석 with thin engraved grout lines
+ *    (no grid-heavy board-game squares or heavy red borders per tile).
  * Executed ONLY on initialization and viewport resize (zero text, zero filters).
  */
 export class BackgroundPainter {
@@ -72,288 +71,286 @@ export class BackgroundPainter {
       ih: maxY - minY - half * 2,
     };
 
-    this.paintJadePondAndBamboo(ctx);
+    this.paintMistyBambooBackdrop(ctx);
     this.paintTerrace(ctx, board);
-    this.paintWhiteJadePlaza(ctx, ring);
-    this.paintOchreBluestoneTrack(ctx, ring);
-    this.paintFieldFrame(ctx, board);
-    for (let i = 0; i < board.field.capacity; i++) {
-      this.paintJadeDancheongTile(ctx, expandedSlotRect(board, { area: 'field', index: i }), true);
-    }
-    this.paintBenchTray(ctx);
-    for (let i = 0; i < board.bench.capacity; i++) {
-      this.paintJadeDancheongTile(ctx, expandedSlotRect(board, { area: 'bench', index: i }), false);
-    }
+    this.paintSmoothEarthTrack(ctx, ring);
+    this.paintOpenCourtyardSlab(ctx, board, ring);
+    this.paintOpenBenchSlab(ctx, board);
   }
 
   /* ---------------------------------------------------------------- */
-  /*  1. Jade Lotus Pond Moat + Green Bamboo Forest Perimeter          */
+  /*  1. Muted Misty Night/Dawn Bamboo Forest Backdrop                */
   /* ---------------------------------------------------------------- */
 
-  private paintJadePondAndBamboo(ctx: CanvasRenderingContext2D): void {
+  private paintMistyBambooBackdrop(ctx: CanvasRenderingContext2D): void {
     const g = ctx.createLinearGradient(0, 0, 0, LOGICAL_HEIGHT);
-    g.addColorStop(0, '#125e57');
-    g.addColorStop(0.35, '#1c8579');
-    g.addColorStop(0.72, '#177066');
-    g.addColorStop(1, '#0f4c45');
+    g.addColorStop(0, '#0a1f21');
+    g.addColorStop(0.35, '#113032');
+    g.addColorStop(0.7, '#0d2629');
+    g.addColorStop(1, '#071719');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-    // Sunlit jade water caustics around the arena
-    const rg = ctx.createRadialGradient(360, 480, 80, 360, 480, 700);
-    rg.addColorStop(0, 'rgba(110, 231, 183, 0.25)');
-    rg.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = rg;
+    // Soft dawn mist aura behind the central martial terrace
+    const mist = ctx.createRadialGradient(360, 440, 120, 360, 460, 660);
+    mist.addColorStop(0, 'rgba(167, 215, 206, 0.14)');
+    mist.addColorStop(0.55, 'rgba(94, 155, 146, 0.08)');
+    mist.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = mist;
     ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-    // Gentle pond ripples
+    // Subtle mist water ripples
     ctx.lineCap = 'round';
-    ctx.lineWidth = 2;
-    for (let row = 0, wy = 32; wy < LOGICAL_HEIGHT; wy += 64, row++) {
-      for (let wx = (row % 2) * 58 - 10; wx < LOGICAL_WIDTH + 30; wx += 118) {
+    ctx.lineWidth = 1.6;
+    for (let row = 0, wy = 36; wy < LOGICAL_HEIGHT; wy += 72, row++) {
+      for (let wx = (row % 2) * 64 - 12; wx < LOGICAL_WIDTH + 30; wx += 128) {
         const h = hash2(wx, wy);
-        ctx.strokeStyle = `rgba(204, 251, 241, ${(0.08 + h * 0.08).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(186, 226, 219, ${(0.04 + h * 0.045).toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(wx + h * 24, wy, 14 + h * 9, Math.PI * 1.12, Math.PI * 1.88);
+        ctx.arc(wx + h * 24, wy, 14 + h * 10, Math.PI * 1.12, Math.PI * 1.88);
         ctx.stroke();
       }
     }
 
-    // Floating lotus pads (연잎) & pink lotus buds (연꽃) in top/side pond water
+    // Subdued dusk-sage lotus pads (muted contrast so heroes stand out cleanly)
     const lotusSpots = [
-      { x: 54, y: 102, r: 20, flower: true },
-      { x: 668, y: 105, r: 19, flower: true },
-      { x: 26, y: 420, r: 16, flower: false },
-      { x: 696, y: 360, r: 16, flower: false },
-      { x: 30, y: 724, r: 18, flower: true },
-      { x: 690, y: 722, r: 17, flower: false },
-      { x: 96, y: 970, r: 20, flower: true },
-      { x: 626, y: 968, r: 19, flower: true },
+      { x: 54, y: 100, r: 18, flower: true },
+      { x: 668, y: 103, r: 17, flower: true },
+      { x: 28, y: 726, r: 16, flower: false },
+      { x: 692, y: 724, r: 16, flower: false },
+      { x: 96, y: 970, r: 18, flower: true },
+      { x: 626, y: 968, r: 17, flower: false },
     ];
     for (const lp of lotusSpots) {
-      // Water ripple ring
       ctx.beginPath();
-      ctx.arc(lp.x, lp.y, lp.r + 6, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(204, 251, 241, 0.25)';
-      ctx.lineWidth = 1.6;
+      ctx.arc(lp.x, lp.y, lp.r + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(186, 226, 219, 0.14)';
+      ctx.lineWidth = 1.4;
       ctx.stroke();
 
-      // Notched green lotus leaf
       ctx.beginPath();
       ctx.moveTo(lp.x, lp.y);
       ctx.arc(lp.x, lp.y, lp.r, 0.25, Math.PI * 2 - 0.25);
       ctx.closePath();
-      ctx.fillStyle = '#16a34a';
+      ctx.fillStyle = '#244d41';
       ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#14532d';
-      ctx.stroke();
-
-      // Inner leaf highlight
-      ctx.beginPath();
-      ctx.arc(lp.x - 2, lp.y - 2, lp.r * 0.55, 0.4, Math.PI * 1.8);
-      ctx.strokeStyle = '#86efac';
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#112a24';
       ctx.stroke();
 
       if (lp.flower) {
-        const fx = lp.x + lp.r * 0.45;
-        const fy = lp.y - lp.r * 0.35;
+        const fx = lp.x + lp.r * 0.42;
+        const fy = lp.y - lp.r * 0.34;
         for (let p = 0; p < 5; p++) {
           const a = (p * Math.PI * 2) / 5 - Math.PI * 0.5;
           ctx.beginPath();
-          ctx.ellipse(fx + Math.cos(a) * 4.5, fy + Math.sin(a) * 4.5, 4.5, 2.6, a, 0, Math.PI * 2);
-          ctx.fillStyle = p % 2 === 0 ? '#fda4af' : '#fb7185';
+          ctx.ellipse(fx + Math.cos(a) * 4, fy + Math.sin(a) * 4, 4, 2.3, a, 0, Math.PI * 2);
+          ctx.fillStyle = p % 2 === 0 ? '#d8a4b0' : '#bc7a8c';
           ctx.fill();
         }
         ctx.beginPath();
-        ctx.arc(fx, fy, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#fde047';
+        ctx.arc(fx, fy, 2.1, 0, Math.PI * 2);
+        ctx.fillStyle = '#e5c158';
         ctx.fill();
       }
     }
 
-    // Green Bamboo Forest (청죽림) stalks & leaf clusters framing left & right edges
+    // Desaturated misty night bamboo silhouettes framing outer margins
     const bambooStalks = [
-      { x: 8, tilt: 0.03, w: 9 },
-      { x: 20, tilt: -0.02, w: 7 },
-      { x: 700, tilt: -0.03, w: 9 },
-      { x: 712, tilt: 0.02, w: 7 },
+      { x: 7, tilt: 0.028, w: 8 },
+      { x: 19, tilt: -0.018, w: 6.5 },
+      { x: 701, tilt: -0.028, w: 8 },
+      { x: 713, tilt: 0.018, w: 6.5 },
     ];
     for (const st of bambooStalks) {
       ctx.save();
       ctx.translate(st.x, 0);
-      for (let segY = 0; segY < 1020; segY += 76) {
-        const sx = Math.sin(segY * 0.01) * st.tilt * 80;
+      for (let segY = 0; segY < 1030; segY += 78) {
+        const sx = Math.sin(segY * 0.01) * st.tilt * 72;
         const grad = ctx.createLinearGradient(sx - st.w * 0.5, 0, sx + st.w * 0.5, 0);
-        grad.addColorStop(0, '#86efac');
-        grad.addColorStop(0.45, '#22c55e');
-        grad.addColorStop(1, '#14532d');
+        grad.addColorStop(0, '#3a685b');
+        grad.addColorStop(0.48, '#234a40');
+        grad.addColorStop(1, '#102722');
         ctx.fillStyle = grad;
-        ctx.fillRect(sx - st.w * 0.5, segY, st.w, 73);
-        // Bamboo node joint
-        ctx.fillStyle = '#dcfce7';
-        ctx.fillRect(sx - st.w * 0.6, segY + 72, st.w * 1.2, 3);
+        ctx.fillRect(sx - st.w * 0.5, segY, st.w, 75);
+        // Subtle muted node band
+        ctx.fillStyle = '#4e8071';
+        ctx.fillRect(sx - st.w * 0.58, segY + 74, st.w * 1.16, 2.5);
       }
       ctx.restore();
     }
 
-    // Pointed bamboo leaf clusters (댓잎) along outer corners
+    // Muted sage bamboo leaf clusters
     const leafClusters = [
-      { x: 18, y: 84, dir: 1 },
-      { x: 14, y: 240, dir: 1 },
-      { x: 16, y: 540, dir: 1 },
-      { x: 18, y: 695, dir: 1 },
-      { x: 702, y: 88, dir: -1 },
-      { x: 706, y: 255, dir: -1 },
-      { x: 704, y: 555, dir: -1 },
-      { x: 702, y: 700, dir: -1 },
+      { x: 16, y: 86, dir: 1 },
+      { x: 14, y: 260, dir: 1 },
+      { x: 16, y: 560, dir: 1 },
+      { x: 17, y: 705, dir: 1 },
+      { x: 704, y: 90, dir: -1 },
+      { x: 706, y: 270, dir: -1 },
+      { x: 704, y: 570, dir: -1 },
+      { x: 703, y: 710, dir: -1 },
     ];
     for (const lc of leafClusters) {
       for (let k = -1; k <= 1; k++) {
-        const ang = (lc.dir > 0 ? 0.35 : Math.PI - 0.35) + k * 0.34;
+        const ang = (lc.dir > 0 ? 0.36 : Math.PI - 0.36) + k * 0.34;
         ctx.save();
         ctx.translate(lc.x, lc.y);
         ctx.rotate(ang);
         ctx.beginPath();
-        ctx.ellipse(15, 0, 16, 4.2, 0, 0, Math.PI * 2);
-        ctx.fillStyle = k === 0 ? '#4ade80' : '#16a34a';
+        ctx.ellipse(14, 0, 15, 3.8, 0, 0, Math.PI * 2);
+        ctx.fillStyle = k === 0 ? '#2f5d4f' : '#20443a';
         ctx.fill();
-        ctx.lineWidth = 1.4;
-        ctx.strokeStyle = '#14532d';
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = '#112722';
         ctx.stroke();
         ctx.restore();
       }
     }
+
+    // Soft veil overlay so side foliage recedes softly behind arena
+    const sideMist = ctx.createLinearGradient(0, 0, 0, LOGICAL_HEIGHT);
+    sideMist.addColorStop(0, 'rgba(13, 38, 40, 0.28)');
+    sideMist.addColorStop(0.5, 'rgba(16, 48, 50, 0.14)');
+    sideMist.addColorStop(1, 'rgba(7, 23, 25, 0.34)');
+    ctx.fillStyle = sideMist;
+    ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
   }
 
   /* ---------------------------------------------------------------- */
-  /*  2. White-Granite & Vermilion Pavilion Terrace                    */
+  /*  2. Ancient Stone Terrace Base                                    */
   /* ---------------------------------------------------------------- */
 
   private paintTerrace(ctx: CanvasRenderingContext2D, board: Board): void {
     const ar = board.config.arenaRect;
-    // Soft pond reflection halo
-    ctx.beginPath();
-    ctx.roundRect(ar.x - 6, ar.y - 6, ar.w + 12, ar.h + 18, 28);
-    ctx.fillStyle = 'rgba(204, 251, 241, 0.16)';
-    ctx.fill();
 
-    // 3D granite plinth lip
+    // 3D drop shadow lip
     ctx.beginPath();
-    ctx.roundRect(ar.x, ar.y + 9, ar.w, ar.h, 24);
+    ctx.roundRect(ar.x, ar.y + 8, ar.w, ar.h, 24);
     ctx.fillStyle = PIXEL_OUTLINE;
     ctx.fill();
 
-    // Carved white-granite & vermilion border foundation
+    // Carved dark timber & ancient stone perimeter frame
     ctx.beginPath();
     ctx.roundRect(ar.x, ar.y, ar.w, ar.h, 24);
     const g = ctx.createLinearGradient(0, ar.y, 0, ar.y + ar.h);
-    g.addColorStop(0, '#991b1b');
-    g.addColorStop(0.5, '#7f1d1d');
-    g.addColorStop(1, '#581313');
+    g.addColorStop(0, '#5a3a2e');
+    g.addColorStop(0.5, '#462b22');
+    g.addColorStop(1, '#311d17');
     ctx.fillStyle = g;
     ctx.fill();
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.stroke();
-  }
 
-  /* ---------------------------------------------------------------- */
-  /*  3. White-Jade Inner Courtyard Plaza + Taiji Medallion            */
-  /* ---------------------------------------------------------------- */
-
-  private paintWhiteJadePlaza(ctx: CanvasRenderingContext2D, r: RingGeom): void {
-    ctx.save();
+    // Subtle warm brass inlay trim
     ctx.beginPath();
-    ctx.roundRect(r.ix, r.iy, r.iw, r.ih, 10);
-    ctx.clip();
-
-    const g = ctx.createLinearGradient(0, r.iy, 0, r.iy + r.ih);
-    g.addColorStop(0, '#efe9da');
-    g.addColorStop(1, '#dfd5be');
-    ctx.fillStyle = g;
-    ctx.fillRect(r.ix, r.iy, r.iw, r.ih);
-
-    // Subtle white-jade stone masonry grid
-    ctx.strokeStyle = 'rgba(146, 125, 96, 0.22)';
-    ctx.lineWidth = 1.2;
-    for (let y = r.iy + 44; y < r.iy + r.ih; y += 44) {
-      ctx.beginPath();
-      ctx.moveTo(r.ix, y);
-      ctx.lineTo(r.ix + r.iw, y);
-      ctx.stroke();
-    }
-
-    // Subtle carved Taiji (태극) watermark at plaza center
-    const cx = r.ix + r.iw * 0.5;
-    const cy = r.iy + r.ih * 0.5;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 138, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(161, 138, 104, 0.25)';
-    ctx.lineWidth = 4;
+    ctx.roundRect(ar.x + 5, ar.y + 5, ar.w - 10, ar.h - 10, 20);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(217, 179, 108, 0.45)';
     ctx.stroke();
-
-    ctx.restore();
   }
 
   /* ---------------------------------------------------------------- */
-  /*  4. Bright Ochre & Bluestone (황토·청석) Monster Loop Track       */
+  /*  3. Smooth Continuous Ochre-Bluestone Earth Track (No Blocks!)    */
   /* ---------------------------------------------------------------- */
 
-  private paintOchreBluestoneTrack(ctx: CanvasRenderingContext2D, r: RingGeom): void {
+  private paintSmoothEarthTrack(ctx: CanvasRenderingContext2D, r: RingGeom): void {
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(r.ox, r.oy, r.ow, r.oh, 18);
-    ctx.roundRect(r.ix, r.iy, r.iw, r.ih, 10);
+    ctx.roundRect(r.ix, r.iy, r.iw, r.ih, 14);
     ctx.clip('evenodd');
 
-    // Warm sunlit 황토 (ochre earth) base
+    // Continuous sunlit sandy-ochre & limestone path base
     const roadGrad = ctx.createLinearGradient(0, r.oy, 0, r.oy + r.oh);
-    roadGrad.addColorStop(0, '#ebd5b0');
-    roadGrad.addColorStop(0.5, '#e0c496');
-    roadGrad.addColorStop(1, '#d2b27e');
+    roadGrad.addColorStop(0, '#e3cfa7');
+    roadGrad.addColorStop(0.5, '#d6be90');
+    roadGrad.addColorStop(1, '#c6aa78');
     ctx.fillStyle = roadGrad;
     ctx.fillRect(r.ox, r.oy, r.ow, r.oh);
 
-    // Alternating 청석 (pale bluestone) & 황석 (warm sandstone) flagstones along the loop
-    const step = 36;
-    const pad = 8;
-    const drawFlagstone = (fx: number, fy: number, fw: number, fh: number, idx: number): void => {
-      const isBlue = idx % 2 === 0;
-      ctx.beginPath();
-      ctx.roundRect(fx, fy, fw, fh, 5);
-      ctx.fillStyle = isBlue ? '#d7e2ea' : '#efe0c2';
-      ctx.fill();
-      ctx.lineWidth = 1.4;
-      ctx.strokeStyle = 'rgba(120, 95, 65, 0.42)';
-      ctx.stroke();
+    // Smooth worn centerline rut running continuously around the entire track
+    const midX = (r.ox + r.ix) * 0.5;
+    const midY = (r.oy + r.iy) * 0.5;
+    const midW = r.ow - (r.ix - r.ox);
+    const midH = r.oh - (r.iy - r.oy);
 
-      // Top highlight edge
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.48)';
-      ctx.fillRect(fx + 3, fy + 2, fw - 6, 2.5);
+    ctx.beginPath();
+    ctx.roundRect(midX, midY, midW, midH, 16);
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = 'rgba(255, 247, 232, 0.28)';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.roundRect(midX, midY, midW, midH, 16);
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(156, 121, 74, 0.12)';
+    ctx.stroke();
+
+    // Subtle organic pebbles & grass tufts along outer/inner path edges (NO square grid blocks!)
+    const paintPebble = (px: number, py: number, seed: number): void => {
+      const h = hash2(px + seed, py - seed);
+      if (h < 0.48) return;
+      const rx = 2.2 + h * 2.6;
+      const ry = 1.5 + h * 1.4;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate((h - 0.5) * 1.8);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fillStyle = h > 0.8 ? '#93a2a8' : h > 0.65 ? '#b8a07a' : '#ccb792';
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(72, 54, 34, 0.38)';
+      ctx.stroke();
+      ctx.restore();
     };
 
-    let idx = 0;
-    // Top & bottom corridors
-    for (let sx = r.ox + 14; sx < r.ox + r.ow - 42; sx += step) {
-      drawFlagstone(sx, r.oy + pad, step - 6, r.iy - r.oy - pad * 2, idx++);
-      drawFlagstone(sx, r.iy + r.ih + pad, step - 6, r.oy + r.oh - (r.iy + r.ih) - pad * 2, idx++);
+    const paintTuft = (gx: number, gy: number, seed: number): void => {
+      const h = hash2(gx * 0.7, gy + seed);
+      if (h < 0.62) return;
+      ctx.strokeStyle = h > 0.82 ? '#5a8057' : '#6c8f62';
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx - 3, gy - 5);
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx + 0.5, gy - 6);
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx + 3.5, gy - 4.5);
+      ctx.stroke();
+    };
+
+    const roadT = r.iy - r.oy;
+    // Top & bottom edges
+    for (let sx = r.ox + 22; sx < r.ox + r.ow - 22; sx += 26) {
+      paintPebble(sx, r.oy + 9 + hash2(sx, 1) * 8, 1);
+      paintPebble(sx + 9, r.oy + roadT - 9 - hash2(sx, 2) * 7, 2);
+      paintPebble(sx + 5, r.iy + r.ih + 9 + hash2(sx, 3) * 8, 3);
+      paintPebble(sx + 13, r.oy + r.oh - 9 - hash2(sx, 4) * 7, 4);
+      paintTuft(sx + 12, r.oy + 7, 11);
+      paintTuft(sx + 6, r.oy + r.oh - 4, 12);
     }
-    // Left & right corridors
-    for (let sy = r.iy + 8; sy < r.iy + r.ih - 28; sy += step) {
-      drawFlagstone(r.ox + pad, sy, r.ix - r.ox - pad * 2, step - 6, idx++);
-      drawFlagstone(r.ix + r.iw + pad, sy, r.ox + r.ow - (r.ix + r.iw) - pad * 2, step - 6, idx++);
+    // Left & right edges
+    for (let sy = r.oy + roadT + 14; sy < r.iy + r.ih - 14; sy += 28) {
+      paintPebble(r.ox + 9 + hash2(1, sy) * 8, sy, 5);
+      paintPebble(r.ix - 9 - hash2(2, sy) * 7, sy + 10, 6);
+      paintPebble(r.ix + r.iw + 9 + hash2(3, sy) * 8, sy + 4, 7);
+      paintPebble(r.ox + r.ow - 9 - hash2(4, sy) * 7, sy + 12, 8);
+      paintTuft(r.ox + 8, sy + 16, 13);
+      paintTuft(r.ox + r.ow - 8, sy + 16, 14);
     }
 
     ctx.restore();
 
-    // Vermilion & gold Dancheong wooden rails framing outer and inner track edges
-    this.paintDancheongRail(ctx, r.ox, r.oy, r.ow, r.oh, 18);
-    this.paintDancheongRail(ctx, r.ix, r.iy, r.iw, r.ih, 10);
+    // Clean warm stone curbs along path boundaries
+    this.paintTrackCurb(ctx, r.ox, r.oy, r.ow, r.oh, 18);
+    this.paintTrackCurb(ctx, r.ix, r.iy, r.iw, r.ih, 14);
   }
 
-  private paintDancheongRail(
+  private paintTrackCurb(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
@@ -363,180 +360,277 @@ export class BackgroundPainter {
   ): void {
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, rad);
-    ctx.lineWidth = 8.5;
+    ctx.lineWidth = 6.5;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.stroke();
 
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, rad);
-    ctx.lineWidth = 4.5;
-    ctx.strokeStyle = '#b91c1c';
+    ctx.lineWidth = 3.4;
+    ctx.strokeStyle = '#9c7853';
     ctx.stroke();
 
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, rad);
-    ctx.lineWidth = 1.4;
-    ctx.strokeStyle = '#fca5a5';
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#e7d5b2';
     ctx.stroke();
-
-    // 4 golden brass corner studs
-    const posts = [
-      [x + 6, y + 6],
-      [x + w - 6, y + 6],
-      [x + w - 6, y + h - 6],
-      [x + 6, y + h - 6],
-    ] as const;
-    for (const [px, py] of posts) {
-      ctx.beginPath();
-      ctx.arc(px, py, 5.2, 0, Math.PI * 2);
-      ctx.fillStyle = '#facc15';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = PIXEL_OUTLINE;
-      ctx.stroke();
-    }
   }
 
   /* ---------------------------------------------------------------- */
-  /*  5. Field Frame & Bench Pavilion Tray                             */
+  /*  4. Open White-Jade Courtyard Slab (6x3 Arena, Unified Stone)     */
   /* ---------------------------------------------------------------- */
 
-  private paintFieldFrame(ctx: CanvasRenderingContext2D, board: Board): void {
-    const f = board.config.field;
-    const totalW = f.cols * f.cellW + (f.cols - 1) * f.gapX;
-    const totalH = f.rows * f.cellH + (f.rows - 1) * f.gapY;
-    const pad = 9;
-    const x = f.originX - pad;
-    const y = f.originY - pad;
-    const w = totalW + pad * 2;
-    const h = totalH + pad * 2;
-
-    // Jade-green & vermilion Dancheong platform mat under the 6x3 slots
+  private paintOpenCourtyardSlab(
+    ctx: CanvasRenderingContext2D,
+    board: Board,
+    r: RingGeom,
+  ): void {
+    // Inner grassy-jade garden apron between the dirt path and stone arena slab
+    ctx.save();
     ctx.beginPath();
-    ctx.roundRect(x, y + 4, w, h, 16);
-    ctx.fillStyle = 'rgba(26, 18, 36, 0.2)';
+    ctx.roundRect(r.ix, r.iy, r.iw, r.ih, 14);
+    ctx.clip();
+
+    const mossGrad = ctx.createLinearGradient(0, r.iy, 0, r.iy + r.ih);
+    mossGrad.addColorStop(0, '#c8d6bf');
+    mossGrad.addColorStop(0.5, '#bdcdae');
+    mossGrad.addColorStop(1, '#aebfa1');
+    ctx.fillStyle = mossGrad;
+    ctx.fillRect(r.ix, r.iy, r.iw, r.ih);
+    ctx.restore();
+
+    // Continuous unified 6x3 White-Jade / Limestone Martial Courtyard Slab
+    const f = board.config.field;
+    const gridW = f.cols * f.cellW + (f.cols - 1) * f.gapX;
+    const gridH = f.rows * f.cellH + (f.rows - 1) * f.gapY;
+    const padX = 12;
+    const padY = 12;
+    const sx = f.originX - padX;
+    const sy = f.originY - padY;
+    const sw = gridW + padX * 2;
+    const sh = gridH + padY * 2;
+
+    // 3D plinth lip under unified courtyard slab
+    ctx.beginPath();
+    ctx.roundRect(sx, sy + 5, sw, sh, 16);
+    ctx.fillStyle = '#3c2b22';
     ctx.fill();
 
+    // Outer dark timber / dancheong rim framing the WHOLE 6x3 courtyard once
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 16);
-    ctx.fillStyle = '#115e59';
+    ctx.roundRect(sx, sy, sw, sh, 16);
+    ctx.fillStyle = '#6d3128';
+    ctx.fill();
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+
+    // Unified wide ivory white-jade stone floor
+    const fx = sx + 5;
+    const fy = sy + 5;
+    const fw = sw - 10;
+    const fh = sh - 10;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(fx, fy, fw, fh, 12);
+    ctx.clip();
+
+    const slabGrad = ctx.createLinearGradient(0, fy, 0, fy + fh);
+    slabGrad.addColorStop(0, '#f8f4e8');
+    slabGrad.addColorStop(0.52, '#efe7d4');
+    slabGrad.addColorStop(1, '#e3d6bc');
+    ctx.fillStyle = slabGrad;
+    ctx.fillRect(fx, fy, fw, fh);
+
+    // Subtle stone texture speckles across the unified slab
+    for (let py = fy + 16; py < fy + fh - 10; py += 28) {
+      for (let px = fx + 18; px < fx + fw - 10; px += 34) {
+        const h = hash2(px, py);
+        if (h > 0.55) {
+          ctx.fillStyle = h > 0.8 ? 'rgba(255,255,255,0.42)' : 'rgba(148,125,94,0.12)';
+          ctx.fillRect(px + h * 8, py + h * 5, 4, 2);
+        }
+      }
+    }
+
+    // Engraved Taiji martial circle watermark across center of the stone yard
+    const cx = fx + fw * 0.5;
+    const cy = fy + fh * 0.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 118, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(166, 141, 106, 0.22)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 78, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(166, 141, 106, 0.16)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Faint recessed stone grout seams aligned cleanly between the 6x3 slot midpoints
+    const stepX = f.cellW + f.gapX;
+    const stepY = f.cellH + f.gapY;
+    for (let c = 1; c < f.cols; c++) {
+      const gx = f.originX + c * stepX - f.gapX * 0.5;
+      ctx.strokeStyle = 'rgba(136, 114, 84, 0.28)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(gx, fy + 6);
+      ctx.lineTo(gx, fy + fh - 6);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(gx + 1.4, fy + 6);
+      ctx.lineTo(gx + 1.4, fy + fh - 6);
+      ctx.stroke();
+    }
+    for (let row = 1; row < f.rows; row++) {
+      const gy = f.originY + row * stepY - f.gapY * 0.5;
+      ctx.strokeStyle = 'rgba(136, 114, 84, 0.28)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(fx + 6, gy);
+      ctx.lineTo(fx + fw - 6, gy);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(fx + 6, gy + 1.4);
+      ctx.lineTo(fx + fw - 6, gy + 1.4);
+      ctx.stroke();
+    }
+
+    // Tiny subtle stone cross-hair markers at tile centers (clean tactical cue, no boxes)
+    for (let idx = 0; idx < board.field.capacity; idx++) {
+      const cell = board.getSlotRect({ area: 'field', index: idx });
+      const mx = cell.x + cell.w * 0.5;
+      const my = cell.y + cell.h * 0.5 + 14;
+      ctx.fillStyle = 'rgba(150, 126, 94, 0.2)';
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 18, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Inner stone edge highlight & shadow
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.fillRect(fx, fy, fw, 3);
+    ctx.restore();
+
+    // Inner golden trim line
+    ctx.beginPath();
+    ctx.roundRect(fx, fy, fw, fh, 12);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(202, 165, 92, 0.7)';
+    ctx.stroke();
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  5. Open Bench Slab (6x2 대기석 — Continuous Stone Courtyard)      */
+  /* ---------------------------------------------------------------- */
+
+  private paintOpenBenchSlab(ctx: CanvasRenderingContext2D, board: Board): void {
+    const { x, y, w, h, r } = TRAY;
+
+    // 3D drop shadow
+    ctx.beginPath();
+    ctx.roundRect(x, y + 7, w, h, r);
+    ctx.fillStyle = PIXEL_OUTLINE;
+    ctx.fill();
+
+    // Single outer warm timber & dancheong pavilion curb
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    const frameGrad = ctx.createLinearGradient(0, y, 0, y + h);
+    frameGrad.addColorStop(0, '#6d3128');
+    frameGrad.addColorStop(0.55, '#52221c');
+    frameGrad.addColorStop(1, '#361511');
+    ctx.fillStyle = frameGrad;
     ctx.fill();
     ctx.lineWidth = 3;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.stroke();
 
+    // Continuous unified ivory limestone slab inside bench
+    const ix = x + 7;
+    const iy = y + 7;
+    const iw = w - 14;
+    const ih = h - 14;
+    const ir = r - 5;
+
+    ctx.save();
     ctx.beginPath();
-    ctx.roundRect(x + 3, y + 3, w - 6, h - 6, 13);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#eab308';
-    ctx.stroke();
-  }
+    ctx.roundRect(ix, iy, iw, ih, ir);
+    ctx.clip();
 
-  private paintBenchTray(ctx: CanvasRenderingContext2D): void {
-    const { x, y, w, h, r } = TRAY;
+    const slab = ctx.createLinearGradient(0, iy, 0, iy + ih);
+    slab.addColorStop(0, '#f5efe0');
+    slab.addColorStop(0.6, '#eae0c9');
+    slab.addColorStop(1, '#dcd0b4');
+    ctx.fillStyle = slab;
+    ctx.fillRect(ix, iy, iw, ih);
 
-    // 3D drop shadow
-    ctx.beginPath();
-    ctx.roundRect(x, y + 8, w, h, r);
-    ctx.fillStyle = PIXEL_OUTLINE;
-    ctx.fill();
+    // Subtle engraved stone grout seams for 6x2 대기석 (zero chunky per-slot borders)
+    const b = board.config.bench;
+    const stepX = b.cellW + b.gapX;
+    const stepY = b.cellH + b.gapY;
+    for (let c = 1; c < b.cols; c++) {
+      const gx = b.originX + c * stepX - b.gapX * 0.5;
+      ctx.strokeStyle = 'rgba(136, 114, 84, 0.28)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(gx, iy + 5);
+      ctx.lineTo(gx, iy + ih - 5);
+      ctx.stroke();
 
-    // Vermilion Dancheong wooden pavilion frame
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    const frameGrad = ctx.createLinearGradient(0, y, 0, y + h);
-    frameGrad.addColorStop(0, '#b91c1c');
-    frameGrad.addColorStop(0.5, '#881337');
-    frameGrad.addColorStop(1, '#4c0519');
-    ctx.fillStyle = frameGrad;
-    ctx.fill();
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = PIXEL_OUTLINE;
-    ctx.stroke();
-
-    // Warm jade-stone recessed bed inside tray
-    ctx.beginPath();
-    ctx.roundRect(x + 9, y + 9, w - 18, h - 18, r - 6);
-    ctx.fillStyle = '#d6cbb5';
-    ctx.fill();
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = '#eab308';
-    ctx.stroke();
-  }
-
-  /* ---------------------------------------------------------------- */
-  /*  6. Bright White-Jade Tile + Red Dancheong Wood Border            */
-  /* ---------------------------------------------------------------- */
-
-  private paintJadeDancheongTile(
-    ctx: CanvasRenderingContext2D,
-    r: CellRect,
-    isField: boolean,
-  ): void {
-    const rad = isField ? 11 : 10;
-
-    // Subtle 3D bottom lip
-    ctx.beginPath();
-    ctx.roundRect(r.x, r.y + 3, r.w, r.h, rad);
-    ctx.fillStyle = PIXEL_OUTLINE;
-    ctx.fill();
-
-    // Outer Red Dancheong wood border (붉은 단청 나무 테두리)
-    ctx.beginPath();
-    ctx.roundRect(r.x, r.y, r.w, r.h, rad);
-    const wood = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-    wood.addColorStop(0, '#c82828');
-    wood.addColorStop(0.55, '#991b1b');
-    wood.addColorStop(1, '#6b1212');
-    ctx.fillStyle = wood;
-    ctx.fill();
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = PIXEL_OUTLINE;
-    ctx.stroke();
-
-    // Inner bright White-Jade / Hanji recessed slab (화사한 백옥 톤 — zero dark navy!)
-    const inset = 4.5;
-    const ix = r.x + inset;
-    const iy = r.y + inset;
-    const iw = r.w - inset * 2;
-    const ih = r.h - inset * 2;
-    const irad = Math.max(5, rad - 3);
-
-    ctx.beginPath();
-    ctx.roundRect(ix, iy, iw, ih, irad);
-    const jade = ctx.createLinearGradient(0, iy, 0, iy + ih);
-    if (isField) {
-      jade.addColorStop(0, '#fbf8f0');
-      jade.addColorStop(0.6, '#f3ecdc');
-      jade.addColorStop(1, '#e6dcc6');
-    } else {
-      jade.addColorStop(0, '#f8f3e6');
-      jade.addColorStop(0.65, '#eee5d1');
-      jade.addColorStop(1, '#dfd3ba');
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(gx + 1.3, iy + 5);
+      ctx.lineTo(gx + 1.3, iy + ih - 5);
+      ctx.stroke();
     }
-    ctx.fillStyle = jade;
-    ctx.fill();
+    for (let row = 1; row < b.rows; row++) {
+      const gy = b.originY + row * stepY - b.gapY * 0.5;
+      ctx.strokeStyle = 'rgba(136, 114, 84, 0.28)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(ix + 6, gy);
+      ctx.lineTo(ix + iw - 6, gy);
+      ctx.stroke();
 
-    // Soft top recessed inner bevel + crisp ivory bottom catchlight
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ix + 6, gy + 1.3);
+      ctx.lineTo(ix + iw - 6, gy + 1.3);
+      ctx.stroke();
+    }
+
+    // Subtle circular stand spots per slot
+    for (let idx = 0; idx < board.bench.capacity; idx++) {
+      const cell = board.getSlotRect({ area: 'bench', index: idx });
+      const mx = cell.x + cell.w * 0.5;
+      const my = cell.y + cell.h * 0.5 + 14;
+      ctx.fillStyle = 'rgba(150, 126, 94, 0.19)';
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 17, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillRect(ix, iy, iw, 2.5);
+    ctx.restore();
+
     ctx.beginPath();
-    ctx.roundRect(ix + 1, iy + 1, iw - 2, ih - 2, irad - 1);
-    ctx.lineWidth = 1.4;
-    ctx.strokeStyle = 'rgba(154, 132, 102, 0.42)';
+    ctx.roundRect(ix, iy, iw, ih, ir);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(202, 165, 92, 0.68)';
     ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.fillRect(ix + 5, iy + 2, iw - 10, 2.5);
-
-    // Subtle traditional oriental corner fret line on white jade
-    ctx.strokeStyle = 'rgba(180, 158, 125, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(ix + 5, iy + 6, iw - 10, ih - 12);
-
-    // Tiny golden dancheong corner pins on outer wood frame
-    ctx.fillStyle = '#facc15';
-    ctx.fillRect(r.x + 2.5, r.y + 2.5, 2.5, 2.5);
-    ctx.fillRect(r.x + r.w - 5, r.y + 2.5, 2.5, 2.5);
-    ctx.fillRect(r.x + 2.5, r.y + r.h - 5, 2.5, 2.5);
-    ctx.fillRect(r.x + r.w - 5, r.y + r.h - 5, 2.5, 2.5);
   }
 }
