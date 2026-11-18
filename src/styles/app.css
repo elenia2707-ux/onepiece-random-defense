@@ -170,7 +170,8 @@ button {
 .card-avatar img,
 .ing-chip img,
 .rec-ing img,
-.boss-hud-avatar img {
+.boss-hud-avatar img,
+.dps-avatar img {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
@@ -184,20 +185,20 @@ button {
   right: 16px;
   top: 12px;
   height: 84px;
-  padding: 10px 12px;
+  padding: 10px 10px;
   border-radius: 22px;
   background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-2) 55%, var(--jade-1) 100%);
   border: 3.5px solid var(--ink);
   box-shadow: 0 6px 0 var(--ink), inset 0 2.5px 0 var(--panel-hi), inset 0 -2px 0 rgba(250, 204, 21, 0.28);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
 }
 
 .wave-box {
-  min-width: 132px;
+  min-width: 136px;
   height: 60px;
-  padding: 4px 12px;
+  padding: 4px 10px;
   border-radius: 15px;
   background: linear-gradient(180deg, #991b1b 0%, #581010 100%);
   border: 3px solid var(--ink);
@@ -207,6 +208,16 @@ button {
   align-items: center;
   justify-content: center;
   gap: 0;
+  transition: transform 80ms ease;
+}
+
+.wave-box:active {
+  transform: translateY(2px);
+}
+
+.wave-box.endless-mode {
+  background: linear-gradient(180deg, #7e22ce 0%, #4c0519 100%);
+  box-shadow: 0 0 0 2px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.28);
 }
 
 .wave-box.boss-mode {
@@ -227,11 +238,12 @@ button {
 
 .wave-badge {
   font-family: var(--font-display);
-  font-size: 17px;
-  letter-spacing: 0.03em;
+  font-size: 15.5px;
+  letter-spacing: 0.02em;
   color: var(--gold);
   text-shadow: var(--outline-1);
   line-height: 1.1;
+  white-space: nowrap;
 }
 
 .wave-timer {
@@ -323,21 +335,21 @@ button {
 .hud-controls {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
 }
 
 .hud-btn {
   position: relative;
-  min-width: 54px;
+  min-width: 46px;
   height: 52px;
-  padding: 0 10px;
+  padding: 0 8px;
   border-radius: 14px;
   border: 3px solid var(--ink);
   background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.3);
   color: #ffffff;
   font-family: var(--font-display);
-  font-size: 19px;
+  font-size: 18px;
   text-shadow: var(--outline-1);
   display: inline-flex;
   align-items: center;
@@ -355,10 +367,21 @@ button {
   color: #ffffff;
 }
 
-.hud-btn.dev-btn {
-  min-width: 40px;
-  height: 30px;
+.hud-btn.mute-btn {
+  min-width: 44px;
   padding: 0 6px;
+  font-size: 19px;
+}
+
+.hud-btn.mute-btn.muted {
+  background: linear-gradient(180deg, #475569 0%, #1e293b 100%);
+  color: #cbd5e1;
+}
+
+.hud-btn.dev-btn {
+  min-width: 38px;
+  height: 30px;
+  padding: 0 5px;
   border-radius: 9px;
   border-width: 2px;
   font-size: 11px;
@@ -562,15 +585,28 @@ button {
   background: rgba(255, 255, 255, 0.5);
 }
 
+.boss-hud-bar.bounty-mode {
+  background: linear-gradient(180deg, #b45309 0%, #7c2d12 58%, #3f1305 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 2px #fde047, inset 0 2px 0 rgba(255, 255, 255, 0.28);
+}
+
+.boss-hud-bar.bounty-mode .boss-hud-tag {
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+}
+
+.boss-hud-bar.bounty-mode .boss-hud-fill {
+  background: linear-gradient(90deg, #fde047 0%, #f97316 52%, #ea580c 100%);
+}
+
 /* =========================================================
-   Bench badge (sits on the dancheong bench tray frame, y=716)
+   Bench badge & Auto-Arrange button (sits on the dancheong bridge, y=715)
    ========================================================= */
 .bench-badge {
   position: absolute;
-  left: 44px;
+  left: 36px;
   top: 715px;
   height: 32px;
-  padding: 0 12px 0 9px;
+  padding: 0 11px 0 8px;
   border-radius: 999px;
   border: 3px solid var(--ink);
   background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
@@ -578,7 +614,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 16px;
+  font-size: 15.5px;
   color: #ffffff;
   text-shadow: var(--outline-1);
   z-index: 2;
@@ -600,12 +636,44 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.auto-arrange-btn {
+  position: absolute;
+  left: 224px;
+  top: 716px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
+  box-shadow: 0 2.5px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.auto-arrange-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.auto-arrange-btn.can-deploy {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  box-shadow: 0 2.5px 0 var(--ink), 0 0 0 1.5px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  animation: chipGlow 0.9s ease-in-out infinite alternate;
+}
+
 /* =========================================================
    3-Faction Field Formation Synergy Bar (sits right of bridge, y=715)
    ========================================================= */
 .synergy-bar {
   position: absolute;
-  right: 40px;
+  right: 36px;
   top: 715px;
   height: 32px;
   display: inline-flex;
@@ -843,22 +911,22 @@ button {
 .unit-select-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
 }
 
 .mini-3d-btn {
   position: relative;
-  min-width: 64px;
+  min-width: 60px;
   height: 54px;
-  padding: 0 10px;
+  padding: 0 8px;
   border-radius: 14px;
   border: 3px solid var(--ink);
   background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
   box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.35);
   color: #ffffff;
   text-shadow: var(--outline-1);
-  font-size: 15px;
+  font-size: 14.5px;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -870,6 +938,14 @@ button {
 .mini-3d-btn:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 var(--ink);
+}
+
+.mini-3d-btn.ascend-btn {
+  display: none;
+  min-width: 68px;
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 1.5px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.55);
+  animation: chipGlow 0.75s ease-in-out infinite alternate;
 }
 
 .mini-3d-btn.lock-on {
@@ -1734,7 +1810,7 @@ button {
   position: absolute;
   left: 50px;
   right: 50px;
-  top: 110px;
+  top: 138px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1745,7 +1821,7 @@ button {
 }
 
 .toast-layer.boss-active {
-  top: 154px;
+  top: 220px;
 }
 
 .toast-item {
@@ -1771,7 +1847,7 @@ button {
   background: linear-gradient(180deg, #fb7185 0%, #9f1239 100%);
 }
 
-/* Game Over Banner */
+/* Game Over / Victory Settlement Banner */
 .gameover-modal {
   position: absolute;
   inset: 0;
@@ -1787,7 +1863,7 @@ button {
 }
 
 .gameover-card {
-  width: 560px;
+  width: 588px;
   padding: 26px 24px;
   border-radius: 28px;
   background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-1) 100%);
@@ -1801,9 +1877,14 @@ button {
   gap: 12px;
 }
 
+.gameover-card.victory-theme {
+  background: linear-gradient(180deg, #991b1b 0%, #581010 55%, #2b090e 100%);
+  box-shadow: 0 10px 0 var(--ink), 0 0 0 3px #facc15, inset 0 3px 0 rgba(255, 255, 255, 0.28);
+}
+
 .gameover-title {
   font-family: var(--font-display);
-  font-size: 36px;
+  font-size: 35px;
   color: var(--gold);
   text-shadow: var(--outline-2);
 }
@@ -1836,6 +1917,30 @@ button {
   color: var(--gold);
   text-shadow: var(--outline-1);
   letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.settlement-mult-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  color: #ffffff;
+  font-size: 12.5px;
+}
+
+.first-clear-banner {
+  padding: 7px 12px;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-shadow: var(--outline-1);
 }
 
 .settlement-loot-row {
@@ -1881,23 +1986,30 @@ button {
 
 .gameover-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   margin-top: 4px;
+}
+
+.card-cta-btn.cta-crimson {
+  background: linear-gradient(180deg, #fb7185 0%, #e11d48 48%, #881337 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 1.5px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.45);
 }
 
 /* =========================================================
    Wuxia Relic (무림 신물 · 기보고) & Live Buff UI
    ========================================================= */
 .hud-btn.relic-btn {
-  min-width: 72px;
-  gap: 4px;
-  padding: 0 9px;
+  min-width: 68px;
+  gap: 3px;
+  padding: 0 8px;
   background: linear-gradient(180deg, #f59e0b 0%, #9a3412 100%);
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .hud-btn.relic-btn .ico {
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .hud-mini-badge {
@@ -2108,6 +2220,11 @@ button {
   gap: 10px;
 }
 
+.settlement-preview-bar.victory-bar {
+  background: linear-gradient(180deg, #7f1d1d 0%, #450a0a 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px #facc15;
+}
+
 .settlement-preview-info {
   display: flex;
   flex-direction: column;
@@ -2127,4 +2244,447 @@ button {
   color: #ccfbf1;
   text-shadow: var(--outline-1);
 }
+
+/* =========================================================
+   Tactical Command Strip (Bounty · Missions · DPS · Codex)
+   ========================================================= */
+.tactical-strip {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  top: 102px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  pointer-events: none;
+  z-index: 12;
+  transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tactical-strip.boss-active {
+  top: 186px;
+}
+
+.tac-pill {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, rgba(20, 77, 71, 0.94) 0%, rgba(8, 35, 32, 0.96) 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.tac-pill:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.tac-pill.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+}
+
+.tac-pill.bounty {
+  background: linear-gradient(180deg, #475569 0%, #1e293b 100%);
+  color: #e2e8f0;
+}
+
+.tac-pill.bounty.ready {
+  background: linear-gradient(180deg, #fde047 0%, #ea580c 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 1.5px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.55);
+  animation: chipGlow 0.8s ease-in-out infinite alternate;
+}
+
+.tac-pill.bounty.active-chase {
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 1.5px #fde047;
+}
+
+/* =========================================================
+   Live Floating DPS Meter Panel (#dps-panel)
+   ========================================================= */
+.dps-panel {
+  position: absolute;
+  right: 24px;
+  top: 138px;
+  width: 282px;
+  padding: 10px 11px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(13, 54, 50, 0.95) 0%, rgba(8, 35, 32, 0.97) 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 6px 0 var(--ink), inset 0 2px 0 var(--panel-hi);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 28;
+  transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dps-panel.open {
+  display: flex;
+}
+
+.dps-panel.boss-active {
+  top: 222px;
+}
+
+.dps-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid rgba(250, 204, 21, 0.28);
+}
+
+.dps-panel-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--gold);
+  text-shadow: var(--outline-1);
+}
+
+.dps-panel-total {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  color: #ccfbf1;
+  text-shadow: var(--outline-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.dps-close-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dps-empty {
+  padding: 10px 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.dps-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dps-rank {
+  width: 18px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--gold);
+  text-align: center;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.dps-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 2px solid var(--ink);
+  background: radial-gradient(circle at 50% 38%, var(--white-jade-hi) 0%, var(--white-jade-lo) 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.dps-avatar img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.dps-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dps-meta-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.dps-name {
+  font-size: 13.5px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dps-val {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.dps-val b {
+  font-weight: 400;
+  font-size: 11.5px;
+  color: #99f6e4;
+}
+
+.dps-bar-track {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--jade-0);
+  border: 1.5px solid var(--ink);
+  overflow: hidden;
+}
+
+.dps-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 120ms linear;
+}
+
+/* =========================================================
+   In-Run Wuxia Missions Sheet (강호 의뢰 · 밀서)
+   ========================================================= */
+.mission-card.mission-done {
+  background: linear-gradient(180deg, #134e4a 0%, #092c29 100%);
+  opacity: 0.82;
+}
+
+.mission-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mission-rewards {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.mission-reward-pill {
+  height: 24px;
+  padding: 0 8px 0 5px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: var(--jade-0);
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.mission-reward-pill .ico {
+  font-size: 15px;
+}
+
+.mission-prog-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--jade-0);
+  border: 2px solid var(--ink);
+  overflow: hidden;
+}
+
+.mission-prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4ade80 0%, #facc15 100%);
+  transition: width 160ms ease;
+}
+
+.mission-stamp {
+  min-width: 96px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 2.5px solid var(--ink);
+  background: var(--jade-0);
+  color: #fef08a;
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission-stamp.done {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+  color: #ffffff;
+}
+
+/* =========================================================
+   Difficulty Tiers & 30-Unit Codex Sheet (무림 명숙록 · 출정 난이도)
+   ========================================================= */
+.diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diff-card {
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diff-card.diff-active {
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--gold);
+}
+
+.diff-card.diff-locked {
+  opacity: 0.85;
+}
+
+.diff-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.diff-clear-pill,
+.diff-bonus-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  font-size: 12.5px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.diff-clear-pill {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+}
+
+.diff-bonus-pill {
+  background: #0f766e;
+  color: #fef08a;
+}
+
+.codex-header-bar {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.codex-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.codex-filter-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: var(--jade-0);
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+
+.codex-filter-btn.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.codex-card.codex-undiscovered {
+  background: linear-gradient(180deg, #134640 0%, #0b2d29 100%);
+}
+
+.codex-card.codex-undiscovered .card-avatar img {
+  opacity: 0.72;
+}
+
+.codex-disc-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+}
+
+.codex-disc-badge.ok {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+  color: #ffffff;
+}
+
+.codex-disc-badge.locked {
+  background: var(--jade-0);
+  color: #fde68a;
+}
+
+.codex-lineage {
+  font-size: 13px;
+  color: #a7f3d0;
+  line-height: 1.3;
+}
+
+.codex-lineage span {
+  color: #fde68a;
+}
+
 

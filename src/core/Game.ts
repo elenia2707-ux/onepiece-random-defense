@@ -3,9 +3,9 @@ import { Simulation, type UISnapshot } from './Simulation';
 import { loadGameData } from '../data/loader';
 import { DragController } from '../input/DragController';
 import { InputManager } from '../input/InputManager';
-import { AudioUnlock } from '../platform/AudioUnlock';
 import { Lifecycle } from '../platform/Lifecycle';
 import { MetaStore, type SettlementRecord } from '../platform/MetaStore';
+import { SoundSynthesizer } from '../platform/SoundSynthesizer';
 import { Viewport } from '../platform/Viewport';
 import { BackgroundPainter } from '../render/BackgroundPainter';
 import { CanvasStack } from '../render/CanvasStack';
@@ -28,9 +28,10 @@ export class Game {
   private readonly loop: GameLoop;
   private readonly viewport: Viewport;
   private readonly lifecycle: Lifecycle;
-  private readonly audioUnlock: AudioUnlock;
+  private readonly sound: SoundSynthesizer;
 
   private settlementRecord: SettlementRecord | null = null;
+  private endlessSettled = false;
   private slowFrameStreak = 0;
 
   public constructor() {
@@ -41,8 +42,14 @@ export class Game {
     }
 
     this.meta = new MetaStore();
+    this.sound = new SoundSynthesizer();
     const runSeed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 0x20261118;
-    this.sim = new Simulation(data, runSeed, this.meta.getRelicLevels());
+    this.sim = new Simulation(
+      data,
+      runSeed,
+      this.meta.getRelicLevels(),
+      this.meta.getSelectedDifficulty(),
+    );
     this.stack = new CanvasStack();
     this.sprites = new SpriteCache();
     this.bgPainter = new BackgroundPainter(() => {
@@ -60,6 +67,7 @@ export class Game {
     this.ui = new UIManager(data, this.sim.recipeGraph, this.sprites, {
       onDispatch: (cmd) => this.sim.commands.enqueue(cmd),
       onCycleSpeed: () => {
+        this.sound.playUiTap();
         const next = this.loop.cycleSpeed();
         if (this.loop.isPaused()) {
           this.loop.setPaused(false);
@@ -67,12 +75,26 @@ export class Game {
         this.ui.sync(this.sim.buildSnapshot(next, false), performance.now(), true);
       },
       onTogglePause: () => {
+        this.sound.playUiTap();
         const paused = this.loop.togglePaused();
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), paused),
           performance.now(),
           true,
         );
+      },
+      isSoundMuted: () => this.sound.isMuted(),
+      onToggleMute: () => this.sound.toggleMute(),
+      onSelectDifficulty: (diff) => {
+        if (this.meta.setSelectedDifficulty(diff)) {
+          window.location.reload();
+          return true;
+        }
+        return false;
+      },
+      onEnterEndless: () => {
+        this.sound.playBossHorn();
+        this.sim.commands.enqueue({ type: 'enterEndless' });
       },
       onRestart: () => {
         window.location.reload();
@@ -87,6 +109,7 @@ export class Game {
       onDrawRelic: (payWith) => {
         const res = this.meta.drawRelic(data.relics, payWith);
         if (res.ok) {
+          this.sound.playCraft(res.isNew ? 4 : 3);
           this.sim.commands.enqueue({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
         }
         this.ui.sync(
@@ -103,6 +126,7 @@ export class Game {
         }
         const res = this.meta.upgradeRelic(def);
         if (res.ok) {
+          this.sound.playCoinReward();
           this.sim.commands.enqueue({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
         }
         this.ui.sync(
@@ -113,6 +137,7 @@ export class Game {
         return res;
       },
       onGrantDevMeta: () => {
+        this.sound.playCoinReward();
         this.meta.grantDevMeta(250, 2);
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
@@ -138,8 +163,22 @@ export class Game {
       onSyncUI: (nowMs, forcePriority) => {
         if (!forcePriority && nowMs % 1 < 0) return;
         const snap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
-        if (snap.gameOver && !this.settlementRecord) {
+        if ((snap.victoryHold || snap.gameOver) && !this.settlementRecord) {
           this.settleCurrentRun(snap);
+          if (snap.gameOver && !snap.victoryAchieved) {
+            this.sound.playDefeat();
+          }
+        } else if (snap.gameOver && this.settlementRecord && !this.endlessSettled) {
+          this.endlessSettled = true;
+          this.settlementRecord = this.meta.settleEndlessOvertime(this.settlementRecord, {
+            wave: snap.wave,
+            monstersSlain: snap.monstersSlain,
+            bossesSlain: snap.bossesSlain,
+            bountiesSlain: snap.bounty.bountiesSlain,
+            difficulty: snap.difficulty,
+            victory: snap.victoryAchieved,
+          });
+          this.sound.playDefeat();
         }
         this.ui.sync(snap, nowMs, forcePriority);
       },
@@ -164,8 +203,6 @@ export class Game {
       this.ui.sync(snap, performance.now(), true);
     });
 
-    this.audioUnlock = new AudioUnlock();
-
     this.bindSimulationEvents();
   }
 
@@ -175,6 +212,9 @@ export class Game {
         wave: snap.wave,
         monstersSlain: snap.monstersSlain,
         bossesSlain: snap.bossesSlain,
+        bountiesSlain: snap.bounty.bountiesSlain,
+        difficulty: snap.difficulty,
+        victory: snap.victoryAchieved,
       });
     }
     return this.settlementRecord;
@@ -182,13 +222,29 @@ export class Game {
 
   private bindSimulationEvents(): void {
     this.sim.events.on('unit:added', (ev) => {
+      const unitDef = this.sim.data.unitsById.get(ev.unitId);
       const gradeDef = this.sim.data.gradesById.get(ev.grade);
       const color = gradeDef?.color ?? '#94a3b8';
       const rank = gradeDef?.rank ?? 1;
       this.vfx.spawnArrivalFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
 
+      if (ev.source === 'summon' || ev.source === 'wisp') {
+        this.sound.playSummon();
+      }
+
+      if (unitDef && gradeDef) {
+        const disc = this.meta.discoverUnit(unitDef, gradeDef);
+        if (disc.isNew) {
+          this.sound.playCoinReward();
+          const keyPart = disc.bonusKeys > 0 ? ` · 열쇠 +${disc.bonusKeys}` : '';
+          this.ui.showToast(
+            `📖 명숙록 최초 등재! [${disc.gradeName}] ${disc.unitName} (+${disc.bonusGold} 주화${keyPart})`,
+          );
+        }
+      }
+
       if (ev.source === 'wisp') {
-        const unitName = this.sim.data.unitsById.get(ev.unitId)?.name ?? ev.unitId;
+        const unitName = unitDef?.name ?? ev.unitId;
         this.ui.showToast(`✦ 기연 초빙: ${unitName} 합류!`);
       }
     });
@@ -199,6 +255,7 @@ export class Game {
       const rank = gradeDef?.rank ?? 2;
       const unitName = this.sim.data.unitsById.get(ev.outputUnitId)?.name ?? ev.outputUnitId;
 
+      this.sound.playCraft(rank);
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
       this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 합공 등선!`);
 
@@ -215,6 +272,15 @@ export class Game {
     this.sim.events.on('unit:moved', (ev) => {
       const dest = this.sim.board.getSlotCenter(ev.to);
       this.vfx.spawnMovePulse(dest.x, dest.y, ev.tick);
+    });
+
+    this.sim.events.on('board:arranged', (ev) => {
+      this.sound.playUiTap();
+      if (ev.deployedCount > 0) {
+        this.ui.showToast(`⚡ 자동출전 완료! 비무대 ${ev.deployedCount}인 투입 · 대기석 정렬`);
+      } else {
+        this.ui.showToast('⚡ 문파 대기석 서열 정렬 완료!');
+      }
     });
 
     this.sim.events.on('skill:impact', (ev) => {
@@ -241,6 +307,8 @@ export class Game {
     });
 
     this.sim.events.on('monster:hit', (ev) => {
+      const uDef = this.sim.data.unitsById.get(ev.unitId);
+      this.sound.playHit(uDef?.faction ?? 'orthodox', ev.isCrit, ev.isSkill);
       this.vfx.spawnHitFx(
         ev.entityId,
         ev.x,
@@ -255,17 +323,20 @@ export class Game {
     });
 
     this.sim.events.on('wave:interest', (ev) => {
+      this.sound.playCoinReward();
       this.ui.showToast(
         `🏦 전장 금고 복리 +${ev.pct}% 발동! 이자 +${ev.interestCoin.toLocaleString('ko-KR')} 은자`,
       );
     });
 
     this.sim.events.on('wave:boss', (ev) => {
+      this.sound.playBossHorn();
       this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
       this.vfx.triggerScreenFlash('#dc2626', 0.14, 0.24, ev.tick);
     });
 
     this.sim.events.on('boss:slain', (ev) => {
+      this.sound.playCoinReward();
       const wispGradeName =
         this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
       this.ui.showToast(
@@ -273,7 +344,60 @@ export class Game {
       );
     });
 
+    this.sim.events.on('boss:timeout', (ev) => {
+      this.vfx.triggerScreenFlash('#991b1b', 0.22, 0.3, ev.tick);
+      this.ui.showToast(`⏳ 제한시간 초과! ${ev.bossName} 토벌에 실패했습니다!`, true);
+    });
+
+    this.sim.events.on('bounty:called', (ev) => {
+      this.sound.playBossHorn();
+      this.vfx.triggerScreenFlash('#f59e0b', 0.12, 0.2, ev.tick);
+      this.ui.showToast(
+        `📜 ${ev.bossName} 출현! 30초 내 토벌 시 은자+${ev.rewardCoin} · 영단+${ev.rewardLuck}`,
+      );
+    });
+
+    this.sim.events.on('bounty:slain', (ev) => {
+      this.sound.playCoinReward();
+      this.ui.showToast(
+        `🎯 수배범 포획 성공! 은자 +${ev.rewardCoin} · 영단 +${ev.rewardLuck} 획득!`,
+      );
+    });
+
+    this.sim.events.on('bounty:escaped', (ev) => {
+      this.ui.showToast(
+        `💨 ${ev.bossName} 도주! 군자금 ${ev.stolenCoin} 은자를 약탈당했습니다!`,
+        true,
+      );
+    });
+
+    this.sim.events.on('mission:completed', (ev) => {
+      this.sound.playCoinReward();
+      const rewards: string[] = [];
+      if (ev.rewardCoin > 0) rewards.push(`은자 +${ev.rewardCoin}`);
+      if (ev.rewardLuck > 0) rewards.push(`영단 +${ev.rewardLuck}`);
+      if (ev.rewardWispGrade) {
+        const gName =
+          this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
+        rewards.push(`${gName} 기연 +1`);
+      }
+      this.ui.showToast(`📋 의뢰 달성: ${ev.name} (${rewards.join(' · ')})`);
+    });
+
+    this.sim.events.on('run:victory', (ev) => {
+      this.sound.playVictory();
+      this.vfx.showCraftCelebrationBanner(
+        '천하통일',
+        `제 ${ev.wave} 장 대승리!`,
+        '#fde047',
+        performance.now(),
+      );
+      const snap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
+      this.settleCurrentRun(snap);
+    });
+
     this.sim.events.on('gamble:result', (ev) => {
+      this.sound.playGamble(ev.success, ev.refundedLuck);
       const gradeDef = this.sim.data.gradesById.get(ev.tier);
       const gName = gradeDef?.name ?? ev.tier;
       if (ev.success && ev.unitId) {
@@ -295,6 +419,7 @@ export class Game {
     });
 
     this.sim.events.on('upgrade:done', (ev) => {
+      this.sound.playCoinReward();
       const upDef = this.sim.data.upgrades.find((u) => u.id === ev.group);
       const factionAccent =
         ev.group === 'orthodox'
@@ -327,7 +452,7 @@ export class Game {
     this.viewport.mount();
     this.input.mount();
     this.lifecycle.mount();
-    this.audioUnlock.mount();
+    this.sound.mount();
 
     const initialSnap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
     this.ui.sync(initialSnap, performance.now(), true);

@@ -1,6 +1,7 @@
 import rawBoard from './board.json';
 import rawGambleRates from './gamble_rates.json';
 import rawGrades from './grades.json';
+import rawMissions from './missions.json';
 import rawRecipes from './recipes.json';
 import rawRelics from './relics.json';
 import rawUnits from './units.json';
@@ -15,6 +16,8 @@ import type {
   GameDataBundle,
   GradeDef,
   GridSpec,
+  MissionConditionKind,
+  MissionDef,
   MonsterKind,
   RawUnitDef,
   RawWaveDef,
@@ -68,6 +71,17 @@ const VALID_RELIC_IDS: ReadonlySet<string> = new Set<RelicId>([
   'immortal_furnace',
   'founding_jade_seal',
   'heavenly_scroll_chest',
+]);
+
+const VALID_MISSION_CONDITIONS: ReadonlySet<string> = new Set<MissionConditionKind>([
+  'distinct_leaf_owned',
+  'min_grade_owned',
+  'any_formation_active',
+  'high_formation_active',
+  'bounties_slain',
+  'gamble_wins',
+  'held_coin',
+  'total_upgrades',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -513,6 +527,58 @@ export function validateRelics(input: unknown): RelicDef[] {
   });
 }
 
+export function validateMissions(
+  input: unknown,
+  gradesById: ReadonlyMap<string, GradeDef>,
+): MissionDef[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] missions.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `missions[${i}]`);
+    const id = assertNonEmptyString(r.id, `missions[${i}].id`);
+    if (seen.has(id)) {
+      throw new Error(`[DataValidation] duplicate mission id: ${id}`);
+    }
+    seen.add(id);
+    const name = assertNonEmptyString(r.name, `missions[${i}].name`);
+    const desc = assertNonEmptyString(r.desc, `missions[${i}].desc`);
+    const condStr = assertNonEmptyString(r.condition, `missions[${i}].condition`);
+    if (!VALID_MISSION_CONDITIONS.has(condStr)) {
+      throw new Error(`[DataValidation] missions[${i}].condition invalid: ${condStr}`);
+    }
+    const target = assertPositiveNumber(r.target, `missions[${i}].target`);
+    const gradeRank =
+      typeof r.gradeRank === 'number'
+        ? assertPositiveNumber(r.gradeRank, `missions[${i}].gradeRank`)
+        : undefined;
+    const rewardCoin = assertNonNegativeNumber(r.rewardCoin, `missions[${i}].rewardCoin`);
+    const rewardLuck = assertNonNegativeNumber(r.rewardLuck, `missions[${i}].rewardLuck`);
+    const rewardWispGrade =
+      typeof r.rewardWispGrade === 'string' && r.rewardWispGrade.trim().length > 0
+        ? r.rewardWispGrade
+        : undefined;
+    if (rewardWispGrade && !gradesById.has(rewardWispGrade)) {
+      throw new Error(
+        `[DataValidation] missions[${i}].rewardWispGrade unknown: ${rewardWispGrade}`,
+      );
+    }
+
+    return {
+      id,
+      name,
+      desc,
+      condition: condStr as MissionConditionKind,
+      target,
+      gradeRank,
+      rewardCoin,
+      rewardLuck,
+      rewardWispGrade,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -535,6 +601,7 @@ export function loadGameData(): GameDataBundle {
   }
   const relics = validateRelics(rawRelics);
   const relicsById = new Map<RelicId, RelicDef>(relics.map((rel) => [rel.id, rel]));
+  const missions = validateMissions(rawMissions, gradesById);
 
   cachedBundle = {
     grades,
@@ -550,6 +617,8 @@ export function loadGameData(): GameDataBundle {
     upgradesByFaction,
     relics,
     relicsById,
+    missions,
   };
   return cachedBundle;
 }
+

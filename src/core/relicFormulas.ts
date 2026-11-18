@@ -1,4 +1,67 @@
-import type { RelicId } from '../data/types';
+import type { DifficultyId, RelicId } from '../data/types';
+
+export const CLEAR_TARGET_WAVE = 30;
+
+export interface DifficultyConfig {
+  readonly id: DifficultyId;
+  readonly name: string;
+  readonly badge: string;
+  readonly desc: string;
+  readonly hpMult: number;
+  readonly speedMult: number;
+  readonly rewardMult: number;
+  readonly firstClearGold: number;
+  readonly firstClearKeys: number;
+}
+
+export const DIFFICULTY_ORDER: readonly DifficultyId[] = ['normal', 'hard', 'hell'];
+
+export const DIFFICULTY_CONFIGS: Readonly<Record<DifficultyId, DifficultyConfig>> = {
+  normal: {
+    id: 'normal',
+    name: '강호 초입',
+    badge: '초입 1.0x',
+    desc: '표준 무림 전장 · 제30장 마신 토벌 시 『무림 고수』 해금',
+    hpMult: 1.0,
+    speedMult: 1.0,
+    rewardMult: 1.0,
+    firstClearGold: 250,
+    firstClearKeys: 2,
+  },
+  hard: {
+    id: 'hard',
+    name: '무림 고수',
+    badge: '고수 1.6x',
+    desc: '마물 체력 1.65배 · 이속 증가 · 정산 천하주화 1.6배 보상',
+    hpMult: 1.65,
+    speedMult: 1.06,
+    rewardMult: 1.6,
+    firstClearGold: 450,
+    firstClearKeys: 3,
+  },
+  hell: {
+    id: 'hell',
+    name: '아수라 혈겁',
+    badge: '혈겁 2.5x',
+    desc: '마물 체력 2.65배 · 보스 강인함 상승 · 정산 천하주화 2.5배 대보상',
+    hpMult: 2.65,
+    speedMult: 1.12,
+    rewardMult: 2.5,
+    firstClearGold: 800,
+    firstClearKeys: 5,
+  },
+};
+
+export function formatCompactNumber(val: number): string {
+  const n = Math.max(0, Math.round(val));
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(2)}M`;
+  }
+  if (n >= 10_000) {
+    return `${(n / 1_000).toFixed(1)}K`;
+  }
+  return n.toLocaleString('ko-KR');
+}
 
 export const RELIC_IDS_ORDERED: readonly RelicId[] = [
   'golden_vault',

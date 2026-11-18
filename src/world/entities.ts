@@ -26,6 +26,9 @@ export interface MonsterEntity {
   readonly entityId: number;
   readonly kind: MonsterKind;
   readonly isBoss: boolean;
+  readonly isBounty?: boolean;
+  readonly expireTick?: number;
+  readonly bountyRewardLuck?: number;
   readonly bossName?: string;
   hp: number;
   readonly maxHp: number;

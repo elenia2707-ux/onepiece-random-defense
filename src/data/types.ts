@@ -202,6 +202,32 @@ export interface RelicDef {
   readonly stepUpgradeGold: number;
 }
 
+export type DifficultyId = 'normal' | 'hard' | 'hell';
+
+export type GameOverReason = 'overrun' | 'boss_timeout';
+
+export type MissionConditionKind =
+  | 'distinct_leaf_owned'
+  | 'min_grade_owned'
+  | 'any_formation_active'
+  | 'high_formation_active'
+  | 'bounties_slain'
+  | 'gamble_wins'
+  | 'held_coin'
+  | 'total_upgrades';
+
+export interface MissionDef {
+  readonly id: string;
+  readonly name: string;
+  readonly desc: string;
+  readonly condition: MissionConditionKind;
+  readonly target: number;
+  readonly gradeRank?: number;
+  readonly rewardCoin: number;
+  readonly rewardLuck: number;
+  readonly rewardWispGrade?: GradeId;
+}
+
 export interface GameDataBundle {
   readonly grades: readonly GradeDef[];
   readonly gradesById: ReadonlyMap<GradeId, GradeDef>;
@@ -216,4 +242,5 @@ export interface GameDataBundle {
   readonly upgradesByFaction: ReadonlyMap<FactionId, UpgradeGroupDef>;
   readonly relics: readonly RelicDef[];
   readonly relicsById: ReadonlyMap<RelicId, RelicDef>;
+  readonly missions: readonly MissionDef[];
 }

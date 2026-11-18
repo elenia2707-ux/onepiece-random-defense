@@ -16,6 +16,9 @@ export type GameCommand =
   | { readonly type: 'useWisp'; readonly grade: GradeId; readonly unitId: UnitId }
   | { readonly type: 'gamble'; readonly tier: GradeId }
   | { readonly type: 'upgrade'; readonly group: UpgradeGroupId }
+  | { readonly type: 'callBounty' }
+  | { readonly type: 'autoArrange' }
+  | { readonly type: 'enterEndless' }
   | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {

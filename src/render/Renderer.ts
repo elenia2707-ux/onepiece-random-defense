@@ -451,6 +451,31 @@ export class Renderer {
       const showHitFlash = hitAgeSec >= 0 && hitAgeSec < 0.11;
       const hitT = showHitFlash ? 1 - hitAgeSec / 0.11 : 0;
 
+      if (m.isBounty) {
+        this.buckets[RenderLayer.GroundFx]!.push({
+          layer: RenderLayer.GroundFx,
+          sortY: y - 2,
+          render: (ctx) => {
+            const pulse = 1 + Math.sin((currentTick + alpha) * 0.22) * 0.08;
+            ctx.beginPath();
+            ctx.ellipse(
+              x,
+              y + m.radius * 0.76,
+              m.radius * 1.28 * pulse,
+              m.radius * 0.56 * pulse,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+            ctx.fill();
+            ctx.lineWidth = 2.6;
+            ctx.strokeStyle = '#facc15';
+            ctx.stroke();
+          },
+        });
+      }
+
       if (isSlowed) {
         this.buckets[RenderLayer.GroundFx]!.push({
           layer: RenderLayer.GroundFx,
@@ -515,13 +540,15 @@ export class Renderer {
             if (ratio > 0) {
               ctx.beginPath();
               ctx.roundRect(bx, by, Math.max(barH, barW * ratio), barH, 99);
-              ctx.fillStyle = m.isBoss
-                ? '#e11d48'
-                : ratio > 0.5
-                  ? '#16a34a'
-                  : ratio > 0.25
-                    ? '#f59e0b'
-                    : '#dc2626';
+              ctx.fillStyle = m.isBounty
+                ? '#f59e0b'
+                : m.isBoss
+                  ? '#e11d48'
+                  : ratio > 0.5
+                    ? '#16a34a'
+                    : ratio > 0.25
+                      ? '#f59e0b'
+                      : '#dc2626';
               ctx.fill();
 
               ctx.beginPath();

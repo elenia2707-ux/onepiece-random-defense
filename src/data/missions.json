@@ -1,0 +1,97 @@
+[
+  {
+    "id": "m_six_leaves",
+    "name": "강호 초출 집결",
+    "desc": "서로 다른 삼류 협객 6종을 동시에 보유",
+    "condition": "distinct_leaf_owned",
+    "target": 6,
+    "rewardCoin": 0,
+    "rewardLuck": 2
+  },
+  {
+    "id": "m_first_rare",
+    "name": "일류 고수의 반열",
+    "desc": "일류(희귀) 이상 경지의 협객 보유",
+    "condition": "min_grade_owned",
+    "target": 1,
+    "gradeRank": 3,
+    "rewardCoin": 90,
+    "rewardLuck": 0
+  },
+  {
+    "id": "m_formation_open",
+    "name": "문파 진법 개안",
+    "desc": "비무대에서 3인 문파 진법 또는 삼재합진 발동",
+    "condition": "any_formation_active",
+    "target": 1,
+    "rewardCoin": 0,
+    "rewardLuck": 2
+  },
+  {
+    "id": "m_bounty_hunt",
+    "name": "강호 추포령 완수",
+    "desc": "현상수배범을 호출하여 제한시간 내 1회 토벌",
+    "condition": "bounties_slain",
+    "target": 1,
+    "rewardCoin": 100,
+    "rewardLuck": 1
+  },
+  {
+    "id": "m_gamble_miracle",
+    "name": "단전의 기적",
+    "desc": "영약 복용으로 환골탈태 누적 2회 성공",
+    "condition": "gamble_wins",
+    "target": 2,
+    "rewardCoin": 0,
+    "rewardLuck": 3
+  },
+  {
+    "id": "m_wealth_1000",
+    "name": "천하 거상 등극",
+    "desc": "전장 군자금 보유 은자 1,000 달성",
+    "condition": "held_coin",
+    "target": 1000,
+    "rewardCoin": 0,
+    "rewardLuck": 2
+  },
+  {
+    "id": "m_upgrade_6",
+    "name": "삼파 내공 단련",
+    "desc": "정·사·마 내공 수련 단계 합계 Lv.6 달성",
+    "condition": "total_upgrades",
+    "target": 6,
+    "rewardCoin": 0,
+    "rewardLuck": 0,
+    "rewardWispGrade": "uncommon"
+  },
+  {
+    "id": "m_legendary_master",
+    "name": "절정 고수 등선",
+    "desc": "절정(전설) 이상 경지의 대종사 보유",
+    "condition": "min_grade_owned",
+    "target": 1,
+    "gradeRank": 4,
+    "rewardCoin": 150,
+    "rewardLuck": 3
+  },
+  {
+    "id": "m_grand_formation",
+    "name": "호법 대진 완성",
+    "desc": "6인 극(極) 진법 또는 삼재합진(2/2/2) 발동",
+    "condition": "high_formation_active",
+    "target": 1,
+    "rewardCoin": 0,
+    "rewardLuck": 0,
+    "rewardWispGrade": "rare"
+  },
+  {
+    "id": "m_mythic_descent",
+    "name": "화경 신화의 강림",
+    "desc": "화경(초월) 또는 현경·신마 협객 강림",
+    "condition": "min_grade_owned",
+    "target": 1,
+    "gradeRank": 5,
+    "rewardCoin": 300,
+    "rewardLuck": 5
+  }
+]

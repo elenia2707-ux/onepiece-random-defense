@@ -1,4 +1,5 @@
-import type { RelicDef, RelicId } from '../data/types';
+import { CLEAR_TARGET_WAVE, DIFFICULTY_CONFIGS, DIFFICULTY_ORDER } from '../core/relicFormulas';
+import type { DifficultyId, GradeDef, RelicDef, RelicId, UnitDef, UnitId } from '../data/types';
 
 export const RELIC_ORDER: readonly RelicId[] = [
   'golden_vault',
@@ -27,6 +28,11 @@ export interface MetaProfile {
   readonly relics: Readonly<Record<RelicId, number>>;
   readonly totalRuns: number;
   readonly bestWave: number;
+  readonly selectedDifficulty: DifficultyId;
+  readonly unlockedDifficulties: Readonly<Record<DifficultyId, boolean>>;
+  readonly clearedDifficulties: Readonly<Record<DifficultyId, boolean>>;
+  readonly discoveredUnits: Readonly<Record<UnitId, boolean>>;
+  readonly discoveredCount: number;
   readonly rev: number;
 }
 
@@ -34,6 +40,9 @@ export interface SettlementInput {
   readonly wave: number;
   readonly monstersSlain: number;
   readonly bossesSlain: number;
+  readonly bountiesSlain?: number;
+  readonly difficulty?: DifficultyId;
+  readonly victory?: boolean;
 }
 
 export interface SettlementReward {
@@ -46,9 +55,24 @@ export interface SettlementRecord extends SettlementReward {
   readonly wave: number;
   readonly monstersSlain: number;
   readonly bossesSlain: number;
+  readonly bountiesSlain: number;
+  readonly difficulty: DifficultyId;
+  readonly victory: boolean;
+  readonly firstClearBonusGold: number;
+  readonly firstClearBonusKeys: number;
+  readonly unlockedNextDifficulty: DifficultyId | null;
   readonly totalGold: number;
   readonly totalKeys: number;
   readonly isNewBest: boolean;
+}
+
+export interface CodexDiscoveryResult {
+  readonly isNew: boolean;
+  readonly unitId: UnitId;
+  readonly unitName: string;
+  readonly gradeName: string;
+  readonly bonusGold: number;
+  readonly bonusKeys: number;
 }
 
 export type RelicDrawResult =
@@ -99,13 +123,45 @@ export function getRelicUpgradeGoldCost(def: RelicDef, currentLevel: number): nu
   return def.baseUpgradeGold + currentLevel * def.stepUpgradeGold;
 }
 
-export function computeSettlementReward(input: SettlementInput): SettlementReward {
-  const clearedWaves = Math.max(0, Math.floor(input.wave) - 1);
-  const bosses = Math.max(0, Math.floor(input.bossesSlain));
-  const kills = Math.max(0, Math.floor(input.monstersSlain));
+export function getCodexDiscoveryReward(gradeRank: number): {
+  readonly gold: number;
+  readonly keys: number;
+} {
+  if (gradeRank >= 6) return { gold: 300, keys: 3 };
+  if (gradeRank === 5) return { gold: 130, keys: 1 };
+  if (gradeRank === 4) return { gold: 65, keys: 1 };
+  if (gradeRank === 3) return { gold: 35, keys: 0 };
+  if (gradeRank === 2) return { gold: 20, keys: 0 };
+  return { gold: 10, keys: 0 };
+}
 
-  const goldEarned = 30 + clearedWaves * 18 + bosses * 45 + Math.floor(kills / 8) * 2;
-  const keysEarned = (clearedWaves >= 2 ? 1 : 0) + bosses + Math.floor(clearedWaves / 10);
+export function computeSettlementReward(input: SettlementInput): SettlementReward {
+  const rawWave = Math.floor(input.wave);
+  const clearedWaves = Math.max(
+    0,
+    input.victory && rawWave === CLEAR_TARGET_WAVE ? CLEAR_TARGET_WAVE : rawWave - 1,
+  );
+  const bosses = Math.max(0, Math.floor(input.bossesSlain));
+  const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
+  const kills = Math.max(0, Math.floor(input.monstersSlain));
+  const diff = input.difficulty ?? 'normal';
+  const mult = DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0;
+
+  const baseGold =
+    30 +
+    clearedWaves * 18 +
+    bosses * 45 +
+    bounties * 24 +
+    Math.floor(kills / 8) * 2 +
+    (input.victory ? 120 : 0);
+
+  const goldEarned = Math.round(baseGold * mult);
+  const keysEarned =
+    (clearedWaves >= 2 ? 1 : 0) +
+    bosses +
+    Math.floor(bounties / 2) +
+    Math.floor(clearedWaves / 10) +
+    (input.victory ? 1 : 0);
 
   return {
     clearedWaves,
@@ -132,6 +188,18 @@ export class MetaStore {
   private readonly relics: Record<RelicId, number> = createEmptyRelicMap();
   private totalRuns = 0;
   private bestWave = 1;
+  private selectedDifficulty: DifficultyId = 'normal';
+  private readonly unlockedDifficulties: Record<DifficultyId, boolean> = {
+    normal: true,
+    hard: false,
+    hell: false,
+  };
+  private readonly clearedDifficulties: Record<DifficultyId, boolean> = {
+    normal: false,
+    hard: false,
+    hell: false,
+  };
+  private readonly discoveredUnits: Record<UnitId, boolean> = {};
   private rev = 1;
 
   public constructor(customStorage?: StorageLike | null) {
@@ -140,18 +208,66 @@ export class MetaStore {
   }
 
   public getProfile(): MetaProfile {
+    const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
     return {
       gold: this.gold,
       keys: this.keys,
       relics: { ...this.relics },
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
+      selectedDifficulty: this.selectedDifficulty,
+      unlockedDifficulties: { ...this.unlockedDifficulties },
+      clearedDifficulties: { ...this.clearedDifficulties },
+      discoveredUnits: { ...this.discoveredUnits },
+      discoveredCount,
       rev: this.rev,
     };
   }
 
   public getRelicLevels(): Readonly<Record<RelicId, number>> {
     return { ...this.relics };
+  }
+
+  public getSelectedDifficulty(): DifficultyId {
+    return this.selectedDifficulty;
+  }
+
+  public setSelectedDifficulty(diff: DifficultyId): boolean {
+    if (!this.unlockedDifficulties[diff]) {
+      return false;
+    }
+    this.selectedDifficulty = diff;
+    this.rev++;
+    this.save();
+    return true;
+  }
+
+  public discoverUnit(unitDef: UnitDef, gradeDef: GradeDef): CodexDiscoveryResult {
+    if (this.discoveredUnits[unitDef.id]) {
+      return {
+        isNew: false,
+        unitId: unitDef.id,
+        unitName: unitDef.name,
+        gradeName: gradeDef.name,
+        bonusGold: 0,
+        bonusKeys: 0,
+      };
+    }
+    this.discoveredUnits[unitDef.id] = true;
+    const reward = getCodexDiscoveryReward(gradeDef.rank);
+    this.gold += reward.gold;
+    this.keys += reward.keys;
+    this.rev++;
+    this.save();
+
+    return {
+      isNew: true,
+      unitId: unitDef.id,
+      unitName: unitDef.name,
+      gradeName: gradeDef.name,
+      bonusGold: reward.gold,
+      bonusKeys: reward.keys,
+    };
   }
 
   public hasActionableBadge(relicDefs: readonly RelicDef[]): number {
@@ -260,12 +376,37 @@ export class MetaStore {
   }
 
   public settleRun(input: SettlementInput): SettlementRecord {
+    const diff = input.difficulty ?? 'normal';
+    const victory = Boolean(input.victory);
+    const bountiesSlain = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
     const reward = computeSettlementReward(input);
     const wave = Math.max(1, Math.floor(input.wave));
     const isNewBest = wave > this.bestWave;
 
-    this.gold += reward.goldEarned;
-    this.keys += reward.keysEarned;
+    let firstClearBonusGold = 0;
+    let firstClearBonusKeys = 0;
+    let unlockedNextDifficulty: DifficultyId | null = null;
+
+    if (victory && !this.clearedDifficulties[diff]) {
+      this.clearedDifficulties[diff] = true;
+      const cfg = DIFFICULTY_CONFIGS[diff];
+      firstClearBonusGold = cfg.firstClearGold;
+      firstClearBonusKeys = cfg.firstClearKeys;
+
+      if (diff === 'normal' && !this.unlockedDifficulties.hard) {
+        this.unlockedDifficulties.hard = true;
+        unlockedNextDifficulty = 'hard';
+      } else if (diff === 'hard' && !this.unlockedDifficulties.hell) {
+        this.unlockedDifficulties.hell = true;
+        unlockedNextDifficulty = 'hell';
+      }
+    }
+
+    const totalGoldGain = reward.goldEarned + firstClearBonusGold;
+    const totalKeysGain = reward.keysEarned + firstClearBonusKeys;
+
+    this.gold += totalGoldGain;
+    this.keys += totalKeysGain;
     this.totalRuns += 1;
     if (isNewBest) {
       this.bestWave = wave;
@@ -278,8 +419,63 @@ export class MetaStore {
       clearedWaves: reward.clearedWaves,
       monstersSlain: Math.max(0, Math.floor(input.monstersSlain)),
       bossesSlain: Math.max(0, Math.floor(input.bossesSlain)),
-      goldEarned: reward.goldEarned,
-      keysEarned: reward.keysEarned,
+      bountiesSlain,
+      difficulty: diff,
+      victory,
+      firstClearBonusGold,
+      firstClearBonusKeys,
+      unlockedNextDifficulty,
+      goldEarned: totalGoldGain,
+      keysEarned: totalKeysGain,
+      totalGold: this.gold,
+      totalKeys: this.keys,
+      isNewBest,
+    };
+  }
+
+  public settleEndlessOvertime(
+    prevRecord: SettlementRecord,
+    finalInput: SettlementInput,
+  ): SettlementRecord {
+    const prevBase = computeSettlementReward({
+      wave: prevRecord.wave,
+      monstersSlain: prevRecord.monstersSlain,
+      bossesSlain: prevRecord.bossesSlain,
+      bountiesSlain: prevRecord.bountiesSlain,
+      difficulty: prevRecord.difficulty,
+      victory: prevRecord.victory,
+    });
+    const finalBase = computeSettlementReward({
+      ...finalInput,
+      difficulty: prevRecord.difficulty,
+      victory: prevRecord.victory,
+    });
+
+    const deltaGold = Math.max(0, finalBase.goldEarned - prevBase.goldEarned);
+    const deltaKeys = Math.max(0, finalBase.keysEarned - prevBase.keysEarned);
+    const wave = Math.max(prevRecord.wave, Math.floor(finalInput.wave));
+    const isNewBest = wave > this.bestWave || prevRecord.isNewBest;
+
+    this.gold += deltaGold;
+    this.keys += deltaKeys;
+    if (wave > this.bestWave) {
+      this.bestWave = wave;
+    }
+    this.rev++;
+    this.save();
+
+    return {
+      ...prevRecord,
+      wave,
+      clearedWaves: finalBase.clearedWaves,
+      monstersSlain: Math.max(prevRecord.monstersSlain, Math.floor(finalInput.monstersSlain)),
+      bossesSlain: Math.max(prevRecord.bossesSlain, Math.floor(finalInput.bossesSlain)),
+      bountiesSlain: Math.max(
+        prevRecord.bountiesSlain,
+        Math.floor(finalInput.bountiesSlain ?? 0),
+      ),
+      goldEarned: prevRecord.goldEarned + deltaGold,
+      keysEarned: prevRecord.keysEarned + deltaKeys,
       totalGold: this.gold,
       totalKeys: this.keys,
       isNewBest,
@@ -289,6 +485,8 @@ export class MetaStore {
   public grantDevMeta(goldBonus: number, keyBonus: number): void {
     this.gold += Math.max(0, Math.floor(goldBonus));
     this.keys += Math.max(0, Math.floor(keyBonus));
+    this.unlockedDifficulties.hard = true;
+    this.unlockedDifficulties.hell = true;
     this.rev++;
     this.save();
   }
@@ -324,6 +522,39 @@ export class MetaStore {
           }
         }
       }
+      if (typeof rec.unlockedDifficulties === 'object' && rec.unlockedDifficulties !== null) {
+        const uObj = rec.unlockedDifficulties as Record<string, unknown>;
+        for (const d of DIFFICULTY_ORDER) {
+          if (typeof uObj[d] === 'boolean') {
+            this.unlockedDifficulties[d] = d === 'normal' ? true : uObj[d]!;
+          }
+        }
+      }
+      if (typeof rec.clearedDifficulties === 'object' && rec.clearedDifficulties !== null) {
+        const cObj = rec.clearedDifficulties as Record<string, unknown>;
+        for (const d of DIFFICULTY_ORDER) {
+          if (typeof cObj[d] === 'boolean') {
+            this.clearedDifficulties[d] = cObj[d]!;
+          }
+        }
+      }
+      if (
+        typeof rec.selectedDifficulty === 'string' &&
+        (DIFFICULTY_ORDER as readonly string[]).includes(rec.selectedDifficulty)
+      ) {
+        const d = rec.selectedDifficulty as DifficultyId;
+        if (this.unlockedDifficulties[d]) {
+          this.selectedDifficulty = d;
+        }
+      }
+      if (typeof rec.discoveredUnits === 'object' && rec.discoveredUnits !== null) {
+        const dObj = rec.discoveredUnits as Record<string, unknown>;
+        for (const [uid, val] of Object.entries(dObj)) {
+          if (val === true) {
+            this.discoveredUnits[uid] = true;
+          }
+        }
+      }
     } catch {
       // Ignore malformed storage data and retain clean defaults
     }
@@ -338,6 +569,10 @@ export class MetaStore {
         relics: this.relics,
         totalRuns: this.totalRuns,
         bestWave: this.bestWave,
+        selectedDifficulty: this.selectedDifficulty,
+        unlockedDifficulties: this.unlockedDifficulties,
+        clearedDifficulties: this.clearedDifficulties,
+        discoveredUnits: this.discoveredUnits,
       });
       this.storage.setItem(STORAGE_KEY, payload);
     } catch {

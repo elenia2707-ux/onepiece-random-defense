@@ -6,6 +6,8 @@ import {
 } from './CommandQueue';
 import { EventBus } from './EventBus';
 import {
+  CLEAR_TARGET_WAVE,
+  DIFFICULTY_CONFIGS,
   getBanditPilferCoin,
   getBanditProcPer1000,
   getFurnaceChanceBonusPct,
@@ -26,10 +28,13 @@ import { InventoryIndex } from '../craft/InventoryIndex';
 import { RecipeGraph } from '../craft/RecipeGraph';
 import { type WispHint, WispSystem } from '../craft/WispSystem';
 import type {
+  DifficultyId,
   FactionId,
   GameDataBundle,
+  GameOverReason,
   GradeDef,
   GradeId,
+  MissionDef,
   MonsterKind,
   RelicId,
   UnitId,
@@ -41,6 +46,19 @@ import type {
 import { Board } from '../world/Board';
 import { LoopPath } from '../world/Path';
 import type { MonsterEntity, ProjectileEntity, UnitEntity } from '../world/entities';
+
+export const BOUNTY_COOLDOWN_TICKS = 1350; // 45s
+export const BOUNTY_DURATION_TICKS = 900; // 30s
+
+const BOUNTY_ROSTER: readonly {
+  readonly name: string;
+  readonly kind: MonsterKind;
+  readonly radius: number;
+}[] = [
+  { name: '현상수배 · 만독귀 사마현', kind: 'blood_zealot', radius: 24 },
+  { name: '현상수배 · 철혈마도 악무극', kind: 'jiangshi', radius: 25 },
+  { name: '현상수배 · 흑살령주 혈무영', kind: 'blood_patriarch', radius: 26 },
+];
 
 export interface SimEventMap {
   'unit:added': {
@@ -65,8 +83,14 @@ export interface SimEventMap {
     readonly swappedUid: number | null;
     readonly tick: number;
   };
+  'board:arranged': {
+    readonly deployedCount: number;
+    readonly sortedBenchCount: number;
+    readonly tick: number;
+  };
   'monster:hit': {
     readonly entityId: number;
+    readonly unitId: UnitId;
     readonly x: number;
     readonly y: number;
     readonly damage: number;
@@ -130,6 +154,41 @@ export interface SimEventMap {
     readonly rewardLuck: number;
     readonly tick: number;
   };
+  'boss:timeout': {
+    readonly wave: number;
+    readonly bossName: string;
+    readonly tick: number;
+  };
+  'bounty:called': {
+    readonly bossName: string;
+    readonly rewardCoin: number;
+    readonly rewardLuck: number;
+    readonly tick: number;
+  };
+  'bounty:slain': {
+    readonly bossName: string;
+    readonly rewardCoin: number;
+    readonly rewardLuck: number;
+    readonly tick: number;
+  };
+  'bounty:escaped': {
+    readonly bossName: string;
+    readonly stolenCoin: number;
+    readonly tick: number;
+  };
+  'mission:completed': {
+    readonly missionId: string;
+    readonly name: string;
+    readonly rewardCoin: number;
+    readonly rewardLuck: number;
+    readonly rewardWispGrade?: GradeId;
+    readonly tick: number;
+  };
+  'run:victory': {
+    readonly wave: number;
+    readonly difficulty: DifficultyId;
+    readonly tick: number;
+  };
   'command:rejected': {
     readonly cmd: GameCommand['type'];
     readonly reason: string;
@@ -183,11 +242,46 @@ export interface RelicBonusSnapshot {
   readonly pilferedCoinTotal: number;
 }
 
+export interface BountySnapshot {
+  readonly canCall: boolean;
+  readonly unlocked: boolean;
+  readonly active: boolean;
+  readonly activeTicksLeft: number;
+  readonly cooldownTicksLeft: number;
+  readonly bountiesSlain: number;
+}
+
+export interface MissionItemSnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly desc: string;
+  readonly progress: number;
+  readonly target: number;
+  readonly completed: boolean;
+  readonly rewardCoin: number;
+  readonly rewardLuck: number;
+  readonly rewardWispGrade?: GradeId;
+}
+
+export interface DamageEntrySnapshot {
+  readonly unitId: UnitId;
+  readonly name: string;
+  readonly faction: FactionId;
+  readonly grade: GradeId;
+  readonly damage: number;
+  readonly sharePct: number;
+}
+
 export interface UISnapshot {
   readonly tick: number;
   readonly speed: Speed;
   readonly paused: boolean;
+  readonly difficulty: DifficultyId;
   readonly gameOver: boolean;
+  readonly gameOverReason: GameOverReason;
+  readonly victoryAchieved: boolean;
+  readonly victoryHold: boolean;
+  readonly endlessMode: boolean;
   readonly wave: number;
   readonly waveTicksLeft: number;
   readonly isBossWave: boolean;
@@ -196,6 +290,15 @@ export interface UISnapshot {
     readonly name: string;
     readonly hp: number;
     readonly maxHp: number;
+    readonly isBounty: boolean;
+    readonly ticksLeft: number;
+  };
+  readonly bounty: BountySnapshot;
+  readonly missions: readonly MissionItemSnapshot[];
+  readonly missionsCompletedCount: number;
+  readonly damageMeter: {
+    readonly totalDamage: number;
+    readonly entries: readonly DamageEntrySnapshot[];
   };
   readonly monsterCount: number;
   readonly monsterCap: number;
@@ -223,6 +326,7 @@ const UPGRADE_ORDER: readonly UpgradeGroupId[] = ['orthodox', 'unorthodox', 'dem
 
 export class Simulation {
   public readonly data: GameDataBundle;
+  public readonly difficulty: DifficultyId;
   public readonly events = new EventBus<SimEventMap>();
   public readonly commands = new CommandQueue();
   public readonly board: Board;
@@ -243,6 +347,7 @@ export class Simulation {
   private nextMonsterId = 1;
   private nextProjectileId = 1;
   private gambleSeq = 0;
+  private gambleWins = 0;
 
   private readonly units: UnitEntity[] = [];
   private readonly unitsByUid = new Map<number, UnitEntity>();
@@ -277,6 +382,12 @@ export class Simulation {
   private pilferedCoinTotal = 0;
   private monstersSlain = 0;
   private bossesSlain = 0;
+  private bountiesCalled = 0;
+  private bountiesSlain = 0;
+  private bountyReadyTick = 0;
+  private readonly completedMissions = new Set<string>();
+  private readonly damageByUnit = new Map<UnitId, number>();
+  private totalDamageDealt = 0;
   private lastGambleResult: GambleResultSnapshot | null = null;
 
   private waveNumber = 1;
@@ -284,6 +395,10 @@ export class Simulation {
   private spawnedInWave = 0;
   private nextSpawnTick = 15;
   private gameOver = false;
+  private gameOverReason: GameOverReason = 'overrun';
+  private victoryAchieved = false;
+  private victoryHold = false;
+  private endlessMode = false;
 
   private readonly pendingRejects: RejectNotice[] = [];
   private priorityDirty = true;
@@ -292,8 +407,10 @@ export class Simulation {
     data: GameDataBundle,
     seed = 0x20261118,
     initialRelics?: Readonly<Partial<Record<RelicId, number>>>,
+    difficulty: DifficultyId = 'normal',
   ) {
     this.data = data;
+    this.difficulty = difficulty;
     this.rng = new Rng(seed);
     this.board = new Board(data.board);
     this.path = new LoopPath(data.board.path.waypoints);
@@ -506,15 +623,19 @@ export class Simulation {
       this.applyCommand(liveBatch[i]!.command);
     }
 
-    if (!this.gameOver) {
+    if (!this.gameOver && !this.victoryHold) {
       // 2. Wave & Spawn progression
       this.stepWaveAndSpawn();
 
       // 3. Monster path movement
-      this.stepMonsters();
+      if (!this.gameOver && !this.victoryHold) {
+        this.stepMonsters();
+      }
 
       // 4. Field unit auto-combat & projectiles
-      this.stepCombat();
+      if (!this.gameOver && !this.victoryHold) {
+        this.stepCombat();
+      }
     }
 
     // 5. Delta craft & wisp indexing
@@ -525,12 +646,28 @@ export class Simulation {
       this.priorityDirty = true;
     }
 
+    // 6. Deterministic in-run mission evaluation (강호 의뢰)
+    if (!this.gameOver) {
+      this.evaluateMissions();
+    }
+
     this.currentTick++;
   }
 
   private applyCommand(cmd: GameCommand): void {
     if (cmd.type === 'syncRelics') {
       this.syncRelicsInternal(cmd.relics, true);
+      return;
+    }
+
+    if (cmd.type === 'enterEndless') {
+      if (!this.victoryHold) {
+        return;
+      }
+      this.victoryHold = false;
+      this.endlessMode = true;
+      this.waveTicksLeft = Math.min(this.waveTicksLeft, 30);
+      this.priorityDirty = true;
       return;
     }
 
@@ -588,6 +725,7 @@ export class Simulation {
         const seq = ++this.gambleSeq;
 
         if (success) {
+          this.gambleWins++;
           const pickedUnitId = pool[this.rng.nextInt(pool.length)]!;
           const uid = this.createUnit(pickedUnitId, slot, 'gamble');
           const created = this.unitsByUid.get(uid);
@@ -669,6 +807,83 @@ export class Simulation {
           tick: this.currentTick,
         });
         this.priorityDirty = true;
+        return;
+      }
+
+      case 'callBounty': {
+        if (this.victoryHold) {
+          this.reject('callBounty', '먼저 천하통일 정산 선택을 완료해 주세요.');
+          return;
+        }
+        if (this.waveNumber < 2) {
+          this.reject('callBounty', '현상수배는 제 02 장부터 호출할 수 있습니다.');
+          return;
+        }
+        if (this.monsters.some((m) => m.isBounty)) {
+          this.reject('callBounty', '이미 강호 현상수배범을 추격 중입니다!');
+          return;
+        }
+        if (this.currentTick < this.bountyReadyTick) {
+          const leftSec = Math.ceil((this.bountyReadyTick - this.currentTick) / 30);
+          this.reject('callBounty', `수배령 재정비 중입니다 (${leftSec}초 남음)`);
+          return;
+        }
+        if (this.monsters.length + 1 >= this.data.board.path.monsterCap) {
+          this.reject('callBounty', '전장에 마물이 너무 많아 호출할 수 없습니다!');
+          return;
+        }
+
+        const spec = BOUNTY_ROSTER[this.bountiesCalled % BOUNTY_ROSTER.length]!;
+        const diffCfg = DIFFICULTY_CONFIGS[this.difficulty];
+        const bountyHp = Math.round(
+          (950 + Math.pow(this.waveNumber, 1.82) * 92) * diffCfg.hpMult,
+        );
+        const rewardCoin = 55 + this.waveNumber * 12;
+        const rewardLuck = this.waveNumber >= 12 ? 3 : 2;
+        const startPos = this.path.sample(0);
+
+        const outlaw: MonsterEntity = {
+          entityId: this.nextMonsterId++,
+          kind: spec.kind,
+          isBoss: true,
+          isBounty: true,
+          expireTick: this.currentTick + BOUNTY_DURATION_TICKS,
+          bountyRewardLuck: rewardLuck,
+          bossName: spec.name,
+          hp: bountyHp,
+          maxHp: bountyHp,
+          speedPerTick: 3.4 * diffCfg.speedMult,
+          radius: spec.radius,
+          rewardCoin,
+          spawnTick: this.currentTick,
+          stunUntilTick: 0,
+          slowUntilTick: 0,
+          slowFactor: 1,
+          lastHitTick: -100,
+          prevDistance: 0,
+          currDistance: 0,
+          prevX: startPos.x,
+          prevY: startPos.y,
+          currX: startPos.x,
+          currY: startPos.y,
+        };
+
+        this.monsters.push(outlaw);
+        this.bountiesCalled++;
+        this.bountyReadyTick = this.currentTick + BOUNTY_COOLDOWN_TICKS;
+        this.priorityDirty = true;
+
+        this.events.emit('bounty:called', {
+          bossName: spec.name,
+          rewardCoin,
+          rewardLuck,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'autoArrange': {
+        this.executeAutoArrange();
         return;
       }
 
@@ -843,6 +1058,186 @@ export class Simulation {
     }
   }
 
+  private compareUnitsForArrange(a: UnitEntity, b: UnitEntity): number {
+    const rankA = this.data.gradesById.get(a.grade)?.rank ?? 0;
+    const rankB = this.data.gradesById.get(b.grade)?.rank ?? 0;
+    if (rankA !== rankB) return rankB - rankA;
+
+    const defA = this.data.unitsById.get(a.unitId);
+    const defB = this.data.unitsById.get(b.unitId);
+    const atkA = defA?.atk ?? 0;
+    const atkB = defB?.atk ?? 0;
+    if (atkA !== atkB) return atkB - atkA;
+
+    const facOrder = (f?: FactionId): number =>
+      f === 'orthodox' ? 0 : f === 'unorthodox' ? 1 : 2;
+    const fa = facOrder(defA?.faction);
+    const fb = facOrder(defB?.faction);
+    if (fa !== fb) return fa - fb;
+
+    const cmpId = a.unitId.localeCompare(b.unitId);
+    if (cmpId !== 0) return cmpId;
+    return a.uid - b.uid;
+  }
+
+  private executeAutoArrange(): void {
+    // 1. Deploy strongest bench units into any empty field slots
+    const emptyFieldSlots: number[] = [];
+    for (let i = 0; i < this.board.field.capacity; i++) {
+      if (this.board.field.getUidAt(i) === null) {
+        emptyFieldSlots.push(i);
+      }
+    }
+
+    const benchUnits: UnitEntity[] = [];
+    for (let i = 0; i < this.board.bench.capacity; i++) {
+      const uid = this.board.bench.getUidAt(i);
+      if (uid !== null) {
+        const u = this.unitsByUid.get(uid);
+        if (u) benchUnits.push(u);
+      }
+    }
+    benchUnits.sort((a, b) => this.compareUnitsForArrange(a, b));
+
+    let deployedCount = 0;
+    const remainingBench: UnitEntity[] = [];
+    for (let i = 0; i < benchUnits.length; i++) {
+      const u = benchUnits[i]!;
+      if (!u.locked && deployedCount < emptyFieldSlots.length) {
+        const targetFieldIdx = emptyFieldSlots[deployedCount]!;
+        const toSlot: SlotRef = { area: 'field', index: targetFieldIdx };
+        const toCenter = this.board.getSlotCenter(toSlot);
+
+        this.board.setUid(u.slot, null);
+        this.board.setUid(toSlot, u.uid);
+        u.slot = toSlot;
+        u.moveFromX = u.currX;
+        u.moveFromY = u.currY;
+        u.moveStartTick = this.currentTick;
+        u.currX = toCenter.x;
+        u.currY = toCenter.y;
+        this.inventoryIndex.moveUnit(u.uid, toSlot);
+        deployedCount++;
+      } else {
+        remainingBench.push(u);
+      }
+    }
+
+    // 2. Compact & sort remaining bench slots cleanly from index 0
+    for (let i = 0; i < this.board.bench.capacity; i++) {
+      this.board.setUid({ area: 'bench', index: i }, null);
+    }
+    for (let i = 0; i < remainingBench.length; i++) {
+      const u = remainingBench[i]!;
+      const nextSlot: SlotRef = { area: 'bench', index: i };
+      const toCenter = this.board.getSlotCenter(nextSlot);
+      this.board.setUid(nextSlot, u.uid);
+      if (u.slot.area !== 'bench' || u.slot.index !== i) {
+        u.slot = nextSlot;
+        u.moveFromX = u.currX;
+        u.moveFromY = u.currY;
+        u.moveStartTick = this.currentTick;
+        u.currX = toCenter.x;
+        u.currY = toCenter.y;
+        this.inventoryIndex.moveUnit(u.uid, nextSlot);
+      }
+    }
+
+    this.priorityDirty = true;
+    this.events.emit('board:arranged', {
+      deployedCount,
+      sortedBenchCount: remainingBench.length,
+      tick: this.currentTick,
+    });
+  }
+
+  private getMissionProgress(mDef: MissionDef, synergy: FactionSynergySnapshot): number {
+    switch (mDef.condition) {
+      case 'distinct_leaf_owned': {
+        const seen = new Set<UnitId>();
+        for (let i = 0; i < this.units.length; i++) {
+          const u = this.units[i]!;
+          const def = this.data.unitsById.get(u.unitId);
+          if (def?.leaf) {
+            seen.add(u.unitId);
+          }
+        }
+        return seen.size;
+      }
+      case 'min_grade_owned': {
+        const minRank = mDef.gradeRank ?? 3;
+        let cnt = 0;
+        for (let i = 0; i < this.units.length; i++) {
+          const rank = this.data.gradesById.get(this.units[i]!.grade)?.rank ?? 0;
+          if (rank >= minRank) cnt++;
+        }
+        return cnt;
+      }
+      case 'any_formation_active': {
+        return synergy.orthodoxTier >= 1 ||
+          synergy.unorthodoxTier >= 1 ||
+          synergy.demonicTier >= 1 ||
+          synergy.trinityActive
+          ? 1
+          : 0;
+      }
+      case 'high_formation_active': {
+        return synergy.orthodoxTier >= 2 ||
+          synergy.unorthodoxTier >= 2 ||
+          synergy.demonicTier >= 2 ||
+          synergy.trinityActive
+          ? 1
+          : 0;
+      }
+      case 'bounties_slain':
+        return this.bountiesSlain;
+      case 'gamble_wins':
+        return this.gambleWins;
+      case 'held_coin':
+        return this.coin;
+      case 'total_upgrades':
+        return (
+          (this.upgradeLv.orthodox ?? 0) +
+          (this.upgradeLv.unorthodox ?? 0) +
+          (this.upgradeLv.demonic ?? 0)
+        );
+    }
+  }
+
+  private evaluateMissions(): void {
+    if (this.completedMissions.size >= this.data.missions.length) return;
+    const synergy = this.computeFieldSynergy();
+
+    for (let i = 0; i < this.data.missions.length; i++) {
+      const mDef = this.data.missions[i]!;
+      if (this.completedMissions.has(mDef.id)) continue;
+
+      const prog = this.getMissionProgress(mDef, synergy);
+      if (prog >= mDef.target) {
+        this.completedMissions.add(mDef.id);
+        if (mDef.rewardCoin > 0) {
+          this.coin += mDef.rewardCoin;
+        }
+        if (mDef.rewardLuck > 0) {
+          this.luckStone += mDef.rewardLuck;
+        }
+        if (mDef.rewardWispGrade) {
+          this.wisps[mDef.rewardWispGrade] = (this.wisps[mDef.rewardWispGrade] ?? 0) + 1;
+          this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+        }
+        this.priorityDirty = true;
+        this.events.emit('mission:completed', {
+          missionId: mDef.id,
+          name: mDef.name,
+          rewardCoin: mDef.rewardCoin,
+          rewardLuck: mDef.rewardLuck,
+          rewardWispGrade: mDef.rewardWispGrade,
+          tick: this.currentTick,
+        });
+      }
+    }
+  }
+
   private rollSummonUnit(): UnitId {
     let totalWeight = 0;
     for (let i = 0; i < this.summonableGrades.length; i++) {
@@ -946,21 +1341,58 @@ export class Simulation {
     return this.data.waves[(waveNum - 1) % this.data.waves.length] ?? this.data.waves[0]!;
   }
 
+  private computeWaveHpScale(waveNum: number, isBoss: boolean): number {
+    const diffMult = DIFFICULTY_CONFIGS[this.difficulty].hpMult;
+    if (waveNum <= 15) {
+      return diffMult;
+    }
+    if (waveNum <= CLEAR_TARGET_WAVE) {
+      // Escalating second cycle culminating in Wave 30 Grand Demon God
+      const step = waveNum - 15; // 1..15
+      const cycle2 = 1.45 + step * 0.13 + (waveNum === CLEAR_TARGET_WAVE && isBoss ? 0.55 : 0);
+      return cycle2 * diffMult;
+    }
+    // Endless Bloodbath (Wave 31+): exponential scaling
+    const endlessStep = waveNum - CLEAR_TARGET_WAVE;
+    return 3.95 * Math.pow(1.135, endlessStep) * diffMult;
+  }
+
   private stepWaveAndSpawn(): void {
+    // 0. Check active bounty outlaw 30s escape timer
+    for (let i = this.monsters.length - 1; i >= 0; i--) {
+      const m = this.monsters[i]!;
+      if (m.isBounty && m.expireTick !== undefined && this.currentTick >= m.expireTick) {
+        const stolenCoin = Math.min(100, Math.floor(this.coin * 0.15));
+        this.coin = Math.max(0, this.coin - stolenCoin);
+        this.monsters.splice(i, 1);
+        this.priorityDirty = true;
+        this.events.emit('bounty:escaped', {
+          bossName: m.bossName ?? '현상수배범',
+          stolenCoin,
+          tick: this.currentTick,
+        });
+      }
+    }
+
     const waveDef = this.getWaveDef(this.waveNumber);
-    const cycleScale = 1 + Math.floor((this.waveNumber - 1) / this.data.waves.length) * 0.55;
+    const diffCfg = DIFFICULTY_CONFIGS[this.difficulty];
+    const hpScale = this.computeWaveHpScale(this.waveNumber, waveDef.isBoss);
+    const resolvedBossName =
+      this.waveNumber === CLEAR_TARGET_WAVE && waveDef.isBoss
+        ? '천마대제 아수라 혈마신'
+        : waveDef.bossName;
 
     if (this.spawnedInWave < waveDef.spawnCount && this.currentTick >= this.nextSpawnTick) {
       const startPos = this.path.sample(0);
-      const scaledHp = Math.round(waveDef.monsterHp * cycleScale);
+      const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale));
       const monster: MonsterEntity = {
         entityId: this.nextMonsterId++,
         kind: waveDef.monsterKind,
         isBoss: waveDef.isBoss,
-        bossName: waveDef.bossName,
+        bossName: resolvedBossName,
         hp: scaledHp,
         maxHp: scaledHp,
-        speedPerTick: waveDef.monsterSpeedPerTick,
+        speedPerTick: waveDef.monsterSpeedPerTick * diffCfg.speedMult,
         radius: waveDef.monsterRadius,
         rewardCoin: waveDef.rewardCoin,
         spawnTick: this.currentTick,
@@ -981,13 +1413,41 @@ export class Simulation {
 
       if (this.monsters.length >= this.data.board.path.monsterCap) {
         this.gameOver = true;
+        this.gameOverReason = 'overrun';
         this.priorityDirty = true;
         return;
       }
     }
 
+    // Fast-forward boss wave remaining idle timer once the wave boss is slain
+    if (
+      waveDef.isBoss &&
+      this.spawnedInWave >= waveDef.spawnCount &&
+      !this.monsters.some((m) => m.isBoss && !m.isBounty) &&
+      this.waveTicksLeft > 45
+    ) {
+      this.waveTicksLeft = 45;
+      this.priorityDirty = true;
+    }
+
     this.waveTicksLeft--;
     if (this.waveTicksLeft <= 0) {
+      // Boss Time-Limit Rule: failing to slay a wave boss before timer hits 0 ends the run!
+      if (waveDef.isBoss) {
+        const survivingBoss = this.monsters.find((m) => m.isBoss && !m.isBounty);
+        if (survivingBoss) {
+          this.gameOver = true;
+          this.gameOverReason = 'boss_timeout';
+          this.priorityDirty = true;
+          this.events.emit('boss:timeout', {
+            wave: this.waveNumber,
+            bossName: survivingBoss.bossName ?? resolvedBossName ?? '영물 보스',
+            tick: this.currentTick,
+          });
+          return;
+        }
+      }
+
       const completedWave = this.waveNumber;
       const interestPct = getVaultInterestPct(this.relicLv.golden_vault);
       const interestCap = getVaultInterestCap(this.relicLv.golden_vault);
@@ -1017,9 +1477,13 @@ export class Simulation {
       }
 
       if (nextWaveDef.isBoss) {
+        const nextBossName =
+          this.waveNumber === CLEAR_TARGET_WAVE
+            ? '천마대제 아수라 혈마신'
+            : (nextWaveDef.bossName ?? '웨이브 보스');
         this.events.emit('wave:boss', {
           wave: this.waveNumber,
-          bossName: nextWaveDef.bossName ?? '웨이브 보스',
+          bossName: nextBossName,
           monsterKind: nextWaveDef.monsterKind,
           tick: this.currentTick,
         });
@@ -1259,9 +1723,12 @@ export class Simulation {
 
     m.hp -= damage;
     m.lastHitTick = this.currentTick;
+    this.damageByUnit.set(p.unitId, (this.damageByUnit.get(p.unitId) ?? 0) + damage);
+    this.totalDamageDealt += damage;
 
     if (p.stunTicks > 0) {
-      const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * 0.45)) : p.stunTicks;
+      const bossFactor = this.difficulty === 'hell' ? 0.35 : 0.45;
+      const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * bossFactor)) : p.stunTicks;
       m.stunUntilTick = Math.max(m.stunUntilTick, this.currentTick + stunDur);
     }
     if (p.slowTicks > 0 && p.slowPct > 0) {
@@ -1296,25 +1763,54 @@ export class Simulation {
       this.monsters.splice(idx, 1);
 
       if (m.isBoss) {
-        this.bossesSlain++;
-        const rewardLuck = 2 + getScrollChestBossLuckBonus(this.relicLv.heavenly_scroll_chest);
-        this.luckStone += rewardLuck;
-        const rewardGrade: GradeId = m.kind === 'white_tiger' ? 'uncommon' : 'rare';
-        this.wisps[rewardGrade] = (this.wisps[rewardGrade] ?? 0) + 1;
-        this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
-        this.priorityDirty = true;
-        this.events.emit('boss:slain', {
-          wave: this.waveNumber,
-          bossName: m.bossName ?? '영물 보스',
-          rewardWispGrade: rewardGrade,
-          rewardLuck,
-          tick: this.currentTick,
-        });
+        if (m.isBounty) {
+          this.bountiesSlain++;
+          const rewardLuck = m.bountyRewardLuck ?? 2;
+          this.luckStone += rewardLuck;
+          this.priorityDirty = true;
+          this.events.emit('bounty:slain', {
+            bossName: m.bossName ?? '현상수배범',
+            rewardCoin: m.rewardCoin,
+            rewardLuck,
+            tick: this.currentTick,
+          });
+        } else {
+          this.bossesSlain++;
+          const rewardLuck = 2 + getScrollChestBossLuckBonus(this.relicLv.heavenly_scroll_chest);
+          this.luckStone += rewardLuck;
+          const rewardGrade: GradeId = m.kind === 'white_tiger' ? 'uncommon' : 'rare';
+          this.wisps[rewardGrade] = (this.wisps[rewardGrade] ?? 0) + 1;
+          this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+          this.priorityDirty = true;
+          this.events.emit('boss:slain', {
+            wave: this.waveNumber,
+            bossName: m.bossName ?? '영물 보스',
+            rewardWispGrade: rewardGrade,
+            rewardLuck,
+            tick: this.currentTick,
+          });
+
+          if (
+            this.waveNumber === CLEAR_TARGET_WAVE &&
+            !this.endlessMode &&
+            !this.victoryAchieved &&
+            !this.monsters.some((o) => o.isBoss && !o.isBounty)
+          ) {
+            this.victoryAchieved = true;
+            this.victoryHold = true;
+            this.events.emit('run:victory', {
+              wave: this.waveNumber,
+              difficulty: this.difficulty,
+              tick: this.currentTick,
+            });
+          }
+        }
       }
     }
 
     this.events.emit('monster:hit', {
       entityId: m.entityId,
+      unitId: p.unitId,
       x: hitX,
       y: hitY,
       damage,
@@ -1352,7 +1848,67 @@ export class Simulation {
     this.pendingRejects.length = 0;
 
     const waveDef = this.getWaveDef(this.waveNumber);
-    const activeBoss = this.monsters.find((m) => m.isBoss);
+    const waveBoss = this.monsters.find((m) => m.isBoss && !m.isBounty);
+    const bountyBoss = this.monsters.find((m) => m.isBounty);
+    const activeBoss = waveBoss ?? bountyBoss;
+
+    const unlockedBounty = this.waveNumber >= 2;
+    const bountyActiveTicksLeft =
+      bountyBoss && bountyBoss.expireTick !== undefined
+        ? Math.max(0, bountyBoss.expireTick - this.currentTick)
+        : 0;
+    const bountyCooldownLeft = Math.max(0, this.bountyReadyTick - this.currentTick);
+    const bountySnap: BountySnapshot = {
+      canCall:
+        unlockedBounty &&
+        !bountyBoss &&
+        bountyCooldownLeft === 0 &&
+        !this.gameOver &&
+        !this.victoryHold &&
+        this.monsters.length + 1 < this.data.board.path.monsterCap,
+      unlocked: unlockedBounty,
+      active: Boolean(bountyBoss),
+      activeTicksLeft: bountyActiveTicksLeft,
+      cooldownTicksLeft: bountyCooldownLeft,
+      bountiesSlain: this.bountiesSlain,
+    };
+
+    const missionItems: MissionItemSnapshot[] = this.data.missions.map((mDef) => {
+      const completed = this.completedMissions.has(mDef.id);
+      const rawProg = completed ? mDef.target : this.getMissionProgress(mDef, synergy);
+      return {
+        id: mDef.id,
+        name: mDef.name,
+        desc: mDef.desc,
+        progress: Math.min(mDef.target, rawProg),
+        target: mDef.target,
+        completed,
+        rewardCoin: mDef.rewardCoin,
+        rewardLuck: mDef.rewardLuck,
+        rewardWispGrade: mDef.rewardWispGrade,
+      };
+    });
+
+    const dmgEntries: DamageEntrySnapshot[] = [...this.damageByUnit.entries()]
+      .filter(([, dmg]) => dmg > 0)
+      .sort((a, b) => (b[1] !== a[1] ? b[1] - a[1] : a[0].localeCompare(b[0])))
+      .slice(0, 5)
+      .map(([unitId, dmg]) => {
+        const def = this.data.unitsById.get(unitId);
+        const sharePct =
+          this.totalDamageDealt > 0
+            ? Math.min(100, Math.round((dmg / this.totalDamageDealt) * 1000) / 10)
+            : 0;
+        return {
+          unitId,
+          name: def?.name ?? unitId,
+          faction: def?.faction ?? 'orthodox',
+          grade: def?.grade ?? 'common',
+          damage: dmg,
+          sharePct,
+        };
+      });
+
     const relicBonus: RelicBonusSnapshot = {
       interestPct: getVaultInterestPct(this.relicLv.golden_vault),
       interestCap: getVaultInterestCap(this.relicLv.golden_vault),
@@ -1367,7 +1923,12 @@ export class Simulation {
       tick: this.currentTick,
       speed,
       paused,
+      difficulty: this.difficulty,
       gameOver: this.gameOver,
+      gameOverReason: this.gameOverReason,
+      victoryAchieved: this.victoryAchieved,
+      victoryHold: this.victoryHold,
+      endlessMode: this.endlessMode,
       wave: this.waveNumber,
       waveTicksLeft: this.waveTicksLeft,
       isBossWave: waveDef.isBoss,
@@ -1377,8 +1938,20 @@ export class Simulation {
             name: activeBoss.bossName ?? '영물 보스',
             hp: Math.max(0, activeBoss.hp),
             maxHp: activeBoss.maxHp,
+            isBounty: Boolean(activeBoss.isBounty),
+            ticksLeft:
+              activeBoss.isBounty && activeBoss.expireTick !== undefined
+                ? Math.max(0, activeBoss.expireTick - this.currentTick)
+                : this.waveTicksLeft,
           }
         : undefined,
+      bounty: bountySnap,
+      missions: missionItems,
+      missionsCompletedCount: this.completedMissions.size,
+      damageMeter: {
+        totalDamage: this.totalDamageDealt,
+        entries: dmgEntries,
+      },
       monsterCount: this.monsters.length,
       monsterCap: this.data.board.path.monsterCap,
       monstersSlain: this.monstersSlain,
@@ -1458,8 +2031,17 @@ export class Simulation {
     feedInt(this.waveNumber);
     feedInt(this.waveTicksLeft);
     feedInt(this.gameOver ? 1 : 0);
+    feedInt(this.victoryAchieved ? 1 : 0);
+    feedInt(this.victoryHold ? 1 : 0);
+    feedInt(this.endlessMode ? 1 : 0);
     feedInt(this.monstersSlain);
     feedInt(this.bossesSlain);
+    feedInt(this.bountiesCalled);
+    feedInt(this.bountiesSlain);
+    feedInt(this.bountyReadyTick);
+    feedInt(this.gambleWins);
+    feedInt(this.completedMissions.size);
+    feedInt(this.totalDamageDealt);
 
     for (const g of UPGRADE_ORDER) {
       feedInt(this.upgradeLv[g] ?? 0);
