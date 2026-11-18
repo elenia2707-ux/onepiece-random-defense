@@ -1,0 +1,5 @@
+{
+  "common": ["swordsman", "gunner", "navigator", "shieldman"],
+  "uncommon": ["brawler", "dual_blade", "pyro_cook", "sharpshooter"],
+  "rare": ["sword_saint", "storm_mage"]
+}

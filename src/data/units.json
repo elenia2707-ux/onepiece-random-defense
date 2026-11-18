@@ -1,0 +1,145 @@
+[
+  {
+    "id": "swordsman",
+    "name": "갑판 검사",
+    "grade": "common",
+    "leaf": true,
+    "emblem": "sword",
+    "atk": 18,
+    "range": 145,
+    "attackIntervalSec": 0.9,
+    "sellCoin": 10
+  },
+  {
+    "id": "gunner",
+    "name": "화승총 사수",
+    "grade": "common",
+    "leaf": true,
+    "emblem": "crosshair",
+    "atk": 15,
+    "range": 210,
+    "attackIntervalSec": 1.0,
+    "sellCoin": 10
+  },
+  {
+    "id": "navigator",
+    "name": "견습 항해사",
+    "grade": "common",
+    "leaf": true,
+    "emblem": "compass",
+    "atk": 14,
+    "range": 190,
+    "attackIntervalSec": 0.95,
+    "sellCoin": 10
+  },
+  {
+    "id": "shieldman",
+    "name": "철벽 조타수",
+    "grade": "common",
+    "leaf": true,
+    "emblem": "shield",
+    "atk": 20,
+    "range": 135,
+    "attackIntervalSec": 1.1,
+    "sellCoin": 10
+  },
+  {
+    "id": "brawler",
+    "name": "격투 갑판장",
+    "grade": "uncommon",
+    "leaf": true,
+    "emblem": "fist",
+    "atk": 38,
+    "range": 150,
+    "attackIntervalSec": 0.8,
+    "sellCoin": 24
+  },
+  {
+    "id": "dual_blade",
+    "name": "이도류 자객",
+    "grade": "uncommon",
+    "leaf": false,
+    "emblem": "twinblade",
+    "atk": 44,
+    "range": 160,
+    "attackIntervalSec": 0.75,
+    "sellCoin": 28
+  },
+  {
+    "id": "pyro_cook",
+    "name": "홍련 요리사",
+    "grade": "uncommon",
+    "leaf": false,
+    "emblem": "flame",
+    "atk": 42,
+    "range": 175,
+    "attackIntervalSec": 0.85,
+    "sellCoin": 28
+  },
+  {
+    "id": "sharpshooter",
+    "name": "매눈 저격수",
+    "grade": "uncommon",
+    "leaf": false,
+    "emblem": "bow",
+    "atk": 40,
+    "range": 250,
+    "attackIntervalSec": 0.9,
+    "sellCoin": 28
+  },
+  {
+    "id": "sword_saint",
+    "name": "대검호",
+    "grade": "rare",
+    "leaf": false,
+    "emblem": "crest",
+    "atk": 115,
+    "range": 185,
+    "attackIntervalSec": 0.7,
+    "sellCoin": 70
+  },
+  {
+    "id": "storm_mage",
+    "name": "폭풍 기상학자",
+    "grade": "rare",
+    "leaf": false,
+    "emblem": "bolt",
+    "atk": 108,
+    "range": 235,
+    "attackIntervalSec": 0.8,
+    "sellCoin": 70
+  },
+  {
+    "id": "flame_admiral",
+    "name": "적염 대장",
+    "grade": "legendary",
+    "leaf": false,
+    "emblem": "sun",
+    "atk": 290,
+    "range": 240,
+    "attackIntervalSec": 0.65,
+    "sellCoin": 180
+  },
+  {
+    "id": "thunder_emperor",
+    "name": "창공의 뇌제",
+    "grade": "transcendent",
+    "leaf": false,
+    "emblem": "crown",
+    "atk": 720,
+    "range": 280,
+    "attackIntervalSec": 0.6,
+    "sellCoin": 420
+  },
+  {
+    "id": "pirate_king",
+    "name": "바다의 패왕",
+    "grade": "immortal",
+    "leaf": false,
+    "emblem": "star",
+    "atk": 1850,
+    "range": 310,
+    "attackIntervalSec": 0.5,
+    "sellCoin": 999
+  }
+]

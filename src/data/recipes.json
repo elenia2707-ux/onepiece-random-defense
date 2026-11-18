@@ -1,0 +1,76 @@
+[
+  {
+    "id": "r_dual_blade",
+    "output": "dual_blade",
+    "ingredients": [
+      { "unit": "swordsman", "n": 1 },
+      { "unit": "gunner", "n": 1 }
+    ],
+    "priority": 10
+  },
+  {
+    "id": "r_pyro_cook",
+    "output": "pyro_cook",
+    "ingredients": [
+      { "unit": "navigator", "n": 1 },
+      { "unit": "shieldman", "n": 1 }
+    ],
+    "priority": 20
+  },
+  {
+    "id": "r_sharpshooter",
+    "output": "sharpshooter",
+    "ingredients": [
+      { "unit": "gunner", "n": 1 },
+      { "unit": "shieldman", "n": 1 }
+    ],
+    "priority": 30
+  },
+  {
+    "id": "r_sword_saint",
+    "output": "sword_saint",
+    "ingredients": [
+      { "unit": "dual_blade", "n": 1 },
+      { "unit": "swordsman", "n": 1 },
+      { "unit": "shieldman", "n": 1 }
+    ],
+    "priority": 40
+  },
+  {
+    "id": "r_storm_mage",
+    "output": "storm_mage",
+    "ingredients": [
+      { "unit": "pyro_cook", "n": 1 },
+      { "unit": "sharpshooter", "n": 1 }
+    ],
+    "priority": 50
+  },
+  {
+    "id": "r_flame_admiral",
+    "output": "flame_admiral",
+    "ingredients": [
+      { "unit": "sword_saint", "n": 1 },
+      { "unit": "storm_mage", "n": 1 },
+      { "unit": "brawler", "n": 1 }
+    ],
+    "priority": 60
+  },
+  {
+    "id": "r_thunder_emperor",
+    "output": "thunder_emperor",
+    "ingredients": [
+      { "unit": "flame_admiral", "n": 1 },
+      { "unit": "storm_mage", "n": 1 }
+    ],
+    "priority": 70
+  },
+  {
+    "id": "r_pirate_king",
+    "output": "pirate_king",
+    "ingredients": [
+      { "unit": "thunder_emperor", "n": 1 },
+      { "unit": "sword_saint", "n": 1 }
+    ],
+    "priority": 80
+  }
+]

@@ -1,0 +1,23 @@
+# Dependencies & build output
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+
+# OS / Editor
+.DS_Store
+
+# Workspace home dotfiles
+/.bash_logout
+/.bashrc
+/.bash_history
+/.profile
+/.gitconfig
+/.gemini
+/.npm
+/.cache
+/.local
+/.config
+/.viminfo
+/.wget-hsts

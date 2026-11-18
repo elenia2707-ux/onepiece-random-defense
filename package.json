@@ -1,0 +1,21 @@
+{
+  "name": "onepiece-random-defense",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "validate:data": "vitest run tests/data",
+    "build": "tsc --noEmit && vitest run && vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^3.0.8"
+  }
+}

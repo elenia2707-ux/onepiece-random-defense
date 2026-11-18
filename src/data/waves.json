@@ -1,0 +1,32 @@
+[
+  {
+    "wave": 1,
+    "durationSec": 30,
+    "spawnCount": 14,
+    "spawnIntervalSec": 1.4,
+    "monsterHp": 120,
+    "monsterSpeed": 135,
+    "monsterRadius": 15,
+    "rewardCoin": 4
+  },
+  {
+    "wave": 2,
+    "durationSec": 30,
+    "spawnCount": 18,
+    "spawnIntervalSec": 1.2,
+    "monsterHp": 185,
+    "monsterSpeed": 145,
+    "monsterRadius": 15,
+    "rewardCoin": 5
+  },
+  {
+    "wave": 3,
+    "durationSec": 30,
+    "spawnCount": 22,
+    "spawnIntervalSec": 1.0,
+    "monsterHp": 260,
+    "monsterSpeed": 152,
+    "monsterRadius": 16,
+    "rewardCoin": 6
+  }
+]

@@ -1,0 +1,46 @@
+{
+  "logicalWidth": 720,
+  "logicalHeight": 1280,
+  "arenaRect": {
+    "x": 24,
+    "y": 112,
+    "w": 672,
+    "h": 584
+  },
+  "path": {
+    "corridorWidth": 52,
+    "monsterCap": 100,
+    "waypoints": [
+      { "x": 64, "y": 156 },
+      { "x": 64, "y": 652 },
+      { "x": 656, "y": 652 },
+      { "x": 656, "y": 156 }
+    ]
+  },
+  "field": {
+    "cols": 6,
+    "rows": 3,
+    "originX": 112,
+    "originY": 250,
+    "cellW": 76,
+    "cellH": 96,
+    "gapX": 8,
+    "gapY": 10
+  },
+  "bench": {
+    "cols": 6,
+    "rows": 2,
+    "originX": 59,
+    "originY": 752,
+    "cellW": 92,
+    "cellH": 84,
+    "gapX": 10,
+    "gapY": 10
+  },
+  "economy": {
+    "initialCoin": 500,
+    "initialLuckStone": 5,
+    "baseSummonCost": 20,
+    "summonCostStep": 2
+  }
+}
