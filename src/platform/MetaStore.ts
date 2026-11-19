@@ -2,6 +2,8 @@ import {
   CLEAR_TARGET_WAVE,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
+  RELIC_MAX_LEVEL,
+  RELIC_STANDARD_CAP,
   TITLE_DEFS,
   TITLES_BY_ID,
   TRIAL_CONFIGS,
@@ -186,6 +188,25 @@ export type RelicDrawResult =
       readonly reason: string;
     };
 
+export interface RelicBatchPullItem {
+  readonly relicId: RelicId;
+  readonly prevLevel: number;
+  readonly newLevel: number;
+  readonly isNew: boolean;
+}
+
+export type RelicBatchDrawResult =
+  | {
+      readonly ok: true;
+      readonly items: readonly RelicBatchPullItem[];
+      readonly spentCount: number;
+      readonly unlockedTitleIds?: readonly TitleId[];
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
 export type RelicUpgradeResult =
   | {
       readonly ok: true;
@@ -244,6 +265,8 @@ export function computeTitleProgress(profile: MetaProfile, title: TitleDef): Tit
       return { current: profile.clearedDifficulties.hard ? 1 : 0, target: 1 };
     case 'hell_clear':
       return { current: profile.clearedDifficulties.hell ? 1 : 0, target: 1 };
+    case 'abyss_clear':
+      return { current: profile.clearedDifficulties.abyss ? 1 : 0, target: 1 };
     case 'all_trials_clear':
       return { current: profile.clearedTrialCount, target: TRIAL_ORDER.length };
     case 'best_wave':
@@ -256,6 +279,13 @@ export function computeTitleProgress(profile: MetaProfile, title: TitleDef): Tit
         if (lv > maxLv) maxLv = lv;
       }
       return { current: Math.min(title.target, maxLv), target: title.target };
+    }
+    case 'owned_relics': {
+      let owned = 0;
+      for (const lv of Object.values(profile.relics)) {
+        if (lv > 0) owned++;
+      }
+      return { current: Math.min(title.target, owned), target: title.target };
     }
   }
 }
@@ -290,7 +320,13 @@ export function getRelicUpgradeGoldCost(def: RelicDef, currentLevel: number): nu
   if (currentLevel >= def.maxLevel) {
     return 0;
   }
-  return def.baseUpgradeGold + currentLevel * def.stepUpgradeGold;
+  const linear = def.baseUpgradeGold + currentLevel * def.stepUpgradeGold;
+  if (currentLevel < RELIC_STANDARD_CAP) {
+    return linear;
+  }
+  // Transcendence refinement (Lv.10 -> Lv.15) carries a prestige surcharge
+  const overSteps = currentLevel - RELIC_STANDARD_CAP + 1;
+  return linear + overSteps * Math.round(def.stepUpgradeGold * 1.2);
 }
 
 export function getCodexDiscoveryReward(gradeDef: GradeDef | undefined): {
@@ -423,6 +459,7 @@ function createEmptyDifficultyBestWave(): Record<DifficultyId, number> {
     normal: 0,
     hard: 0,
     hell: 0,
+    abyss: 0,
   };
 }
 
@@ -459,11 +496,13 @@ export class MetaStore {
     normal: true,
     hard: false,
     hell: false,
+    abyss: false,
   };
   private readonly clearedDifficulties: Record<DifficultyId, boolean> = {
     normal: false,
     hard: false,
     hell: false,
+    abyss: false,
   };
   private readonly difficultyBestWave: Record<DifficultyId, number> =
     createEmptyDifficultyBestWave();
@@ -661,7 +700,10 @@ export class MetaStore {
   ): RelicDrawResult {
     const candidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
     if (candidates.length === 0) {
-      return { ok: false, reason: '모든 무림 신물이 이미 극의(Lv.10)에 도달했습니다!' };
+      return {
+        ok: false,
+        reason: `모든 무림 신물이 이미 태극신화(Lv.${RELIC_MAX_LEVEL})에 도달했습니다!`,
+      };
     }
 
     if (payWith === 'key') {
@@ -679,26 +721,7 @@ export class MetaStore {
       this.gold -= RELIC_CHEST_GOLD_COST;
     }
 
-    // Weight unowned relics 2.5x so players unlock diverse relics smoothly
-    let totalWeight = 0;
-    for (let i = 0; i < candidates.length; i++) {
-      const lv = this.relics[candidates[i]!.id] ?? 0;
-      totalWeight += lv === 0 ? 25 : 10;
-    }
-
-    const r = Math.max(0, Math.min(0.999999, rngFn()));
-    let roll = Math.floor(r * totalWeight);
-    let chosen = candidates[0]!;
-    for (let i = 0; i < candidates.length; i++) {
-      const cand = candidates[i]!;
-      const w = (this.relics[cand.id] ?? 0) === 0 ? 25 : 10;
-      if (roll < w) {
-        chosen = cand;
-        break;
-      }
-      roll -= w;
-    }
-
+    const chosen = this.pickWeightedRelicCandidate(candidates, rngFn);
     const prevLevel = this.relics[chosen.id] ?? 0;
     const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
     this.relics[chosen.id] = newLevel;
@@ -716,10 +739,98 @@ export class MetaStore {
     };
   }
 
+  public drawRelicBatch(
+    relicDefs: readonly RelicDef[],
+    maxCount: number,
+    payWith: 'key' | 'gold',
+    rngFn: () => number = Math.random,
+  ): RelicBatchDrawResult {
+    const targetPulls = Math.max(1, Math.min(10, Math.floor(maxCount)));
+    const initialCandidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
+    if (initialCandidates.length === 0) {
+      return {
+        ok: false,
+        reason: `모든 무림 신물이 이미 태극신화(Lv.${RELIC_MAX_LEVEL})에 도달했습니다!`,
+      };
+    }
+
+    const affordableCount =
+      payWith === 'key' ? this.keys : Math.floor(this.gold / RELIC_CHEST_GOLD_COST);
+    if (affordableCount < 1) {
+      return {
+        ok: false,
+        reason:
+          payWith === 'key'
+            ? '보유한 기보함 열쇠가 부족합니다.'
+            : `천하주화가 부족합니다 (${RELIC_CHEST_GOLD_COST} 필요)`,
+      };
+    }
+
+    const pullsToRun = Math.min(targetPulls, affordableCount);
+    const items: RelicBatchPullItem[] = [];
+
+    for (let i = 0; i < pullsToRun; i++) {
+      const candidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
+      if (candidates.length === 0) break;
+
+      if (payWith === 'key') {
+        this.keys -= 1;
+      } else {
+        this.gold -= RELIC_CHEST_GOLD_COST;
+      }
+
+      const chosen = this.pickWeightedRelicCandidate(candidates, rngFn);
+      const prevLevel = this.relics[chosen.id] ?? 0;
+      const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
+      this.relics[chosen.id] = newLevel;
+      items.push({
+        relicId: chosen.id,
+        prevLevel,
+        newLevel,
+        isNew: prevLevel === 0,
+      });
+    }
+
+    const titleRes = this.evaluateTitles(true);
+    this.rev++;
+    this.save();
+
+    return {
+      ok: true,
+      items,
+      spentCount: items.length,
+      unlockedTitleIds: titleRes.unlockedIds,
+    };
+  }
+
+  private pickWeightedRelicCandidate(
+    candidates: readonly RelicDef[],
+    rngFn: () => number,
+  ): RelicDef {
+    // Weight unowned relics 2.5x so players unlock diverse relics smoothly
+    let totalWeight = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const lv = this.relics[candidates[i]!.id] ?? 0;
+      totalWeight += lv === 0 ? 25 : 10;
+    }
+
+    const r = Math.max(0, Math.min(0.999999, rngFn()));
+    let roll = Math.floor(r * totalWeight);
+    for (let i = 0; i < candidates.length; i++) {
+      const cand = candidates[i]!;
+      const w = (this.relics[cand.id] ?? 0) === 0 ? 25 : 10;
+      if (roll < w) {
+        return cand;
+      }
+      roll -= w;
+    }
+    return candidates[0]!;
+  }
+
   public upgradeRelic(def: RelicDef): RelicUpgradeResult {
     const prevLevel = this.relics[def.id] ?? 0;
     if (prevLevel >= def.maxLevel) {
-      return { ok: false, reason: '이미 신물 극의(최대 단계)에 도달했습니다.' };
+      return { ok: false, reason: `이미 태극신화(Lv.${def.maxLevel})에 도달했습니다.` };
     }
 
     const cost = getRelicUpgradeGoldCost(def, prevLevel);
@@ -917,6 +1028,7 @@ export class MetaStore {
       this.clearedDifficulties.normal ||
       this.clearedDifficulties.hard ||
       this.clearedDifficulties.hell ||
+      this.clearedDifficulties.abyss ||
       anyTrialCleared;
 
     if (anyCleared && !this.ownedSkins.court_golden_palace) {
@@ -937,6 +1049,13 @@ export class MetaStore {
       }
       newlyUnlocked.push('skin_cheonma_golden_emperor');
     }
+    if (this.clearedDifficulties.abyss && !this.ownedSkins.skin_asura_blood_eclipse) {
+      this.ownedSkins.skin_asura_blood_eclipse = true;
+      if (!this.equippedHeroSkins.asura_emperor) {
+        this.equippedHeroSkins.asura_emperor = 'skin_asura_blood_eclipse';
+      }
+      newlyUnlocked.push('skin_asura_blood_eclipse');
+    }
     if (allTrialsCleared && !this.ownedSkins.skin_sword_immortal_celestial) {
       this.ownedSkins.skin_sword_immortal_celestial = true;
       if (!this.equippedHeroSkins.sword_immortal) {
@@ -950,6 +1069,13 @@ export class MetaStore {
         this.equippedHeroSkins.sword_demon = 'skin_sword_demon_azure';
       }
       newlyUnlocked.push('skin_sword_demon_azure');
+    }
+    if (this.bestWave >= 55 && !this.ownedSkins.skin_thunder_jade_sovereign) {
+      this.ownedSkins.skin_thunder_jade_sovereign = true;
+      if (!this.equippedHeroSkins.thunder_emperor) {
+        this.equippedHeroSkins.thunder_emperor = 'skin_thunder_jade_sovereign';
+      }
+      newlyUnlocked.push('skin_thunder_jade_sovereign');
     }
     return newlyUnlocked;
   }
@@ -1045,6 +1171,9 @@ export class MetaStore {
         } else if (diff === 'hard' && !this.unlockedDifficulties.hell) {
           this.unlockedDifficulties.hell = true;
           unlockedNextDifficulty = 'hell';
+        } else if (diff === 'hell' && !this.unlockedDifficulties.abyss) {
+          this.unlockedDifficulties.abyss = true;
+          unlockedNextDifficulty = 'abyss';
         }
       }
     }
@@ -1320,6 +1449,7 @@ export class MetaStore {
     this.silk += Math.max(0, Math.floor(silkBonus));
     this.unlockedDifficulties.hard = true;
     this.unlockedDifficulties.hell = true;
+    this.unlockedDifficulties.abyss = true;
     this.rev++;
     this.save();
   }
@@ -1338,9 +1468,11 @@ export class MetaStore {
     this.unlockedDifficulties.normal = true;
     this.unlockedDifficulties.hard = false;
     this.unlockedDifficulties.hell = false;
+    this.unlockedDifficulties.abyss = false;
     this.clearedDifficulties.normal = false;
     this.clearedDifficulties.hard = false;
     this.clearedDifficulties.hell = false;
+    this.clearedDifficulties.abyss = false;
     for (const d of DIFFICULTY_ORDER) {
       this.difficultyBestWave[d] = 0;
     }
@@ -1388,7 +1520,7 @@ export class MetaStore {
         const id = RELIC_ORDER[i]!;
         const lv = relObj[id];
         if (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) {
-          this.relics[id] = Math.min(10, Math.floor(lv));
+          this.relics[id] = Math.min(RELIC_MAX_LEVEL, Math.floor(lv));
         }
       }
     }

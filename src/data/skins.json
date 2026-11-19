@@ -171,6 +171,36 @@
       "primaryColor": "#2dd4bf",
       "secondaryColor": "#fef9c3",
       "crestKind": "halo"
+    },
+    {
+      "id": "skin_asura_blood_eclipse",
+      "unitId": "asura_emperor",
+      "name": "적월패주 혈해수라왕",
+      "rarity": "achievement",
+      "unlockCond": "abyss_clear",
+      "silkCost": 0,
+      "desc": "[업적 한정] 천마강림(무극) 제 30 장 제패자에게 수여되는 흑자 적월수라갑",
+      "robeHue": 312,
+      "satMult": 1.4,
+      "lumOffset": 0.04,
+      "primaryColor": "#e879f9",
+      "secondaryColor": "#fb7185",
+      "crestKind": "crown"
+    },
+    {
+      "id": "skin_thunder_jade_sovereign",
+      "unitId": "thunder_emperor",
+      "name": "태청옥황 남궁뇌제",
+      "rarity": "achievement",
+      "unlockCond": "wave_55",
+      "silkCost": 0,
+      "desc": "[업적 한정] 무한 혈투 제 55 장 돌파자에게 수여되는 백옥 천뢰황포",
+      "robeHue": 188,
+      "satMult": 1.35,
+      "lumOffset": 0.08,
+      "primaryColor": "#38bdf8",
+      "secondaryColor": "#fef08a",
+      "crestKind": "halo"
     }
   ],
   "courtSkins": [

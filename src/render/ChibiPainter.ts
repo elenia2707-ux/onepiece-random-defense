@@ -1295,7 +1295,17 @@ export function paintRelicPixelArt(
   const p = new PixelCanvas();
 
   // Mastery level 10 radiant celestial halo behind treasure
-  if (level >= 10) {
+  if (level >= 15) {
+    for (let a = 0; a < 16; a++) {
+      const rad = (a * Math.PI * 2) / 16;
+      const hx = Math.round(15.5 + Math.cos(rad) * 13);
+      const hy = Math.round(15.5 + Math.sin(rad) * 13);
+      const col = a % 3 === 0 ? '#e879f9' : a % 3 === 1 ? '#fde047' : '#38bdf8';
+      p.set(hx, hy, col, LAYER_BACK);
+    }
+    p.set(15, 2, '#f0abfc', LAYER_FX);
+    p.set(16, 2, '#ffffff', LAYER_FX);
+  } else if (level >= 10) {
     for (let a = 0; a < 12; a++) {
       const rad = (a * Math.PI * 2) / 12;
       const hx = Math.round(15.5 + Math.cos(rad) * 12);

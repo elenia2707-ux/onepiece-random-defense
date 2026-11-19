@@ -166,7 +166,8 @@ export function computeMonsterArmor(
     (isBounty ? 14 : 0) +
     mutantArmor +
     trialArmor;
-  return Math.min(180, Math.round(base));
+  const armorCap = difficulty === 'abyss' ? 220 : 180;
+  return Math.min(armorCap, Math.round(base));
 }
 
 export function resolveTargetBossName(

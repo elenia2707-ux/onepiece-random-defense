@@ -258,7 +258,7 @@ export interface RelicDef {
   readonly stepUpgradeGold: number;
 }
 
-export type DifficultyId = 'normal' | 'hard' | 'hell';
+export type DifficultyId = 'normal' | 'hard' | 'hell' | 'abyss';
 
 export interface DifficultyConfig {
   readonly id: DifficultyId;
@@ -336,7 +336,9 @@ export type SkinUnlockCond =
   | 'any_clear'
   | 'hard_clear'
   | 'hell_clear'
+  | 'abyss_clear'
   | 'wave_35'
+  | 'wave_55'
   | 'all_trials_clear';
 export type SkinCrestKind = 'halo' | 'crown' | 'blades' | 'orbs';
 export type CourtSkinId =
@@ -382,10 +384,12 @@ export type TitleConditionKind =
   | 'normal_clear'
   | 'hard_clear'
   | 'hell_clear'
+  | 'abyss_clear'
   | 'all_trials_clear'
   | 'best_wave'
   | 'discovered_units'
-  | 'max_relic_level';
+  | 'max_relic_level'
+  | 'owned_relics';
 
 export interface TitleDef {
   readonly id: TitleId;

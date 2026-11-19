@@ -9,6 +9,8 @@ import {
   getSwiftBootsSpeedPct,
   getVaultInterestCap,
   getVaultInterestPct,
+  RELIC_CATEGORY_MAP,
+  RELIC_STANDARD_CAP,
   TRIAL_CONFIGS,
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
@@ -27,6 +29,7 @@ import {
   escapeHtml,
   FACTION_META,
   ICON,
+  type RelicFilterId,
   type RelicNoticeView,
   SKIN_RARITY_META,
   type SkinPullView,
@@ -41,6 +44,7 @@ export interface RelicPanelParams {
   readonly meta: MetaProfile;
   readonly settledRec: SettlementRecord | null;
   readonly lastRelicNotice: RelicNoticeView | null;
+  readonly relicFilter: RelicFilterId;
   readonly backupInputDraft: string;
   readonly confirmArmed: boolean;
 }
@@ -58,31 +62,80 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     meta,
     settledRec,
     lastRelicNotice,
+    relicFilter,
     backupInputDraft,
     confirmArmed,
   } = params;
 
   const ownedCount = data.relics.filter((d) => (meta.relics[d.id] ?? 0) > 0).length;
+  const transcendedCount = data.relics.filter((d) => (meta.relics[d.id] ?? 0) > RELIC_STANDARD_CAP).length;
   const allMaxed = data.relics.every((d) => (meta.relics[d.id] ?? 0) >= d.maxLevel);
   const bestWaveStr = String(meta.bestWave).padStart(2, '0');
-  const subtitle = `해금 ${ownedCount}/${data.relics.length} · 최고 기록 제 ${bestWaveStr} 장 · 영구 계승`;
+  const transSuffix = transcendedCount > 0 ? ` · 초월 ${transcendedCount}` : '';
+  const subtitle = `해금 ${ownedCount}/${data.relics.length}${transSuffix} · 최고 제 ${bestWaveStr} 장 · 영구 계승`;
 
   const canDrawKey = !allMaxed && meta.keys >= 1;
+  const bulkKeyCount = Math.min(10, meta.keys);
+  const canDrawBulkKey = !allMaxed && meta.keys >= 2;
   const canDrawGold = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST;
+  const canDrawGold5 = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST * 5;
 
   let noticeHtml = '';
-  if (lastRelicNotice?.relicId) {
+  if (lastRelicNotice?.batchItems && lastRelicNotice.batchItems.length > 0) {
+    const itemsHtml = lastRelicNotice.batchItems
+      .map((entry) => {
+        const rDef = data.relicsById.get(entry.relicId);
+        const rPortrait = sprites.relicPortraitUrl(entry.relicId, entry.newLevel);
+        const deltaTxt = entry.isNew
+          ? `NEW Lv.${entry.newLevel}`
+          : `Lv.${entry.prevLevel}→${entry.newLevel}`;
+        const cls =
+          entry.newLevel >= (rDef?.maxLevel ?? 15)
+            ? ' batch-mythic'
+            : entry.newLevel > RELIC_STANDARD_CAP
+              ? ' batch-transcend'
+              : entry.isNew
+                ? ' batch-new'
+                : '';
+        return `
+          <div class="relic-batch-chip${cls}">
+            <img src="${rPortrait}" alt="${escapeHtml(rDef?.name ?? '')}" />
+            <div class="relic-batch-chip-meta">
+              <span class="relic-batch-chip-name">${escapeHtml(rDef?.name ?? entry.relicId)}</span>
+              <span class="relic-batch-chip-lv">${deltaTxt}${entry.pulls > 1 ? ` (×${entry.pulls})` : ''}</span>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+    noticeHtml = `
+      <div id="relic-notice-banner" class="relic-batch-showcase">
+        <div class="relic-batch-head">${escapeHtml(lastRelicNotice.text)}</div>
+        <div class="relic-batch-grid">${itemsHtml}</div>
+      </div>
+    `;
+  } else if (lastRelicNotice?.relicId) {
     const n = lastRelicNotice;
     const rDef = data.relicsById.get(n.relicId!);
     const rLv = n.newLevel ?? 1;
     const rPrev = n.prevLevel ?? 0;
     const rPortrait = sprites.relicPortraitUrl(n.relicId!, rLv);
+    const maxLv = rDef?.maxLevel ?? 15;
     const badgeLabel = n.isNew
       ? '✨ NEW 신물 해금'
-      : rLv >= (rDef?.maxLevel ?? 10)
-        ? '👑 극의 달성!'
-        : `⬆️ 제련 승급 Lv.${rPrev} → Lv.${rLv}`;
-    const tierCls = rLv >= 10 ? ' tier-mythic' : rLv >= 5 ? ' tier-master' : '';
+      : rLv >= maxLv
+        ? '👑 태극신화 달성!'
+        : rLv > RELIC_STANDARD_CAP
+          ? `🌌 초월 제련 Lv.${rPrev} → Lv.${rLv}`
+          : `⬆️ 제련 승급 Lv.${rPrev} → Lv.${rLv}`;
+    const tierCls =
+      rLv >= maxLv
+        ? ' tier-mythic'
+        : rLv > RELIC_STANDARD_CAP
+          ? ' tier-transcend'
+          : rLv >= 5
+            ? ' tier-master'
+            : '';
     noticeHtml = `
       <div id="relic-notice-banner" class="relic-pull-showcase${tierCls}">
         <div class="relic-pull-avatar">
@@ -101,15 +154,31 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   } else {
     const noticeText = lastRelicNotice
       ? lastRelicNotice.text
-      : '🏺 기보함을 개봉해 복리 이자·신법 가속·회심·파갑·절기 증폭 등 무림 12대 신물을 제련하세요!';
+      : '🏺 기보함을 개봉해 무림 12대 신물을 해금하고 Lv.15 초월 신화 경지까지 제련하세요!';
     const noticeClass = lastRelicNotice ? 'relic-notice-banner win' : 'relic-notice-banner';
     noticeHtml = `<div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>`;
   }
 
-  const cardsHtml = data.relics
+  const econCount = data.relics.filter((d) => RELIC_CATEGORY_MAP[d.id] === 'economy').length;
+  const combatCount = data.relics.filter((d) => RELIC_CATEGORY_MAP[d.id] === 'combat').length;
+  const filteredRelics =
+    relicFilter === 'all'
+      ? data.relics
+      : data.relics.filter((d) => RELIC_CATEGORY_MAP[d.id] === relicFilter);
+
+  const filterBarHtml = `
+    <div class="codex-filter-row relic-filter-row">
+      <button type="button" class="codex-filter-btn${relicFilter === 'all' ? ' active' : ''} interactive" data-sheet-action="relic-filter" data-filter="all">전체 (${data.relics.length})</button>
+      <button type="button" class="codex-filter-btn${relicFilter === 'economy' ? ' active' : ''} interactive" data-sheet-action="relic-filter" data-filter="economy">경제·기연 (${econCount})</button>
+      <button type="button" class="codex-filter-btn${relicFilter === 'combat' ? ' active' : ''} interactive" data-sheet-action="relic-filter" data-filter="combat">전투·토벌 (${combatCount})</button>
+    </div>
+  `;
+
+  const cardsHtml = filteredRelics
     .map((def) => {
       const lv = meta.relics[def.id] ?? 0;
       const isOwned = lv > 0;
+      const isTranscend = lv > RELIC_STANDARD_CAP && lv < def.maxLevel;
       const isMax = lv >= def.maxLevel;
       const cost = getRelicUpgradeGoldCost(def, lv);
       const affordable = !isMax && meta.gold >= cost;
@@ -143,25 +212,61 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       if (!isOwned) {
         statLine = `<span class="relic-lore">${escapeHtml(def.desc)}</span> · 해금(Lv.1): <b class="up-next">${escapeHtml(formatRelicStatSummary(def.id, 1))}</b>`;
       } else if (isMax) {
-        statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, lv))}</b> <span class="relic-max-note">(천하제일 극의 달성)</span>`;
+        statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, lv))}</b> <span class="relic-max-note">(태극신화 Lv.${def.maxLevel} 달성)</span>`;
       } else {
-        statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} → <b class="up-next">Lv.${lv + 1}: ${escapeHtml(formatRelicStatSummary(def.id, lv + 1))}</b>`;
+        const nextPrefix = lv >= RELIC_STANDARD_CAP ? `초월 Lv.${lv + 1}` : `Lv.${lv + 1}`;
+        statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} → <b class="up-next">${nextPrefix}: ${escapeHtml(formatRelicStatSummary(def.id, lv + 1))}</b>`;
       }
 
-      const lvBadgeBg = isMax ? '#dc2626' : lv >= 5 ? '#b45309' : isOwned ? '#d97706' : '#334155';
-      const lvBadgeTxt = isMax ? `극의 Lv.${lv}` : isOwned ? `Lv.${lv}/${def.maxLevel}` : '봉인됨';
-      const ctaLabel = isMax ? '극의' : isOwned ? '제련' : '지정 해금';
+      const lvBadgeBg = isMax
+        ? '#9333ea'
+        : isTranscend
+          ? '#7c3aed'
+          : lv >= RELIC_STANDARD_CAP
+            ? '#dc2626'
+            : lv >= 5
+              ? '#b45309'
+              : isOwned
+                ? '#d97706'
+                : '#334155';
+      const lvBadgeTxt = isMax
+        ? `신화 Lv.${lv}`
+        : isTranscend
+          ? `초월 Lv.${lv}/${def.maxLevel}`
+          : isOwned
+            ? `Lv.${lv}/${def.maxLevel}`
+            : '봉인됨';
+      const ctaLabel = isMax
+        ? '신화'
+        : lv >= RELIC_STANDARD_CAP
+          ? '초월 제련'
+          : isOwned
+            ? '제련'
+            : '지정 해금';
       const cardTierCls = isMax
         ? ' relic-owned relic-mythic'
-        : lv >= 5
-          ? ' relic-owned relic-master'
-          : isOwned
-            ? ' relic-owned'
-            : ' relic-locked';
+        : isTranscend
+          ? ' relic-owned relic-transcend'
+          : lv >= 5
+            ? ' relic-owned relic-master'
+            : isOwned
+              ? ' relic-owned'
+              : ' relic-locked';
       const portraitUrl = sprites.relicPortraitUrl(def.id, lv);
       const pipsHtml = Array.from({ length: def.maxLevel }, (_, idx) => {
         const filled = idx < lv;
-        const pipCls = !filled ? '' : isMax ? ' max' : lv >= 5 ? ' high' : ' on';
+        const isOverPip = idx >= RELIC_STANDARD_CAP;
+        const pipCls = !filled
+          ? isOverPip
+            ? ' over-empty'
+            : ''
+          : isMax
+            ? ' max'
+            : isOverPip
+              ? ' trans'
+              : lv >= 5
+                ? ' high'
+                : ' on';
         return `<span class="relic-lv-pip${pipCls}"></span>`;
       }).join('');
 
@@ -184,7 +289,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
           </div>
           <button
             type="button"
-            class="card-cta-btn ${affordable ? (isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
+            class="card-cta-btn ${affordable ? (lv >= RELIC_STANDARD_CAP ? 'cta-violet interactive' : isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
             data-sheet-action="relic-upgrade"
             data-relic-id="${def.id}"
             ${affordable ? '' : 'disabled'}
@@ -312,31 +417,56 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
           <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
           <span class="relic-wallet-pill key">${ICON.key}<span>기보함 열쇠</span><b>${meta.keys}</b></span>
         </div>
-        <div class="relic-draw-btns">
+        <div class="relic-draw-btns relic-draw-grid">
           <button
             type="button"
             class="card-cta-btn cta-green ${canDrawKey ? 'interactive' : 'cta-disabled'}"
             data-sheet-action="relic-draw"
             data-pay="key"
+            data-count="1"
             ${canDrawKey ? '' : 'disabled'}
           >
-            <span>열쇠 개봉</span>
+            <span>열쇠 ×1</span>
             <span class="mini-price">${ICON.key}1</span>
+          </button>
+          <button
+            type="button"
+            class="card-cta-btn cta-violet ${canDrawBulkKey ? 'interactive' : 'cta-disabled'}"
+            data-sheet-action="relic-draw"
+            data-pay="key"
+            data-count="${Math.max(2, bulkKeyCount)}"
+            ${canDrawBulkKey ? '' : 'disabled'}
+          >
+            <span>일괄 ×${canDrawBulkKey ? bulkKeyCount : 10}</span>
+            <span class="mini-price">${ICON.key}${canDrawBulkKey ? bulkKeyCount : '2~10'}</span>
           </button>
           <button
             type="button"
             class="card-cta-btn ${canDrawGold ? 'interactive' : 'cta-disabled'}"
             data-sheet-action="relic-draw"
             data-pay="gold"
+            data-count="1"
             ${canDrawGold ? '' : 'disabled'}
           >
-            <span>주화 개봉</span>
+            <span>주화 ×1</span>
             <span class="mini-price">${ICON.goldCoin}${RELIC_CHEST_GOLD_COST}</span>
+          </button>
+          <button
+            type="button"
+            class="card-cta-btn cta-sky ${canDrawGold5 ? 'interactive' : 'cta-disabled'}"
+            data-sheet-action="relic-draw"
+            data-pay="gold"
+            data-count="5"
+            ${canDrawGold5 ? '' : 'disabled'}
+          >
+            <span>주화 ×5</span>
+            <span class="mini-price">${ICON.goldCoin}${RELIC_CHEST_GOLD_COST * 5}</span>
           </button>
         </div>
       </div>
       ${noticeHtml}
     </div>
+    ${filterBarHtml}
     ${cardsHtml}
     ${settleFooterHtml}
     ${backupPanelHtml}

@@ -4,7 +4,7 @@
     "name": "천하제일 전장 금고",
     "tag": "복리 이자",
     "desc": "매 장(웨이브) 종료 시 현재 보유 은자에 비례한 복리 이자를 추가 지급합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 70,
     "stepUpgradeGold": 45
   },
@@ -13,7 +13,7 @@
     "name": "만금쾌검패",
     "tag": "이자 데미지",
     "desc": "현재 보유 은자 100당 모든 출전 협객의 최종 공격력이 비례 증폭됩니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 80,
     "stepUpgradeGold": 50
   },
@@ -22,7 +22,7 @@
     "name": "야행도적의 비수",
     "tag": "평타 약탈",
     "desc": "기본 초식(평타) 적중 시 확률적으로 마물의 은자를 즉시 강탈합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 60,
     "stepUpgradeGold": 40
   },
@@ -31,7 +31,7 @@
     "name": "태상노군 만년단로",
     "tag": "영약 보정",
     "desc": "영약 환골탈태 성공률을 높이고 주화입마 실패 시 확률로 영단 1개를 환급합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 65,
     "stepUpgradeGold": 40
   },
@@ -40,7 +40,7 @@
     "name": "전설의 개국옥새",
     "tag": "초기 군자금",
     "desc": "출정 시 초기 은자(종잣돈)를 추가 지급해 1장부터 복리 스노우볼을 앞당깁니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 55,
     "stepUpgradeGold": 35
   },
@@ -49,7 +49,7 @@
     "name": "천기비급함",
     "tag": "기연·토벌",
     "desc": "출정 시 추가 기연 비급을 지급하고 영물(보스) 토벌 시 추가 영단을 획득합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 75,
     "stepUpgradeGold": 45
   },
@@ -58,7 +58,7 @@
     "name": "신행백보화",
     "tag": "신법 가속",
     "desc": "허공답보의 비보로 모든 출전 협객의 공격 속도를 영구히 가속합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 65,
     "stepUpgradeGold": 40
   },
@@ -67,7 +67,7 @@
     "name": "혈영회심검",
     "tag": "회심 극의",
     "desc": "적의 급소를 꿰뚫는 검기로 모든 출전 협객의 치명타율과 치명타 피해를 증폭합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 75,
     "stepUpgradeGold": 45
   },
@@ -76,7 +76,7 @@
     "name": "파갑금강수",
     "tag": "파갑 관통",
     "desc": "철갑을 찢는 금강 내공으로 모든 출전 협객에게 기본 파갑 수치를 영구 부여합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 70,
     "stepUpgradeGold": 45
   },
@@ -85,7 +85,7 @@
     "name": "태극절기옥",
     "tag": "절기 증폭",
     "desc": "음양 진기가 응축된 보옥으로 모든 협객의 절기(스킬) 최종 피해를 증폭합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 80,
     "stepUpgradeGold": 50
   },
@@ -94,7 +94,7 @@
     "name": "토벌패왕기",
     "tag": "보스 특효",
     "desc": "영물 보스와 현상수배범 대상 최종 피해를 크게 높이고 현상수배 은자 보상을 늘립니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 75,
     "stepUpgradeGold": 45
   },
@@ -103,7 +103,7 @@
     "name": "만상금주판",
     "tag": "소환 절감",
     "desc": "초출강호 소환 비용을 영구 할인하고 마물 처치 시 획득하는 은자를 증폭합니다.",
-    "maxLevel": 10,
+    "maxLevel": 15,
     "baseUpgradeGold": 60,
     "stepUpgradeGold": 40
   }

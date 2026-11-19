@@ -591,7 +591,8 @@ function applyHitToMonster(
   }
 
   if (p.stunTicks > 0) {
-    const bossFactor = ctx.difficulty === 'hell' ? 0.35 : 0.45;
+    const bossFactor =
+      ctx.difficulty === 'abyss' ? 0.25 : ctx.difficulty === 'hell' ? 0.35 : 0.45;
     const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * bossFactor)) : p.stunTicks;
     m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + stunDur);
   }

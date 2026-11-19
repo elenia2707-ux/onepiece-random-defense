@@ -15,6 +15,15 @@ import { getUnitCombatProfile } from '../render/weaponProfiles';
 
 export type CodexFilterId = 'all' | FactionId;
 export type WardrobeSubTab = 'hero' | 'court';
+export type RelicFilterId = 'all' | 'economy' | 'combat';
+
+export interface RelicBatchNoticeEntry {
+  readonly relicId: RelicId;
+  readonly prevLevel: number;
+  readonly newLevel: number;
+  readonly pulls: number;
+  readonly isNew: boolean;
+}
 
 export interface RelicNoticeView {
   readonly text: string;
@@ -24,6 +33,8 @@ export interface RelicNoticeView {
   readonly prevLevel?: number;
   readonly newLevel?: number;
   readonly isNew?: boolean;
+  readonly batchItems?: readonly RelicBatchNoticeEntry[];
+  readonly totalPulls?: number;
 }
 
 export interface SkinPullView {
@@ -61,8 +72,10 @@ export const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
   any_clear: '제 30 장 천하통일 제패 시 영구 해금',
   hard_clear: '무림 고수 난이도 제 30 장 제패 시 영구 해금',
   hell_clear: '아수라 혈겁 난이도 제 30 장 제패 시 영구 해금',
+  abyss_clear: '천마강림(무극) 난이도 제 30 장 제패 시 영구 해금',
   all_trials_clear: '사대 비경 시련 4종 전부 제패 시 영구 해금',
   wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
+  wave_55: '무한 혈투 제 55 장 돌파 시 영구 해금',
 };
 
 export function formatTicksDuration(ticks: number): string {

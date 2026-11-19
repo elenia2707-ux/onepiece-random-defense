@@ -59,6 +59,26 @@ export function formatCompactNumber(val: number): string {
   return n.toLocaleString('ko-KR');
 }
 
+export const RELIC_STANDARD_CAP = 10;
+export const RELIC_MAX_LEVEL = 15;
+
+export type RelicCategoryId = 'economy' | 'combat';
+
+export const RELIC_CATEGORY_MAP: Readonly<Record<RelicId, RelicCategoryId>> = {
+  golden_vault: 'economy',
+  founding_jade_seal: 'economy',
+  heavenly_scroll_chest: 'economy',
+  bandit_dagger: 'economy',
+  immortal_furnace: 'economy',
+  merchant_abacus: 'economy',
+  million_sword_seal: 'combat',
+  wind_swift_boots: 'combat',
+  crimson_crit_blade: 'combat',
+  armor_break_gauntlet: 'combat',
+  celestial_skill_jade: 'combat',
+  demon_slayer_banner: 'combat',
+};
+
 export const RELIC_IDS_ORDERED: readonly RelicId[] = [
   'golden_vault',
   'million_sword_seal',
@@ -74,45 +94,72 @@ export const RELIC_IDS_ORDERED: readonly RelicId[] = [
   'merchant_abacus',
 ];
 
+function splitRelicTier(lv: number): { readonly base: number; readonly over: number } {
+  if (lv <= 0) return { base: 0, over: 0 };
+  const clamped = Math.min(RELIC_MAX_LEVEL, Math.floor(lv));
+  return {
+    base: Math.min(RELIC_STANDARD_CAP, clamped),
+    over: Math.max(0, clamped - RELIC_STANDARD_CAP),
+  };
+}
+
 export function getVaultInterestPct(lv: number): number {
-  return lv > 0 ? 4 + lv : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return 4 + base + Math.ceil(over * 0.6);
 }
 
 export function getVaultInterestCap(lv: number): number {
-  return lv > 0 ? 120 + lv * 80 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return 120 + base * 80 + over * 120;
 }
 
 /** Basis points (100 bps = 1.0%) per 100 currently held coin. */
 export function getWealthBpsPer100Coin(lv: number): number {
-  return lv > 0 ? 50 + lv * 20 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return 50 + base * 20 + over * 10;
 }
 
-/** Total wealth ATK bonus in basis points (capped at 120 stacks = 12,000 coin). */
+/** Total wealth ATK bonus in basis points (capped at 120 stacks for Lv.1..10, up to 160 stacks at Lv.15). */
 export function getWealthBonusBps(lv: number, coin: number): number {
   if (lv <= 0 || coin < 100) return 0;
-  const stacks = Math.min(120, Math.floor(coin / 100));
+  const { over } = splitRelicTier(lv);
+  const maxStacks = 120 + over * 8;
+  const stacks = Math.min(maxStacks, Math.floor(coin / 100));
   return stacks * getWealthBpsPer100Coin(lv);
 }
 
 /** Proc threshold out of 1000 on basic (non-skill) hit. */
 export function getBanditProcPer1000(lv: number): number {
-  return lv > 0 ? 65 + lv * 15 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return 65 + base * 15 + over * 8;
 }
 
 export function getBanditPilferCoin(lv: number): number {
-  return lv > 0 ? 1 + Math.floor((lv - 1) / 4) : 0;
+  if (lv <= 0) return 0;
+  if (lv >= 13) return 4;
+  return 1 + Math.floor((lv - 1) / 4);
 }
 
 export function getFurnaceChanceBonusPct(lv: number): number {
-  return lv > 0 ? lv : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base + Math.ceil(over * 0.6);
 }
 
 export function getFurnaceRefundPct(lv: number): number {
-  return lv > 0 ? 16 + lv * 4 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return 16 + base * 4 + over * 2;
 }
 
 export function getJadeSealStartCoin(lv: number): number {
-  return lv > 0 ? 40 + lv * 30 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return 40 + base * 30 + over * 20;
 }
 
 export function getScrollChestGradeBonusCount(lv: number, grade: GradeDef): number {
@@ -128,56 +175,74 @@ export function getScrollChestGradeBonusCount(lv: number, grade: GradeDef): numb
 
 export function getScrollChestBossLuckBonus(lv: number): number {
   if (lv <= 0) return 0;
+  if (lv >= 12) return 3;
   return lv >= 6 ? 2 : 1;
 }
 
-/** 신행백보화: global attack speed bonus percentage (+3% per level, max +30%). */
+/** 신행백보화: global attack speed bonus (+3%/lv up to Lv.10 = +30%, +2%/lv for Lv.11..15 = +40%). */
 export function getSwiftBootsSpeedPct(lv: number): number {
-  return lv > 0 ? lv * 3 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 3 + over * 2;
 }
 
-/** 혈영회심검: global crit chance bonus in basis points (150 bps = +1.5% per level, max +15%). */
+/** 혈영회심검: global crit chance bonus in bps (+1.5%/lv to Lv.10 = +15%, +0.8%/lv Lv.11..15 = +19%). */
 export function getCritBladeChanceBps(lv: number): number {
-  return lv > 0 ? lv * 150 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 150 + over * 80;
 }
 
-/** 혈영회심검: global crit damage multiplier bonus (+0.08x per level, max +0.80x). */
+/** 혈영회심검: global crit damage multiplier bonus (+0.08x/lv to Lv.10 = +0.80x, +0.05x/lv Lv.11..15 = +1.05x). */
 export function getCritBladeMultBonus(lv: number): number {
-  return lv > 0 ? Number((lv * 0.08).toFixed(2)) : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return Number((base * 0.08 + over * 0.05).toFixed(2));
 }
 
-/** 파갑금강수: global flat armor shred bonus (+3 per level, max +30). */
+/** 파갑금강수: global flat armor shred bonus (+3/lv to Lv.10 = +30, +2/lv Lv.11..15 = +40). */
 export function getArmorGauntletShred(lv: number): number {
-  return lv > 0 ? lv * 3 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 3 + over * 2;
 }
 
-/** 태극절기옥: multiplicative martial art skill damage bonus (+4% per level, max +40%). */
+/** 태극절기옥: multiplicative martial art skill damage (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%). */
 export function getSkillJadeDamagePct(lv: number): number {
-  return lv > 0 ? lv * 4 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 4 + over * 2;
 }
 
-/** 토벌패왕기: bonus damage vs Wave Bosses & Active Bounties (+5% per level, max +50%). */
+/** 토벌패왕기: bonus damage vs Wave Bosses & Active Bounties (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
 export function getSlayerBannerBossPct(lv: number): number {
-  return lv > 0 ? lv * 5 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 5 + over * 3;
 }
 
-/** 토벌패왕기: bonus silver coin reward on Active Bounty kills (+5% per level, max +50%). */
+/** 토벌패왕기: bonus silver coin reward on Active Bounty kills (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
 export function getSlayerBannerBountyCoinPct(lv: number): number {
-  return lv > 0 ? lv * 5 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 5 + over * 3;
 }
 
-/** 만상금주판: flat silver discount on every summon (min summon cost 10). */
+/** 만상금주판: flat silver discount on every summon (min summon cost 10; reaches -5 at Lv.13..15). */
 export function getAbacusSummonDiscount(lv: number): number {
   if (lv <= 0) return 0;
   if (lv <= 3) return 1;
   if (lv <= 6) return 2;
   if (lv <= 9) return 3;
-  return 4;
+  if (lv <= 12) return 4;
+  return 5;
 }
 
-/** 만상금주판: percentage bonus silver coin from slain monsters (+4% per level, max +40%). */
+/** 만상금주판: percentage bonus silver coin from slain monsters (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%). */
 export function getAbacusKillCoinPct(lv: number): number {
-  return lv > 0 ? lv * 4 : 0;
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 4 + over * 2;
 }
 
 export function formatRelicStatSummary(id: RelicId, lv: number): string {
@@ -187,7 +252,9 @@ export function formatRelicStatSummary(id: RelicId, lv: number): string {
       return `복리 이자 +${getVaultInterestPct(effLv)}% (장당 한도 ${getVaultInterestCap(effLv)})`;
     case 'million_sword_seal': {
       const pctPer100 = (getWealthBpsPer100Coin(effLv) / 100).toFixed(1);
-      return `보유 은자 100당 전 협객 최종공격력 +${pctPer100}%`;
+      const { over } = splitRelicTier(effLv);
+      const capStr = over > 0 ? ` · 상한 ${(120 + over * 8) * 100}은자` : '';
+      return `보유 은자 100당 전 협객 최종공격력 +${pctPer100}%${capStr}`;
     }
     case 'bandit_dagger': {
       const procPct = (getBanditProcPer1000(effLv) / 10).toFixed(1);

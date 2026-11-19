@@ -206,6 +206,21 @@ export class Game {
         );
         return res;
       },
+      onDrawRelicBatch: (maxCount, payWith) => {
+        const res = this.meta.drawRelicBatch(data.relics, maxCount, payWith);
+        if (res.ok) {
+          const hasNewOrMax = res.items.some((x) => x.isNew || x.newLevel >= 15);
+          this.sound.playCraft(hasNewOrMax ? 5 : 4);
+          this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.announceUnlockedTitles(res.unlockedTitleIds);
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
       onUpgradeRelic: (relicId) => {
         const def = data.relicsById.get(relicId);
         if (!def) {

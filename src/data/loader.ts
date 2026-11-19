@@ -119,6 +119,7 @@ const VALID_DIFFICULTY_IDS: ReadonlySet<string> = new Set<DifficultyId>([
   'normal',
   'hard',
   'hell',
+  'abyss',
 ]);
 
 const VALID_TRIAL_IDS: ReadonlySet<string> = new Set<TrialId>([
@@ -150,7 +151,9 @@ const VALID_SKIN_UNLOCKS: ReadonlySet<string> = new Set<SkinUnlockCond>([
   'any_clear',
   'hard_clear',
   'hell_clear',
+  'abyss_clear',
   'wave_35',
+  'wave_55',
   'all_trials_clear',
 ]);
 
@@ -159,10 +162,12 @@ const VALID_TITLE_CONDITIONS: ReadonlySet<string> = new Set<TitleConditionKind>(
   'normal_clear',
   'hard_clear',
   'hell_clear',
+  'abyss_clear',
   'all_trials_clear',
   'best_wave',
   'discovered_units',
   'max_relic_level',
+  'owned_relics',
 ]);
 
 const VALID_SKIN_CRESTS: ReadonlySet<string> = new Set<SkinCrestKind>([

@@ -27,6 +27,7 @@ import {
   type BackupImportResult,
   type MetaProfile,
   RELIC_CHEST_GOLD_COST,
+  type RelicBatchDrawResult,
   type RelicDrawResult,
   type RelicUpgradeResult,
   type SettlementRecord,
@@ -48,6 +49,8 @@ import {
   getEquippedSkinDef,
   hasUnownedGachaSkin,
   ICON,
+  type RelicBatchNoticeEntry,
+  type RelicFilterId,
   type RelicNoticeView,
   renderBoonIconSvg,
   SKIN_RARITY_META,
@@ -75,6 +78,7 @@ export interface UIControlHandlers {
   getMetaProfile(): MetaProfile;
   getSettlementRecord(): SettlementRecord | null;
   onDrawRelic(payWith: 'key' | 'gold'): RelicDrawResult;
+  onDrawRelicBatch(maxCount: number, payWith: 'key' | 'gold'): RelicBatchDrawResult;
   onUpgradeRelic(relicId: RelicId): RelicUpgradeResult;
   onDrawSkin(count: 1 | 5, payWith: 'gold' | 'key'): SkinGachaResult;
   onCraftSkin(skinId: string): SkinCraftResult;
@@ -260,6 +264,7 @@ export class UIManager {
   private activeSheet: SheetKind | null = null;
   private craftTab: CraftTabId = 'all';
   private codexFilter: CodexFilterId = 'all';
+  private relicFilter: RelicFilterId = 'all';
   private wardrobeSubTab: WardrobeSubTab = 'hero';
   private wispTab: GradeId;
   private readonly craftTabs: readonly { readonly id: CraftTabId; readonly label: string }[];
@@ -1010,29 +1015,77 @@ export class UIManager {
         if (group) {
           this.handlers.onDispatch({ type: 'upgrade', group });
         }
+      } else if (action === 'relic-filter') {
+        const f = btn.dataset.filter;
+        this.relicFilter = f === 'economy' || f === 'combat' ? f : 'all';
+        this.prevSheetSignature = '';
+        if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
       } else if (action === 'relic-draw') {
         const payWith = btn.dataset.pay === 'key' ? 'key' : 'gold';
-        const res = this.handlers.onDrawRelic(payWith);
-        if (res.ok) {
-          const def = this.data.relicsById.get(res.relicId);
-          const rName = def?.name ?? res.relicId;
-          const msg = res.isNew
-            ? `✨ 신규 신물 해금! [${rName}] Lv.1`
-            : `⬆️ 신물 승급! [${rName}] Lv.${res.prevLevel} → Lv.${res.newLevel}`;
-          this.lastRelicNotice = {
-            seq: ++this.relicNoticeSeq,
-            isWin: true,
-            text: msg,
-            relicId: res.relicId,
-            prevLevel: res.prevLevel,
-            newLevel: res.newLevel,
-            isNew: res.isNew,
-          };
-          this.prevSheetSignature = '';
-          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
-          this.showToast(msg);
+        const reqCount = Math.max(1, Math.min(10, Number(btn.dataset.count ?? '1') || 1));
+        if (reqCount > 1) {
+          const res = this.handlers.onDrawRelicBatch(reqCount, payWith);
+          if (res.ok) {
+            const aggMap = new Map<RelicId, RelicBatchNoticeEntry>();
+            for (const item of res.items) {
+              const prev = aggMap.get(item.relicId);
+              if (prev) {
+                aggMap.set(item.relicId, {
+                  relicId: item.relicId,
+                  prevLevel: prev.prevLevel,
+                  newLevel: item.newLevel,
+                  pulls: prev.pulls + 1,
+                  isNew: prev.isNew || item.isNew,
+                });
+              } else {
+                aggMap.set(item.relicId, {
+                  relicId: item.relicId,
+                  prevLevel: item.prevLevel,
+                  newLevel: item.newLevel,
+                  pulls: 1,
+                  isNew: item.isNew,
+                });
+              }
+            }
+            const batchItems = Array.from(aggMap.values());
+            const newCount = batchItems.filter((x) => x.isNew).length;
+            const msg = `🏺 기보함 ${res.spentCount}연 개봉 완료! (${batchItems.length}종 승급${newCount > 0 ? ` · 신규 ${newCount}종` : ''})`;
+            this.lastRelicNotice = {
+              seq: ++this.relicNoticeSeq,
+              isWin: true,
+              text: msg,
+              batchItems,
+              totalPulls: res.spentCount,
+            };
+            this.prevSheetSignature = '';
+            if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+            this.showToast(msg);
+          } else {
+            this.showToast(res.reason, true);
+          }
         } else {
-          this.showToast(res.reason, true);
+          const res = this.handlers.onDrawRelic(payWith);
+          if (res.ok) {
+            const def = this.data.relicsById.get(res.relicId);
+            const rName = def?.name ?? res.relicId;
+            const msg = res.isNew
+              ? `✨ 신규 신물 해금! [${rName}] Lv.1`
+              : `⬆️ 신물 승급! [${rName}] Lv.${res.prevLevel} → Lv.${res.newLevel}`;
+            this.lastRelicNotice = {
+              seq: ++this.relicNoticeSeq,
+              isWin: true,
+              text: msg,
+              relicId: res.relicId,
+              prevLevel: res.prevLevel,
+              newLevel: res.newLevel,
+              isNew: res.isNew,
+            };
+            this.prevSheetSignature = '';
+            if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+            this.showToast(msg);
+          } else {
+            this.showToast(res.reason, true);
+          }
         }
       } else if (action === 'relic-upgrade') {
         const relicId = btn.dataset.relicId as RelicId | undefined;
@@ -2325,7 +2378,7 @@ export class UIManager {
     } else if (kind === 'mission') {
       sig = `mission:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
     } else {
-      sig = `relic:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
+      sig = `relic:${this.relicFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
     }
 
     if (sig === this.prevSheetSignature) {
@@ -2868,6 +2921,7 @@ export class UIManager {
       meta,
       settledRec: this.handlers.getSettlementRecord(),
       lastRelicNotice: this.lastRelicNotice,
+      relicFilter: this.relicFilter,
       backupInputDraft: this.backupInputDraft,
       confirmArmed: this.abandonConfirmUntilMs > performance.now(),
     });

@@ -40,5 +40,19 @@
     "rewardMult": 2.5,
     "firstClearGold": 850,
     "firstClearKeys": 5
+  },
+  {
+    "id": "abyss",
+    "name": "천마강림",
+    "badge": "무극 3.8x",
+    "desc": "초반 3.1배→후반 31배 극한 가속 · 호신강기 +52 · 보스 3.8배 · 12신물 초월(Lv.11~15) 전용 무극 엔드게임",
+    "hpMult": 3.1,
+    "lateWaveRamp": 10.0,
+    "bossHpMult": 3.8,
+    "speedMult": 1.2,
+    "armorBonus": 52,
+    "rewardMult": 3.8,
+    "firstClearGold": 1500,
+    "firstClearKeys": 8
   }
 ]

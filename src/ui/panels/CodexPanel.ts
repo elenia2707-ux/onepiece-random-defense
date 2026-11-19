@@ -41,6 +41,7 @@ const DIFF_ACCENT: Readonly<Record<string, string>> = {
   normal: '#0f766e',
   hard: '#d97706',
   hell: '#be123c',
+  abyss: '#7e22ce',
 };
 
 const TRIAL_ACCENT: Readonly<Record<TrialId, string>> = {

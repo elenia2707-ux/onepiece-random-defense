@@ -705,7 +705,7 @@ export class SpriteCache {
 
   /** Cached 96x96 pixel-art treasure portrait URL for the 12 Wuxia Relics (무림 12대 신물). */
   public relicPortraitUrl(relicId: RelicId, level: number): string {
-    const tier = level >= 10 ? 10 : level >= 5 ? 5 : level > 0 ? 1 : 0;
+    const tier = level >= 15 ? 15 : level >= 10 ? 10 : level >= 5 ? 5 : level > 0 ? 1 : 0;
     const key = `url:relic:${relicId}:${tier}`;
     const existing = this.portraitUrls.get(key);
     if (existing) return existing;

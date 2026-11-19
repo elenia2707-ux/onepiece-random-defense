@@ -524,11 +524,11 @@ function runSmartBot(
 }
 
 describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacing, Relic Gate & Immortal Diversity)', () => {
-  it('guarantees strictly monotonic monster & boss Effective HP across all 30 waves on Normal, Hard, and Hell', () => {
+  it('guarantees strictly monotonic monster & boss Effective HP across all 30 waves on Normal, Hard, Hell, and Abyss', () => {
     const data = loadGameData();
     expect(data.waves.length).toBe(30);
 
-    for (const diff of ['normal', 'hard', 'hell'] as readonly DifficultyId[]) {
+    for (const diff of ['normal', 'hard', 'hell', 'abyss'] as readonly DifficultyId[]) {
       let prevNormalEhp = 0;
       let prevBossEhp = 0;
 
@@ -708,6 +708,41 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       ).toBeGreaterThanOrEqual(1);
     }
   }, 30_000);
+
+  it('gates apex 천마강림 (abyss) difficulty for transcended Lv.11-15 12-relic builds while remaining impossible at 0 relics', () => {
+    const data = loadGameData();
+
+    const abyss0 = BENCHMARK_SEEDS.slice(0, 5).map((s) => runSmartBot(data, s, 'abyss', {}));
+    const abyss0Wins = abyss0.filter((r) => r.victory).length;
+
+    const full12Lv15: Partial<Record<RelicId, number>> = {
+      golden_vault: 15,
+      million_sword_seal: 15,
+      bandit_dagger: 15,
+      immortal_furnace: 15,
+      founding_jade_seal: 15,
+      heavenly_scroll_chest: 15,
+      wind_swift_boots: 15,
+      crimson_crit_blade: 15,
+      armor_break_gauntlet: 15,
+      celestial_skill_jade: 15,
+      demon_slayer_banner: 15,
+      merchant_abacus: 15,
+    };
+    const abyss15 = BENCHMARK_SEEDS.slice(0, 5).map((s) =>
+      runSmartBot(data, s, 'abyss', full12Lv15),
+    );
+    const abyss15Wins = abyss15.filter((r) => r.victory).length;
+    const abyss15AvgWave = abyss15.reduce((a, r) => a + r.finalWave, 0) / abyss15.length;
+
+    console.info('[BalanceAudit][Abyss]', {
+      abyss0Relic: `${abyss0Wins}/5 (waves: [${abyss0.map((r) => r.finalWave).join(',')}])`,
+      abyss12xLv15: `${abyss15Wins}/5 (avgWave ${abyss15AvgWave.toFixed(1)}, waves: [${abyss15.map((r) => r.finalWave).join(',')}])`,
+    });
+
+    expect(abyss0Wins).toBe(0);
+    expect(abyss15Wins).toBeGreaterThanOrEqual(2);
+  }, 25_000);
 
   it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs', () => {
     const data = loadGameData();

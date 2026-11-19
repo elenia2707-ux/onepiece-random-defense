@@ -94,5 +94,53 @@
     "rewardGold": 350,
     "rewardKeys": 0,
     "rewardSilk": 70
+  },
+  {
+    "id": "title_all_relics_owned",
+    "name": "십이신물 수집가",
+    "badge": "신물수집",
+    "color": "#fbbf24",
+    "desc": "무림 12대 신물을 빠짐없이 모두 해금한 천하 보물감정사",
+    "condition": "owned_relics",
+    "target": 12,
+    "rewardGold": 300,
+    "rewardKeys": 2,
+    "rewardSilk": 40
+  },
+  {
+    "id": "title_relic_transcendent",
+    "name": "신물 초월 대종사",
+    "badge": "신물초월",
+    "color": "#a855f7",
+    "desc": "무림 신물 중 하나를 초월 한계인 15레벨 신화 경지까지 연마한 대종사",
+    "condition": "max_relic_level",
+    "target": 15,
+    "rewardGold": 550,
+    "rewardKeys": 4,
+    "rewardSilk": 80
+  },
+  {
+    "id": "title_endless_55",
+    "name": "무한혈투 극의신",
+    "badge": "무한55장",
+    "color": "#f43f5e",
+    "desc": "무한 혈투 연장전에서 제55장 이상을 돌파한 전설의 무신",
+    "condition": "best_wave",
+    "target": 55,
+    "rewardGold": 500,
+    "rewardKeys": 3,
+    "rewardSilk": 75
+  },
+  {
+    "id": "title_abyss_overlord",
+    "name": "천마강림 패주",
+    "badge": "무극패주",
+    "color": "#e879f9",
+    "desc": "최상위 천마강림(무극) 난이도 제30장을 제패한 천하무적 지존",
+    "condition": "abyss_clear",
+    "target": 1,
+    "rewardGold": 750,
+    "rewardKeys": 5,
+    "rewardSilk": 120
   }
 ]

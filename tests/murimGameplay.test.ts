@@ -161,7 +161,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
   it('packs all 41 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
     expect(data.units.length).toBe(41);
-    expect(data.heroSkins.length).toBe(12);
+    expect(data.heroSkins.length).toBe(14);
     expect(data.courtSkins.length).toBe(4);
 
     const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
@@ -2192,7 +2192,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(simDemonic.getUnits().some((u) => u.unitId === 'black_wind')).toBe(true);
   });
 
-  it('tracks MetaStore 8-title progression reward ladder, equipTitle, trialRecords, difficultyBestWave, achievement skins, and MRD1- backup without double-granting', () => {
+  it('tracks MetaStore 12-title progression reward ladder, abyss difficulty, Lv.15 transcendence, equipTitle, trialRecords, achievement skins, and MRD1- backup without double-granting', () => {
     const data = loadGameData();
     const storeMap = new Map<string, string>();
     const memStorage: StorageLike = {
@@ -2205,14 +2205,13 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       },
     };
 
-    expect(TITLE_DEFS.length).toBe(8);
+    expect(TITLE_DEFS.length).toBe(12);
     const meta = new MetaStore(memStorage);
     expect(meta.getProfile().unlockedTitleCount).toBe(0);
     expect(meta.getEquippedTitle()).toBeNull();
-    // Cannot equip locked title
     expect(meta.equipTitle('title_normal_victor')).toBe(false);
 
-    // 1. Clear Normal Wave 30 -> unlocks title_novice_wanderer + title_normal_victor, auto-equips first title, updates difficultyBestWave
+    // 1. Clear Normal Wave 30 -> unlocks title_novice_wanderer + title_normal_victor
     const recNormal = meta.settleRun({
       wave: 30,
       monstersSlain: 400,
@@ -2229,14 +2228,13 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(meta.getEquippedTitle()).toBe('title_novice_wanderer');
     expect(meta.getProfile().difficultyBestWave.normal).toBe(30);
 
-    // Equip unlocked title and unequip back to null
     expect(meta.equipTitle('title_normal_victor')).toBe(true);
     expect(meta.getEquippedTitle()).toBe('title_normal_victor');
     expect(meta.equipTitle(null)).toBe(true);
     expect(meta.getEquippedTitle()).toBeNull();
     expect(meta.equipTitle('title_normal_victor')).toBe(true);
 
-    // 2. Clear Hard Wave 30 -> unlocks title_hard_master AND hard_clear achievement skin (skin_hell_flame_nirvana)
+    // 2. Clear Hard Wave 30 -> unlocks title_hard_master & skin_hell_flame_nirvana
     const recHard = meta.settleRun({
       wave: 30,
       monstersSlain: 420,
@@ -2250,7 +2248,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(meta.getProfile().ownedSkins.skin_hell_flame_nirvana).toBe(true);
     expect(meta.getProfile().difficultyBestWave.hard).toBe(30);
 
-    // 3. Clear Hell Wave 40 -> unlocks title_hell_sovereign + title_endless_40
+    // 3. Clear Hell Wave 40 -> unlocks abyss difficulty + title_hell_sovereign + title_endless_40
     const recHell = meta.settleRun({
       wave: 40,
       monstersSlain: 600,
@@ -2259,11 +2257,28 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       victory: true,
       elapsedTicks: 31000,
     });
+    expect(recHell.unlockedNextDifficulty).toBe('abyss');
+    expect(meta.getProfile().unlockedDifficulties.abyss).toBe(true);
     expect(recHell.unlockedTitleIds).toContain('title_hell_sovereign');
     expect(recHell.unlockedTitleIds).toContain('title_endless_40');
     expect(meta.getProfile().difficultyBestWave.hell).toBe(40);
 
-    // 4. Clear all 4 Trials + verify trialRecords (clears, bestWave, minimum bestTicks) + all_trials_clear achievement skin
+    // 3b. Clear Abyss Wave 55 -> unlocks title_abyss_overlord + title_endless_55 + 2 apex achievement skins
+    const recAbyss = meta.settleRun({
+      wave: 55,
+      monstersSlain: 900,
+      bossesSlain: 11,
+      difficulty: 'abyss',
+      victory: true,
+      elapsedTicks: 42000,
+    });
+    expect(recAbyss.unlockedTitleIds).toContain('title_abyss_overlord');
+    expect(recAbyss.unlockedTitleIds).toContain('title_endless_55');
+    expect(recAbyss.unlockedSkinIds).toContain('skin_asura_blood_eclipse');
+    expect(recAbyss.unlockedSkinIds).toContain('skin_thunder_jade_sovereign');
+    expect(meta.getProfile().difficultyBestWave.abyss).toBe(55);
+
+    // 4. Clear all 4 Trials + verify trialRecords & skin_sword_immortal_celestial
     const allTrials: readonly TrialId[] = [
       'trial_venom_gale',
       'trial_sword_tomb',
@@ -2289,7 +2304,6 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
         expect(meta.getProfile().ownedSkins.skin_sword_immortal_celestial).toBe(true);
       }
     }
-    // Faster re-clear of trial_venom_gale updates clears to 2 and reduces bestTicks
     meta.settleRun({
       wave: 15,
       monstersSlain: 210,
@@ -2304,7 +2318,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(venomRec.bestWave).toBe(15);
     expect(venomRec.bestTicks).toBe(9500);
 
-    // 5. Discover all 41 units -> unlocks title_codex_master; max a relic to Lv.10 -> unlocks title_relic_grandmaster
+    // 5. Discover all 41 units -> title_codex_master; unlock all 12 relics -> title_all_relics_owned;
+    //    refine one relic to Lv.10 -> title_relic_grandmaster & Lv.15 -> title_relic_transcendent
     let codexUnlockedTitle = false;
     for (const u of data.units) {
       const g = data.gradesById.get(u.grade)!;
@@ -2315,18 +2330,37 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     }
     expect(codexUnlockedTitle).toBe(true);
 
-    const firstRelic = data.relics[0]!;
-    let relicUnlockedTitle = false;
-    for (let lv = 0; lv < firstRelic.maxLevel; lv++) {
-      const up = meta.upgradeRelic(firstRelic);
-      if (up.ok && up.unlockedTitleIds?.includes('title_relic_grandmaster')) {
-        relicUnlockedTitle = true;
+    meta.grantDevMeta(15000, 0, 0);
+    let allRelicsTitle = false;
+    for (const r of data.relics) {
+      const res = meta.upgradeRelic(r);
+      expect(res.ok).toBe(true);
+      if (res.ok && res.unlockedTitleIds?.includes('title_all_relics_owned')) {
+        allRelicsTitle = true;
       }
     }
-    expect(relicUnlockedTitle).toBe(true);
-    expect(meta.getProfile().unlockedTitleCount).toBe(8);
+    expect(allRelicsTitle).toBe(true);
 
-    // 6. Reload from storage & MRD1- backup round-trip MUST preserve everything without double-granting currency
+    const firstRelic = data.relics[0]!;
+    expect(firstRelic.maxLevel).toBe(15);
+    let relicLv10Title = false;
+    let relicLv15Title = false;
+    for (let lv = 1; lv < firstRelic.maxLevel; lv++) {
+      const up = meta.upgradeRelic(firstRelic);
+      expect(up.ok).toBe(true);
+      if (up.ok && up.unlockedTitleIds?.includes('title_relic_grandmaster')) {
+        relicLv10Title = true;
+      }
+      if (up.ok && up.unlockedTitleIds?.includes('title_relic_transcendent')) {
+        relicLv15Title = true;
+      }
+    }
+    expect(relicLv10Title).toBe(true);
+    expect(relicLv15Title).toBe(true);
+    expect(meta.getProfile().relics[firstRelic.id]).toBe(15);
+    expect(meta.getProfile().unlockedTitleCount).toBe(12);
+
+    // 6. Reload from storage & MRD1- backup round-trip MUST preserve Lv.15, abyss, and all 12 titles without double-granting
     const goldSnap = meta.getProfile().gold;
     const keysSnap = meta.getProfile().keys;
     const silkSnap = meta.getProfile().silk;
@@ -2335,7 +2369,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(reloaded.getProfile().gold).toBe(goldSnap);
     expect(reloaded.getProfile().keys).toBe(keysSnap);
     expect(reloaded.getProfile().silk).toBe(silkSnap);
-    expect(reloaded.getProfile().unlockedTitleCount).toBe(8);
+    expect(reloaded.getProfile().relics[firstRelic.id]).toBe(15);
+    expect(reloaded.getProfile().unlockedTitleCount).toBe(12);
     expect(reloaded.getEquippedTitle()).toBe('title_normal_victor');
     expect(reloaded.getProfile().trialRecords.trial_venom_gale.bestTicks).toBe(9500);
 
@@ -2345,29 +2380,42 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(imported.getProfile().gold).toBe(goldSnap);
     expect(imported.getProfile().keys).toBe(keysSnap);
     expect(imported.getProfile().silk).toBe(silkSnap);
-    expect(imported.getProfile().unlockedTitleCount).toBe(8);
+    expect(imported.getProfile().relics[firstRelic.id]).toBe(15);
+    expect(imported.getProfile().unlockedTitleCount).toBe(12);
     expect(imported.getEquippedTitle()).toBe('title_normal_victor');
     expect(imported.getProfile().trialRecords.trial_venom_gale.clears).toBe(2);
     expect(imported.getProfile().trialRecords.trial_venom_gale.bestTicks).toBe(9500);
     expect(imported.getProfile().difficultyBestWave.hell).toBe(40);
+    expect(imported.getProfile().difficultyBestWave.abyss).toBe(55);
     expect(imported.getProfile().ownedSkins.skin_hell_flame_nirvana).toBe(true);
     expect(imported.getProfile().ownedSkins.skin_sword_immortal_celestial).toBe(true);
+    expect(imported.getProfile().ownedSkins.skin_asura_blood_eclipse).toBe(true);
+    expect(imported.getProfile().ownedSkins.skin_thunder_jade_sovereign).toBe(true);
   });
 
-  it('supports all 12 Wuxia Relics (6 new combat & tactical relics) with deterministic effects, MetaStore/MRD1 persistence, and cache-busted atlas hash', () => {
+  it('supports all 12 Wuxia Relics up to Lv.15 Transcendence, bulk 10x drawRelicBatch, and cache-busted atlas hash', () => {
     const data = loadGameData();
     expect(data.relics.length).toBe(12);
     expect(typeof (atlasRaw as { hash?: string }).hash).toBe('string');
     expect(((atlasRaw as { hash?: string }).hash ?? '').length).toBeGreaterThanOrEqual(8);
 
-    // 1. merchant_abacus discounts summon cost (Lv.10 = -4 silver) and increases kill silver
+    // 1. merchant_abacus discounts summon cost (Lv.10 = -4 silver, Lv.15 = -5 silver)
     const baseSim = new Simulation(data, 0x99887766, {}, 'normal', null);
-    const abacusSim = new Simulation(data, 0x99887766, { merchant_abacus: 10 }, 'normal', null);
-    expect(abacusSim.getSummonCost()).toBe(baseSim.getSummonCost() - 4);
+    const abacus10Sim = new Simulation(data, 0x99887766, { merchant_abacus: 10 }, 'normal', null);
+    const abacus15Sim = new Simulation(data, 0x99887766, { merchant_abacus: 15 }, 'normal', null);
+    expect(abacus10Sim.getSummonCost()).toBe(baseSim.getSummonCost() - 4);
+    expect(abacus15Sim.getSummonCost()).toBe(baseSim.getSummonCost() - 5);
+
+    // 1b. heavenly_scroll_chest Lv.15 grants rare starter wisp via grades.json
+    const scroll15Sim = new Simulation(data, 0x11112222, { heavenly_scroll_chest: 15 }, 'normal', null);
+    const scrollSnap = scroll15Sim.buildSnapshot(1, false);
+    expect(scrollSnap.wisps.common).toBeGreaterThanOrEqual(3); // 1 starter + 2 from Lv.8+
+    expect(scrollSnap.wisps.uncommon).toBe(2); // Lv.12 bonus
+    expect(scrollSnap.wisps.rare).toBe(1); // Lv.15 transcendence milestone!
 
     // 2. wind_swift_boots reduces unit cooldown ticks (faster attack cadence)
     const slowSim = new Simulation(data, 0x11223344, {}, 'normal', null);
-    const fastSim = new Simulation(data, 0x11223344, { wind_swift_boots: 10 }, 'normal', null);
+    const fastSim = new Simulation(data, 0x11223344, { wind_swift_boots: 15 }, 'normal', null);
     for (const s of [slowSim, fastSim]) {
       s.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
       s.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
@@ -2393,10 +2441,10 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       data,
       0x77665544,
       {
-        armor_break_gauntlet: 8,
-        celestial_skill_jade: 8,
-        crimson_crit_blade: 8,
-        demon_slayer_banner: 8,
+        armor_break_gauntlet: 12,
+        celestial_skill_jade: 12,
+        crimson_crit_blade: 12,
+        demon_slayer_banner: 12,
       },
       'hell',
       'trial_crimson_iron',
@@ -2418,35 +2466,27 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       plainSim.tick();
       combatRelicSim.tick();
     }
-    expect(relicDmg).toBeGreaterThan(Math.round(plainDmg * 1.25));
+    expect(relicDmg).toBeGreaterThan(Math.round(plainDmg * 1.3));
 
-    // 4. MetaStore direct unlock & MRD1- backup round-trip preserve all 6 new relics cleanly
+    // 4. MetaStore drawRelicBatch (bulk 10x key pull & 5x gold pull) works atomically
     const meta = new MetaStore(null);
-    meta.settleRun({
-      wave: 30,
-      monstersSlain: 400,
-      bossesSlain: 6,
-      difficulty: 'hell',
-      victory: true,
-    });
-    const newRelicIds = [
-      'wind_swift_boots',
-      'crimson_crit_blade',
-      'armor_break_gauntlet',
-      'celestial_skill_jade',
-      'demon_slayer_banner',
-      'merchant_abacus',
-    ] as const;
-    for (const rid of newRelicIds) {
-      const def = data.relicsById.get(rid)!;
-      const res = meta.upgradeRelic(def);
-      expect(res.ok, `upgradeRelic(${rid}) should succeed`).toBe(true);
+    meta.grantDevMeta(1000, 10, 0);
+    const keysBefore = meta.getProfile().keys;
+    const batchKey = meta.drawRelicBatch(data.relics, 10, 'key', () => 0);
+    expect(batchKey.ok).toBe(true);
+    if (batchKey.ok) {
+      expect(batchKey.spentCount).toBe(10);
+      expect(batchKey.items.length).toBe(10);
+      expect(meta.getProfile().keys).toBe(keysBefore - 10);
+      expect(meta.getProfile().relics.golden_vault).toBe(10);
     }
-    const backup = meta.exportBackupCode();
-    const restoredMeta = new MetaStore(null);
-    expect(restoredMeta.importBackupCode(backup).ok).toBe(true);
-    for (const rid of newRelicIds) {
-      expect(restoredMeta.getProfile().relics[rid]).toBe(1);
+
+    const batchGold5 = meta.drawRelicBatch(data.relics, 5, 'gold', () => 0);
+    expect(batchGold5.ok).toBe(true);
+    if (batchGold5.ok) {
+      expect(batchGold5.spentCount).toBe(5);
+      // golden_vault reaches Lv.15 transcendence cap!
+      expect(meta.getProfile().relics.golden_vault).toBe(15);
     }
   });
 });
