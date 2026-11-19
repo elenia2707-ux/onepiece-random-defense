@@ -24,17 +24,36 @@ export class RecipeGraph {
       if (!unitsById.has(r.output)) {
         throw new Error(`[R1] Recipe '${r.id}' references unknown output unit '${r.output}'`);
       }
-      if (r.ingredients.length < 2) {
+      if (r.ingredients.length < 1) {
         throw new Error(
-          `[R1] Recipe '${r.id}' must combine at least 2 distinct ingredient types`,
+          `[R1] Recipe '${r.id}' must include at least 1 ingredient entry`,
         );
       }
+      let totalCount = 0;
+      const seenIngUnits = new Set<UnitId>();
       for (const ing of r.ingredients) {
         if (!unitsById.has(ing.unit)) {
           throw new Error(
             `[R1] Recipe '${r.id}' references unknown ingredient unit '${ing.unit}'`,
           );
         }
+        if (!Number.isInteger(ing.n) || ing.n < 1) {
+          throw new Error(
+            `[R1] Recipe '${r.id}' ingredient '${ing.unit}' must have integer count >= 1`,
+          );
+        }
+        if (seenIngUnits.has(ing.unit)) {
+          throw new Error(
+            `[R1] Recipe '${r.id}' lists duplicate ingredient unit '${ing.unit}'`,
+          );
+        }
+        seenIngUnits.add(ing.unit);
+        totalCount += ing.n;
+      }
+      if (totalCount < 2) {
+        throw new Error(
+          `[R1] Recipe '${r.id}' must combine at least 2 total ingredient units`,
+        );
       }
     }
 

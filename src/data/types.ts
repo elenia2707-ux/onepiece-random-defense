@@ -214,6 +214,12 @@ export interface RelicDef {
 
 export type DifficultyId = 'normal' | 'hard' | 'hell';
 
+export type TrialId =
+  | 'trial_venom_gale'
+  | 'trial_sword_tomb'
+  | 'trial_crimson_iron'
+  | 'trial_chaos_trinity';
+
 export type GameOverReason = 'overrun' | 'boss_timeout';
 
 export type MissionConditionKind =

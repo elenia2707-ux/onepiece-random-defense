@@ -6,6 +6,8 @@ import {
   formatRelicStatSummary,
   getVaultInterestCap,
   getVaultInterestPct,
+  TRIAL_CONFIGS,
+  TRIAL_ORDER,
 } from '../core/relicFormulas';
 import type { SlotView, UISnapshot } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
@@ -25,11 +27,14 @@ import type {
   RelicId,
   SkinRarity,
   SkinUnlockCond,
+  TrialId,
   UnitDef,
   UnitId,
   UpgradeGroupId,
 } from '../data/types';
+import type { DragDiscardView } from '../input/DragController';
 import {
+  type BackupImportResult,
   computeSettlementReward,
   getCodexDiscoveryReward,
   getRelicUpgradeGoldCost,
@@ -55,9 +60,13 @@ export interface UIControlHandlers {
   isSoundMuted(): boolean;
   onToggleMute(): boolean;
   onSelectDifficulty(diff: DifficultyId): boolean;
+  onSelectTrial(trialId: TrialId | null): boolean;
   onEnterEndless(): void;
   onRestart(): void;
   onSettleAndRestart(): void;
+  onExportBackup(): string;
+  onImportBackup(code: string): BackupImportResult;
+  onReloadAfterImport(): void;
   getMetaProfile(): MetaProfile;
   getSettlementRecord(): SettlementRecord | null;
   onDrawRelic(payWith: 'key' | 'gold'): RelicDrawResult;
@@ -68,6 +77,7 @@ export interface UIControlHandlers {
   onEquipCourtSkin(courtId: CourtSkinId): boolean;
   onGrantDevMeta(): void;
   getSelectedSlot(): SlotRef | null;
+  getDragDiscardView(): DragDiscardView;
   clearSelection(): void;
 }
 
@@ -229,6 +239,11 @@ export class UIManager {
   private dpsOpen = false;
 
   private autoArrangeBtnEl!: HTMLButtonElement;
+  private bulkCleanupBtnEl!: HTMLButtonElement;
+  private surplusCountEl!: HTMLElement;
+  private discardDropZoneEl!: HTMLElement;
+  private discardDropTextEl!: HTMLElement;
+  private prevDiscardSig = '';
 
   private unitSelectBarEl!: HTMLElement;
   private unitPortraitImgEl!: HTMLImageElement;
@@ -354,6 +369,8 @@ export class UIManager {
   } | null = null;
   private skinPullSeq = 0;
   private lastAnimatedSkinSeq = 0;
+  private backupInputDraft = '';
+  private abandonConfirmUntilMs = 0;
 
   public constructor(
     data: GameDataBundle,
@@ -464,7 +481,7 @@ export class UIManager {
         <button id="btn-mission" type="button" class="tac-pill mission interactive" title="강호 의뢰 목록">📋 의뢰 0/10</button>
         <button id="btn-dps" type="button" class="tac-pill dps interactive" title="실시간 협객 딜량 순위표">⚔ 딜량표</button>
         <button id="btn-wardrobe" type="button" class="tac-pill wardrobe interactive" title="금수화장각 — 의복·검기 스킨 뽑기 및 비무대 테마">👘 화장각 1/14</button>
-        <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 32인 명숙록 및 난이도">📖 명숙록 0/32</button>
+        <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 35인 명숙록 · 난이도 · 비경 시련">📖 명숙록 0/35</button>
       </nav>
 
       <aside id="dps-panel" class="dps-panel interactive" aria-label="실시간 협객 딜량표">
@@ -489,8 +506,13 @@ export class UIManager {
 
       <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
 
+      <div id="discard-drop-zone" class="discard-drop-zone" aria-hidden="true">
+        <span id="discard-drop-text" class="discard-drop-text">🔥 연단 환원 · 여기에 놓아 버리기</span>
+      </div>
+
       <div id="bench-badge" class="bench-badge">${ICON.pavilion}<span>문파 대기석</span><b id="val-bench-count">0/12</b></div>
-      <button id="btn-auto-arrange" type="button" class="auto-arrange-btn interactive" title="비무대 빈칸 자동출전 및 대기석 서열 정렬">⚡ 자동출전·정렬</button>
+      <button id="btn-auto-arrange" type="button" class="auto-arrange-btn interactive" title="비무대 빈칸 자동출전 및 대기석 서열 정렬">⚡ 자동출전</button>
+      <button id="btn-bulk-cleanup" type="button" class="bulk-cleanup-btn interactive" title="문파 대기석의 잠금 해제된 삼류(일반) 협객 일괄 정리">🧹 잉여정리 <b id="val-surplus-count">0</b></button>
 
       <div id="synergy-bar" class="synergy-bar" aria-label="출전 문파 진법 공명">
         <button id="btn-syn-orthodox" type="button" class="syn-pill syn-orthodox interactive" data-syn="orthodox" title="정파 북두검진">정<b id="syn-val-orthodox">0</b></button>
@@ -530,7 +552,7 @@ export class UIManager {
         <div class="unit-select-actions">
           <button id="btn-unit-ascend" type="button" class="mini-3d-btn ascend-btn interactive">⚡ 등선</button>
           <button id="btn-unit-lock" type="button" class="mini-3d-btn interactive">잠금</button>
-          <button id="btn-unit-sell" type="button" class="mini-3d-btn sell-btn interactive">하산</button>
+          <button id="btn-unit-sell" type="button" class="mini-3d-btn sell-btn interactive">🗑 버리기</button>
         </div>
       </section>
 
@@ -666,6 +688,10 @@ export class UIManager {
     this.dpsListEl = this.mustGet('dps-list');
 
     this.autoArrangeBtnEl = this.mustGet('btn-auto-arrange') as HTMLButtonElement;
+    this.bulkCleanupBtnEl = this.mustGet('btn-bulk-cleanup') as HTMLButtonElement;
+    this.surplusCountEl = this.mustGet('val-surplus-count');
+    this.discardDropZoneEl = this.mustGet('discard-drop-zone');
+    this.discardDropTextEl = this.mustGet('discard-drop-text');
 
     this.unitSelectBarEl = this.mustGet('unit-select-bar');
     this.unitPortraitImgEl = this.mustGet('sel-unit-img') as HTMLImageElement;
@@ -799,6 +825,11 @@ export class UIManager {
 
     this.autoArrangeBtnEl.addEventListener('click', () => {
       this.handlers.onDispatch({ type: 'autoArrange' });
+      this.handlers.clearSelection();
+    });
+
+    this.bulkCleanupBtnEl.addEventListener('click', () => {
+      this.handlers.onDispatch({ type: 'sellSurplusCommon' });
       this.handlers.clearSelection();
     });
 
@@ -1129,13 +1160,30 @@ export class UIManager {
       } else if (action === 'select-difficulty') {
         const diff = btn.dataset.difficulty as DifficultyId | undefined;
         if (!diff) return;
-        if (this.lastSnapshot && diff === this.lastSnapshot.difficulty) {
+        if (
+          this.lastSnapshot &&
+          this.lastSnapshot.trialId === null &&
+          diff === this.lastSnapshot.difficulty
+        ) {
           this.showToast(`현재 [${DIFFICULTY_CONFIGS[diff].name}] 난이도로 출정 중입니다.`);
           return;
         }
         const ok = this.handlers.onSelectDifficulty(diff);
         if (!ok) {
           this.showToast('이전 난이도 제 30 장을 먼저 제패해야 해금됩니다!', true);
+        }
+      } else if (action === 'select-trial') {
+        const rawTrial = btn.dataset.trialId ?? '';
+        const trialId = rawTrial ? (rawTrial as TrialId) : null;
+        if (this.lastSnapshot && trialId === this.lastSnapshot.trialId) {
+          if (trialId) {
+            this.showToast(`현재 [${TRIAL_CONFIGS[trialId].name}] 비경에 출정 중입니다.`);
+          }
+          return;
+        }
+        const ok = this.handlers.onSelectTrial(trialId);
+        if (!ok) {
+          this.showToast('선택할 수 없는 비경 시련입니다.', true);
         }
       } else if (action === 'codex-filter') {
         this.codexFilter = (btn.dataset.filter ?? 'all') as CodexFilterId;
@@ -1150,6 +1198,59 @@ export class UIManager {
         this.handlers.onSettleAndRestart();
       } else if (action === 'restart-run') {
         this.handlers.onRestart();
+      } else if (action === 'abandon-restart') {
+        const now = performance.now();
+        if (this.abandonConfirmUntilMs > now) {
+          this.abandonConfirmUntilMs = 0;
+          this.handlers.onRestart();
+          return;
+        }
+        this.abandonConfirmUntilMs = now + 4000;
+        this.prevSheetSignature = '';
+        if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+        this.showToast('⚠ 현재 출정 기록이 초기화됩니다. 4초 내 한 번 더 누르면 처음부터 재출정합니다.', true);
+      } else if (action === 'backup-export') {
+        const code = this.handlers.onExportBackup();
+        this.backupInputDraft = code;
+        const inputEl = document.getElementById('backup-code-input') as HTMLInputElement | null;
+        if (inputEl) {
+          inputEl.value = code;
+          inputEl.select();
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard
+            .writeText(code)
+            .then(() => {
+              this.showToast('💾 영구 백업 코드가 클립보드에 복사되었습니다!');
+            })
+            .catch(() => {
+              this.showToast('💾 백업 코드가 생성되었습니다. 입력창의 코드를 복사해 보관하세요!');
+            });
+        } else {
+          this.showToast('💾 백업 코드가 생성되었습니다. 입력창의 코드를 복사해 보관하세요!');
+        }
+      } else if (action === 'backup-import') {
+        const inputEl = document.getElementById('backup-code-input') as HTMLInputElement | null;
+        const raw = (inputEl?.value ?? this.backupInputDraft).trim();
+        const res = this.handlers.onImportBackup(raw);
+        if (!res.ok) {
+          this.showToast(res.reason, true);
+          return;
+        }
+        this.backupInputDraft = '';
+        this.showToast(
+          `✅ 세이브 복원 완료! (최고 ${res.bestWave}장 · 명숙록 ${res.discoveredCount}인 · 주화 ${res.gold.toLocaleString('ko-KR')})`,
+        );
+        window.setTimeout(() => {
+          this.handlers.onReloadAfterImport();
+        }, 550);
+      }
+    });
+
+    this.sheetBodyEl.addEventListener('input', (ev) => {
+      const target = ev.target as HTMLElement | null;
+      if (target instanceof HTMLInputElement && target.id === 'backup-code-input') {
+        this.backupInputDraft = target.value;
       }
     });
 
@@ -1208,28 +1309,45 @@ export class UIManager {
 
   public sync(snapshot: UISnapshot, nowMs: number, forcePriority: boolean): void {
     if (!forcePriority && nowMs - this.lastSyncMs < NORMAL_SYNC_INTERVAL_MS) {
+      this.refreshDragDiscardZone(snapshot);
       return;
     }
     this.lastSyncMs = nowMs;
     this.lastSnapshot = snapshot;
     const meta = this.handlers.getMetaProfile();
 
-    // 1. Top HUD Wave, Difficulty, Mutant Wave & Boss status
+    // 1. Top HUD Wave, Difficulty, Secret Realm Trial, Mutant Wave & Boss status
     const waveStr = String(snapshot.wave).padStart(2, '0');
     const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
+    const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
     this.waveBoxEl.classList.toggle('boss-mode', snapshot.isBossWave);
     this.waveBoxEl.classList.toggle('endless-mode', snapshot.endlessMode);
     this.waveBoxEl.classList.toggle('mutant-mode', Boolean(snapshot.waveMutant));
+    this.waveBoxEl.classList.toggle('trial-mode', trialCfg !== null);
     const prefix = snapshot.isBossWave ? '영물' : snapshot.endlessMode ? '혈투' : '제';
-    const shortDiff = diffCfg.badge.split(' ')[0] ?? diffCfg.badge;
-    const waveRight = snapshot.waveMutant ? snapshot.waveMutant.badge : shortDiff;
-    this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${waveRight}`);
+    if (trialCfg) {
+      const targetStr = String(snapshot.clearTargetWave).padStart(2, '0');
+      const waveNumLabel = snapshot.endlessMode ? `${waveStr}장` : `${waveStr}/${targetStr}장`;
+      const rightTag = snapshot.waveMutant ? snapshot.waveMutant.badge : trialCfg.badge;
+      this.setText(this.waveBadgeEl, `${prefix} ${waveNumLabel} · ${rightTag}`);
+    } else {
+      const shortDiff = diffCfg.badge.split(' ')[0] ?? diffCfg.badge;
+      const waveRight = snapshot.waveMutant ? snapshot.waveMutant.badge : shortDiff;
+      this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${waveRight}`);
+    }
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
-    this.setText(this.devSimMetaEl, `30Hz · Tick ${snapshot.tick} · ${diffCfg.badge}`);
+    this.setText(
+      this.devSimMetaEl,
+      `30Hz · Tick ${snapshot.tick} · ${trialCfg ? trialCfg.badge : diffCfg.badge}`,
+    );
 
     this.setText(
       this.monsterTitleEl,
-      snapshot.waveMutant ? snapshot.waveMutant.name : '침입 마물',
+      snapshot.waveMutant
+        ? snapshot.waveMutant.name
+        : trialCfg
+          ? trialCfg.badge
+          : '침입 마물',
     );
     this.setText(this.monsterCountEl, `${snapshot.monsterCount} / ${snapshot.monsterCap}`);
     const pct = Math.min(100, Math.max(0, (snapshot.monsterCount / snapshot.monsterCap) * 100));
@@ -1364,6 +1482,8 @@ export class UIManager {
       'can-deploy',
       snapshot.benchOccupied > 0 && snapshot.fieldOccupied < 18,
     );
+    this.setText(this.surplusCountEl, String(snapshot.benchSurplusCommonCount));
+    this.bulkCleanupBtnEl.classList.toggle('has-surplus', snapshot.benchSurplusCommonCount > 0);
     this.setText(this.summonCostEl, String(snapshot.summonCost));
 
     const syn = snapshot.synergy;
@@ -1401,7 +1521,8 @@ export class UIManager {
         );
       }
       if (syn.trinityActive && !this.prevTrinityActive) {
-        this.showToast('✦ 삼재귀원 『삼재합진』 발동! 전 협객 공격력 +18% · 공속 +10%');
+        const trinityBonus = 18 + (trialCfg?.trinityAtkBonusPct ?? 0);
+        this.showToast(`✦ 삼재귀원 『삼재합진』 발동! 전 협객 공격력 +${trinityBonus}% · 공속 +10%`);
       }
     }
     this.prevSynergyTracked = true;
@@ -1434,7 +1555,8 @@ export class UIManager {
       this.showToast(snapshot.rejects[i]!.reason, true);
     }
 
-    // 4. Selected unit bar / recommended ascension bar
+    // 4. Drag discard zone, selected unit bar & recommended ascension bar
+    this.refreshDragDiscardZone(snapshot);
     this.refreshSelectedUnitBar(snapshot);
     this.refreshRecommendBar(snapshot);
 
@@ -1640,13 +1762,23 @@ export class UIManager {
 
     const rec = this.handlers.getSettlementRecord();
     const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
+    const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
     this.gameOverCardEl.classList.toggle('victory-theme', showVictory || snapshot.victoryAchieved);
 
     if (showVictory) {
-      this.setText(this.gameOverTitleEl, '🏆 천하통일 대승리 · 출정 정산');
+      this.setText(
+        this.gameOverTitleEl,
+        trialCfg ? '🏆 무림 비경 제패 · 출정 정산' : '🏆 천하통일 대승리 · 출정 정산',
+      );
       this.setText(
         this.gameOverSubEl,
-        `제 ${waveStr} 장 천마대제 토벌 완료! (${diffCfg.name} · 마물 ${snapshot.monstersSlain}기)`,
+        trialCfg
+          ? `제 ${waveStr} 장 [${trialCfg.name}] 시련 제패! (마물 ${snapshot.monstersSlain}기)`
+          : `제 ${waveStr} 장 천마대제 토벌 완료! (${diffCfg.name} · 마물 ${snapshot.monstersSlain}기)`,
+      );
+      this.setText(
+        this.gameOverEndlessBtnEl,
+        `⚔ 무한 혈투 (${snapshot.clearTargetWave + 1}장~)`,
       );
       this.gameOverEndlessBtnEl.style.display = 'inline-flex';
       this.gameOverInspectBtnEl.style.display = 'none';
@@ -1663,9 +1795,10 @@ export class UIManager {
         snapshot.gameOverReason === 'boss_timeout'
           ? '제한시간 초과'
           : `마물 ${snapshot.monsterCap}기 돌파`;
+      const modeTag = trialCfg ? `[${trialCfg.badge}] · ` : '';
       const subTxt = rec
-        ? `제 ${waveStr} 장 도달${rec.isNewBest ? ' (최고 기록!)' : ''} · ${reasonTag} · 영물 ${rec.bossesSlain}기 토벌`
-        : `제 ${waveStr} 장 · ${reasonTag}`;
+        ? `${modeTag}제 ${waveStr} 장 도달${rec.isNewBest ? ' (최고 기록!)' : ''} · ${reasonTag} · 영물 ${rec.bossesSlain}기 토벌`
+        : `${modeTag}제 ${waveStr} 장 · ${reasonTag}`;
       this.setText(this.gameOverSubEl, subTxt);
 
       this.gameOverEndlessBtnEl.style.display = 'none';
@@ -1673,19 +1806,25 @@ export class UIManager {
       this.setText(this.gameOverRestartBtnEl, '재출정');
     }
 
-    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}`;
+    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}`;
     if (rec && sig !== this.prevSettlementRenderedSig) {
       this.prevSettlementRenderedSig = sig;
-      const multBadge =
-        diffCfg.rewardMult > 1 ? ` <span class="settlement-mult-badge">${diffCfg.badge}</span>` : '';
+      const multBadge = trialCfg
+        ? ` <span class="settlement-mult-badge">${trialCfg.badge} ${trialCfg.rewardMult}x</span>`
+        : diffCfg.rewardMult > 1
+          ? ` <span class="settlement-mult-badge">${diffCfg.badge}</span>`
+          : '';
       let firstClearBanner = '';
       if (rec.firstClearBonusGold > 0) {
+        const silkPart =
+          rec.firstClearBonusSilk > 0 ? ` · 운금비단 +${rec.firstClearBonusSilk}필` : '';
         const nextDiffName = rec.unlockedNextDifficulty
           ? ` · [${DIFFICULTY_CONFIGS[rec.unlockedNextDifficulty].name}] 해금!`
           : '';
+        const clearKind = rec.trialId ? '초회 비경 제패' : '초회 천하통일';
         firstClearBanner = `
           <div class="first-clear-banner">
-            🎉 초회 천하통일 보너스 포함! (+${rec.firstClearBonusGold} 주화 · 열쇠 +${rec.firstClearBonusKeys}${escapeHtml(nextDiffName)})
+            🎉 ${clearKind} 보너스 포함! (+${rec.firstClearBonusGold} 주화 · 열쇠 +${rec.firstClearBonusKeys}${silkPart}${escapeHtml(nextDiffName)})
           </div>
         `;
       }
@@ -1704,6 +1843,19 @@ export class UIManager {
           </div>
         `;
       }
+
+      const silkLootHtml =
+        rec.firstClearBonusSilk > 0
+          ? `
+          <div class="settlement-loot-item">
+            ${ICON.silk}
+            <div class="settlement-loot-meta">
+              <span class="settlement-loot-gain">+${rec.firstClearBonusSilk}필 운금비단</span>
+              <span class="settlement-loot-total">보유 ${rec.totalSilk}필</span>
+            </div>
+          </div>
+        `
+          : '';
 
       this.gameOverLootEl.innerHTML = `
         <div class="settlement-loot-title">출정 정산 영구 보상${multBadge}</div>
@@ -1724,6 +1876,7 @@ export class UIManager {
               <span class="settlement-loot-total">보유 ${rec.totalKeys}개</span>
             </div>
           </div>
+          ${silkLootHtml}
         </div>
       `;
     }
@@ -1785,6 +1938,7 @@ export class UIManager {
 
   public forceRefreshSelection(): void {
     if (this.lastSnapshot) {
+      this.refreshDragDiscardZone(this.lastSnapshot);
       this.refreshSelectedUnitBar(this.lastSnapshot);
       this.refreshRecommendBar(this.lastSnapshot);
     }
@@ -1937,13 +2091,64 @@ export class UIManager {
     this.activeToast = record;
   }
 
+  private getSlotViewByRef(snapshot: UISnapshot | null, ref: SlotRef | null): SlotView | null {
+    if (!snapshot || !ref) return null;
+    return ref.area === 'field'
+      ? (snapshot.field[ref.index] ?? null)
+      : (snapshot.bench[ref.index] ?? null);
+  }
+
   private getSelectedSlotView(snapshot: UISnapshot | null): SlotView | null {
-    if (!snapshot) return null;
-    const sel = this.handlers.getSelectedSlot();
-    if (!sel) return null;
-    return sel.area === 'field'
-      ? (snapshot.field[sel.index] ?? null)
-      : (snapshot.bench[sel.index] ?? null);
+    return this.getSlotViewByRef(snapshot, this.handlers.getSelectedSlot());
+  }
+
+  private refreshDragDiscardZone(snapshot: UISnapshot): void {
+    const view = this.handlers.getDragDiscardView();
+    if (!view.active || !view.fromSlot) {
+      if (this.prevDiscardSig !== 'idle') {
+        this.prevDiscardSig = 'idle';
+        this.discardDropZoneEl.classList.remove('visible', 'is-hot', 'is-locked');
+      }
+      return;
+    }
+
+    const slotView = this.getSlotViewByRef(snapshot, view.fromSlot);
+    if (!slotView) {
+      if (this.prevDiscardSig !== 'idle') {
+        this.prevDiscardSig = 'idle';
+        this.discardDropZoneEl.classList.remove('visible', 'is-hot', 'is-locked');
+      }
+      return;
+    }
+
+    const sig = `${slotView.uid}:${slotView.locked ? 1 : 0}:${view.hot ? 1 : 0}:${slotView.sellCoin}:${slotView.sellLuck}:${slotView.sellLuckChancePct}`;
+    if (sig === this.prevDiscardSig) return;
+    this.prevDiscardSig = sig;
+
+    this.discardDropZoneEl.classList.add('visible');
+    this.discardDropZoneEl.classList.toggle('is-hot', view.hot && !slotView.locked);
+    this.discardDropZoneEl.classList.toggle('is-locked', slotView.locked);
+
+    if (slotView.locked) {
+      this.setText(
+        this.discardDropTextEl,
+        `🔒 [${slotView.name}] 잠금 상태 — 먼저 잠금을 해제하세요`,
+      );
+      return;
+    }
+
+    const luckPart =
+      slotView.sellLuck > 0
+        ? ` · 영단 +${slotView.sellLuck}`
+        : slotView.sellLuckChancePct > 0
+          ? ` · 영단 ${slotView.sellLuckChancePct}%`
+          : '';
+    this.setText(
+      this.discardDropTextEl,
+      view.hot
+        ? `🔥 놓아서 즉시 버리기! (+${slotView.sellCoin} 은자${luckPart})`
+        : `🗑 여기에 놓아 버리기 (+${slotView.sellCoin} 은자${luckPart})`,
+    );
   }
 
   private refreshSelectedUnitBar(snapshot: UISnapshot): void {
@@ -2059,11 +2264,15 @@ export class UIManager {
           }
         }
 
+        const isTriple = rec.ingredients.length === 1 && rec.ingredients[0]!.n >= 3;
+        const routePrefix = isTriple ? '×3 ' : '';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `shortcut-chip interactive${isCraftable ? ' ready' : ''}`;
         btn.dataset.shortcutRecipe = rec.id;
-        btn.textContent = isCraftable ? `⚡ ${outDef.name}` : `${outDef.name} ${st.have}/${st.need}`;
+        btn.textContent = isCraftable
+          ? `⚡ ${routePrefix}${outDef.name}`
+          : `${routePrefix}${outDef.name} ${st.have}/${st.need}`;
         this.unitShortcutsEl.appendChild(btn);
       }
     }
@@ -2084,15 +2293,25 @@ export class UIManager {
     this.unitLockBtnEl.innerHTML = slotView.locked
       ? '<span>🔒</span><span>해제</span>'
       : '<span>🔓</span><span>잠금</span>';
-    this.unitSellBtnEl.innerHTML = `<span>하산</span><span class="mini-price">${ICON.coin}${slotView.sellCoin}</span>`;
+    const luckRefundHtml =
+      slotView.sellLuck > 0
+        ? ` · ${ICON.elixir}+${slotView.sellLuck}`
+        : slotView.sellLuckChancePct > 0
+          ? ` · ${ICON.elixir}${slotView.sellLuckChancePct}%`
+          : '';
+    this.unitSellBtnEl.innerHTML = `<span>🗑 버리기</span><span class="mini-price">${ICON.coin}${slotView.sellCoin}${luckRefundHtml}</span>`;
   }
 
   private refreshSheet(snapshot: UISnapshot): void {
     const kind = this.activeSheet;
     if (!kind) return;
+    if (kind === 'relic' && document.activeElement?.id === 'backup-code-input') {
+      return;
+    }
 
     const meta = this.handlers.getMetaProfile();
     const totalSlotsUsed = snapshot.fieldOccupied + snapshot.benchOccupied;
+    const confirmArmed = this.abandonConfirmUntilMs > performance.now() ? 1 : 0;
     let sig = '';
     if (kind === 'craft') {
       sig = `craft:${meta.rev}:${this.craftTab}:${snapshot.craft.rev}:${totalSlotsUsed}`;
@@ -2105,11 +2324,11 @@ export class UIManager {
     } else if (kind === 'wardrobe') {
       sig = `wardrobe:${this.wardrobeSubTab}:${meta.rev}:${this.lastSkinPull?.seq ?? 0}`;
     } else if (kind === 'codex') {
-      sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.craft.rev}`;
+      sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.craft.rev}`;
     } else if (kind === 'mission') {
       sig = `mission:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
     } else {
-      sig = `relic:${meta.rev}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}`;
+      sig = `relic:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
     }
 
     if (sig === this.prevSheetSignature) {
@@ -2157,7 +2376,7 @@ export class UIManager {
     this.setText(this.sheetTitleEl, '합공 · 등선');
     this.setText(
       this.sheetSubtitleEl,
-      `즉시 합공 ${snapshot.craft.readyCount} · 연쇄 등선 ${snapshot.craft.chainReadyCount}`,
+      `총 ${this.data.recipes.length}식 합공보 · 즉시 합공 ${snapshot.craft.readyCount} · 연쇄 등선 ${snapshot.craft.chainReadyCount}`,
     );
 
     this.sheetTabsEl.style.display = 'flex';
@@ -2217,8 +2436,8 @@ export class UIManager {
 
     const sectionTitle =
       this.craftTab === 'all'
-        ? '전체 무림 합공보'
-        : `${this.craftTabs.find((t) => t.id === this.craftTab)?.label ?? ''} 경지 합공보`;
+        ? `전체 무림 합공보 (${this.data.recipes.length}식 — 정통 · ×3 동문합일 · 별파식 · 비전)`
+        : `${this.craftTabs.find((t) => t.id === this.craftTab)?.label ?? ''} 경지 합공보 (${restRecipes.length}식)`;
     parts.push(`<div class="sheet-section-label">${escapeHtml(sectionTitle)}</div>`);
 
     for (let i = 0; i < restRecipes.length; i++) {
@@ -2252,6 +2471,16 @@ export class UIManager {
     );
     const roleBadges = this.buildUnitRoleBadgesHtml(outUnit, true);
 
+    const isTriple = recipe.ingredients.length === 1 && recipe.ingredients[0]!.n >= 3;
+    let routeBadgeHtml = '<span class="route-pill canon">정통 합공</span>';
+    if (outUnit.grade === 'immortal') {
+      routeBadgeHtml = '<span class="route-pill immortal">✦ 은거진선 비전</span>';
+    } else if (isTriple) {
+      routeBadgeHtml = '<span class="route-pill triple">×3 동문합일</span>';
+    } else if (recipe.id.includes('_alt_')) {
+      routeBadgeHtml = '<span class="route-pill alt">기연 별파식</span>';
+    }
+
     const ingChips = recipe.ingredients
       .map((ing) => {
         const ingUnit = this.data.unitsById.get(ing.unit);
@@ -2262,18 +2491,20 @@ export class UIManager {
           : '';
         const owned = unlocked.get(ing.unit) ?? 0;
         const ok = owned >= ing.n;
+        const labelText = ing.n > 1 ? `${ingUnit.name} ×${ing.n}` : ingUnit.name;
         const statusText = ok ? (ing.n > 1 ? `${ing.n}/${ing.n}` : '✓') : `${owned}/${ing.n}`;
-        return `<span class="ing-chip ${ok ? 'ing-ok' : 'ing-miss'}"><img src="${ingImg}" alt="" /><span>${escapeHtml(ingUnit.name)}</span><b>${statusText}</b></span>`;
+        return `<span class="ing-chip ${ok ? 'ing-ok' : 'ing-miss'}"><img src="${ingImg}" alt="" /><span>${escapeHtml(labelText)}</span><b>${statusText}</b></span>`;
       })
       .join('');
 
+    const fallbackNeed = recipe.ingredients.reduce((s, x) => s + x.n, 0);
     let ctaHtml = '';
     if (lamp === 'ready') {
       ctaHtml = `<button type="button" class="card-cta-btn interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="0"><span>합공</span></button>`;
     } else if (lamp === 'chainReady') {
       ctaHtml = `<button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="1"><span>연쇄 등선</span></button>`;
     } else {
-      ctaHtml = `<button type="button" class="card-cta-btn cta-disabled" disabled><span>${st?.have ?? 0}/${st?.need ?? recipe.ingredients.length}</span></button>`;
+      ctaHtml = `<button type="button" class="card-cta-btn cta-disabled" disabled><span>${st?.have ?? 0}/${st?.need ?? fallbackNeed}</span></button>`;
     }
 
     return `
@@ -2284,6 +2515,7 @@ export class UIManager {
             <div class="card-name-row">
               <span class="grade-pill" style="background:${outGrade.color}">${escapeHtml(outGrade.name)}</span>
               <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
+              ${routeBadgeHtml}
               <span class="card-name">${escapeHtml(outUnit.name)}</span>
               ${roleBadges}
               <span class="card-sub">⚔${outUnit.atk} · ${escapeHtml(outUnit.skill.name)}</span>
@@ -2741,23 +2973,28 @@ export class UIManager {
 
     const settledRec = this.handlers.getSettlementRecord();
     const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
+    const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
+    const modeBadge = trialCfg ? `${trialCfg.badge} ${trialCfg.rewardMult}x` : diffCfg.badge;
     const preview = computeSettlementReward({
       wave: snapshot.wave,
       monstersSlain: snapshot.monstersSlain,
       bossesSlain: snapshot.bossesSlain,
       bountiesSlain: snapshot.bounty.bountiesSlain,
       difficulty: snapshot.difficulty,
+      trialId: snapshot.trialId,
       victory: snapshot.victoryAchieved,
     });
     const canEarlySettle = !snapshot.gameOver && !snapshot.victoryHold && snapshot.wave >= 2;
+    const targetWaveStr = String(snapshot.clearTargetWave).padStart(2, '0');
+    const confirmArmed = this.abandonConfirmUntilMs > performance.now();
 
     let settleFooterHtml = '';
     if (snapshot.victoryHold) {
       settleFooterHtml = `
         <div class="settlement-preview-bar victory-bar">
           <div class="settlement-preview-info">
-            <span class="settlement-preview-title">🏆 제 30 장 천하통일 정산 완료!</span>
-            <span class="settlement-preview-sub">신물을 제련한 뒤 즉시 31장 무한 혈투에 돌입하거나 금의환향할 수 있습니다!</span>
+            <span class="settlement-preview-title">🏆 제 ${targetWaveStr} 장 ${trialCfg ? '비경 제패' : '천하통일'} 정산 완료!</span>
+            <span class="settlement-preview-sub">신물을 제련한 뒤 즉시 ${snapshot.clearTargetWave + 1}장 무한 혈투에 돌입하거나 금의환향할 수 있습니다!</span>
           </div>
           <div class="relic-draw-btns">
             <button type="button" class="card-cta-btn cta-crimson interactive" data-sheet-action="enter-endless">
@@ -2785,7 +3022,7 @@ export class UIManager {
       settleFooterHtml = `
         <div class="settlement-preview-bar">
           <div class="settlement-preview-info">
-            <span class="settlement-preview-title">현재 출정 정산 예상 (제 ${String(snapshot.wave).padStart(2, '0')} 장 · ${diffCfg.badge})</span>
+            <span class="settlement-preview-title">현재 출정 정산 예상 (제 ${String(snapshot.wave).padStart(2, '0')} 장 · ${modeBadge})</span>
             <span class="settlement-preview-sub">회군 시 영구 보상: 천하주화 +${preview.goldEarned.toLocaleString('ko-KR')} · 기보함 열쇠 +${preview.keysEarned}개</span>
           </div>
           <button
@@ -2799,6 +3036,50 @@ export class UIManager {
         </div>
       `;
     }
+
+    const abandonBtnHtml =
+      !snapshot.gameOver && !snapshot.victoryHold
+        ? `
+          <button
+            type="button"
+            class="card-cta-btn ${confirmArmed ? 'cta-crimson' : ''} interactive"
+            data-sheet-action="abandon-restart"
+          >
+            <span>${confirmArmed ? '⚠ 한 번 더 터치' : '🔄 처음부터'}</span>
+          </button>
+        `
+        : '';
+
+    const backupPanelHtml = `
+      <div class="backup-save-panel">
+        <div class="backup-save-top">
+          <div class="settlement-preview-info">
+            <span class="settlement-preview-title">💾 자동 이어하기 작동 중 · 영구 세이브 백업</span>
+            <span class="settlement-preview-sub">브라우저를 닫거나 새로고침해도 현재 출정 장수가 자동 복원됩니다. 기기 변경 시 백업 코드로 영구 재화·신물·스킨·명숙록을 계승하세요.</span>
+          </div>
+          <div class="relic-draw-btns">
+            ${abandonBtnHtml}
+            <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="backup-export">
+              <span>📋 백업 복사</span>
+            </button>
+          </div>
+        </div>
+        <div class="backup-code-row">
+          <input
+            id="backup-code-input"
+            type="text"
+            class="backup-code-input interactive"
+            value="${escapeHtml(this.backupInputDraft)}"
+            placeholder="MRD1-... 백업 코드를 붙여넣고 [코드 복원]을 누르세요"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="backup-import">
+            <span>📥 코드 복원</span>
+          </button>
+        </div>
+      </div>
+    `;
 
     this.sheetBodyEl.innerHTML = `
       <div class="relic-gacha-panel">
@@ -2834,6 +3115,7 @@ export class UIManager {
       </div>
       ${cardsHtml}
       ${settleFooterHtml}
+      ${backupPanelHtml}
     `;
 
     if (this.lastRelicNotice && this.lastRelicNotice.seq !== this.lastAnimatedRelicSeq) {
@@ -3211,10 +3493,10 @@ export class UIManager {
   }
 
   private renderCodexSheet(snapshot: UISnapshot, meta: MetaProfile): void {
-    this.setText(this.sheetTitleEl, '무림 명숙록 · 출정 난이도');
+    this.setText(this.sheetTitleEl, '무림 명숙록 · 난이도 & 무림 비경');
     this.setText(
       this.sheetSubtitleEl,
-      `등재 협객 ${meta.discoveredCount}/${this.data.units.length}인 · 최초 합류 시 천하주화 영구 보상`,
+      `등재 협객 ${meta.discoveredCount}/${this.data.units.length}인 · 비경 제패 ${meta.clearedTrialCount}/${TRIAL_ORDER.length} · 초회 등재 영구 보상`,
     );
     this.renderGrowthTabs('codex', meta);
 
@@ -3222,13 +3504,19 @@ export class UIManager {
       const cfg = DIFFICULTY_CONFIGS[diff];
       const unlocked = meta.unlockedDifficulties[diff];
       const cleared = meta.clearedDifficulties[diff];
-      const active = snapshot.difficulty === diff;
+      const active = snapshot.trialId === null && snapshot.difficulty === diff;
 
       const clearBadge = cleared
         ? '<span class="diff-clear-pill">🏆 30장 제패</span>'
         : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys}</span>`;
 
-      const btnLabel = active ? '출정 중 ✓' : unlocked ? '출정 전환' : '🔒 미해금';
+      const btnLabel = active
+        ? '출정 중 ✓'
+        : unlocked
+          ? snapshot.trialId !== null
+            ? '일반 복귀'
+            : '출정 전환'
+          : '🔒 미해금';
       const btnClass = active
         ? 'card-cta-btn cta-green interactive'
         : unlocked
@@ -3251,6 +3539,50 @@ export class UIManager {
             data-sheet-action="select-difficulty"
             data-difficulty="${diff}"
             ${unlocked ? '' : 'disabled'}
+          >
+            <span>${btnLabel}</span>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    const trialAccent: Readonly<Record<TrialId, string>> = {
+      trial_venom_gale: '#15803d',
+      trial_sword_tomb: '#0369a1',
+      trial_crimson_iron: '#b91c1c',
+      trial_chaos_trinity: '#7e22ce',
+    };
+
+    const trialCards = TRIAL_ORDER.map((tid) => {
+      const cfg = TRIAL_CONFIGS[tid];
+      const cleared = Boolean(meta.clearedTrials[tid]);
+      const active = snapshot.trialId === tid;
+      const clearBadge = cleared
+        ? `<span class="diff-clear-pill">🏆 ${cfg.targetWave}장 제패</span>`
+        : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys} · 비단+${cfg.firstClearSilk}필</span>`;
+
+      const btnClass = active
+        ? 'card-cta-btn cta-green interactive'
+        : 'card-cta-btn cta-crimson interactive';
+      const btnLabel = active ? '출정 중 · 해제' : '비경 출정';
+      const targetTrialAttr = active ? '' : tid;
+
+      return `
+        <div class="diff-card trial-card${active ? ' diff-active trial-active' : ''}">
+          <div class="diff-info">
+            <div class="card-name-row">
+              <span class="grade-pill" style="background:${trialAccent[tid]}">${cfg.badge} · ${cfg.rewardMult}x</span>
+              <span class="card-name">${escapeHtml(cfg.name)}</span>
+              <span class="trial-rule-tag">${escapeHtml(cfg.ruleTag)}</span>
+              ${clearBadge}
+            </div>
+            <div class="card-sub">${escapeHtml(cfg.desc)}</div>
+          </div>
+          <button
+            type="button"
+            class="${btnClass}"
+            data-sheet-action="select-trial"
+            data-trial-id="${targetTrialAttr}"
           >
             <span>${btnLabel}</span>
           </button>
@@ -3295,22 +3627,33 @@ export class UIManager {
         const portrait = this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta));
         const roleBadges = this.buildUnitRoleBadgesHtml(u, true);
 
-        const lowerRec = this.recipeGraph.byOutput.get(u.id)?.[0];
+        const lowerRecs = this.recipeGraph.byOutput.get(u.id) ?? [];
         let lowerLine = '획득처: 초출강호(일반 소환) · 기연 초빙';
-        if (lowerRec) {
-          const parts = lowerRec.ingredients.map((ing) => {
-            const ingName = this.data.unitsById.get(ing.unit)?.name ?? ing.unit;
-            return ing.n > 1 ? `${ingName} ×${ing.n}` : ingName;
-          });
-          lowerLine = `하위 조합: ${parts.join(' + ')}`;
+        if (lowerRecs.length > 0) {
+          const formulaStrings = lowerRecs.map((rec) =>
+            rec.ingredients
+              .map((ing) => {
+                const ingName = this.data.unitsById.get(ing.unit)?.name ?? ing.unit;
+                return ing.n > 1 ? `${ingName}×${ing.n}` : ingName;
+              })
+              .join(' + '),
+          );
+          lowerLine =
+            lowerRecs.length > 1
+              ? `조합식(${lowerRecs.length}종): ${formulaStrings.join('  ｜  ')}`
+              : `하위 조합: ${formulaStrings[0]!}`;
         } else if (!u.leaf) {
           lowerLine = '획득처: 영약 복용 · 기연 초빙';
         }
 
         const upperRecs = this.recipeGraph.byIngredient.get(u.id) ?? [];
-        const upperNames = upperRecs
-          .map((r) => this.data.unitsById.get(r.output)?.name)
-          .filter((n): n is string => Boolean(n));
+        const upperNames = Array.from(
+          new Set(
+            upperRecs
+              .map((r) => this.data.unitsById.get(r.output)?.name)
+              .filter((n): n is string => Boolean(n)),
+          ),
+        );
         const upperLine =
           upperNames.length > 0
             ? `상위 등선: ${upperNames.join(' / ')}`
@@ -3353,8 +3696,10 @@ export class UIManager {
       .join('');
 
     this.sheetBodyEl.innerHTML = `
-      <div class="sheet-section-label">⚔ 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
+      <div class="sheet-section-label">⚔ 표준 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
       <div class="diff-list">${diffCards}</div>
+      <div class="sheet-section-label">🌀 무림 비경 — 특수 규칙 엔드게임 시련 (${meta.clearedTrialCount}/${TRIAL_ORDER.length} 제패)</div>
+      <div class="diff-list trial-list">${trialCards}</div>
       <div class="codex-header-bar">
         <span class="sheet-section-label">📖 무림 ${this.data.units.length}인 명숙록 (${meta.discoveredCount}/${this.data.units.length})</span>
         <div class="codex-filter-row">${filterHtml}</div>

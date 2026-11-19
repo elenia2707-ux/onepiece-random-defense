@@ -1,4 +1,4 @@
-import type { DifficultyId, RelicId } from '../data/types';
+import type { DifficultyId, RelicId, TrialId } from '../data/types';
 
 export const CLEAR_TARGET_WAVE = 30;
 
@@ -51,6 +51,146 @@ export const DIFFICULTY_CONFIGS: Readonly<Record<DifficultyId, DifficultyConfig>
     firstClearKeys: 5,
   },
 };
+
+export interface TrialConfig {
+  readonly id: TrialId;
+  readonly name: string;
+  readonly badge: string;
+  readonly ruleTag: string;
+  readonly desc: string;
+  readonly targetWave: number;
+  readonly hpMult: number;
+  readonly speedMult: number;
+  readonly bonusMonsterArmor: number;
+  readonly bossCooldownMult: number;
+  readonly disableInterest: boolean;
+  readonly orthodoxCritMultBonus: number;
+  readonly unorthodoxSpeedMult: number;
+  readonly unorthodoxBonusShred: number;
+  readonly demonicSkillRatioMult: number;
+  readonly gambleBonusPct: number;
+  readonly trinityAtkBonusPct: number;
+  readonly rewardMult: number;
+  readonly firstClearGold: number;
+  readonly firstClearKeys: number;
+  readonly firstClearSilk: number;
+}
+
+export const TRIAL_ORDER: readonly TrialId[] = [
+  'trial_venom_gale',
+  'trial_sword_tomb',
+  'trial_crimson_iron',
+  'trial_chaos_trinity',
+];
+
+export const TRIAL_CONFIGS: Readonly<Record<TrialId, TrialConfig>> = {
+  trial_venom_gale: {
+    id: 'trial_venom_gale',
+    name: '만독비경 · 암기폭우',
+    badge: '🧪 만독비경',
+    ruleTag: '사파 공속+45%·파갑+12 / 적 이속+18%',
+    desc: '사파 협객 공격속도 +45% & 기본 파갑 +12! 대신 마물 이동속도 +18% · 제15장 속공 제패',
+    targetWave: 15,
+    hpMult: 1.45,
+    speedMult: 1.18,
+    bonusMonsterArmor: 0,
+    bossCooldownMult: 1.0,
+    disableInterest: false,
+    orthodoxCritMultBonus: 0,
+    unorthodoxSpeedMult: 1.45,
+    unorthodoxBonusShred: 12,
+    demonicSkillRatioMult: 1.0,
+    gambleBonusPct: 0,
+    trinityAtkBonusPct: 0,
+    rewardMult: 1.65,
+    firstClearGold: 450,
+    firstClearKeys: 3,
+    firstClearSilk: 60,
+  },
+  trial_sword_tomb: {
+    id: 'trial_sword_tomb',
+    name: '검총비경 · 만검쟁명',
+    badge: '⚔ 검총비경',
+    ruleTag: '정파 치명피해+90% / 금고 이자 봉인',
+    desc: '정파 협객 치명타 배율 +0.90x 폭증! 대신 매 장 복리 이자(0%) 완전 봉인 · 제15장 속공 제패',
+    targetWave: 15,
+    hpMult: 1.55,
+    speedMult: 1.05,
+    bonusMonsterArmor: 0,
+    bossCooldownMult: 1.0,
+    disableInterest: true,
+    orthodoxCritMultBonus: 0.9,
+    unorthodoxSpeedMult: 1.0,
+    unorthodoxBonusShred: 0,
+    demonicSkillRatioMult: 1.0,
+    gambleBonusPct: 0,
+    trinityAtkBonusPct: 0,
+    rewardMult: 1.75,
+    firstClearGold: 500,
+    firstClearKeys: 3,
+    firstClearSilk: 70,
+  },
+  trial_crimson_iron: {
+    id: 'trial_crimson_iron',
+    name: '철혈비경 · 금강불괴',
+    badge: '🔥 철혈비경',
+    ruleTag: '마교 절기+55%·영약+15% / 적 강기+28',
+    desc: '마교 절기 피해 +55% & 영약 성공률 +15%! 대신 마물 호신강기 +28 & 체력 1.6배 · 제15장 속공 제패',
+    targetWave: 15,
+    hpMult: 1.6,
+    speedMult: 1.0,
+    bonusMonsterArmor: 28,
+    bossCooldownMult: 1.0,
+    disableInterest: false,
+    orthodoxCritMultBonus: 0,
+    unorthodoxSpeedMult: 1.0,
+    unorthodoxBonusShred: 0,
+    demonicSkillRatioMult: 1.55,
+    gambleBonusPct: 15,
+    trinityAtkBonusPct: 0,
+    rewardMult: 1.85,
+    firstClearGold: 550,
+    firstClearKeys: 4,
+    firstClearSilk: 80,
+  },
+  trial_chaos_trinity: {
+    id: 'trial_chaos_trinity',
+    name: '삼재비경 · 정사마 대혈전',
+    badge: '☯ 삼재비경',
+    ruleTag: '삼재합진 최종공+100% / 체력2.1x·보스가속',
+    desc: '삼재합진(정2·사2·마2) 발동 시 전 협객 공격력 +100%! 대신 적 체력 2.1배 & 보스 권능 가속 · 제30장 제패',
+    targetWave: 30,
+    hpMult: 2.1,
+    speedMult: 1.08,
+    bonusMonsterArmor: 10,
+    bossCooldownMult: 0.75,
+    disableInterest: false,
+    orthodoxCritMultBonus: 0,
+    unorthodoxSpeedMult: 1.0,
+    unorthodoxBonusShred: 0,
+    demonicSkillRatioMult: 1.0,
+    gambleBonusPct: 0,
+    trinityAtkBonusPct: 100,
+    rewardMult: 2.35,
+    firstClearGold: 900,
+    firstClearKeys: 5,
+    firstClearSilk: 120,
+  },
+};
+
+export interface SellRefundSpec {
+  readonly guaranteedLuck: number;
+  readonly chancePct: number;
+}
+
+export function getUnitSellLuckRefund(gradeRank: number): SellRefundSpec {
+  if (gradeRank >= 6) return { guaranteedLuck: 7, chancePct: 0 };
+  if (gradeRank === 5) return { guaranteedLuck: 4, chancePct: 0 };
+  if (gradeRank === 4) return { guaranteedLuck: 2, chancePct: 0 };
+  if (gradeRank === 3) return { guaranteedLuck: 1, chancePct: 0 };
+  if (gradeRank === 2) return { guaranteedLuck: 0, chancePct: 35 };
+  return { guaranteedLuck: 0, chancePct: 0 };
+}
 
 export function formatCompactNumber(val: number): string {
   const n = Math.max(0, Math.round(val));

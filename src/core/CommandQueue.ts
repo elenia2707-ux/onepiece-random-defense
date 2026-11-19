@@ -11,6 +11,7 @@ export type GameCommand =
   | { readonly type: 'summon' }
   | { readonly type: 'move'; readonly from: SlotRef; readonly to: SlotRef }
   | { readonly type: 'sell'; readonly uid: number }
+  | { readonly type: 'sellSurplusCommon' }
   | { readonly type: 'lock'; readonly uid: number; readonly locked: boolean }
   | { readonly type: 'craft'; readonly recipeId: RecipeId; readonly chain: boolean }
   | { readonly type: 'useWisp'; readonly grade: GradeId; readonly unitId: UnitId }

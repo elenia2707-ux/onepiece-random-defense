@@ -327,13 +327,14 @@ export function validateRecipesShape(input: unknown): RecipeDef[] {
 
     const output = assertNonEmptyString(row.output, `recipes[${i}].output`);
     const priority = assertNonNegativeNumber(row.priority, `recipes[${i}].priority`);
-    if (!Array.isArray(row.ingredients) || row.ingredients.length < 2) {
+    if (!Array.isArray(row.ingredients) || row.ingredients.length < 1) {
       throw new Error(
-        `[DataValidation] recipes[${i}].ingredients must contain at least 2 heterogeneous entries`,
+        `[DataValidation] recipes[${i}].ingredients must contain at least 1 ingredient entry`,
       );
     }
 
     const ingSeen = new Set<string>();
+    let totalUnits = 0;
     const ingredients = row.ingredients.map((rawIng, j) => {
       const ing = assertRecord(rawIng, `recipes[${i}].ingredients[${j}]`);
       const unit = assertNonEmptyString(ing.unit, `recipes[${i}].ingredients[${j}].unit`);
@@ -347,8 +348,15 @@ export function validateRecipesShape(input: unknown): RecipeDef[] {
         );
       }
       ingSeen.add(unit);
+      totalUnits += n;
       return { unit, n };
     });
+
+    if (totalUnits < 2) {
+      throw new Error(
+        `[DataValidation] recipes[${i}] must consume at least 2 total ingredient units (got ${totalUnits})`,
+      );
+    }
 
     out.push({ id, output, ingredients, priority });
   }

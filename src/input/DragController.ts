@@ -4,6 +4,32 @@ import type { InteractionOverlayState } from '../render/Renderer';
 
 const DRAG_THRESHOLD_LOGICAL = 10;
 
+/**
+ * Stone-bridge furnace drop zone strictly between monster corridor (y=652)
+ * and bench header bar (y=715). Zero overlap with 6x3 field (y=222..586) or 6x2 bench (y=752..930).
+ */
+export const DISCARD_DROP_RECT = {
+  x: 180,
+  y: 658,
+  w: 360,
+  h: 52,
+} as const;
+
+export function isPointInDiscardZone(x: number, y: number): boolean {
+  return (
+    x >= DISCARD_DROP_RECT.x &&
+    x <= DISCARD_DROP_RECT.x + DISCARD_DROP_RECT.w &&
+    y >= DISCARD_DROP_RECT.y &&
+    y <= DISCARD_DROP_RECT.y + DISCARD_DROP_RECT.h
+  );
+}
+
+export interface DragDiscardView {
+  readonly active: boolean;
+  readonly hot: boolean;
+  readonly fromSlot: SlotRef | null;
+}
+
 export class DragController {
   private readonly sim: Simulation;
   private readonly dispatch: (cmd: GameCommand) => void;
@@ -18,6 +44,7 @@ export class DragController {
   private currY = 0;
   private isDragging = false;
   private hoverTargetSlot: SlotRef | null = null;
+  private hoverDiscard = false;
 
   public constructor(
     sim: Simulation,
@@ -36,6 +63,14 @@ export class DragController {
     return this.selectedSlot;
   }
 
+  public getDragDiscardView(): DragDiscardView {
+    return {
+      active: this.isDragging && this.pointerDownSlot !== null,
+      hot: this.isDragging && this.hoverDiscard,
+      fromSlot: this.isDragging ? this.pointerDownSlot : null,
+    };
+  }
+
   public clearSelection(): void {
     if (this.selectedSlot !== null) {
       this.selectedSlot = null;
@@ -52,6 +87,7 @@ export class DragController {
     this.currY = logicalY;
     this.isDragging = false;
     this.hoverTargetSlot = null;
+    this.hoverDiscard = false;
 
     const hit = this.sim.board.hitTest(logicalX, logicalY);
     this.pointerDownSlot = hit;
@@ -62,6 +98,7 @@ export class DragController {
     this.currX = logicalX;
     this.currY = logicalY;
 
+    let notify = false;
     if (!this.isDragging && this.pointerDownSlot !== null) {
       const hasUnit = this.sim.board.getUid(this.pointerDownSlot) !== null;
       if (hasUnit) {
@@ -69,13 +106,22 @@ export class DragController {
         if (dist >= DRAG_THRESHOLD_LOGICAL) {
           this.isDragging = true;
           this.selectedSlot = this.pointerDownSlot;
-          this.onSelectionChanged();
+          notify = true;
         }
       }
     }
 
     if (this.isDragging) {
-      this.hoverTargetSlot = this.sim.board.hitTest(logicalX, logicalY);
+      const nextDiscard = isPointInDiscardZone(logicalX, logicalY);
+      if (nextDiscard !== this.hoverDiscard) {
+        this.hoverDiscard = nextDiscard;
+        notify = true;
+      }
+      this.hoverTargetSlot = nextDiscard ? null : this.sim.board.hitTest(logicalX, logicalY);
+    }
+
+    if (notify) {
+      this.onSelectionChanged();
     }
   }
 
@@ -84,7 +130,13 @@ export class DragController {
     const hitUp = this.sim.board.hitTest(logicalX, logicalY);
 
     if (this.isDragging && this.pointerDownSlot !== null) {
-      if (
+      if (isPointInDiscardZone(logicalX, logicalY)) {
+        const uid = this.sim.board.getUid(this.pointerDownSlot);
+        if (uid !== null) {
+          this.dispatch({ type: 'sell', uid });
+          this.selectedSlot = null;
+        }
+      } else if (
         hitUp !== null &&
         !(hitUp.area === this.pointerDownSlot.area && hitUp.index === this.pointerDownSlot.index)
       ) {
@@ -131,6 +183,7 @@ export class DragController {
     this.pointerDownSlot = null;
     this.isDragging = false;
     this.hoverTargetSlot = null;
+    this.hoverDiscard = false;
   }
 
   public getOverlayState(): InteractionOverlayState {

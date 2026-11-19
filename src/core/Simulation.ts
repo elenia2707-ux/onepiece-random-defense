@@ -15,10 +15,12 @@ import {
   getJadeSealStartCoin,
   getScrollChestBossLuckBonus,
   getScrollChestStartWisps,
+  getUnitSellLuckRefund,
   getVaultInterestCap,
   getVaultInterestPct,
   getWealthBonusBps,
   RELIC_IDS_ORDERED,
+  TRIAL_CONFIGS,
 } from './relicFormulas';
 import { Rng } from './Rng';
 import type { Speed } from './time';
@@ -39,6 +41,7 @@ import type {
   MonsterKind,
   RelicId,
   SupportAuraDef,
+  TrialId,
   UnitId,
   UpgradeGroupId,
   Vec2,
@@ -166,6 +169,21 @@ export interface SimEventMap {
     readonly uid: number;
     readonly unitId: UnitId;
     readonly slot: SlotRef;
+    readonly tick: number;
+  };
+  'unit:sold': {
+    readonly uid: number;
+    readonly unitId: UnitId;
+    readonly grade: GradeId;
+    readonly slot: SlotRef;
+    readonly pos: Vec2;
+    readonly coinEarned: number;
+    readonly luckEarned: number;
+    readonly tick: number;
+  };
+  'units:bulk_sold': {
+    readonly count: number;
+    readonly coinEarned: number;
     readonly tick: number;
   };
   'unit:moved': {
@@ -312,6 +330,7 @@ export interface SimEventMap {
   'run:victory': {
     readonly wave: number;
     readonly difficulty: DifficultyId;
+    readonly trialId: TrialId | null;
     readonly tick: number;
   };
   'command:rejected': {
@@ -334,6 +353,8 @@ export interface SlotView {
   readonly grade: GradeId;
   readonly locked: boolean;
   readonly sellCoin: number;
+  readonly sellLuck: number;
+  readonly sellLuckChancePct: number;
   readonly baseAtk: number;
   readonly bonusAtk: number;
   readonly range: number;
@@ -414,11 +435,63 @@ export interface BoonOfferSnapshot {
   readonly options: readonly BoonId[];
 }
 
+export interface RunSaveData {
+  readonly version: 1;
+  readonly savedAtMs: number;
+  readonly difficulty: DifficultyId;
+  readonly trialId: TrialId | null;
+  readonly currentTick: number;
+  readonly rngState: number;
+  readonly nextUid: number;
+  readonly nextMonsterId: number;
+  readonly nextProjectileId: number;
+  readonly gambleSeq: number;
+  readonly gambleWins: number;
+  readonly coin: number;
+  readonly luckStone: number;
+  readonly summonCount: number;
+  readonly wisps: Readonly<Record<GradeId, number>>;
+  readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
+  readonly relicLv: Readonly<Record<RelicId, number>>;
+  readonly activeBoons: Readonly<Record<BoonId, number>>;
+  readonly boonOfferSeq: number;
+  readonly pendingBoonOffers: readonly BoonOfferSnapshot[];
+  readonly appliedStartCoinBonus: number;
+  readonly appliedStartCommonWisp: number;
+  readonly appliedStartUncommonWisp: number;
+  readonly lastWaveInterest: number;
+  readonly pilferedCoinTotal: number;
+  readonly monstersSlain: number;
+  readonly bossesSlain: number;
+  readonly bountiesCalled: number;
+  readonly bountiesSlain: number;
+  readonly bountyReadyTick: number;
+  readonly completedMissions: readonly string[];
+  readonly damageByUnit: readonly (readonly [UnitId, number])[];
+  readonly totalDamageDealt: number;
+  readonly lastGambleResult: GambleResultSnapshot | null;
+  readonly waveNumber: number;
+  readonly waveTicksLeft: number;
+  readonly spawnedInWave: number;
+  readonly nextSpawnTick: number;
+  readonly gameOver: boolean;
+  readonly gameOverReason: GameOverReason;
+  readonly victoryAchieved: boolean;
+  readonly victoryHold: boolean;
+  readonly endlessMode: boolean;
+  readonly units: readonly UnitEntity[];
+  readonly monsters: readonly MonsterEntity[];
+  readonly projectiles: readonly ProjectileEntity[];
+  readonly tileHazards: readonly TileHazard[];
+}
+
 export interface UISnapshot {
   readonly tick: number;
   readonly speed: Speed;
   readonly paused: boolean;
   readonly difficulty: DifficultyId;
+  readonly trialId: TrialId | null;
+  readonly clearTargetWave: number;
   readonly gameOver: boolean;
   readonly gameOverReason: GameOverReason;
   readonly victoryAchieved: boolean;
@@ -469,6 +542,7 @@ export interface UISnapshot {
   readonly bench: readonly (SlotView | null)[];
   readonly fieldOccupied: number;
   readonly benchOccupied: number;
+  readonly benchSurplusCommonCount: number;
   readonly craft: CraftView;
   readonly wispHints: Partial<Record<GradeId, readonly WispHint[]>>;
   readonly rejects: readonly RejectNotice[];
@@ -479,6 +553,7 @@ const UPGRADE_ORDER: readonly UpgradeGroupId[] = ['orthodox', 'unorthodox', 'dem
 export class Simulation {
   public readonly data: GameDataBundle;
   public readonly difficulty: DifficultyId;
+  public readonly trialId: TrialId | null;
   public readonly events = new EventBus<SimEventMap>();
   public readonly commands = new CommandQueue();
   public readonly board: Board;
@@ -577,9 +652,11 @@ export class Simulation {
     seed = 0x20261118,
     initialRelics?: Readonly<Partial<Record<RelicId, number>>>,
     difficulty: DifficultyId = 'normal',
+    trialId: TrialId | null = null,
   ) {
     this.data = data;
     this.difficulty = difficulty;
+    this.trialId = trialId;
     this.rng = new Rng(seed);
     this.board = new Board(data.board);
     this.path = new LoopPath(data.board.path.waypoints);
@@ -643,6 +720,10 @@ export class Simulation {
       this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
     }
     this.priorityDirty = true;
+  }
+
+  public get clearTargetWave(): number {
+    return this.trialId ? TRIAL_CONFIGS[this.trialId].targetWave : CLEAR_TARGET_WAVE;
   }
 
   public get tickCount(): number {
@@ -712,6 +793,9 @@ export class Simulation {
   }
 
   public getEffectiveInterestConfig(): { readonly pct: number; readonly cap: number } {
+    if (this.trialId && TRIAL_CONFIGS[this.trialId].disableInterest) {
+      return { pct: 0, cap: 0 };
+    }
     const usuryStacks = this.getBoonStacks('b_usury_vault');
     const basePct = getVaultInterestPct(this.relicLv.golden_vault);
     const pct = basePct + usuryStacks * 3;
@@ -737,9 +821,11 @@ export class Simulation {
   }
 
   public getEffectiveGambleBonusPct(): number {
+    const trialBonus = this.trialId ? TRIAL_CONFIGS[this.trialId].gambleBonusPct : 0;
     return (
       getFurnaceChanceBonusPct(this.relicLv.immortal_furnace) +
-      this.getBoonStacks('b_elixir_jackpot') * 12
+      this.getBoonStacks('b_elixir_jackpot') * 12 +
+      trialBonus
     );
   }
 
@@ -842,8 +928,9 @@ export class Simulation {
   }
 
   public computeMonsterArmor(waveNum: number, isBoss: boolean, isBounty: boolean): number {
+    const trialArmor = this.trialId ? TRIAL_CONFIGS[this.trialId].bonusMonsterArmor : 0;
     if (waveNum <= 2 && !isBounty) {
-      return 0;
+      return trialArmor;
     }
     const mutantKind = !isBoss && !isBounty ? getWaveMutantKind(waveNum, false) : null;
     const mutantArmor = mutantKind ? WAVE_MUTANT_META[mutantKind].bonusArmor : 0;
@@ -851,8 +938,9 @@ export class Simulation {
       Math.max(0, waveNum - 2) * 2.6 +
       (isBoss && !isBounty ? 18 : 0) +
       (isBounty ? 12 : 0) +
-      mutantArmor;
-    return Math.min(140, Math.round(base));
+      mutantArmor +
+      trialArmor;
+    return Math.min(165, Math.round(base));
   }
 
   public getUnitEffectiveAtk(
@@ -867,7 +955,9 @@ export class Simulation {
     const upPct = upDef && lv > 0 ? lv * upDef.atkBonusPctPerLv : 0;
 
     const syn = precomputedSynergy ?? this.computeFieldSynergy();
-    let synPct = syn.trinityActive ? 18 : 0;
+    const trialTrinityPct =
+      syn.trinityActive && this.trialId ? TRIAL_CONFIGS[this.trialId].trinityAtkBonusPct : 0;
+    let synPct = (syn.trinityActive ? 18 : 0) + trialTrinityPct;
     if (def.faction === 'orthodox' && syn.orthodoxTier === 2) {
       synPct += 20;
     } else if (def.faction === 'unorthodox' && syn.unorthodoxTier === 2) {
@@ -988,7 +1078,7 @@ export class Simulation {
       this.endlessMode = true;
       this.tileHazards.length = 0;
       this.waveTicksLeft = Math.min(this.waveTicksLeft, 30);
-      this.offerBossBoons(CLEAR_TARGET_WAVE);
+      this.offerBossBoons(this.clearTargetWave);
       this.priorityDirty = true;
       return;
     }
@@ -1196,8 +1286,10 @@ export class Simulation {
 
         const spec = BOUNTY_ROSTER[this.bountiesCalled % BOUNTY_ROSTER.length]!;
         const diffCfg = DIFFICULTY_CONFIGS[this.difficulty];
+        const trialHpMult = this.trialId ? TRIAL_CONFIGS[this.trialId].hpMult : 1;
+        const trialSpdMult = this.trialId ? TRIAL_CONFIGS[this.trialId].speedMult : 1;
         const bountyHp = Math.round(
-          (950 + Math.pow(this.waveNumber, 1.82) * 92) * diffCfg.hpMult,
+          (950 + Math.pow(this.waveNumber, 1.82) * 92) * diffCfg.hpMult * trialHpMult,
         );
         const rewardCoin = 55 + this.waveNumber * 12;
         const rewardLuck = this.waveNumber >= 12 ? 3 : 2;
@@ -1222,7 +1314,7 @@ export class Simulation {
           hasteUntilTick: 0,
           nextBossSkillTick: 999999999,
           phaseTriggered: true,
-          speedPerTick: 3.4 * diffCfg.speedMult,
+          speedPerTick: 3.4 * diffCfg.speedMult * trialSpdMult,
           radius: spec.radius,
           rewardCoin,
           spawnTick: this.currentTick,
@@ -1333,7 +1425,7 @@ export class Simulation {
       case 'sell': {
         const unit = this.unitsByUid.get(cmd.uid);
         if (!unit) {
-          this.reject('sell', '하산시킬 협객이 존재하지 않습니다.');
+          this.reject('sell', '버릴 협객이 존재하지 않습니다.');
           return;
         }
         if (unit.locked) {
@@ -1341,9 +1433,67 @@ export class Simulation {
           return;
         }
         const def = this.data.unitsById.get(unit.unitId);
+        const gradeRank = this.data.gradesById.get(unit.grade)?.rank ?? 1;
+        const refundSpec = getUnitSellLuckRefund(gradeRank);
+        const coinEarned = def ? def.sellCoin : 10;
+        let luckEarned = refundSpec.guaranteedLuck;
+        if (refundSpec.chancePct > 0 && this.rng.nextInt(100) < refundSpec.chancePct) {
+          luckEarned += 1;
+        }
+        const oldPos = { x: unit.currX, y: unit.currY };
+        const oldSlot = unit.slot;
+        const unitId = unit.unitId;
+        const grade = unit.grade;
+
         this.removeUnitInternal(cmd.uid);
-        this.coin += def ? def.sellCoin : 10;
+        this.coin += coinEarned;
+        if (luckEarned > 0) {
+          this.luckStone += luckEarned;
+        }
+        this.events.emit('unit:sold', {
+          uid: cmd.uid,
+          unitId,
+          grade,
+          slot: oldSlot,
+          pos: oldPos,
+          coinEarned,
+          luckEarned,
+          tick: this.currentTick,
+        });
         this.priorityDirty = true;
+        return;
+      }
+
+      case 'sellSurplusCommon': {
+        const toSellUids: number[] = [];
+        for (let i = 0; i < this.board.bench.capacity; i++) {
+          const uid = this.board.bench.getUidAt(i);
+          if (uid === null) continue;
+          const u = this.unitsByUid.get(uid);
+          if (u && !u.locked && u.grade === 'common') {
+            toSellUids.push(uid);
+          }
+        }
+        if (toSellUids.length === 0) {
+          this.reject('sellSurplusCommon', '대기석에 정리할 잠금 해제 삼류 협객이 없습니다.');
+          return;
+        }
+        let coinEarned = 0;
+        for (let i = 0; i < toSellUids.length; i++) {
+          const uid = toSellUids[i]!;
+          const u = this.unitsByUid.get(uid);
+          if (!u) continue;
+          const def = this.data.unitsById.get(u.unitId);
+          coinEarned += def ? def.sellCoin : 10;
+          this.removeUnitInternal(uid);
+        }
+        this.coin += coinEarned;
+        this.priorityDirty = true;
+        this.events.emit('units:bulk_sold', {
+          count: toSellUids.length,
+          coinEarned,
+          tick: this.currentTick,
+        });
         return;
       }
 
@@ -1747,19 +1897,32 @@ export class Simulation {
   }
 
   private computeWaveHpScale(waveNum: number, isBoss: boolean): number {
-    const diffMult = DIFFICULTY_CONFIGS[this.difficulty].hpMult;
+    const trialHpMult = this.trialId ? TRIAL_CONFIGS[this.trialId].hpMult : 1;
+    const diffMult = DIFFICULTY_CONFIGS[this.difficulty].hpMult * trialHpMult;
+    const targetWave = this.clearTargetWave;
     if (waveNum <= 15) {
       return diffMult;
     }
-    if (waveNum <= CLEAR_TARGET_WAVE) {
+    if (waveNum <= targetWave) {
       // Escalating second cycle culminating in Wave 30 Grand Demon God
       const step = waveNum - 15; // 1..15
-      const cycle2 = 1.45 + step * 0.13 + (waveNum === CLEAR_TARGET_WAVE && isBoss ? 0.55 : 0);
+      const cycle2 = 1.45 + step * 0.13 + (waveNum === targetWave && isBoss ? 0.55 : 0);
       return cycle2 * diffMult;
     }
-    // Endless Bloodbath (Wave 31+): exponential scaling
-    const endlessStep = waveNum - CLEAR_TARGET_WAVE;
-    return 3.95 * Math.pow(1.135, endlessStep) * diffMult;
+    // Endless Bloodbath: exponential scaling beyond clearTargetWave
+    const endlessStep = waveNum - targetWave;
+    const baseAtTarget = targetWave <= 15 ? 1.55 : 3.95;
+    return baseAtTarget * Math.pow(1.135, endlessStep) * diffMult;
+  }
+
+  private resolveTargetBossName(waveNum: number, waveDef: WaveDef): string | undefined {
+    if (!waveDef.isBoss) return waveDef.bossName;
+    if (waveNum === this.clearTargetWave) {
+      return this.trialId
+        ? `비경수호신 · ${waveDef.bossName ?? '아수라 혈마존'}`
+        : '천마대제 아수라 혈마신';
+    }
+    return waveDef.bossName;
   }
 
   private stepWaveAndSpawn(): void {
@@ -1783,11 +1946,9 @@ export class Simulation {
     const mutantKind = getWaveMutantKind(this.waveNumber, waveDef.isBoss);
     const mutantMeta = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
     const diffCfg = DIFFICULTY_CONFIGS[this.difficulty];
+    const trialCfg = this.trialId ? TRIAL_CONFIGS[this.trialId] : null;
     const hpScale = this.computeWaveHpScale(this.waveNumber, waveDef.isBoss);
-    const resolvedBossName =
-      this.waveNumber === CLEAR_TARGET_WAVE && waveDef.isBoss
-        ? '천마대제 아수라 혈마신'
-        : waveDef.bossName;
+    const resolvedBossName = this.resolveTargetBossName(this.waveNumber, waveDef);
 
     const effectiveSpawnCount = mutantMeta
       ? Math.max(4, Math.round(waveDef.spawnCount * mutantMeta.countMult))
@@ -1799,17 +1960,23 @@ export class Simulation {
     if (this.spawnedInWave < effectiveSpawnCount && this.currentTick >= this.nextSpawnTick) {
       const startPos = this.path.sample(0);
       const hpMult = mutantMeta ? mutantMeta.hpMult : 1;
-      const speedMult = mutantMeta ? mutantMeta.speedMult : 1;
+      const speedMult = (mutantMeta ? mutantMeta.speedMult : 1) * (trialCfg ? trialCfg.speedMult : 1);
       const bonusCoin = mutantMeta ? mutantMeta.bonusCoin : 0;
       const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale * hpMult));
 
+      const bossCdMult = trialCfg ? trialCfg.bossCooldownMult : 1;
       const initialSkillDelay = !waveDef.isBoss
         ? 999999999
-        : waveDef.monsterKind === 'white_tiger'
-          ? 120
-          : waveDef.monsterKind === 'black_serpent'
-            ? 135
-            : 105;
+        : Math.max(
+            45,
+            Math.round(
+              (waveDef.monsterKind === 'white_tiger'
+                ? 120
+                : waveDef.monsterKind === 'black_serpent'
+                  ? 135
+                  : 105) * bossCdMult,
+            ),
+          );
 
       const monster: MonsterEntity = {
         entityId: this.nextMonsterId++,
@@ -1913,9 +2080,7 @@ export class Simulation {
 
       if (nextWaveDef.isBoss) {
         const nextBossName =
-          this.waveNumber === CLEAR_TARGET_WAVE
-            ? '천마대제 아수라 혈마신'
-            : (nextWaveDef.bossName ?? '웨이브 보스');
+          this.resolveTargetBossName(this.waveNumber, nextWaveDef) ?? '웨이브 보스';
         this.events.emit('wave:boss', {
           wave: this.waveNumber,
           bossName: nextBossName,
@@ -2053,6 +2218,7 @@ export class Simulation {
     }
 
     const spawnedEscorts: MonsterEntity[] = [];
+    const bossCdMult = this.trialId ? TRIAL_CONFIGS[this.trialId].bossCooldownMult : 1;
 
     for (let i = 0; i < this.monsters.length; i++) {
       const m = this.monsters[i]!;
@@ -2107,7 +2273,7 @@ export class Simulation {
               tick: this.currentTick,
             });
           } else if (m.kind === 'blood_patriarch') {
-            const escortCount = this.waveNumber >= CLEAR_TARGET_WAVE ? 3 : 2;
+            const escortCount = this.waveNumber >= this.clearTargetWave ? 3 : 2;
             const room = Math.max(
               0,
               this.data.board.path.monsterCap - 2 - (this.monsters.length + spawnedEscorts.length),
@@ -2166,7 +2332,7 @@ export class Simulation {
         // 2) Periodic boss signature skill
         if (this.currentTick >= m.nextBossSkillTick) {
           if (m.kind === 'white_tiger') {
-            m.nextBossSkillTick = this.currentTick + 240; // 8.0s
+            m.nextBossSkillTick = this.currentTick + Math.max(90, Math.round(240 * bossCdMult));
             const roarRadiusSq = 195 * 195;
             for (let uIdx = 0; uIdx < this.units.length; uIdx++) {
               const u = this.units[uIdx]!;
@@ -2187,7 +2353,7 @@ export class Simulation {
               tick: this.currentTick,
             });
           } else if (m.kind === 'black_serpent') {
-            m.nextBossSkillTick = this.currentTick + 270; // 9.0s
+            m.nextBossSkillTick = this.currentTick + Math.max(90, Math.round(270 * bossCdMult));
             const shieldAmt = Math.max(60, Math.round(m.maxHp * 0.12));
             m.shieldHp = shieldAmt;
             m.shieldMaxHp = shieldAmt;
@@ -2203,8 +2369,8 @@ export class Simulation {
               tick: this.currentTick,
             });
           } else if (m.kind === 'blood_patriarch') {
-            m.nextBossSkillTick = this.currentTick + 225; // 7.5s
-            const sealCount = this.waveNumber >= CLEAR_TARGET_WAVE ? 3 : 2;
+            m.nextBossSkillTick = this.currentTick + Math.max(90, Math.round(225 * bossCdMult));
+            const sealCount = this.waveNumber >= this.clearTargetWave ? 3 : 2;
             const chosenTiles = this.pickHazardTiles(sealCount);
             if (chosenTiles.length > 0) {
               for (let c = 0; c < chosenTiles.length; c++) {
@@ -2242,6 +2408,7 @@ export class Simulation {
   private stepCombat(): void {
     const synergy = this.computeFieldSynergy();
     const tileBuffs = this.computeFieldTileBuffs();
+    const trialCfg = this.trialId ? TRIAL_CONFIGS[this.trialId] : null;
     const harmonyStacks = this.getBoonStacks('b_trinity_harmony');
     const swiftStacks = this.getBoonStacks('b_swift_formation');
     const pillageStacks = this.getBoonStacks('b_unorthodox_pillage');
@@ -2303,6 +2470,9 @@ export class Simulation {
             if (pillageStacks > 0) {
               speedMult *= 1 + 0.22 * pillageStacks;
             }
+            if (trialCfg && trialCfg.unorthodoxSpeedMult !== 1) {
+              speedMult *= trialCfg.unorthodoxSpeedMult;
+            }
           }
           if (tileBuff.speedPct > 0) {
             speedMult *= 1 + tileBuff.speedPct / 100;
@@ -2348,6 +2518,9 @@ export class Simulation {
               critChance = Math.min(0.95, critChance + 0.15 * orthodoxBoonStacks);
               critMult += 0.55 * orthodoxBoonStacks;
             }
+            if (trialCfg && trialCfg.orthodoxCritMultBonus > 0) {
+              critMult += trialCfg.orthodoxCritMultBonus;
+            }
           } else if (def.faction === 'demonic') {
             if (synergy.demonicTier === 2) {
               critMult += 0.8;
@@ -2358,6 +2531,9 @@ export class Simulation {
             }
             if (demonicBoonStacks > 0) {
               skillRatio *= 1 + 0.3 * demonicBoonStacks;
+            }
+            if (trialCfg && trialCfg.demonicSkillRatioMult !== 1) {
+              skillRatio *= trialCfg.demonicSkillRatioMult;
             }
           }
 
@@ -2371,7 +2547,9 @@ export class Simulation {
             damage = Math.round(damage * critMult);
           }
 
-          const unitBaseShred = def.armorShred + crusherStacks * 6;
+          const trialShred =
+            def.faction === 'unorthodox' && trialCfg ? trialCfg.unorthodoxBonusShred : 0;
+          const unitBaseShred = def.armorShred + crusherStacks * 6 + trialShred;
           const projectileShred =
             unitBaseShred > 0
               ? isSkill
@@ -2639,7 +2817,7 @@ export class Simulation {
 
           const noWaveBossRemaining = !this.monsters.some((o) => o.isBoss && !o.isBounty);
           if (
-            this.waveNumber === CLEAR_TARGET_WAVE &&
+            this.waveNumber === this.clearTargetWave &&
             !this.endlessMode &&
             !this.victoryAchieved &&
             noWaveBossRemaining
@@ -2649,6 +2827,7 @@ export class Simulation {
             this.events.emit('run:victory', {
               wave: this.waveNumber,
               difficulty: this.difficulty,
+              trialId: this.trialId,
               tick: this.currentTick,
             });
           } else if (noWaveBossRemaining) {
@@ -2697,9 +2876,14 @@ export class Simulation {
 
     const zeroBuff: TileAuraBuff = { atkPct: 0, speedPct: 0 };
     const benchViews: Array<SlotView | null> = [];
+    let benchSurplusCommonCount = 0;
     for (let i = 0; i < this.board.bench.capacity; i++) {
       const uid = this.board.bench.getUidAt(i);
-      benchViews.push(uid !== null ? this.toSlotView(uid, synergy, zeroBuff) : null);
+      const view = uid !== null ? this.toSlotView(uid, synergy, zeroBuff) : null;
+      if (view && !view.locked && view.grade === 'common') {
+        benchSurplusCommonCount++;
+      }
+      benchViews.push(view);
     }
 
     const rejects = this.pendingRejects.slice();
@@ -2800,6 +2984,8 @@ export class Simulation {
       speed,
       paused,
       difficulty: this.difficulty,
+      trialId: this.trialId,
+      clearTargetWave: this.clearTargetWave,
       gameOver: this.gameOver,
       gameOverReason: this.gameOverReason,
       victoryAchieved: this.victoryAchieved,
@@ -2860,6 +3046,7 @@ export class Simulation {
       bench: benchViews,
       fieldOccupied: this.board.field.countOccupied(),
       benchOccupied: this.board.bench.countOccupied(),
+      benchSurplusCommonCount,
       craft: this.craftIndex.getView(),
       wispHints: this.wispSystem.getHints(),
       rejects,
@@ -2882,6 +3069,12 @@ export class Simulation {
     const isField = u.slot.area === 'field';
     const harmonyRange = this.getBoonStacks('b_trinity_harmony') * 25;
     const crusherShred = this.getBoonStacks('b_armor_crusher') * 6;
+    const trialShred =
+      def?.faction === 'unorthodox' && this.trialId
+        ? TRIAL_CONFIGS[this.trialId].unorthodoxBonusShred
+        : 0;
+    const gradeRank = this.data.gradesById.get(u.grade)?.rank ?? 1;
+    const refundSpec = getUnitSellLuckRefund(gradeRank);
     return {
       uid: u.uid,
       unitId: u.unitId,
@@ -2890,17 +3083,229 @@ export class Simulation {
       grade: u.grade,
       locked: u.locked,
       sellCoin: def?.sellCoin ?? 10,
+      sellLuck: refundSpec.guaranteedLuck,
+      sellLuckChancePct: refundSpec.chancePct,
       baseAtk,
       bonusAtk,
       range: (def?.range ?? 150) + harmonyRange,
       skillName: def?.skill.name ?? '기본 초식',
-      armorShred: (def?.armorShred ?? 0) + crusherShred,
+      armorShred: (def?.armorShred ?? 0) + crusherShred + trialShred,
       supportAura: def?.supportAura,
       tileBuffAtkPct: tileBuff.atkPct,
       tileBuffSpeedPct: tileBuff.speedPct,
       sealed: isField ? this.isFieldSlotSealed(u.slot.index) : false,
       hazardWarning: isField ? this.isFieldSlotWarning(u.slot.index) : false,
     };
+  }
+
+  public exportRunSave(): RunSaveData {
+    return {
+      version: 1,
+      savedAtMs: Date.now(),
+      difficulty: this.difficulty,
+      trialId: this.trialId,
+      currentTick: this.currentTick,
+      rngState: this.rng.getState(),
+      nextUid: this.nextUid,
+      nextMonsterId: this.nextMonsterId,
+      nextProjectileId: this.nextProjectileId,
+      gambleSeq: this.gambleSeq,
+      gambleWins: this.gambleWins,
+      coin: this.coin,
+      luckStone: this.luckStone,
+      summonCount: this.summonCount,
+      wisps: { ...this.wisps },
+      upgradeLv: { ...this.upgradeLv },
+      relicLv: { ...this.relicLv },
+      activeBoons: { ...this.activeBoons },
+      boonOfferSeq: this.boonOfferSeq,
+      pendingBoonOffers: this.pendingBoonOffers.map((o) => ({
+        seq: o.seq,
+        wave: o.wave,
+        options: [...o.options],
+      })),
+      appliedStartCoinBonus: this.appliedStartCoinBonus,
+      appliedStartCommonWisp: this.appliedStartCommonWisp,
+      appliedStartUncommonWisp: this.appliedStartUncommonWisp,
+      lastWaveInterest: this.lastWaveInterest,
+      pilferedCoinTotal: this.pilferedCoinTotal,
+      monstersSlain: this.monstersSlain,
+      bossesSlain: this.bossesSlain,
+      bountiesCalled: this.bountiesCalled,
+      bountiesSlain: this.bountiesSlain,
+      bountyReadyTick: this.bountyReadyTick,
+      completedMissions: [...this.completedMissions],
+      damageByUnit: [...this.damageByUnit.entries()],
+      totalDamageDealt: this.totalDamageDealt,
+      lastGambleResult: this.lastGambleResult ? { ...this.lastGambleResult } : null,
+      waveNumber: this.waveNumber,
+      waveTicksLeft: this.waveTicksLeft,
+      spawnedInWave: this.spawnedInWave,
+      nextSpawnTick: this.nextSpawnTick,
+      gameOver: this.gameOver,
+      gameOverReason: this.gameOverReason,
+      victoryAchieved: this.victoryAchieved,
+      victoryHold: this.victoryHold,
+      endlessMode: this.endlessMode,
+      units: this.units.map((u) => ({
+        ...u,
+        slot: { ...u.slot },
+      })),
+      monsters: this.monsters.map((m) => ({ ...m })),
+      projectiles: this.projectiles.map((p) => ({ ...p })),
+      tileHazards: this.tileHazards.map((h) => ({ ...h })),
+    };
+  }
+
+  public restoreRunSave(save: RunSaveData): boolean {
+    if (!save || save.version !== 1) return false;
+    if (save.difficulty !== this.difficulty || save.trialId !== this.trialId) return false;
+    if (!Number.isFinite(save.currentTick) || save.currentTick < 0) return false;
+    if (!Array.isArray(save.units) || !Array.isArray(save.monsters)) return false;
+
+    for (let i = 0; i < save.units.length; i++) {
+      const u = save.units[i]!;
+      if (!this.data.unitsById.has(u.unitId) || !this.board.isValidSlot(u.slot)) {
+        return false;
+      }
+    }
+
+    this.currentTick = Math.floor(save.currentTick);
+    this.rng.setState(save.rngState);
+    this.nextUid = Math.max(1, Math.floor(save.nextUid));
+    this.nextMonsterId = Math.max(1, Math.floor(save.nextMonsterId));
+    this.nextProjectileId = Math.max(1, Math.floor(save.nextProjectileId));
+    this.gambleSeq = Math.max(0, Math.floor(save.gambleSeq));
+    this.gambleWins = Math.max(0, Math.floor(save.gambleWins));
+    this.coin = Math.max(0, Math.floor(save.coin));
+    this.luckStone = Math.max(0, Math.floor(save.luckStone));
+    this.summonCount = Math.max(0, Math.floor(save.summonCount));
+
+    for (const k of Object.keys(this.wisps)) {
+      delete this.wisps[k];
+    }
+    for (const [g, c] of Object.entries(save.wisps ?? {})) {
+      if (typeof c === 'number' && Number.isFinite(c) && c >= 0) {
+        this.wisps[g] = Math.floor(c);
+      }
+    }
+
+    for (const g of UPGRADE_ORDER) {
+      const v = save.upgradeLv?.[g];
+      this.upgradeLv[g] = typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    }
+
+    for (const rid of RELIC_IDS_ORDERED) {
+      const v = save.relicLv?.[rid];
+      this.relicLv[rid] = typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    }
+
+    for (const bid of BOON_IDS_ORDERED) {
+      const v = save.activeBoons?.[bid];
+      this.activeBoons[bid] = typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    }
+
+    this.boonOfferSeq = Math.max(0, Math.floor(save.boonOfferSeq));
+    this.pendingBoonOffers.length = 0;
+    if (Array.isArray(save.pendingBoonOffers)) {
+      for (const o of save.pendingBoonOffers) {
+        this.pendingBoonOffers.push({
+          seq: o.seq,
+          wave: o.wave,
+          options: [...o.options],
+        });
+      }
+    }
+
+    this.appliedStartCoinBonus = Math.max(0, Math.floor(save.appliedStartCoinBonus ?? 0));
+    this.appliedStartCommonWisp = Math.max(0, Math.floor(save.appliedStartCommonWisp ?? 0));
+    this.appliedStartUncommonWisp = Math.max(0, Math.floor(save.appliedStartUncommonWisp ?? 0));
+    this.lastWaveInterest = Math.max(0, Math.floor(save.lastWaveInterest ?? 0));
+    this.pilferedCoinTotal = Math.max(0, Math.floor(save.pilferedCoinTotal ?? 0));
+    this.monstersSlain = Math.max(0, Math.floor(save.monstersSlain ?? 0));
+    this.bossesSlain = Math.max(0, Math.floor(save.bossesSlain ?? 0));
+    this.bountiesCalled = Math.max(0, Math.floor(save.bountiesCalled ?? 0));
+    this.bountiesSlain = Math.max(0, Math.floor(save.bountiesSlain ?? 0));
+    this.bountyReadyTick = Math.max(0, Math.floor(save.bountyReadyTick ?? 0));
+
+    this.completedMissions.clear();
+    if (Array.isArray(save.completedMissions)) {
+      for (const mId of save.completedMissions) {
+        this.completedMissions.add(mId);
+      }
+    }
+
+    this.damageByUnit.clear();
+    if (Array.isArray(save.damageByUnit)) {
+      for (const [uid, dmg] of save.damageByUnit) {
+        if (typeof uid === 'string' && typeof dmg === 'number' && dmg > 0) {
+          this.damageByUnit.set(uid, dmg);
+        }
+      }
+    }
+    this.totalDamageDealt = Math.max(0, Math.floor(save.totalDamageDealt ?? 0));
+    this.lastGambleResult = save.lastGambleResult ? { ...save.lastGambleResult } : null;
+
+    this.waveNumber = Math.max(1, Math.floor(save.waveNumber));
+    this.waveTicksLeft = Math.max(1, Math.floor(save.waveTicksLeft));
+    this.spawnedInWave = Math.max(0, Math.floor(save.spawnedInWave));
+    this.nextSpawnTick = Math.max(0, Math.floor(save.nextSpawnTick));
+    this.gameOver = Boolean(save.gameOver);
+    this.gameOverReason = save.gameOverReason === 'boss_timeout' ? 'boss_timeout' : 'overrun';
+    this.victoryAchieved = Boolean(save.victoryAchieved);
+    this.victoryHold = Boolean(save.victoryHold);
+    this.endlessMode = Boolean(save.endlessMode);
+
+    // Clear and rebuild board + inventoryIndex + craftIndex + wispSystem deterministically
+    for (let i = 0; i < this.board.field.capacity; i++) {
+      this.board.setUid({ area: 'field', index: i }, null);
+    }
+    for (let i = 0; i < this.board.bench.capacity; i++) {
+      this.board.setUid({ area: 'bench', index: i }, null);
+    }
+    this.units.length = 0;
+    this.unitsByUid.clear();
+    this.inventoryIndex.clear();
+
+    for (let i = 0; i < save.units.length; i++) {
+      const src = save.units[i]!;
+      const clone: UnitEntity = {
+        ...src,
+        slot: { area: src.slot.area, index: src.slot.index },
+        attackDirX: typeof src.attackDirX === 'number' ? src.attackDirX : 0,
+        attackDirY: typeof src.attackDirY === 'number' ? src.attackDirY : 1,
+      };
+      this.units.push(clone);
+      this.unitsByUid.set(clone.uid, clone);
+      this.board.setUid(clone.slot, clone.uid);
+      this.inventoryIndex.addUnit(clone.uid, clone.unitId, clone.slot, clone.locked);
+    }
+    this.inventoryIndex.consumeDelta();
+    this.craftIndex.rebuildAll(this.inventoryIndex);
+    this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+
+    this.monsters.length = 0;
+    for (let i = 0; i < save.monsters.length; i++) {
+      this.monsters.push({ ...save.monsters[i]! });
+    }
+
+    this.projectiles.length = 0;
+    if (Array.isArray(save.projectiles)) {
+      for (let i = 0; i < save.projectiles.length; i++) {
+        this.projectiles.push({ ...save.projectiles[i]! });
+      }
+    }
+
+    this.tileHazards.length = 0;
+    if (Array.isArray(save.tileHazards)) {
+      for (let i = 0; i < save.tileHazards.length; i++) {
+        this.tileHazards.push({ ...save.tileHazards[i]! });
+      }
+    }
+
+    this.pendingRejects.length = 0;
+    this.priorityDirty = true;
+    return true;
   }
 
   /**
@@ -2932,6 +3337,7 @@ export class Simulation {
     };
 
     feedInt(this.currentTick);
+    feedStr(this.trialId ?? 'std');
     feedInt(this.rng.getState());
     feedInt(this.coin);
     feedInt(this.luckStone);

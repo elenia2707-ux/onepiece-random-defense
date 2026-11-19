@@ -100,6 +100,15 @@ export class CraftIndex {
     return this.buildViewFromMap(map, this.rev);
   }
 
+  public rebuildAll(inventory: InventoryIndex): void {
+    const avail = inventory.getAvailableMap();
+    for (const rid of this.graph.topo) {
+      const r = this.graph.recipesById.get(rid)!;
+      this.statuses.set(rid, this.evaluateRecipe(r, avail));
+    }
+    this.rev++;
+  }
+
   public getView(): CraftView {
     return this.buildViewFromMap(this.statuses, this.rev);
   }

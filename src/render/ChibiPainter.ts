@@ -990,6 +990,65 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'thousand_venom_lord': {
+      // UNORTHODOX IMMORTAL: Thousand Venom Sovereign (만독신군) — jade-violet halo + spread poison war fan
+      for (let a = 0; a < 12; a++) {
+        const rad = (a * Math.PI * 2) / 12;
+        const hx = Math.round(14 + Math.cos(rad) * 11.5);
+        const hy = Math.round(14 + Math.sin(rad) * 10.5);
+        p.set(hx, hy, a % 2 === 0 ? '#22c55e' : '#a855f7', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_PALE, { glint: '#4ade80', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#22c55e');
+      p.rect(12, 2, 4, 3, '#10b981', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_VIOLET, ROBE_JADE, '#facc15');
+      // Spread poison iron folding fan (만독천화선)
+      for (let i = -3; i <= 3; i++) {
+        p.line(20, 21, 27 + Math.abs(i % 2), 14 + i * 2, i % 2 === 0 ? '#4ade80' : '#c084fc', LAYER_FRONT, 1);
+      }
+      p.disc(27, 10, 2, ROBE_JADE, LAYER_FX);
+      break;
+    }
+
+    case 'thunder_emperor': {
+      // ORTHODOX IMMORTAL: Namgung Thunder Emperor (남궁뇌제) — golden-cyan thunder halo + twin lightning jian
+      for (let a = 0; a < 12; a++) {
+        const rad = (a * Math.PI * 2) / 12;
+        const hx = Math.round(14 + Math.cos(rad) * 11.5);
+        const hy = Math.round(14 + Math.sin(rad) * 10.5);
+        p.set(hx, hy, a % 2 === 0 ? '#fde047' : '#38bdf8', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_AZURE, true);
+      paintHead34(p, SKIN_WARM, { glint: '#38bdf8', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#facc15');
+      p.rect(11, 2, 5, 3, '#facc15', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_AZURE, GOLD_QI, '#fde047');
+      paintDiagonalSword(p, CYAN_QI, '#fde047', true);
+      p.line(6, 22, 2, 11, '#38bdf8', LAYER_FRONT, 2);
+      break;
+    }
+
+    case 'hell_flame_sovereign': {
+      // DEMONIC IMMORTAL: Nine-Hells Flame Sovereign (구천염황) — 9 burning demonic orbs + twin palm flames
+      for (let a = 0; a < 9; a++) {
+        const rad = (a * Math.PI * 2) / 9;
+        const hx = Math.round(14 + Math.cos(rad) * 11.5);
+        const hy = Math.round(13 + Math.sin(rad) * 10.5);
+        p.disc(hx, hy, 1.6, ROBE_CRIMSON, LAYER_BACK);
+        p.set(hx, hy, '#fde047', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_TAN, { glint: '#ef4444', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#f97316');
+      paintMartialBody34(p, ROBE_DEMON, GOLD_QI, '#f97316');
+      p.disc(6, 18, 2.5, ROBE_CRIMSON, LAYER_FX);
+      p.set(6, 18, '#fde047', LAYER_FX);
+      p.disc(24, 18, 2.8, ROBE_CRIMSON, LAYER_FX);
+      p.set(24, 18, '#fde047', LAYER_FX);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

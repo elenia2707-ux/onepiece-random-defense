@@ -319,6 +319,31 @@ export const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> =
     secondary: '#fde047',
     heavyBlade: true,
   },
+  thousand_venom_lord: {
+    style: 'fan',
+    sect: 'tang_poison',
+    weaponLabel: '만독천화선(부채)',
+    primary: '#10b981',
+    secondary: '#a855f7',
+    dualWield: true,
+  },
+  thunder_emperor: {
+    style: 'dual_sword',
+    sect: 'namgung',
+    weaponLabel: '구천 뇌제쌍검',
+    primary: '#38bdf8',
+    secondary: '#fde047',
+    dualWield: true,
+    heavyBlade: true,
+  },
+  hell_flame_sovereign: {
+    style: 'sorcery_qi',
+    sect: 'magyo_flame',
+    weaponLabel: '구천마염주',
+    primary: '#f97316',
+    secondary: '#e11d48',
+    dualWield: true,
+  },
 };
 
 export function getUnitCombatProfile(unitId: UnitId): UnitCombatProfile {

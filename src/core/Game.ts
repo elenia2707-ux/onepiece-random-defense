@@ -1,4 +1,6 @@
+import type { GameCommand } from './CommandQueue';
 import { GameLoop } from './GameLoop';
+import { TRIAL_CONFIGS } from './relicFormulas';
 import { Simulation, type UISnapshot } from './Simulation';
 import { loadGameData } from '../data/loader';
 import type { CourtSkinId, GameDataBundle, HeroSkinDef, UnitId } from '../data/types';
@@ -38,6 +40,12 @@ export class Game {
   private endlessSettled = false;
   private slowFrameStreak = 0;
 
+  private lastSavedWave = 1;
+  private lastAutoSaveTick = 0;
+  private runSaveDirty = false;
+  private suppressAutoSave = false;
+  private autoRestoredWave: number | null = null;
+
   public constructor() {
     const data = loadGameData();
     this.data = data;
@@ -54,7 +62,25 @@ export class Game {
       runSeed,
       this.meta.getRelicLevels(),
       this.meta.getSelectedDifficulty(),
+      this.meta.getSelectedTrialId(),
     );
+
+    // Attempt seamless auto-resume of unfinished expedition matching current mode
+    const savedRun = this.meta.loadActiveRun();
+    if (
+      savedRun &&
+      !savedRun.gameOver &&
+      !savedRun.victoryHold &&
+      !savedRun.victoryAchieved &&
+      savedRun.difficulty === this.sim.difficulty &&
+      (savedRun.trialId ?? null) === this.sim.trialId &&
+      this.sim.restoreRunSave(savedRun)
+    ) {
+      this.lastSavedWave = savedRun.waveNumber;
+      this.lastAutoSaveTick = savedRun.currentTick;
+      this.autoRestoredWave = savedRun.waveNumber;
+    }
+
     this.stack = new CanvasStack();
     this.sprites = new SpriteCache();
     this.bgPainter = new BackgroundPainter(() => {
@@ -66,12 +92,12 @@ export class Game {
 
     this.drag = new DragController(
       this.sim,
-      (cmd) => this.sim.commands.enqueue(cmd),
+      (cmd) => this.dispatchCommand(cmd),
       () => this.ui.forceRefreshSelection(),
     );
 
     this.ui = new UIManager(data, this.sim.recipeGraph, this.sprites, {
-      onDispatch: (cmd) => this.sim.commands.enqueue(cmd),
+      onDispatch: (cmd) => this.dispatchCommand(cmd),
       onCycleSpeed: () => {
         this.sound.playUiTap();
         const next = this.loop.cycleSpeed();
@@ -93,6 +119,17 @@ export class Game {
       onToggleMute: () => this.sound.toggleMute(),
       onSelectDifficulty: (diff) => {
         if (this.meta.setSelectedDifficulty(diff)) {
+          this.suppressAutoSave = true;
+          this.meta.clearActiveRun();
+          window.location.reload();
+          return true;
+        }
+        return false;
+      },
+      onSelectTrial: (trialId) => {
+        if (this.meta.setSelectedTrial(trialId)) {
+          this.suppressAutoSave = true;
+          this.meta.clearActiveRun();
           window.location.reload();
           return true;
         }
@@ -100,21 +137,40 @@ export class Game {
       },
       onEnterEndless: () => {
         this.sound.playBossHorn();
-        this.sim.commands.enqueue({ type: 'enterEndless' });
+        this.dispatchCommand({ type: 'enterEndless' });
       },
       onPickBoon: (boonId) => {
         this.sound.playCraft(5);
-        this.sim.commands.enqueue({ type: 'pickBoon', boonId });
+        this.dispatchCommand({ type: 'pickBoon', boonId });
         if (this.loop.isPaused()) {
           this.loop.setPaused(false);
         }
       },
       onRestart: () => {
+        this.suppressAutoSave = true;
+        this.meta.clearActiveRun();
         window.location.reload();
       },
       onSettleAndRestart: () => {
         const snap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
         this.settleCurrentRun(snap);
+        this.suppressAutoSave = true;
+        this.meta.clearActiveRun();
+        window.location.reload();
+      },
+      onExportBackup: () => this.meta.exportBackupCode(),
+      onImportBackup: (code) => {
+        const res = this.meta.importBackupCode(code);
+        if (res.ok) {
+          this.suppressAutoSave = true;
+          this.meta.clearActiveRun();
+          this.sound.playCoinReward();
+        }
+        return res;
+      },
+      onReloadAfterImport: () => {
+        this.suppressAutoSave = true;
+        this.meta.clearActiveRun();
         window.location.reload();
       },
       getMetaProfile: () => this.meta.getProfile(),
@@ -123,7 +179,7 @@ export class Game {
         const res = this.meta.drawRelic(data.relics, payWith);
         if (res.ok) {
           this.sound.playCraft(res.isNew ? 4 : 3);
-          this.sim.commands.enqueue({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
         }
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
@@ -140,7 +196,7 @@ export class Game {
         const res = this.meta.upgradeRelic(def);
         if (res.ok) {
           this.sound.playCoinReward();
-          this.sim.commands.enqueue({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
         }
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
@@ -222,6 +278,7 @@ export class Game {
         );
       },
       getSelectedSlot: () => this.drag.getSelectedSlot(),
+      getDragDiscardView: () => this.drag.getDragDiscardView(),
       clearSelection: () => this.drag.clearSelection(),
     });
 
@@ -253,12 +310,22 @@ export class Game {
             bossesSlain: snap.bossesSlain,
             bountiesSlain: snap.bounty.bountiesSlain,
             difficulty: snap.difficulty,
+            trialId: snap.trialId,
             victory: snap.victoryAchieved,
           });
           if (this.settlementRecord.unlockedSkinIds.length > prevUnlockLen) {
             this.syncCosmetics(true);
           }
           this.sound.playDefeat();
+        } else if (!this.settlementRecord && !snap.gameOver && snap.tick > 0) {
+          if (snap.wave !== this.lastSavedWave) {
+            this.lastSavedWave = snap.wave;
+            this.flushActiveRunSave();
+          } else if (this.runSaveDirty && snap.tick - this.lastAutoSaveTick >= 45) {
+            this.flushActiveRunSave();
+          } else if (snap.tick - this.lastAutoSaveTick >= 150) {
+            this.flushActiveRunSave();
+          }
         }
         this.ui.sync(snap, nowMs, forcePriority);
       },
@@ -278,12 +345,36 @@ export class Game {
       },
     });
 
-    this.lifecycle = new Lifecycle(this.loop, () => {
-      const snap = this.sim.buildSnapshot(this.loop.getSpeed(), true);
-      this.ui.sync(snap, performance.now(), true);
-    });
+    this.lifecycle = new Lifecycle(
+      this.loop,
+      () => {
+        const snap = this.sim.buildSnapshot(this.loop.getSpeed(), true);
+        this.ui.sync(snap, performance.now(), true);
+      },
+      () => {
+        this.flushActiveRunSave();
+      },
+    );
 
     this.bindSimulationEvents();
+  }
+
+  private dispatchCommand(cmd: GameCommand): void {
+    this.sim.commands.enqueue(cmd);
+    this.runSaveDirty = true;
+  }
+
+  private flushActiveRunSave(): void {
+    if (this.suppressAutoSave) return;
+    if (this.sim.isGameOver || this.settlementRecord !== null) {
+      this.meta.clearActiveRun();
+      this.runSaveDirty = false;
+      return;
+    }
+    if (this.sim.tickCount <= 0) return;
+    this.meta.saveActiveRun(this.sim.exportRunSave());
+    this.lastAutoSaveTick = this.sim.tickCount;
+    this.runSaveDirty = false;
   }
 
   private syncCosmetics(repaintBg: boolean): void {
@@ -311,6 +402,7 @@ export class Game {
         bossesSlain: snap.bossesSlain,
         bountiesSlain: snap.bounty.bountiesSlain,
         difficulty: snap.difficulty,
+        trialId: snap.trialId,
         victory: snap.victoryAchieved,
       });
       if (this.settlementRecord.unlockedSkinIds.length > 0) {
@@ -348,6 +440,21 @@ export class Game {
         const unitName = unitDef?.name ?? ev.unitId;
         this.ui.showToast(`✦ 기연 초빙: ${unitName} 합류!`);
       }
+    });
+
+    this.sim.events.on('unit:sold', (ev) => {
+      this.sound.playCoinReward();
+      this.vfx.spawnMovePulse(ev.pos.x, ev.pos.y, ev.tick);
+      if (ev.luckEarned > 0) {
+        this.ui.showToast(`🧪 협객 환단 완료! 은자 +${ev.coinEarned} · 영단 +${ev.luckEarned} 획득!`);
+      } else {
+        this.ui.showToast(`🗑 협객 정리 완료 (+${ev.coinEarned} 은자)`);
+      }
+    });
+
+    this.sim.events.on('units:bulk_sold', (ev) => {
+      this.sound.playCoinReward();
+      this.ui.showToast(`🧹 대기석 삼류 ${ev.count}인 일괄 정리! (+${ev.coinEarned} 은자)`);
     });
 
     this.sim.events.on('craft:done', (ev) => {
@@ -508,6 +615,7 @@ export class Game {
     this.sim.events.on('boon:offered', () => {
       this.sound.playBoonOffer();
       this.loop.setPaused(true);
+      this.flushActiveRunSave();
       this.ui.sync(this.sim.buildSnapshot(this.loop.getSpeed(), true), performance.now(), true);
     });
 
@@ -558,8 +666,9 @@ export class Game {
 
     this.sim.events.on('run:victory', (ev) => {
       this.sound.playVictory();
+      const bannerTag = ev.trialId ? TRIAL_CONFIGS[ev.trialId].badge : '천하통일';
       this.vfx.showCraftCelebrationBanner(
-        '천하통일',
+        bannerTag,
         `제 ${ev.wave} 장 대승리!`,
         '#fde047',
         performance.now(),
@@ -626,8 +735,19 @@ export class Game {
     this.lifecycle.mount();
     this.sound.mount();
 
+    if (this.autoRestoredWave !== null) {
+      const checkSnap = this.sim.buildSnapshot(this.loop.getSpeed(), false);
+      if (checkSnap.pendingBoonOffer) {
+        this.loop.setPaused(true);
+      }
+    }
+
     const initialSnap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
     this.ui.sync(initialSnap, performance.now(), true);
+    if (this.autoRestoredWave !== null) {
+      const wStr = String(this.autoRestoredWave).padStart(2, '0');
+      this.ui.showToast(`💾 이전 출정(제 ${wStr}장) 자동 이어하기 완료!`);
+    }
     this.loop.start();
   }
 }

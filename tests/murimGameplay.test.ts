@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StampedCommand } from '../src/core/CommandQueue';
+import { getUnitSellLuckRefund, TRIAL_CONFIGS } from '../src/core/relicFormulas';
 import {
   HAZARD_WARNING_TICKS,
   Simulation,
@@ -7,7 +8,9 @@ import {
 } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
 import type { BoonId, MonsterKind } from '../src/data/types';
+import { DISCARD_DROP_RECT, isPointInDiscardZone } from '../src/input/DragController';
 import {
+  BACKUP_CODE_PREFIX,
   DEFAULT_COURT_SKIN_ID,
   MetaStore,
   SKIN_MULTI5_GOLD_COST,
@@ -139,9 +142,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('provides bespoke 1:1 pixel-art PNG sprites for all 32 units and all 6 monsters/bosses plus validated skin catalog', () => {
+  it('provides bespoke 1:1 pixel-art PNG sprites for all 35 units and all 6 monsters/bosses plus validated skin catalog', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(32);
+    expect(data.units.length).toBe(35);
     expect(data.heroSkins.length).toBe(10);
     expect(data.courtSkins.length).toBe(4);
 
@@ -165,7 +168,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     for (const kind of monsterKinds) {
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
     }
-    expect(spriteSet.size).toBe(38);
+    expect(spriteSet.size).toBe(41);
 
     const bgFiles = Object.keys(import.meta.glob('../public/bg/*.png'));
     expect(bgFiles.some((p) => p.endsWith('/murim_arena_bg.png'))).toBe(true);
@@ -1414,9 +1417,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 32 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채) and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 35 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채 & 3 new hidden Immortals) and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(32);
+    expect(data.units.length).toBe(35);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1429,10 +1432,14 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       seenStyles.add(profile.style);
     }
 
-    // All 10 distinct weapon motion archetypes must be represented in the 32-hero roster
+    // All 10 distinct weapon motion archetypes must be represented in the 35-hero roster
     expect(seenStyles.size).toBe(10);
     expect(getUnitCombatProfile('tang_patriarch').style).toBe('fan');
     expect(getUnitCombatProfile('tang_patriarch').weaponLabel).toContain('부채');
+    expect(getUnitCombatProfile('thousand_venom_lord').style).toBe('fan');
+    expect(getUnitCombatProfile('thousand_venom_lord').weaponLabel).toContain('부채');
+    expect(getUnitCombatProfile('thunder_emperor').style).toBe('dual_sword');
+    expect(getUnitCombatProfile('hell_flame_sovereign').style).toBe('sorcery_qi');
     expect(getUnitCombatProfile('tang_assassin').style).toBe('dagger_hidden');
     expect(getUnitCombatProfile('poison_healer').style).toBe('staff_gourd');
     expect(getUnitCombatProfile('shaolin_novice').style).toBe('spear_staff');
@@ -1522,6 +1529,382 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(() => synth.playHit('unorthodox', true, true, style)).not.toThrow();
       expect(() => synth.playHit('demonic', true, false, style)).not.toThrow();
     }
+  });
+
+  it('supports ×3 same-leaf promotions, alternate pivot routes, and chain synthesis of all 3 new hidden Immortals (만독신군·남궁뇌제·구천염황)', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x33557799);
+
+    const grantLeavesFor = (recipeId: string): void => {
+      const leaves = sim.recipeGraph.leafCost.get(recipeId);
+      expect(leaves, `Missing leafCost for ${recipeId}`).toBeDefined();
+      for (const [unitId, count] of leaves!) {
+        for (let i = 0; i < count; i++) {
+          sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+          sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+        }
+      }
+      sim.tick();
+    };
+
+    // 1. ×3 same-leaf promotion: 3x hwasan_novice -> plum_swordsman
+    for (let i = 0; i < 3; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    }
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_3x_hwasan_novice']?.lamp).toBe('ready');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_3x_hwasan_novice', chain: false });
+    sim.tick();
+
+    // 2. Alternate pivot route: plum_swordsman x2 + mudang_disciple x1 -> plum_elder (r_alt_plum_elder)
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'uncommon' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'uncommon', unitId: 'plum_swordsman' });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'mudang_disciple' });
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_alt_plum_elder']?.lamp).toBe('ready');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_alt_plum_elder', chain: false });
+    sim.tick();
+
+    const snapAfterAlt = sim.buildSnapshot(1, false);
+    const allSlotsAfterAlt = [...snapAfterAlt.field, ...snapAfterAlt.bench];
+    expect(allSlotsAfterAlt.some((u) => u?.unitId === 'plum_elder')).toBe(true);
+
+    // 3. Chain-craft all 3 new hidden Immortals via sub-recipes (fits comfortably inside 30 board slots)
+    const craftSub = (recipeId: string): void => {
+      grantLeavesFor(recipeId);
+      sim.commands.enqueue({ type: 'craft', recipeId, chain: true });
+      sim.tick();
+    };
+
+    // thousand_venom_lord = tang_patriarch + sword_saint + poison_healer
+    craftSub('r_tang_patriarch');
+    craftSub('r_sword_saint');
+    craftSub('r_poison_healer');
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_thousand_venom_lord']?.lamp).toBe('ready');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_thousand_venom_lord', chain: false });
+    sim.tick();
+
+    // thunder_emperor = murim_lord + sword_demon + namgung_thunder
+    craftSub('r_murim_lord');
+    craftSub('r_sword_demon');
+    craftSub('r_namgung_thunder');
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_thunder_emperor']?.lamp).toBe('ready');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_thunder_emperor', chain: false });
+    sim.tick();
+
+    // hell_flame_sovereign = mad_demon + flame_demon + cult_elder
+    craftSub('r_mad_demon');
+    craftSub('r_flame_demon');
+    craftSub('r_cult_elder');
+    expect(sim.buildSnapshot(1, false).craft.recipes['r_hell_flame_sovereign']?.lamp).toBe('ready');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_hell_flame_sovereign', chain: false });
+    sim.tick();
+
+    const finalOwned = [...sim.buildSnapshot(1, false).field, ...sim.buildSnapshot(1, false).bench]
+      .filter((u): u is NonNullable<typeof u> => u !== null)
+      .map((u) => u.unitId);
+    expect(finalOwned).toContain('thousand_venom_lord');
+    expect(finalOwned).toContain('thunder_emperor');
+    expect(finalOwned).toContain('hell_flame_sovereign');
+  });
+
+  it('refunds grade-scaled 영단 on sell, validates non-overlapping DISCARD_DROP_RECT geometry, and cleans up only unlocked bench common units via sellSurplusCommon', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x99887766);
+
+    // 1. Verify grade-scaled elixir refund table
+    expect(getUnitSellLuckRefund(1)).toEqual({ guaranteedLuck: 0, chancePct: 0 });
+    expect(getUnitSellLuckRefund(2)).toEqual({ guaranteedLuck: 0, chancePct: 35 });
+    expect(getUnitSellLuckRefund(3)).toEqual({ guaranteedLuck: 1, chancePct: 0 });
+    expect(getUnitSellLuckRefund(4)).toEqual({ guaranteedLuck: 2, chancePct: 0 });
+    expect(getUnitSellLuckRefund(5)).toEqual({ guaranteedLuck: 4, chancePct: 0 });
+    expect(getUnitSellLuckRefund(6)).toEqual({ guaranteedLuck: 7, chancePct: 0 });
+
+    // 2. Verify DISCARD_DROP_RECT strictly sits between monster corridor (y=652) & bench header (y=715)
+    //    with zero overlap against all 18 field cells and 12 bench cells
+    expect(isPointInDiscardZone(360, 684)).toBe(true);
+    expect(DISCARD_DROP_RECT.y).toBeGreaterThan(652);
+    expect(DISCARD_DROP_RECT.y + DISCARD_DROP_RECT.h).toBeLessThan(715);
+
+    const f = data.board.field;
+    for (let idx = 0; idx < f.cols * f.rows; idx++) {
+      const col = idx % f.cols;
+      const row = Math.floor(idx / f.cols);
+      const cx = f.originX + col * (f.cellW + f.gapX) + f.cellW * 0.5;
+      const cy = f.originY + row * (f.cellH + f.gapY) + f.cellH * 0.5;
+      expect(isPointInDiscardZone(cx, cy)).toBe(false);
+    }
+    const b = data.board.bench;
+    for (let idx = 0; idx < b.cols * b.rows; idx++) {
+      const col = idx % b.cols;
+      const row = Math.floor(idx / b.cols);
+      const cx = b.originX + col * (b.cellW + b.gapX) + b.cellW * 0.5;
+      const cy = b.originY + row * (b.cellH + b.gapY) + b.cellH * 0.5;
+      expect(isPointInDiscardZone(cx, cy)).toBe(false);
+    }
+
+    // 3. Sell a rare unit (plum_elder) and verify guaranteed +1 영단 + coin refund + unit:sold event
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'plum_elder' });
+    sim.tick();
+
+    const snapBeforeSell = sim.buildSnapshot(1, false);
+    const rareSlot = snapBeforeSell.field.find((u) => u?.unitId === 'plum_elder')!;
+    expect(rareSlot).toBeDefined();
+    expect(rareSlot.sellLuck).toBe(1);
+
+    const soldEvents: { coinEarned: number; luckEarned: number }[] = [];
+    sim.events.on('unit:sold', (ev) => {
+      soldEvents.push({ coinEarned: ev.coinEarned, luckEarned: ev.luckEarned });
+    });
+
+    const coinBefore = snapBeforeSell.coin;
+    const luckBefore = snapBeforeSell.luckStone;
+    sim.commands.enqueue({ type: 'sell', uid: rareSlot.uid });
+    sim.tick();
+
+    const snapAfterSell = sim.buildSnapshot(1, false);
+    expect(soldEvents).toHaveLength(1);
+    expect(soldEvents[0]?.luckEarned).toBe(1);
+    expect(snapAfterSell.luckStone).toBe(luckBefore + 1);
+    expect(snapAfterSell.coin).toBe(coinBefore + rareSlot.sellCoin);
+
+    // 4. Bulk bench cleanup (sellSurplusCommon):
+    //    Place 1 common on field[0], 2 unlocked commons on bench[0..1], 1 locked common on bench[2], 1 uncommon on bench[3]
+    for (let i = 0; i < 4; i++) {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    }
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'uncommon' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'uncommon', unitId: 'plum_swordsman' });
+    sim.tick();
+
+    // Move field[1..3] (3 commons) & field[4] (uncommon) onto bench[0..3], lock bench[2]
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 1 }, to: { area: 'bench', index: 0 } });
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 2 }, to: { area: 'bench', index: 1 } });
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 3 }, to: { area: 'bench', index: 2 } });
+    sim.commands.enqueue({ type: 'move', from: { area: 'field', index: 4 }, to: { area: 'bench', index: 3 } });
+    sim.tick();
+
+    const lockedBenchUid = sim.buildSnapshot(1, false).bench[2]!.uid;
+    sim.commands.enqueue({ type: 'lock', uid: lockedBenchUid, locked: true });
+    sim.tick();
+
+    const snapPreBulk = sim.buildSnapshot(1, false);
+    expect(snapPreBulk.benchSurplusCommonCount).toBe(2);
+
+    let bulkResult: { count: number; coinEarned: number } | null = null;
+    sim.events.on('units:bulk_sold', (ev) => {
+      bulkResult = { count: ev.count, coinEarned: ev.coinEarned };
+    });
+
+    sim.commands.enqueue({ type: 'sellSurplusCommon' });
+    sim.tick();
+
+    const snapPostBulk = sim.buildSnapshot(1, false);
+    expect(bulkResult).toEqual({ count: 2, coinEarned: 20 });
+    expect(snapPostBulk.benchSurplusCommonCount).toBe(0);
+    // Field common (field[0]), locked bench common (bench[2]), and bench uncommon (bench[3]) must remain intact!
+    expect(snapPostBulk.field[0]?.unitId).toBe('hwasan_novice');
+    expect(snapPostBulk.bench[0]).toBeNull();
+    expect(snapPostBulk.bench[1]).toBeNull();
+    expect(snapPostBulk.bench[2]?.uid).toBe(lockedBenchUid);
+    expect(snapPostBulk.bench[3]?.unitId).toBe('plum_swordsman');
+  });
+
+  it('persists & restores mid-run auto-saves with bit-exact deterministic state hashes and exports/imports tamper-checked MRD1- backup codes', () => {
+    const storeMap = new Map<string, string>();
+    const memStorage: StorageLike = {
+      getItem: (k) => storeMap.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k) => {
+        storeMap.delete(k);
+      },
+    };
+
+    const data = loadGameData();
+    const metaA = new MetaStore(memStorage);
+    metaA.grantDevMeta(1200, 5, 220);
+    const drawRes = metaA.drawRelic(data.relics, 'key', () => 0.25);
+    expect(drawRes.ok).toBe(true);
+    metaA.discoverUnit(data.unitsById.get('cheonma')!, data.gradesById.get('transcendent')!);
+
+    // Run live simulation for 320 ticks with summons, upgrades, moves, and active combat
+    const liveSim = new Simulation(data, 0x51525354, metaA.getRelicLevels(), 'normal', null);
+    liveSim.commands.enqueue({ type: 'summon' });
+    liveSim.commands.enqueue({ type: 'summon' });
+    liveSim.commands.enqueue({ type: 'summon' });
+    liveSim.commands.enqueue({ type: 'summon' });
+    liveSim.commands.enqueue({ type: 'upgrade', group: 'orthodox' });
+    for (let t = 0; t < 320; t++) {
+      liveSim.tick();
+    }
+
+    // Export mid-run snapshot -> persist via MetaStore -> reload into fresh Simulation
+    const savedRun = liveSim.exportRunSave();
+    metaA.saveActiveRun(savedRun);
+
+    const loadedRun = metaA.loadActiveRun();
+    expect(loadedRun).not.toBeNull();
+    expect(loadedRun?.currentTick).toBe(320);
+
+    const resumedSim = new Simulation(data, 0x11111111, metaA.getRelicLevels(), 'normal', null);
+    expect(resumedSim.restoreRunSave(loadedRun!)).toBe(true);
+    expect(resumedSim.hashState()).toBe(liveSim.hashState());
+
+    // Advance both original and restored simulations 400 more ticks with identical commands -> bit-exact!
+    liveSim.commands.enqueue({ type: 'summon' });
+    resumedSim.commands.enqueue({ type: 'summon' });
+    for (let t = 0; t < 400; t++) {
+      liveSim.tick();
+      resumedSim.tick();
+    }
+    expect(resumedSim.hashState()).toBe(liveSim.hashState());
+
+    // Settlement automatically clears active run save
+    metaA.settleRun({
+      wave: 12,
+      monstersSlain: 85,
+      bossesSlain: 1,
+      bountiesSlain: 1,
+      difficulty: 'normal',
+      victory: false,
+    });
+    expect(metaA.loadActiveRun()).toBeNull();
+
+    // Permanent Backup Code export -> import into brand-new storage & tamper rejection
+    const backupCode = metaA.exportBackupCode();
+    expect(backupCode.startsWith(BACKUP_CODE_PREFIX)).toBe(true);
+
+    const freshMap = new Map<string, string>();
+    const freshStorage: StorageLike = {
+      getItem: (k) => freshMap.get(k) ?? null,
+      setItem: (k, v) => {
+        freshMap.set(k, v);
+      },
+      removeItem: (k) => {
+        freshMap.delete(k);
+      },
+    };
+    const metaB = new MetaStore(freshStorage);
+    // Tampered character must fail FNV-1a integrity check
+    const tampered = `${backupCode.slice(0, -2)}${backupCode.endsWith('A') ? 'B' : 'A'}`;
+    expect(metaB.importBackupCode(tampered).ok).toBe(false);
+
+    const importOk = metaB.importBackupCode(`  ${backupCode}  `);
+    expect(importOk.ok).toBe(true);
+    expect(metaB.getProfile().gold).toBe(metaA.getProfile().gold);
+    expect(metaB.getProfile().keys).toBe(metaA.getProfile().keys);
+    expect(metaB.getProfile().silk).toBe(metaA.getProfile().silk);
+    expect(metaB.getProfile().bestWave).toBe(metaA.getProfile().bestWave);
+    expect(metaB.getProfile().discoveredUnits.cheonma).toBe(true);
+    expect(metaB.getRelicLevels()).toEqual(metaA.getRelicLevels());
+  });
+
+  it('applies 무림 비경 Secret Realm modifiers (0% interest, +28 armor/+15% gamble, +12 shred, boosted 삼재합진) and awards first-clear silk + gold + keys once', () => {
+    const data = loadGameData();
+
+    // 1. 검총비경 (trial_sword_tomb): targetWave = 15 & golden_vault interest strictly sealed to 0
+    const swordTombSim = new Simulation(
+      data,
+      0x10203040,
+      { golden_vault: 8 },
+      'normal',
+      'trial_sword_tomb',
+    );
+    const snapTomb0 = swordTombSim.buildSnapshot(1, false);
+    expect(snapTomb0.clearTargetWave).toBe(15);
+    expect(snapTomb0.trialId).toBe('trial_sword_tomb');
+    expect(snapTomb0.relicBonus.interestPct).toBe(0);
+
+    // 2. 철혈비경 (trial_crimson_iron): +15% gambleBonusPct & +28 bonus monster armor on spawn
+    const stdSim = new Simulation(data, 0x10203040, {}, 'normal', null);
+    const ironSim = new Simulation(data, 0x10203040, {}, 'normal', 'trial_crimson_iron');
+    expect(ironSim.buildSnapshot(1, false).relicBonus.gambleBonusPct).toBe(
+      stdSim.buildSnapshot(1, false).relicBonus.gambleBonusPct + 15,
+    );
+    for (let t = 0; t < 40; t++) {
+      stdSim.tick();
+      ironSim.tick();
+    }
+    const stdMob = stdSim.exportRunSave().monsters[0]!;
+    const ironMob = ironSim.exportRunSave().monsters[0]!;
+    expect(ironMob.armor).toBe(stdMob.armor + TRIAL_CONFIGS.trial_crimson_iron.bonusMonsterArmor);
+
+    // 3. 만독비경 (trial_venom_gale): Unorthodox hero gains +12 bonus armorShred
+    const venomSim = new Simulation(data, 0x10203040, {}, 'normal', 'trial_venom_gale');
+    venomSim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    venomSim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'tang_assassin' });
+    stdSim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    stdSim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'tang_assassin' });
+    venomSim.tick();
+    stdSim.tick();
+    const venomTang = venomSim.buildSnapshot(1, false).field.find((u) => u?.unitId === 'tang_assassin')!;
+    const stdTang = stdSim.buildSnapshot(1, false).field.find((u) => u?.unitId === 'tang_assassin')!;
+    expect(venomTang.armorShred).toBe(stdTang.armorShred + 12);
+
+    // 4. 삼재비경 (trial_chaos_trinity): 2 Orthodox + 2 Unorthodox + 2 Demonic activates boosted 삼재합진 (+130% vs +30%)
+    const trinitySim = new Simulation(data, 0x44556677, {}, 'normal', 'trial_chaos_trinity');
+    const baseTrinitySim = new Simulation(data, 0x44556677, {}, 'normal', null);
+    const sixRoster = [
+      'hwasan_novice',
+      'mudang_disciple',
+      'tang_assassin',
+      'nokrim_bandit',
+      'cult_initiate',
+      'bone_fiend',
+    ] as const;
+    for (const uid of sixRoster) {
+      trinitySim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      trinitySim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: uid });
+      baseTrinitySim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      baseTrinitySim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: uid });
+    }
+    trinitySim.tick();
+    baseTrinitySim.tick();
+
+    const triSnap = trinitySim.buildSnapshot(1, false);
+    const baseTriSnap = baseTrinitySim.buildSnapshot(1, false);
+    expect(triSnap.synergy.trinityActive).toBe(true);
+    expect(triSnap.field[0]!.bonusAtk).toBeGreaterThan(baseTriSnap.field[0]!.bonusAtk);
+
+    // 5. MetaStore first-clear rewards for trial_venom_gale (Wave 15 clear) -> grants firstClearGold + firstClearKeys + firstClearSilk once
+    const meta = new MetaStore(null);
+    const silkBefore = meta.getProfile().silk;
+    const rec1 = meta.settleRun({
+      wave: 15,
+      monstersSlain: 180,
+      bossesSlain: 2,
+      bountiesSlain: 1,
+      difficulty: 'normal',
+      trialId: 'trial_venom_gale',
+      victory: true,
+    });
+    expect(rec1.clearedWaves).toBe(15);
+    expect(rec1.firstClearBonusGold).toBe(TRIAL_CONFIGS.trial_venom_gale.firstClearGold);
+    expect(rec1.firstClearBonusKeys).toBe(TRIAL_CONFIGS.trial_venom_gale.firstClearKeys);
+    expect(rec1.firstClearBonusSilk).toBe(TRIAL_CONFIGS.trial_venom_gale.firstClearSilk);
+    expect(meta.getProfile().silk).toBe(silkBefore + TRIAL_CONFIGS.trial_venom_gale.firstClearSilk);
+    expect(meta.getProfile().clearedTrials.trial_venom_gale).toBe(true);
+    expect(meta.getProfile().clearedTrialCount).toBe(1);
+
+    // Second clear of the same trial must not grant duplicate first-clear bonuses
+    const rec2 = meta.settleRun({
+      wave: 15,
+      monstersSlain: 180,
+      bossesSlain: 2,
+      bountiesSlain: 1,
+      difficulty: 'normal',
+      trialId: 'trial_venom_gale',
+      victory: true,
+    });
+    expect(rec2.firstClearBonusGold).toBe(0);
+    expect(rec2.firstClearBonusKeys).toBe(0);
+    expect(rec2.firstClearBonusSilk).toBe(0);
   });
 });
 

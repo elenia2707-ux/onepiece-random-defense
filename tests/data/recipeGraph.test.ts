@@ -4,18 +4,34 @@ import { loadGameData } from '../../src/data/loader';
 import type { RecipeDef, UnitDef } from '../../src/data/types';
 
 describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
-  it('validates production Murim 3-faction game data cleanly (R1..R5)', () => {
+  it('validates production Murim 3-faction game data cleanly (35 units, 47 recipes, R1..R5)', () => {
     const data = loadGameData();
+    expect(data.units.length).toBe(35);
+    expect(data.recipes.length).toBe(47);
     const graph = new RecipeGraph(data.units, data.gradesById, data.recipes);
     expect(graph.topo.length).toBe(data.recipes.length);
     expect(graph.byOutput.get('cheonma')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('murim_lord')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('sword_saint')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('mad_demon')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('thousand_venom_lord')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('thunder_emperor')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('hell_flame_sovereign')?.length).toBeGreaterThan(0);
+    expect(graph.byOutput.get('murim_lord')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('sword_saint')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('mad_demon')?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('R1: rejects recipes referencing non-existent unit IDs', () => {
+  it('R1: accepts ×3 single-ingredient promotion recipes and rejects total count < 2 or unknown unit IDs', () => {
     const data = loadGameData();
+    const badSingleOne: RecipeDef[] = [
+      ...data.recipes,
+      {
+        id: 'r_bad_single_one',
+        output: 'plum_swordsman',
+        ingredients: [{ unit: 'hwasan_novice', n: 1 }],
+        priority: 999,
+      },
+    ];
+    expect(() => new RecipeGraph(data.units, data.gradesById, badSingleOne)).toThrow(/\[R1\]/);
+
     const badRecipes: RecipeDef[] = [
       ...data.recipes,
       {

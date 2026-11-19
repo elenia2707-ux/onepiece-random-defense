@@ -35,4 +35,9 @@ export class Rng {
   public getState(): number {
     return this.state >>> 0;
   }
+
+  public setState(state: number): void {
+    const normalized = state >>> 0;
+    this.state = normalized === 0 ? 0x6d2b79f5 : normalized;
+  }
 }

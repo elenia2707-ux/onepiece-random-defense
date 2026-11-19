@@ -18,6 +18,13 @@ export class InventoryIndex {
   private readonly unlockedCounts = new Map<UnitId, number>();
   private readonly pendingDelta = new Set<UnitId>();
 
+  public clear(): void {
+    this.byUid.clear();
+    this.byUnitId.clear();
+    this.unlockedCounts.clear();
+    this.pendingDelta.clear();
+  }
+
   public addUnit(uid: number, unitId: UnitId, slot: SlotRef, locked = false): void {
     const entry: IndexedUnitEntry = { uid, unitId, slot, locked };
     this.byUid.set(uid, entry);

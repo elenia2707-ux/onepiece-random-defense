@@ -223,6 +223,222 @@
       { "unit": "nokrim_chief", "n": 1 }
     ],
     "priority": 208
+  },
+  {
+    "id": "r_thousand_venom_lord",
+    "output": "thousand_venom_lord",
+    "ingredients": [
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "sword_saint", "n": 1 },
+      { "unit": "poison_healer", "n": 1 }
+    ],
+    "priority": 215
+  },
+  {
+    "id": "r_thunder_emperor",
+    "output": "thunder_emperor",
+    "ingredients": [
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 }
+    ],
+    "priority": 220
+  },
+  {
+    "id": "r_hell_flame_sovereign",
+    "output": "hell_flame_sovereign",
+    "ingredients": [
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "cult_elder", "n": 1 }
+    ],
+    "priority": 225
+  },
+  {
+    "id": "r_3x_hwasan_novice",
+    "output": "plum_swordsman",
+    "ingredients": [
+      { "unit": "hwasan_novice", "n": 3 }
+    ],
+    "priority": 310
+  },
+  {
+    "id": "r_3x_mudang_disciple",
+    "output": "namgung_thunder",
+    "ingredients": [
+      { "unit": "mudang_disciple", "n": 3 }
+    ],
+    "priority": 320
+  },
+  {
+    "id": "r_3x_shaolin_novice",
+    "output": "shaolin_monk",
+    "ingredients": [
+      { "unit": "shaolin_novice", "n": 3 }
+    ],
+    "priority": 330
+  },
+  {
+    "id": "r_3x_gaebang_beggar",
+    "output": "shaolin_monk",
+    "ingredients": [
+      { "unit": "gaebang_beggar", "n": 3 }
+    ],
+    "priority": 340
+  },
+  {
+    "id": "r_3x_tang_assassin",
+    "output": "poison_healer",
+    "ingredients": [
+      { "unit": "tang_assassin", "n": 3 }
+    ],
+    "priority": 350
+  },
+  {
+    "id": "r_3x_nokrim_bandit",
+    "output": "blood_blade",
+    "ingredients": [
+      { "unit": "nokrim_bandit", "n": 3 }
+    ],
+    "priority": 360
+  },
+  {
+    "id": "r_3x_haomun_ronin",
+    "output": "blood_blade",
+    "ingredients": [
+      { "unit": "haomun_ronin", "n": 3 }
+    ],
+    "priority": 370
+  },
+  {
+    "id": "r_3x_cult_initiate",
+    "output": "black_wind",
+    "ingredients": [
+      { "unit": "cult_initiate", "n": 3 }
+    ],
+    "priority": 380
+  },
+  {
+    "id": "r_3x_bone_fiend",
+    "output": "cult_protector",
+    "ingredients": [
+      { "unit": "bone_fiend", "n": 3 }
+    ],
+    "priority": 390
+  },
+  {
+    "id": "r_alt_plum_elder",
+    "output": "plum_elder",
+    "ingredients": [
+      { "unit": "plum_swordsman", "n": 2 },
+      { "unit": "mudang_disciple", "n": 1 }
+    ],
+    "priority": 410
+  },
+  {
+    "id": "r_alt_gaebang_elder",
+    "output": "gaebang_elder",
+    "ingredients": [
+      { "unit": "shaolin_monk", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 },
+      { "unit": "gaebang_beggar", "n": 1 }
+    ],
+    "priority": 420
+  },
+  {
+    "id": "r_alt_nokrim_chief",
+    "output": "nokrim_chief",
+    "ingredients": [
+      { "unit": "blood_blade", "n": 2 },
+      { "unit": "tang_assassin", "n": 1 }
+    ],
+    "priority": 430
+  },
+  {
+    "id": "r_alt_cult_elder",
+    "output": "cult_elder",
+    "ingredients": [
+      { "unit": "black_wind", "n": 2 },
+      { "unit": "bone_fiend", "n": 1 }
+    ],
+    "priority": 440
+  },
+  {
+    "id": "r_alt_hwasan_master",
+    "output": "hwasan_master",
+    "ingredients": [
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "mudang_disciple", "n": 1 }
+    ],
+    "priority": 450
+  },
+  {
+    "id": "r_alt_mudang_master",
+    "output": "mudang_master",
+    "ingredients": [
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "shaolin_monk", "n": 1 },
+      { "unit": "shaolin_novice", "n": 1 }
+    ],
+    "priority": 460
+  },
+  {
+    "id": "r_alt_tang_patriarch",
+    "output": "tang_patriarch",
+    "ingredients": [
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "poison_healer", "n": 2 }
+    ],
+    "priority": 470
+  },
+  {
+    "id": "r_alt_sword_demon",
+    "output": "sword_demon",
+    "ingredients": [
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "blood_blade", "n": 1 },
+      { "unit": "black_wind", "n": 1 }
+    ],
+    "priority": 480
+  },
+  {
+    "id": "r_alt_flame_demon",
+    "output": "flame_demon",
+    "ingredients": [
+      { "unit": "nokrim_chief", "n": 1 },
+      { "unit": "cult_protector", "n": 2 }
+    ],
+    "priority": 490
+  },
+  {
+    "id": "r_alt_sword_saint",
+    "output": "sword_saint",
+    "ingredients": [
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "sword_demon", "n": 1 }
+    ],
+    "priority": 500
+  },
+  {
+    "id": "r_alt_murim_lord",
+    "output": "murim_lord",
+    "ingredients": [
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "mudang_master", "n": 1 }
+    ],
+    "priority": 510
+  },
+  {
+    "id": "r_alt_mad_demon",
+    "output": "mad_demon",
+    "ingredients": [
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 }
+    ],
+    "priority": 520
   }
 ]
+
 

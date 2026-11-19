@@ -1,4 +1,11 @@
-import { CLEAR_TARGET_WAVE, DIFFICULTY_CONFIGS, DIFFICULTY_ORDER } from '../core/relicFormulas';
+import {
+  CLEAR_TARGET_WAVE,
+  DIFFICULTY_CONFIGS,
+  DIFFICULTY_ORDER,
+  TRIAL_CONFIGS,
+  TRIAL_ORDER,
+} from '../core/relicFormulas';
+import type { RunSaveData } from '../core/Simulation';
 import type {
   CourtSkinDef,
   CourtSkinId,
@@ -8,6 +15,7 @@ import type {
   RelicDef,
   RelicId,
   SkinRarity,
+  TrialId,
   UnitDef,
   UnitId,
 } from '../data/types';
@@ -28,6 +36,8 @@ export const SKIN_MULTI5_GOLD_COST = 540;
 export const DEFAULT_COURT_SKIN_ID: CourtSkinId = 'court_bamboo_dawn';
 
 const STORAGE_KEY = 'murim_defense_meta_v1';
+export const RUN_STORAGE_KEY = 'murim_defense_run_v1';
+export const BACKUP_CODE_PREFIX = 'MRD1-';
 const STARTER_GOLD = 120;
 const STARTER_KEYS = 2;
 const STARTER_SILK = 30;
@@ -42,6 +52,7 @@ const VALID_COURT_SKIN_SET: ReadonlySet<string> = new Set<CourtSkinId>([
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface MetaProfile {
@@ -52,8 +63,11 @@ export interface MetaProfile {
   readonly totalRuns: number;
   readonly bestWave: number;
   readonly selectedDifficulty: DifficultyId;
+  readonly selectedTrialId: TrialId | null;
   readonly unlockedDifficulties: Readonly<Record<DifficultyId, boolean>>;
   readonly clearedDifficulties: Readonly<Record<DifficultyId, boolean>>;
+  readonly clearedTrials: Readonly<Record<TrialId, boolean>>;
+  readonly clearedTrialCount: number;
   readonly discoveredUnits: Readonly<Record<UnitId, boolean>>;
   readonly discoveredCount: number;
   readonly ownedSkins: Readonly<Record<string, boolean>>;
@@ -69,6 +83,7 @@ export interface SettlementInput {
   readonly bossesSlain: number;
   readonly bountiesSlain?: number;
   readonly difficulty?: DifficultyId;
+  readonly trialId?: TrialId | null;
   readonly victory?: boolean;
 }
 
@@ -84,15 +99,30 @@ export interface SettlementRecord extends SettlementReward {
   readonly bossesSlain: number;
   readonly bountiesSlain: number;
   readonly difficulty: DifficultyId;
+  readonly trialId: TrialId | null;
   readonly victory: boolean;
   readonly firstClearBonusGold: number;
   readonly firstClearBonusKeys: number;
+  readonly firstClearBonusSilk: number;
   readonly unlockedNextDifficulty: DifficultyId | null;
   readonly unlockedSkinIds: readonly string[];
   readonly totalGold: number;
   readonly totalKeys: number;
+  readonly totalSilk: number;
   readonly isNewBest: boolean;
 }
+
+export type BackupImportResult =
+  | {
+      readonly ok: true;
+      readonly gold: number;
+      readonly discoveredCount: number;
+      readonly bestWave: number;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
 
 export interface CodexDiscoveryResult {
   readonly isNew: boolean;
@@ -204,15 +234,17 @@ export function getCodexDiscoveryReward(gradeRank: number): {
 
 export function computeSettlementReward(input: SettlementInput): SettlementReward {
   const rawWave = Math.floor(input.wave);
+  const trialCfg = input.trialId ? TRIAL_CONFIGS[input.trialId] : null;
+  const targetWave = trialCfg ? trialCfg.targetWave : CLEAR_TARGET_WAVE;
   const clearedWaves = Math.max(
     0,
-    input.victory && rawWave === CLEAR_TARGET_WAVE ? CLEAR_TARGET_WAVE : rawWave - 1,
+    input.victory && rawWave === targetWave ? targetWave : rawWave - 1,
   );
   const bosses = Math.max(0, Math.floor(input.bossesSlain));
   const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
   const kills = Math.max(0, Math.floor(input.monstersSlain));
   const diff = input.difficulty ?? 'normal';
-  const mult = DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0;
+  const mult = trialCfg ? trialCfg.rewardMult : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0);
 
   const baseGold =
     30 +
@@ -237,6 +269,72 @@ export function computeSettlementReward(input: SettlementInput): SettlementRewar
   };
 }
 
+const B64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function fnv1aHex(bytes: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i]!;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  let out = '';
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const n = (bytes[i]! << 16) | (bytes[i + 1]! << 8) | bytes[i + 2]!;
+    out +=
+      B64URL_ALPHABET[(n >>> 18) & 63]! +
+      B64URL_ALPHABET[(n >>> 12) & 63]! +
+      B64URL_ALPHABET[(n >>> 6) & 63]! +
+      B64URL_ALPHABET[n & 63]!;
+  }
+  const rem = bytes.length - i;
+  if (rem === 1) {
+    const n = bytes[i]! << 16;
+    out += B64URL_ALPHABET[(n >>> 18) & 63]! + B64URL_ALPHABET[(n >>> 12) & 63]!;
+  } else if (rem === 2) {
+    const n = (bytes[i]! << 16) | (bytes[i + 1]! << 8);
+    out +=
+      B64URL_ALPHABET[(n >>> 18) & 63]! +
+      B64URL_ALPHABET[(n >>> 12) & 63]! +
+      B64URL_ALPHABET[(n >>> 6) & 63]!;
+  }
+  return out;
+}
+
+function decodeBase64Url(str: string): Uint8Array | null {
+  const len = str.length;
+  if (len === 0 || len % 4 === 1) return null;
+  const outLen = Math.floor((len * 3) / 4);
+  const out = new Uint8Array(outLen);
+  let outIdx = 0;
+  let acc = 0;
+  let bits = 0;
+  for (let i = 0; i < len; i++) {
+    const idx = B64URL_ALPHABET.indexOf(str[i]!);
+    if (idx < 0) return null;
+    acc = (acc << 6) | idx;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[outIdx++] = (acc >>> bits) & 0xff;
+    }
+  }
+  return out;
+}
+
+function createEmptyClearedTrials(): Record<TrialId, boolean> {
+  return {
+    trial_venom_gale: false,
+    trial_sword_tomb: false,
+    trial_crimson_iron: false,
+    trial_chaos_trinity: false,
+  };
+}
+
 function resolveDefaultStorage(): StorageLike | null {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -257,6 +355,7 @@ export class MetaStore {
   private totalRuns = 0;
   private bestWave = 1;
   private selectedDifficulty: DifficultyId = 'normal';
+  private selectedTrialId: TrialId | null = null;
   private readonly unlockedDifficulties: Record<DifficultyId, boolean> = {
     normal: true,
     hard: false,
@@ -267,6 +366,7 @@ export class MetaStore {
     hard: false,
     hell: false,
   };
+  private readonly clearedTrials: Record<TrialId, boolean> = createEmptyClearedTrials();
   private readonly discoveredUnits: Record<UnitId, boolean> = {};
   private readonly ownedSkins: Record<string, boolean> = {
     [DEFAULT_COURT_SKIN_ID]: true,
@@ -284,6 +384,7 @@ export class MetaStore {
   public getProfile(): MetaProfile {
     const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
     const ownedSkinCount = Object.values(this.ownedSkins).filter(Boolean).length;
+    const clearedTrialCount = Object.values(this.clearedTrials).filter(Boolean).length;
     return {
       gold: this.gold,
       keys: this.keys,
@@ -292,8 +393,11 @@ export class MetaStore {
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
       selectedDifficulty: this.selectedDifficulty,
+      selectedTrialId: this.selectedTrialId,
       unlockedDifficulties: { ...this.unlockedDifficulties },
       clearedDifficulties: { ...this.clearedDifficulties },
+      clearedTrials: { ...this.clearedTrials },
+      clearedTrialCount,
       discoveredUnits: { ...this.discoveredUnits },
       discoveredCount,
       ownedSkins: { ...this.ownedSkins },
@@ -312,6 +416,10 @@ export class MetaStore {
     return this.selectedDifficulty;
   }
 
+  public getSelectedTrialId(): TrialId | null {
+    return this.selectedTrialId;
+  }
+
   public getEquippedHeroSkins(): Readonly<Record<UnitId, string>> {
     return { ...this.equippedHeroSkins };
   }
@@ -324,7 +432,24 @@ export class MetaStore {
     if (!this.unlockedDifficulties[diff]) {
       return false;
     }
+    if (this.selectedDifficulty !== diff || this.selectedTrialId !== null) {
+      this.clearActiveRun();
+    }
     this.selectedDifficulty = diff;
+    this.selectedTrialId = null;
+    this.rev++;
+    this.save();
+    return true;
+  }
+
+  public setSelectedTrial(trialId: TrialId | null): boolean {
+    if (trialId !== null && !(TRIAL_ORDER as readonly string[]).includes(trialId)) {
+      return false;
+    }
+    if (this.selectedTrialId !== trialId) {
+      this.clearActiveRun();
+    }
+    this.selectedTrialId = trialId;
     this.rev++;
     this.save();
     return true;
@@ -629,10 +754,12 @@ export class MetaStore {
 
   private unlockEligibleAchievementSkins(): string[] {
     const newlyUnlocked: string[] = [];
+    const anyTrialCleared = Object.values(this.clearedTrials).some(Boolean);
     const anyCleared =
       this.clearedDifficulties.normal ||
       this.clearedDifficulties.hard ||
-      this.clearedDifficulties.hell;
+      this.clearedDifficulties.hell ||
+      anyTrialCleared;
 
     if (anyCleared && !this.ownedSkins.court_golden_palace) {
       this.ownedSkins.court_golden_palace = true;
@@ -657,6 +784,7 @@ export class MetaStore {
 
   public settleRun(input: SettlementInput): SettlementRecord {
     const diff = input.difficulty ?? 'normal';
+    const trialId = input.trialId ?? null;
     const victory = Boolean(input.victory);
     const bountiesSlain = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
     const reward = computeSettlementReward(input);
@@ -665,9 +793,18 @@ export class MetaStore {
 
     let firstClearBonusGold = 0;
     let firstClearBonusKeys = 0;
+    let firstClearBonusSilk = 0;
     let unlockedNextDifficulty: DifficultyId | null = null;
 
-    if (victory && !this.clearedDifficulties[diff]) {
+    if (trialId !== null) {
+      if (victory && !this.clearedTrials[trialId]) {
+        this.clearedTrials[trialId] = true;
+        const tCfg = TRIAL_CONFIGS[trialId];
+        firstClearBonusGold = tCfg.firstClearGold;
+        firstClearBonusKeys = tCfg.firstClearKeys;
+        firstClearBonusSilk = tCfg.firstClearSilk;
+      }
+    } else if (victory && !this.clearedDifficulties[diff]) {
       this.clearedDifficulties[diff] = true;
       const cfg = DIFFICULTY_CONFIGS[diff];
       firstClearBonusGold = cfg.firstClearGold;
@@ -687,11 +824,13 @@ export class MetaStore {
 
     this.gold += totalGoldGain;
     this.keys += totalKeysGain;
+    this.silk += firstClearBonusSilk;
     this.totalRuns += 1;
     if (isNewBest) {
       this.bestWave = wave;
     }
     const unlockedSkinIds = this.unlockEligibleAchievementSkins();
+    this.clearActiveRun();
     this.rev++;
     this.save();
 
@@ -702,15 +841,18 @@ export class MetaStore {
       bossesSlain: Math.max(0, Math.floor(input.bossesSlain)),
       bountiesSlain,
       difficulty: diff,
+      trialId,
       victory,
       firstClearBonusGold,
       firstClearBonusKeys,
+      firstClearBonusSilk,
       unlockedNextDifficulty,
       unlockedSkinIds,
       goldEarned: totalGoldGain,
       keysEarned: totalKeysGain,
       totalGold: this.gold,
       totalKeys: this.keys,
+      totalSilk: this.silk,
       isNewBest,
     };
   }
@@ -725,11 +867,13 @@ export class MetaStore {
       bossesSlain: prevRecord.bossesSlain,
       bountiesSlain: prevRecord.bountiesSlain,
       difficulty: prevRecord.difficulty,
+      trialId: prevRecord.trialId,
       victory: prevRecord.victory,
     });
     const finalBase = computeSettlementReward({
       ...finalInput,
       difficulty: prevRecord.difficulty,
+      trialId: prevRecord.trialId,
       victory: prevRecord.victory,
     });
 
@@ -748,6 +892,7 @@ export class MetaStore {
       ...prevRecord.unlockedSkinIds,
       ...overtimeUnlocked.filter((id) => !prevRecord.unlockedSkinIds.includes(id)),
     ];
+    this.clearActiveRun();
     this.rev++;
     this.save();
 
@@ -766,7 +911,115 @@ export class MetaStore {
       keysEarned: prevRecord.keysEarned + deltaKeys,
       totalGold: this.gold,
       totalKeys: this.keys,
+      totalSilk: this.silk,
       isNewBest,
+    };
+  }
+
+  public saveActiveRun(run: RunSaveData): void {
+    if (!this.storage) return;
+    if (run.gameOver) {
+      this.clearActiveRun();
+      return;
+    }
+    try {
+      this.storage.setItem(RUN_STORAGE_KEY, JSON.stringify(run));
+    } catch {
+      // Quota or private browsing — ignore silently
+    }
+  }
+
+  public loadActiveRun(): RunSaveData | null {
+    if (!this.storage) return null;
+    try {
+      const raw = this.storage.getItem(RUN_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null) return null;
+      const candidate = parsed as Partial<RunSaveData>;
+      if (
+        candidate.version !== 1 ||
+        candidate.gameOver === true ||
+        typeof candidate.currentTick !== 'number' ||
+        candidate.currentTick <= 0 ||
+        typeof candidate.waveNumber !== 'number' ||
+        !Array.isArray(candidate.units) ||
+        !Array.isArray(candidate.monsters)
+      ) {
+        return null;
+      }
+      return candidate as RunSaveData;
+    } catch {
+      return null;
+    }
+  }
+
+  public clearActiveRun(): void {
+    if (!this.storage) return;
+    try {
+      if (typeof this.storage.removeItem === 'function') {
+        this.storage.removeItem(RUN_STORAGE_KEY);
+      } else {
+        this.storage.setItem(RUN_STORAGE_KEY, '');
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  public exportBackupCode(): string {
+    const json = this.serializePayload();
+    const bytes = new TextEncoder().encode(json);
+    const checksum = fnv1aHex(bytes);
+    const b64 = encodeBase64Url(bytes);
+    return `${BACKUP_CODE_PREFIX}${checksum}-${b64}`;
+  }
+
+  public importBackupCode(rawInput: string): BackupImportResult {
+    const trimmed = rawInput.trim();
+    if (!trimmed.startsWith(BACKUP_CODE_PREFIX)) {
+      return { ok: false, reason: '유효하지 않은 백업 코드 형식입니다 (MRD1- 접두사 필요).' };
+    }
+    const rest = trimmed.slice(BACKUP_CODE_PREFIX.length);
+    const sepIdx = rest.indexOf('-');
+    if (sepIdx !== 8) {
+      return { ok: false, reason: '백업 코드 검증 해시 형식이 올바르지 않습니다.' };
+    }
+    const expectedHex = rest.slice(0, 8).toLowerCase();
+    const b64Part = rest.slice(9);
+    const bytes = decodeBase64Url(b64Part);
+    if (!bytes) {
+      return { ok: false, reason: '백업 코드 본문이 손상되어 해독할 수 없습니다.' };
+    }
+    const actualHex = fnv1aHex(bytes);
+    if (actualHex !== expectedHex) {
+      return { ok: false, reason: '백업 코드 무결성 검증에 실패했습니다 (오타·변조 감지).' };
+    }
+
+    let parsed: unknown;
+    try {
+      const json = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      parsed = JSON.parse(json);
+    } catch {
+      return { ok: false, reason: '백업 데이터 JSON 파싱에 실패했습니다.' };
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { ok: false, reason: '백업 데이터 구조가 올바르지 않습니다.' };
+    }
+
+    this.resetToCleanDefaults();
+    this.applyRecord(parsed as Record<string, unknown>);
+    this.unlockEligibleAchievementSkins();
+    this.clearActiveRun();
+    this.rev++;
+    this.save();
+
+    const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
+    return {
+      ok: true,
+      gold: this.gold,
+      discoveredCount,
+      bestWave: this.bestWave,
     };
   }
 
@@ -780,6 +1033,140 @@ export class MetaStore {
     this.save();
   }
 
+  private resetToCleanDefaults(): void {
+    this.gold = STARTER_GOLD;
+    this.keys = STARTER_KEYS;
+    this.silk = STARTER_SILK;
+    for (let i = 0; i < RELIC_ORDER.length; i++) {
+      this.relics[RELIC_ORDER[i]!] = 0;
+    }
+    this.totalRuns = 0;
+    this.bestWave = 1;
+    this.selectedDifficulty = 'normal';
+    this.selectedTrialId = null;
+    this.unlockedDifficulties.normal = true;
+    this.unlockedDifficulties.hard = false;
+    this.unlockedDifficulties.hell = false;
+    this.clearedDifficulties.normal = false;
+    this.clearedDifficulties.hard = false;
+    this.clearedDifficulties.hell = false;
+    for (const t of TRIAL_ORDER) {
+      this.clearedTrials[t] = false;
+    }
+    for (const k of Object.keys(this.discoveredUnits)) {
+      delete this.discoveredUnits[k];
+    }
+    for (const k of Object.keys(this.ownedSkins)) {
+      delete this.ownedSkins[k];
+    }
+    this.ownedSkins[DEFAULT_COURT_SKIN_ID] = true;
+    for (const k of Object.keys(this.equippedHeroSkins)) {
+      delete this.equippedHeroSkins[k];
+    }
+    this.equippedCourtSkin = DEFAULT_COURT_SKIN_ID;
+  }
+
+  private applyRecord(rec: Record<string, unknown>): void {
+    if (typeof rec.gold === 'number' && Number.isFinite(rec.gold) && rec.gold >= 0) {
+      this.gold = Math.floor(rec.gold);
+    }
+    if (typeof rec.keys === 'number' && Number.isFinite(rec.keys) && rec.keys >= 0) {
+      this.keys = Math.floor(rec.keys);
+    }
+    if (typeof rec.silk === 'number' && Number.isFinite(rec.silk) && rec.silk >= 0) {
+      this.silk = Math.floor(rec.silk);
+    }
+    if (typeof rec.totalRuns === 'number' && Number.isFinite(rec.totalRuns) && rec.totalRuns >= 0) {
+      this.totalRuns = Math.floor(rec.totalRuns);
+    }
+    if (typeof rec.bestWave === 'number' && Number.isFinite(rec.bestWave) && rec.bestWave >= 1) {
+      this.bestWave = Math.floor(rec.bestWave);
+    }
+    if (typeof rec.relics === 'object' && rec.relics !== null) {
+      const relObj = rec.relics as Record<string, unknown>;
+      for (let i = 0; i < RELIC_ORDER.length; i++) {
+        const id = RELIC_ORDER[i]!;
+        const lv = relObj[id];
+        if (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) {
+          this.relics[id] = Math.min(10, Math.floor(lv));
+        }
+      }
+    }
+    if (typeof rec.unlockedDifficulties === 'object' && rec.unlockedDifficulties !== null) {
+      const uObj = rec.unlockedDifficulties as Record<string, unknown>;
+      for (const d of DIFFICULTY_ORDER) {
+        if (typeof uObj[d] === 'boolean') {
+          this.unlockedDifficulties[d] = d === 'normal' ? true : uObj[d]!;
+        }
+      }
+    }
+    if (typeof rec.clearedDifficulties === 'object' && rec.clearedDifficulties !== null) {
+      const cObj = rec.clearedDifficulties as Record<string, unknown>;
+      for (const d of DIFFICULTY_ORDER) {
+        if (typeof cObj[d] === 'boolean') {
+          this.clearedDifficulties[d] = cObj[d]!;
+        }
+      }
+    }
+    if (typeof rec.clearedTrials === 'object' && rec.clearedTrials !== null) {
+      const tObj = rec.clearedTrials as Record<string, unknown>;
+      for (const t of TRIAL_ORDER) {
+        if (typeof tObj[t] === 'boolean') {
+          this.clearedTrials[t] = tObj[t]!;
+        }
+      }
+    }
+    if (
+      typeof rec.selectedDifficulty === 'string' &&
+      (DIFFICULTY_ORDER as readonly string[]).includes(rec.selectedDifficulty)
+    ) {
+      const d = rec.selectedDifficulty as DifficultyId;
+      if (this.unlockedDifficulties[d]) {
+        this.selectedDifficulty = d;
+      }
+    }
+    if (
+      typeof rec.selectedTrialId === 'string' &&
+      (TRIAL_ORDER as readonly string[]).includes(rec.selectedTrialId)
+    ) {
+      this.selectedTrialId = rec.selectedTrialId as TrialId;
+    } else if (rec.selectedTrialId === null) {
+      this.selectedTrialId = null;
+    }
+    if (typeof rec.discoveredUnits === 'object' && rec.discoveredUnits !== null) {
+      const dObj = rec.discoveredUnits as Record<string, unknown>;
+      for (const [uid, val] of Object.entries(dObj)) {
+        if (val === true) {
+          this.discoveredUnits[uid] = true;
+        }
+      }
+    }
+    if (typeof rec.ownedSkins === 'object' && rec.ownedSkins !== null) {
+      const sObj = rec.ownedSkins as Record<string, unknown>;
+      for (const [sid, val] of Object.entries(sObj)) {
+        if (val === true) {
+          this.ownedSkins[sid] = true;
+        }
+      }
+    }
+    this.ownedSkins[DEFAULT_COURT_SKIN_ID] = true;
+    if (typeof rec.equippedHeroSkins === 'object' && rec.equippedHeroSkins !== null) {
+      const eObj = rec.equippedHeroSkins as Record<string, unknown>;
+      for (const [uid, sid] of Object.entries(eObj)) {
+        if (typeof sid === 'string' && this.ownedSkins[sid]) {
+          this.equippedHeroSkins[uid] = sid;
+        }
+      }
+    }
+    if (
+      typeof rec.equippedCourtSkin === 'string' &&
+      VALID_COURT_SKIN_SET.has(rec.equippedCourtSkin) &&
+      this.ownedSkins[rec.equippedCourtSkin]
+    ) {
+      this.equippedCourtSkin = rec.equippedCourtSkin as CourtSkinId;
+    }
+  }
+
   private load(): void {
     if (!this.storage) return;
     try {
@@ -787,114 +1174,36 @@ export class MetaStore {
       if (!raw) return;
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed !== 'object' || parsed === null) return;
-      const rec = parsed as Record<string, unknown>;
-
-      if (typeof rec.gold === 'number' && Number.isFinite(rec.gold) && rec.gold >= 0) {
-        this.gold = Math.floor(rec.gold);
-      }
-      if (typeof rec.keys === 'number' && Number.isFinite(rec.keys) && rec.keys >= 0) {
-        this.keys = Math.floor(rec.keys);
-      }
-      if (typeof rec.silk === 'number' && Number.isFinite(rec.silk) && rec.silk >= 0) {
-        this.silk = Math.floor(rec.silk);
-      }
-      if (typeof rec.totalRuns === 'number' && Number.isFinite(rec.totalRuns) && rec.totalRuns >= 0) {
-        this.totalRuns = Math.floor(rec.totalRuns);
-      }
-      if (typeof rec.bestWave === 'number' && Number.isFinite(rec.bestWave) && rec.bestWave >= 1) {
-        this.bestWave = Math.floor(rec.bestWave);
-      }
-      if (typeof rec.relics === 'object' && rec.relics !== null) {
-        const relObj = rec.relics as Record<string, unknown>;
-        for (let i = 0; i < RELIC_ORDER.length; i++) {
-          const id = RELIC_ORDER[i]!;
-          const lv = relObj[id];
-          if (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) {
-            this.relics[id] = Math.min(10, Math.floor(lv));
-          }
-        }
-      }
-      if (typeof rec.unlockedDifficulties === 'object' && rec.unlockedDifficulties !== null) {
-        const uObj = rec.unlockedDifficulties as Record<string, unknown>;
-        for (const d of DIFFICULTY_ORDER) {
-          if (typeof uObj[d] === 'boolean') {
-            this.unlockedDifficulties[d] = d === 'normal' ? true : uObj[d]!;
-          }
-        }
-      }
-      if (typeof rec.clearedDifficulties === 'object' && rec.clearedDifficulties !== null) {
-        const cObj = rec.clearedDifficulties as Record<string, unknown>;
-        for (const d of DIFFICULTY_ORDER) {
-          if (typeof cObj[d] === 'boolean') {
-            this.clearedDifficulties[d] = cObj[d]!;
-          }
-        }
-      }
-      if (
-        typeof rec.selectedDifficulty === 'string' &&
-        (DIFFICULTY_ORDER as readonly string[]).includes(rec.selectedDifficulty)
-      ) {
-        const d = rec.selectedDifficulty as DifficultyId;
-        if (this.unlockedDifficulties[d]) {
-          this.selectedDifficulty = d;
-        }
-      }
-      if (typeof rec.discoveredUnits === 'object' && rec.discoveredUnits !== null) {
-        const dObj = rec.discoveredUnits as Record<string, unknown>;
-        for (const [uid, val] of Object.entries(dObj)) {
-          if (val === true) {
-            this.discoveredUnits[uid] = true;
-          }
-        }
-      }
-      if (typeof rec.ownedSkins === 'object' && rec.ownedSkins !== null) {
-        const sObj = rec.ownedSkins as Record<string, unknown>;
-        for (const [sid, val] of Object.entries(sObj)) {
-          if (val === true) {
-            this.ownedSkins[sid] = true;
-          }
-        }
-      }
-      this.ownedSkins[DEFAULT_COURT_SKIN_ID] = true;
-      if (typeof rec.equippedHeroSkins === 'object' && rec.equippedHeroSkins !== null) {
-        const eObj = rec.equippedHeroSkins as Record<string, unknown>;
-        for (const [uid, sid] of Object.entries(eObj)) {
-          if (typeof sid === 'string' && this.ownedSkins[sid]) {
-            this.equippedHeroSkins[uid] = sid;
-          }
-        }
-      }
-      if (
-        typeof rec.equippedCourtSkin === 'string' &&
-        VALID_COURT_SKIN_SET.has(rec.equippedCourtSkin) &&
-        this.ownedSkins[rec.equippedCourtSkin]
-      ) {
-        this.equippedCourtSkin = rec.equippedCourtSkin as CourtSkinId;
-      }
+      this.applyRecord(parsed as Record<string, unknown>);
     } catch {
       // Ignore malformed storage data and retain clean defaults
     }
   }
 
+  private serializePayload(): string {
+    return JSON.stringify({
+      gold: this.gold,
+      keys: this.keys,
+      silk: this.silk,
+      relics: this.relics,
+      totalRuns: this.totalRuns,
+      bestWave: this.bestWave,
+      selectedDifficulty: this.selectedDifficulty,
+      selectedTrialId: this.selectedTrialId,
+      unlockedDifficulties: this.unlockedDifficulties,
+      clearedDifficulties: this.clearedDifficulties,
+      clearedTrials: this.clearedTrials,
+      discoveredUnits: this.discoveredUnits,
+      ownedSkins: this.ownedSkins,
+      equippedHeroSkins: this.equippedHeroSkins,
+      equippedCourtSkin: this.equippedCourtSkin,
+    });
+  }
+
   private save(): void {
     if (!this.storage) return;
     try {
-      const payload = JSON.stringify({
-        gold: this.gold,
-        keys: this.keys,
-        silk: this.silk,
-        relics: this.relics,
-        totalRuns: this.totalRuns,
-        bestWave: this.bestWave,
-        selectedDifficulty: this.selectedDifficulty,
-        unlockedDifficulties: this.unlockedDifficulties,
-        clearedDifficulties: this.clearedDifficulties,
-        discoveredUnits: this.discoveredUnits,
-        ownedSkins: this.ownedSkins,
-        equippedHeroSkins: this.equippedHeroSkins,
-        equippedCourtSkin: this.equippedCourtSkin,
-      });
-      this.storage.setItem(STORAGE_KEY, payload);
+      this.storage.setItem(STORAGE_KEY, this.serializePayload());
     } catch {
       // Quota or private-browsing error — keep in-memory state
     }
