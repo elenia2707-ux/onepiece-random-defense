@@ -35,6 +35,7 @@ import type {
   GradeId,
   MissionDef,
   MonsterKind,
+  PassiveProcKind,
   PassiveTraitDef,
   RelicId,
   SupportAuraDef,
@@ -168,6 +169,7 @@ export interface SimEventMap {
     readonly isSkill: boolean;
     readonly armorBroken: boolean;
     readonly justShattered: boolean;
+    readonly passiveProc?: PassiveProcKind;
     readonly tick: number;
   };
   'skill:impact': {

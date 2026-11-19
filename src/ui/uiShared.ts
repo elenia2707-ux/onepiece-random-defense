@@ -59,9 +59,18 @@ export const SKIN_RARITY_META: Readonly<
 
 export const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
   any_clear: '제 30 장 천하통일 제패 시 영구 해금',
+  hard_clear: '무림 고수 난이도 제 30 장 제패 시 영구 해금',
   hell_clear: '아수라 혈겁 난이도 제 30 장 제패 시 영구 해금',
+  all_trials_clear: '사대 비경 시련 4종 전부 제패 시 영구 해금',
   wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
 };
+
+export function formatTicksDuration(ticks: number): string {
+  const totalSec = Math.max(0, Math.round(ticks / 30));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}분 ${String(secs).padStart(2, '0')}초`;
+}
 
 /** Inline Oriental Wuxia SVG game icons (thick #1a1224 ink outline + bright cel fill). */
 const SVG_OPEN = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">';

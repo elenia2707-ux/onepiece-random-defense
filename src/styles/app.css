@@ -3973,3 +3973,121 @@ button {
   }
 }
 
+/* =========================================================
+   Update v6: Murim Title Reward Ladder & Trial Records
+   ========================================================= */
+.diff-best-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  background: rgba(15, 23, 42, 0.8);
+  color: #bae6fd;
+  font-size: 11.5px;
+  text-shadow: var(--outline-1);
+}
+
+.trial-record-line {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #fde68a;
+  text-shadow: var(--outline-1);
+}
+
+.title-ladder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.title-card {
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #173a37 0%, #0d2624 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  opacity: 0.9;
+}
+
+.title-card.unlocked {
+  background: linear-gradient(180deg, #1b5c55 0%, #103b37 100%);
+  opacity: 1;
+}
+
+.title-card.equipped {
+  background: linear-gradient(180deg, #713f12 0%, #422006 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.title-reward-pill {
+  padding: 1.5px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  background: rgba(15, 23, 42, 0.72);
+  color: #fef08a;
+  font-size: 11.5px;
+  text-shadow: var(--outline-1);
+}
+
+.title-reward-pill.claimed {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.title-prog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-prog-track {
+  flex: 1;
+  height: 9px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: rgba(6, 18, 17, 0.85);
+  overflow: hidden;
+}
+
+.title-prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 160ms ease-out;
+}
+
+.title-prog-txt {
+  font-size: 11.5px;
+  color: #e2e8f0;
+  text-shadow: var(--outline-1);
+  min-width: 34px;
+  text-align: right;
+}
+
+.relic-buff-pill.hud-title-pill {
+  color: #ffffff;
+  border-color: var(--ink);
+  box-shadow: 0 2px 0 var(--ink), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: var(--outline-1);
+  font-weight: 700;
+}
+
+.first-clear-banner.title-unlock-banner {
+  background: linear-gradient(180deg, #92400e 0%, #451a03 100%);
+  border-color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px #fde047;
+  color: #fef9c3;
+}
+
+

@@ -1,0 +1,98 @@
+[
+  {
+    "id": "title_novice_wanderer",
+    "name": "초출강호 협객",
+    "badge": "초출강호",
+    "color": "#38bdf8",
+    "desc": "강호 비무전에 첫 발을 내디딘 신출내기 협객 (누적 1회 출정)",
+    "condition": "total_runs",
+    "target": 1,
+    "rewardGold": 60,
+    "rewardKeys": 0,
+    "rewardSilk": 0
+  },
+  {
+    "id": "title_normal_victor",
+    "name": "강호 평정자",
+    "badge": "강호평정",
+    "color": "#22c55e",
+    "desc": "강호 초입 제30장 마신 토벌을 완수한 정통 무림인",
+    "condition": "normal_clear",
+    "target": 1,
+    "rewardGold": 150,
+    "rewardKeys": 1,
+    "rewardSilk": 0
+  },
+  {
+    "id": "title_hard_master",
+    "name": "무림 십대고수",
+    "badge": "십대고수",
+    "color": "#f59e0b",
+    "desc": "무림 고수 난이도 제30장을 돌파하여 천하에 이름을 떨친 고수",
+    "condition": "hard_clear",
+    "target": 1,
+    "rewardGold": 260,
+    "rewardKeys": 2,
+    "rewardSilk": 30
+  },
+  {
+    "id": "title_hell_sovereign",
+    "name": "아수라 혈겁 정복자",
+    "badge": "혈겁정복",
+    "color": "#ef4444",
+    "desc": "아수라 혈겁(지옥) 제30장을 제패한 극한의 천하패주",
+    "condition": "hell_clear",
+    "target": 1,
+    "rewardGold": 450,
+    "rewardKeys": 3,
+    "rewardSilk": 60
+  },
+  {
+    "id": "title_trial_conqueror",
+    "name": "사대비경 제패자",
+    "badge": "비경제패",
+    "color": "#c084fc",
+    "desc": "만독·검총·철혈·삼재 4대 비경 시련을 모두 정복한 절세 기인",
+    "condition": "all_trials_clear",
+    "target": 1,
+    "rewardGold": 500,
+    "rewardKeys": 3,
+    "rewardSilk": 80
+  },
+  {
+    "id": "title_endless_40",
+    "name": "무한혈투 마신",
+    "badge": "무한마신",
+    "color": "#fb7185",
+    "desc": "무한 혈투 연장전에서 제40장 이상을 돌파한 불멸의 투신",
+    "condition": "best_wave",
+    "target": 40,
+    "rewardGold": 350,
+    "rewardKeys": 2,
+    "rewardSilk": 50
+  },
+  {
+    "id": "title_codex_master",
+    "name": "천하 명숙록 완성자",
+    "badge": "명숙완성",
+    "color": "#fde047",
+    "desc": "강호의 모든 협객 41인을 도감에 등재한 무림 백과",
+    "condition": "discovered_units",
+    "target": 41,
+    "rewardGold": 400,
+    "rewardKeys": 3,
+    "rewardSilk": 60
+  },
+  {
+    "id": "title_relic_grandmaster",
+    "name": "육대신물 극의자",
+    "badge": "신물극의",
+    "color": "#2dd4bf",
+    "desc": "전설 신물 중 하나를 10레벨 극의 경지까지 연마한 대종사",
+    "condition": "max_relic_level",
+    "target": 10,
+    "rewardGold": 350,
+    "rewardKeys": 0,
+    "rewardSilk": 70
+  }
+]

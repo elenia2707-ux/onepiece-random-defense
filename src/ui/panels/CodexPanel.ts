@@ -1,19 +1,25 @@
 import {
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
+  TITLE_DEFS,
   TRIAL_CONFIGS,
   TRIAL_ORDER,
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
 import type { RecipeGraph } from '../../craft/RecipeGraph';
 import type { GameDataBundle, TrialId } from '../../data/types';
-import { getCodexDiscoveryReward, type MetaProfile } from '../../platform/MetaStore';
+import {
+  computeTitleProgress,
+  getCodexDiscoveryReward,
+  type MetaProfile,
+} from '../../platform/MetaStore';
 import type { SpriteCache } from '../../render/SpriteCache';
 import {
   buildUnitRoleBadgesHtml,
   type CodexFilterId,
   escapeHtml,
   FACTION_META,
+  formatTicksDuration,
   getEquippedSkinDef,
 } from '../uiShared';
 
@@ -47,17 +53,23 @@ const TRIAL_ACCENT: Readonly<Record<TrialId, string>> = {
 export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult {
   const { data, recipeGraph, sprites, snapshot, meta, codexFilter } = params;
 
-  const subtitle = `등재 협객 ${meta.discoveredCount}/${data.units.length}인 · 비경 제패 ${meta.clearedTrialCount}/${TRIAL_ORDER.length} · 초회 등재 영구 보상`;
+  const subtitle = `등재 협객 ${meta.discoveredCount}/${data.units.length}인 · 칭호 ${meta.unlockedTitleCount}/${TITLE_DEFS.length} · 비경 제패 ${meta.clearedTrialCount}/${TRIAL_ORDER.length}`;
 
   const diffCards = DIFFICULTY_ORDER.map((diff) => {
     const cfg = DIFFICULTY_CONFIGS[diff];
     const unlocked = meta.unlockedDifficulties[diff];
     const cleared = meta.clearedDifficulties[diff];
     const active = snapshot.trialId === null && snapshot.difficulty === diff;
+    const bestDiffWave = meta.difficultyBestWave[diff] ?? 0;
 
     const clearBadge = cleared
       ? '<span class="diff-clear-pill">🏆 30장 제패</span>'
       : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys}</span>`;
+
+    const bestWaveBadge =
+      bestDiffWave > 0
+        ? `<span class="diff-best-pill">최고 제 ${String(bestDiffWave).padStart(2, '0')}장</span>`
+        : '';
 
     const btnLabel = active
       ? '출정 중 ✓'
@@ -79,6 +91,7 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
             <span class="grade-pill" style="background:${DIFF_ACCENT[diff] ?? '#0f766e'}">${escapeHtml(cfg.badge)}</span>
             <span class="card-name">${escapeHtml(cfg.name)}</span>
             ${clearBadge}
+            ${bestWaveBadge}
           </div>
           <div class="card-sub">${escapeHtml(cfg.desc)}</div>
         </div>
@@ -99,9 +112,23 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     const cfg = TRIAL_CONFIGS[tid];
     const cleared = Boolean(meta.clearedTrials[tid]);
     const active = snapshot.trialId === tid;
+    const rec = meta.trialRecords[tid];
     const clearBadge = cleared
       ? `<span class="diff-clear-pill">🏆 ${cfg.targetWave}장 제패</span>`
       : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys} · 비단+${cfg.firstClearSilk}필</span>`;
+
+    const recordParts: string[] = [];
+    if (rec && (rec.clears > 0 || rec.bestWave > 0)) {
+      recordParts.push(`제패 ${rec.clears}회`);
+      recordParts.push(`최고 제 ${String(rec.bestWave).padStart(2, '0')}장`);
+      if (rec.bestTicks !== null) {
+        recordParts.push(`최단 ${formatTicksDuration(rec.bestTicks)}`);
+      }
+    }
+    const recordLineHtml =
+      recordParts.length > 0
+        ? `<div class="trial-record-line">📜 전적: ${escapeHtml(recordParts.join(' · '))}</div>`
+        : '';
 
     const btnClass = active
       ? 'card-cta-btn cta-green interactive'
@@ -119,12 +146,59 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
             ${clearBadge}
           </div>
           <div class="card-sub">${escapeHtml(cfg.desc)}</div>
+          ${recordLineHtml}
         </div>
         <button
           type="button"
           class="${btnClass}"
           data-sheet-action="select-trial"
           data-trial-id="${targetTrialAttr}"
+        >
+          <span>${btnLabel}</span>
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  const titleCards = TITLE_DEFS.map((t) => {
+    const unlocked = Boolean(meta.unlockedTitles[t.id]);
+    const equipped = meta.equippedTitle === t.id;
+    const prog = computeTitleProgress(meta, t);
+    const pct = Math.min(100, Math.round((prog.current / Math.max(1, prog.target)) * 100));
+
+    const rewardParts: string[] = [];
+    if (t.rewardGold > 0) rewardParts.push(`주화 +${t.rewardGold}`);
+    if (t.rewardKeys > 0) rewardParts.push(`열쇠 +${t.rewardKeys}`);
+    if (t.rewardSilk > 0) rewardParts.push(`비단 +${t.rewardSilk}필`);
+    const rewardLabel = rewardParts.length > 0 ? rewardParts.join(' · ') : '명예 칭호';
+
+    const btnClass = equipped
+      ? 'card-cta-btn cta-green interactive'
+      : unlocked
+        ? 'card-cta-btn cta-sky interactive'
+        : 'card-cta-btn cta-disabled';
+    const btnLabel = equipped ? '장착 중 ✓' : unlocked ? '칭호 장착' : `${prog.current}/${prog.target}`;
+
+    return `
+      <div class="title-card${unlocked ? ' unlocked' : ''}${equipped ? ' equipped' : ''}">
+        <div class="title-info">
+          <div class="card-name-row">
+            <span class="grade-pill" style="background:${t.color}">${escapeHtml(t.badge)}</span>
+            <span class="card-name">${escapeHtml(t.name)}</span>
+            <span class="title-reward-pill${unlocked ? ' claimed' : ''}">${unlocked ? '✓ ' : ''}${escapeHtml(rewardLabel)}</span>
+          </div>
+          <div class="card-sub">${escapeHtml(t.desc)}</div>
+          <div class="title-prog-row">
+            <div class="title-prog-track"><div class="title-prog-fill" style="width:${pct}%;background:${t.color}"></div></div>
+            <span class="title-prog-txt">${prog.current}/${prog.target}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="${btnClass}"
+          data-sheet-action="equip-title"
+          data-title-id="${equipped ? '' : t.id}"
+          ${unlocked ? '' : 'disabled'}
         >
           <span>${btnLabel}</span>
         </button>
@@ -254,6 +328,8 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     <div class="diff-list">${diffCards}</div>
     <div class="sheet-section-label">🌀 무림 비경 — 특수 규칙 엔드게임 시련 (${meta.clearedTrialCount}/${TRIAL_ORDER.length} 제패)</div>
     <div class="diff-list trial-list">${trialCards}</div>
+    <div class="sheet-section-label">🏅 강호 칭호 · 업적 보상 사다리 (${meta.unlockedTitleCount}/${TITLE_DEFS.length} 해금)</div>
+    <div class="title-ladder-list">${titleCards}</div>
     <div class="codex-header-bar">
       <span class="sheet-section-label">📖 무림 ${data.units.length}인 명숙록 (${meta.discoveredCount}/${data.units.length})</span>
       <div class="codex-filter-row">${filterHtml}</div>

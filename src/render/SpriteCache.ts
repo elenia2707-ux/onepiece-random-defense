@@ -37,7 +37,7 @@ const MOB_PIXEL_SIZE = 128; // 32 x 4
 const BOSS_PIXEL_SIZE = 128; // 32 x 4
 
 export type GlyphStyle = 'normal' | 'skill' | 'crit' | 'shred';
-export type HitBadgeKind = 'crit' | 'shred' | 'execute';
+export type HitBadgeKind = 'crit' | 'shred' | 'kill' | 'execute' | 'pierce' | 'boss' | 'corrode';
 export type StatusBadgeKind = 'warn' | 'sealed' | 'shield' | 'haste';
 
 interface BannerSpec {
@@ -45,6 +45,14 @@ interface BannerSpec {
   readonly title: string;
   readonly subtitle: string;
   readonly accent: string;
+}
+
+interface CutInBannerSpec {
+  readonly gradeName: string;
+  readonly unitName: string;
+  readonly skillName: string;
+  readonly accent: string;
+  readonly faction: FactionId;
 }
 
 interface SealSpec {
@@ -69,6 +77,7 @@ export class SpriteCache {
   private readonly cache = new Map<string, HTMLCanvasElement>();
   private readonly portraitUrls = new Map<string, string>();
   private readonly bannerSpecs = new Map<string, BannerSpec>();
+  private readonly cutInSpecs = new Map<string, CutInBannerSpec>();
   private readonly sealSpecs = new Map<string, SealSpec>();
   private readonly skillCalloutSpecs = new Map<string, SkillCalloutSpec>();
   private readonly hitBadgeSpecs = new Map<string, HitBadgeKind>();
@@ -100,6 +109,7 @@ export class SpriteCache {
       this.cache.delete(key);
     }
     this.bannerSpecs.delete(key);
+    this.cutInSpecs.delete(key);
     this.sealSpecs.delete(key);
     this.skillCalloutSpecs.delete(key);
     this.hitBadgeSpecs.delete(key);
@@ -114,6 +124,7 @@ export class SpriteCache {
     this.cache.clear();
     this.portraitUrls.clear();
     this.bannerSpecs.clear();
+    this.cutInSpecs.clear();
     this.sealSpecs.clear();
     this.skillCalloutSpecs.clear();
     this.hitBadgeSpecs.clear();
@@ -135,8 +146,11 @@ export class SpriteCache {
     if (typeof document === 'undefined' || !('fonts' in document)) return;
     const fonts = document.fonts;
     Promise.all([
-      fonts.load(`40px "Black Han Sans"`, 'BOSS 0123456789 剛破天魔毒血雷龍 회심 파갑 참살'),
-      fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현 매화만개 천마군림보'),
+      fonts.load(
+        `40px "Black Han Sans"`,
+        'BOSS 0123456789 剛破天魔毒血雷龍劍覇狂仙修炎魂 회심 파갑 참살 처형 관통 패왕 부식',
+      ),
+      fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현 매화만개 천마군림보 화경 현경 강림'),
     ])
       .catch(() => undefined)
       .then(() => fonts.ready)
@@ -150,6 +164,10 @@ export class SpriteCache {
     for (const [key, spec] of this.bannerSpecs) {
       const c = this.cache.get(key);
       if (c) this.paintBanner(c, spec);
+    }
+    for (const [key, spec] of this.cutInSpecs) {
+      const c = this.cache.get(key);
+      if (c) this.paintCutInBanner(c, spec);
     }
     for (const [key, spec] of this.sealSpecs) {
       const c = this.cache.get(key);
@@ -728,9 +746,34 @@ export class SpriteCache {
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.save();
 
-    const label = kind === 'crit' ? '회심!' : kind === 'shred' ? '파갑!' : '참살!';
-    const topCol = kind === 'crit' ? '#fde047' : kind === 'shred' ? '#e879f9' : '#fb7185';
-    const botCol = kind === 'crit' ? '#ea580c' : kind === 'shred' ? '#9333ea' : '#be123c';
+    let label = '참살!';
+    let topCol = '#fb7185';
+    let botCol = '#be123c';
+    if (kind === 'crit') {
+      label = '회심!';
+      topCol = '#fde047';
+      botCol = '#ea580c';
+    } else if (kind === 'shred') {
+      label = '파갑!';
+      topCol = '#e879f9';
+      botCol = '#9333ea';
+    } else if (kind === 'execute') {
+      label = '처형!';
+      topCol = '#f43f5e';
+      botCol = '#881337';
+    } else if (kind === 'pierce') {
+      label = '관통!';
+      topCol = '#38bdf8';
+      botCol = '#0369a1';
+    } else if (kind === 'boss') {
+      label = '패왕!';
+      topCol = '#fbbf24';
+      botCol = '#b45309';
+    } else if (kind === 'corrode') {
+      label = '부식!';
+      topCol = '#4ade80';
+      botCol = '#15803d';
+    }
 
     ctx.beginPath();
     ctx.roundRect(8, 5, c.width - 16, c.height - 10, 12);
@@ -993,6 +1036,138 @@ export class SpriteCache {
     ctx.strokeText(subtitle, w * 0.5, 160);
     ctx.fillStyle = '#fffbeb';
     ctx.fillText(subtitle, w * 0.5, 160);
+
+    ctx.restore();
+  }
+
+  /** Pre-rendered ascension cut-in calligraphy sash (leaves left slot open for crisp hero portrait). */
+  public cutInBanner(
+    unitId: string,
+    gradeName: string,
+    unitName: string,
+    skillName: string,
+    accentColor: string,
+    faction: FactionId,
+  ): HTMLCanvasElement {
+    const cacheKey = `cutin:${unitId}`;
+    const existing = this.cache.get(cacheKey);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(1280, 240);
+    const spec: CutInBannerSpec = {
+      gradeName,
+      unitName,
+      skillName,
+      accent: accentColor,
+      faction,
+    };
+    this.paintCutInBanner(c, spec);
+    this.cache.set(cacheKey, c);
+    this.cutInSpecs.set(cacheKey, spec);
+    return c;
+  }
+
+  private paintCutInBanner(c: HTMLCanvasElement, spec: CutInBannerSpec): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const w = c.width;
+    const h = c.height;
+    const { gradeName, unitName, skillName, accent, faction } = spec;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+
+    // Slanted martial lacquer ribbon across full width
+    ctx.beginPath();
+    ctx.moveTo(24, 34);
+    ctx.lineTo(w - 18, 18);
+    ctx.lineTo(w - 34, h - 18);
+    ctx.lineTo(10, h - 32);
+    ctx.closePath();
+
+    const bg = ctx.createLinearGradient(0, 0, w, 0);
+    if (faction === 'orthodox') {
+      bg.addColorStop(0, '#0c4a6e');
+      bg.addColorStop(0.55, '#0f2942');
+      bg.addColorStop(1, '#081b2e');
+    } else if (faction === 'unorthodox') {
+      bg.addColorStop(0, '#064e3b');
+      bg.addColorStop(0.55, '#1b1e3b');
+      bg.addColorStop(1, '#120d26');
+    } else {
+      bg.addColorStop(0, '#7f1d1d');
+      bg.addColorStop(0.55, '#3b0764');
+      bg.addColorStop(1, '#180524');
+    }
+    ctx.fillStyle = bg;
+    ctx.fill();
+
+    ctx.save();
+    ctx.clip();
+    // Dynamic martial speed rays
+    ctx.fillStyle = hexWithAlpha(accent, 0.22);
+    for (let sx = -120; sx < w + 180; sx += 110) {
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx + 44, 0);
+      ctx.lineTo(sx - 64, h);
+      ctx.lineTo(sx - 108, h);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Left portrait medallion halo
+    const halo = ctx.createRadialGradient(210, h * 0.5, 16, 210, h * 0.5, 160);
+    halo.addColorStop(0, hexWithAlpha('#fef08a', 0.55));
+    halo.addColorStop(0.55, hexWithAlpha(accent, 0.34));
+    halo.addColorStop(1, hexWithAlpha(accent, 0));
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, 420, h);
+    ctx.restore();
+
+    // Crisp outer dark-ink outline + golden inner speed trim
+    ctx.beginPath();
+    ctx.moveTo(24, 34);
+    ctx.lineTo(w - 18, 18);
+    ctx.lineTo(w - 34, h - 18);
+    ctx.lineTo(10, h - 32);
+    ctx.closePath();
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#fde047';
+    ctx.stroke();
+
+    // Right-aligned calligraphy text block (x=370..1210, portrait sits cleanly at x=90..310)
+    const textX = 385;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+
+    ctx.font = `36px ${BODY_FONT}`;
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(`✦ ${gradeName} 강림 ✦`, textX, 62);
+    ctx.fillStyle = '#fde047';
+    ctx.fillText(`✦ ${gradeName} 강림 ✦`, textX, 62);
+
+    ctx.font = `74px ${DISPLAY_FONT}`;
+    ctx.lineWidth = 15;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(unitName, textX, 126);
+    const ng = ctx.createLinearGradient(0, 88, 0, 164);
+    ng.addColorStop(0, '#fffbeb');
+    ng.addColorStop(0.65, '#fef08a');
+    ng.addColorStop(1, accent);
+    ctx.fillStyle = ng;
+    ctx.fillText(unitName, textX, 126);
+
+    ctx.font = `34px ${BODY_FONT}`;
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(`절기 「${skillName}」`, textX, 188);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(`절기 「${skillName}」`, textX, 188);
 
     ctx.restore();
   }

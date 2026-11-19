@@ -11,7 +11,21 @@ export type VfxTrackKind =
   | 'poison_rain'
   | 'blood_slash'
   | 'demonic_flame'
-  | 'heavenly_demon';
+  | 'heavenly_demon'
+  | 'tx_sword_saint'
+  | 'tx_murim_lord'
+  | 'tx_mad_demon'
+  | 'tx_poison_dragon'
+  | 'tx_demon_heir'
+  | 'tx_nether_queen'
+  | 'im_cheonma'
+  | 'im_sword_immortal'
+  | 'im_asura_emperor'
+  | 'im_venom_lord'
+  | 'im_thunder_emperor'
+  | 'im_hell_flame';
+
+export type PassiveProcKind = 'execute' | 'pierce' | 'boss' | 'corrode';
 
 export type MonsterKind =
   | 'bandit_minion'
@@ -246,6 +260,8 @@ export interface DifficultyConfig {
   readonly badge: string;
   readonly desc: string;
   readonly hpMult: number;
+  readonly lateWaveRamp: number;
+  readonly bossHpMult: number;
   readonly speedMult: number;
   readonly armorBonus: number;
   readonly rewardMult: number;
@@ -267,6 +283,8 @@ export interface TrialConfig {
   readonly desc: string;
   readonly targetWave: number;
   readonly hpMult: number;
+  readonly lateWaveRamp: number;
+  readonly bossHpMult: number;
   readonly speedMult: number;
   readonly bonusMonsterArmor: number;
   readonly bossCooldownMult: number;
@@ -308,7 +326,12 @@ export interface MissionDef {
 }
 
 export type SkinRarity = 'rare' | 'legendary' | 'mythic' | 'achievement';
-export type SkinUnlockCond = 'any_clear' | 'hell_clear' | 'wave_35';
+export type SkinUnlockCond =
+  | 'any_clear'
+  | 'hard_clear'
+  | 'hell_clear'
+  | 'wave_35'
+  | 'all_trials_clear';
 export type SkinCrestKind = 'halo' | 'crown' | 'blades' | 'orbs';
 export type CourtSkinId =
   | 'court_bamboo_dawn'
@@ -344,6 +367,31 @@ export interface CourtSkinDef {
   readonly lanternColor: string;
   readonly petalPrimary: string;
   readonly petalSecondary: string;
+}
+
+export type TitleId = string;
+
+export type TitleConditionKind =
+  | 'total_runs'
+  | 'normal_clear'
+  | 'hard_clear'
+  | 'hell_clear'
+  | 'all_trials_clear'
+  | 'best_wave'
+  | 'discovered_units'
+  | 'max_relic_level';
+
+export interface TitleDef {
+  readonly id: TitleId;
+  readonly name: string;
+  readonly badge: string;
+  readonly color: string;
+  readonly desc: string;
+  readonly condition: TitleConditionKind;
+  readonly target: number;
+  readonly rewardGold: number;
+  readonly rewardKeys: number;
+  readonly rewardSilk: number;
 }
 
 export type BoonId =
@@ -413,4 +461,6 @@ export interface GameDataBundle {
   readonly difficultiesById: ReadonlyMap<DifficultyId, DifficultyConfig>;
   readonly trials: readonly TrialConfig[];
   readonly trialsById: ReadonlyMap<TrialId, TrialConfig>;
+  readonly titles: readonly TitleDef[];
+  readonly titlesById: ReadonlyMap<TitleId, TitleDef>;
 }

@@ -141,6 +141,36 @@
       "primaryColor": "#06b6d4",
       "secondaryColor": "#e0f2fe",
       "crestKind": "blades"
+    },
+    {
+      "id": "skin_hell_flame_nirvana",
+      "unitId": "hell_flame_sovereign",
+      "name": "업화열반 구천염황",
+      "rarity": "achievement",
+      "unlockCond": "hard_clear",
+      "silkCost": 0,
+      "desc": "[업적 한정] 무림 고수 제 30 장 제패자에게 수여되는 금홍 열반염포",
+      "robeHue": 32,
+      "satMult": 1.38,
+      "lumOffset": 0.05,
+      "primaryColor": "#f59e0b",
+      "secondaryColor": "#fef08a",
+      "crestKind": "orbs"
+    },
+    {
+      "id": "skin_sword_immortal_celestial",
+      "unitId": "sword_immortal",
+      "name": "청운비선 태상검선",
+      "rarity": "achievement",
+      "unlockCond": "all_trials_clear",
+      "silkCost": 0,
+      "desc": "[업적 한정] 4대 비경 시련을 모두 정복한 절세 기인의 천상 비선예복",
+      "robeHue": 176,
+      "satMult": 1.32,
+      "lumOffset": 0.06,
+      "primaryColor": "#2dd4bf",
+      "secondaryColor": "#fef9c3",
+      "crestKind": "halo"
     }
   ],
   "courtSkins": [

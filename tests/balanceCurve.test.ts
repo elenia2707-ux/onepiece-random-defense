@@ -21,6 +21,10 @@ interface BotRunTelemetry {
   readonly peakMonsters: number;
   readonly maxBossFightTicks: number;
   readonly firstImmortalWave: number | null;
+  readonly damageByUnit: Readonly<Record<string, number>>;
+  readonly totalDamage: number;
+  readonly craftedImmortals: readonly UnitId[];
+  readonly survivingImmortals: readonly UnitId[];
 }
 
 const BENCHMARK_SEEDS: readonly number[] = [
@@ -47,6 +51,18 @@ function getMaxOwnedRank(sim: Simulation, data: GameDataBundle): number {
   return maxRank;
 }
 
+function getSurvivingImmortals(sim: Simulation, data: GameDataBundle): UnitId[] {
+  const seen = new Set<UnitId>();
+  const units = sim.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const uid = units[i]!.unitId;
+    if (data.unitsById.get(uid)?.grade === 'immortal') {
+      seen.add(uid);
+    }
+  }
+  return Array.from(seen);
+}
+
 /**
  * Opus Review Baseline "단순 봇 (소환 + 최고 조합)":
  * - Only clicks Summon + highest-rank ready/chainReady recipe + AutoArrange (+ bench common cleanup if 30/30 full).
@@ -64,6 +80,17 @@ function runNaiveBot(
   let maxBossFightTicks = 0;
   let activeBossSpawnTick: number | null = null;
   let firstImmortalWave: number | null = null;
+  const damageByUnit: Record<string, number> = {};
+  let totalDamage = 0;
+  const craftedImmortals = new Set<UnitId>();
+
+  sim.events.on('monster:hit', (ev) => {
+    damageByUnit[ev.unitId] = (damageByUnit[ev.unitId] ?? 0) + ev.damage;
+    totalDamage += ev.damage;
+  });
+  sim.events.on('craft:done', (ev) => {
+    if (ev.grade === 'immortal') craftedImmortals.add(ev.outputUnitId);
+  });
 
   const maxTicks = 42000;
   while (!sim.isGameOver && sim.tickCount < maxTicks) {
@@ -82,6 +109,10 @@ function runNaiveBot(
           peakMonsters,
           maxBossFightTicks,
           firstImmortalWave,
+          damageByUnit,
+          totalDamage,
+          craftedImmortals: Array.from(craftedImmortals),
+          survivingImmortals: getSurvivingImmortals(sim, data),
         };
       }
 
@@ -165,6 +196,10 @@ function runNaiveBot(
     peakMonsters,
     maxBossFightTicks,
     firstImmortalWave,
+    damageByUnit,
+    totalDamage,
+    craftedImmortals: Array.from(craftedImmortals),
+    survivingImmortals: getSurvivingImmortals(sim, data),
   };
 }
 
@@ -185,6 +220,17 @@ function runSmartBot(
   let maxBossFightTicks = 0;
   let activeBossSpawnTick: number | null = null;
   let firstImmortalWave: number | null = null;
+  const damageByUnit: Record<string, number> = {};
+  let totalDamage = 0;
+  const craftedImmortals = new Set<UnitId>();
+
+  sim.events.on('monster:hit', (ev) => {
+    damageByUnit[ev.unitId] = (damageByUnit[ev.unitId] ?? 0) + ev.damage;
+    totalDamage += ev.damage;
+  });
+  sim.events.on('craft:done', (ev) => {
+    if (ev.grade === 'immortal') craftedImmortals.add(ev.outputUnitId);
+  });
 
   // Choose primary carry faction adapted to trial modifier if applicable
   const preferredFaction: FactionId | null =
@@ -245,6 +291,10 @@ function runSmartBot(
           peakMonsters,
           maxBossFightTicks,
           firstImmortalWave,
+          damageByUnit,
+          totalDamage,
+          craftedImmortals: Array.from(craftedImmortals),
+          survivingImmortals: getSurvivingImmortals(sim, data),
         };
       }
 
@@ -377,11 +427,14 @@ function runSmartBot(
         sim.commands.enqueue({ type: 'callBounty' });
       }
 
-      // 6. Balance Economy: preserve interest reserve when golden_vault active, interleave Faction Upgrades & Summons
+      // 6. Balance Economy: preserve interest & million_sword_seal wealth-ATK reserve when relics are active
+      const hasWealthRelic = (relics.million_sword_seal ?? 0) > 0;
       const interestReserve =
-        snap.relicBonus.interestPct > 0 && snap.wave < snap.clearTargetWave - 2
-          ? Math.min(800, snap.wave * 45)
-          : 0;
+        hasWealthRelic && snap.wave >= 8
+          ? Math.min(3200, snap.wave * 115)
+          : snap.relicBonus.interestPct > 0 && snap.wave < snap.clearTargetWave - 2
+            ? Math.min(800, snap.wave * 45)
+            : 0;
 
       if (totalOwned >= 29 && snap.benchSurplusCommonCount > 0) {
         sim.commands.enqueue({ type: 'sellSurplusCommon' });
@@ -463,43 +516,50 @@ function runSmartBot(
     peakMonsters,
     maxBossFightTicks,
     firstImmortalWave,
+    damageByUnit,
+    totalDamage,
+    craftedImmortals: Array.from(craftedImmortals),
+    survivingImmortals: getSurvivingImmortals(sim, data),
   };
 }
 
-describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacing & Bot Stratification)', () => {
-  it('guarantees strictly monotonic monster & boss Effective HP across all 30 waves (eliminating the Wave 16 modulo-reset cliff)', () => {
+describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacing, Relic Gate & Immortal Diversity)', () => {
+  it('guarantees strictly monotonic monster & boss Effective HP across all 30 waves on Normal, Hard, and Hell', () => {
     const data = loadGameData();
     expect(data.waves.length).toBe(30);
 
-    let prevNormalEhp = 0;
-    let prevBossEhp = 0;
+    for (const diff of ['normal', 'hard', 'hell'] as readonly DifficultyId[]) {
+      let prevNormalEhp = 0;
+      let prevBossEhp = 0;
 
-    for (let w = 1; w <= 30; w++) {
-      const def = resolveWaveDef(data.waves, w);
-      expect(def.wave).toBe(w);
+      for (let w = 1; w <= 30; w++) {
+        const def = resolveWaveDef(data.waves, w);
+        expect(def.wave).toBe(w);
 
-      const hpScale = computeWaveHpScale(data, 'normal', null, w);
-      const hp = Math.round(def.monsterHp * hpScale);
-      // Base non-mutant armor for monotonic progression check
-      const baseArmor =
-        w <= 2 ? 0 : Math.min(180, Math.round(Math.max(0, w - 2) * 2.8 + (def.isBoss ? 20 : 0)));
-      const ehp = Math.round(hp * (1 + baseArmor / 100));
+        const hpScale = computeWaveHpScale(data, diff, null, w, def.isBoss);
+        const hp = Math.round(def.monsterHp * hpScale);
+        // Base non-mutant armor for monotonic progression check
+        const baseArmor =
+          w <= 2 ? 0 : Math.min(180, Math.round(Math.max(0, w - 2) * 2.8 + (def.isBoss ? 20 : 0)));
+        const ehp = Math.round(hp * (1 + baseArmor / 100));
 
-      if (def.isBoss) {
-        expect(ehp, `Boss Wave ${w} EHP (${ehp}) must exceed previous boss (${prevBossEhp})`).toBeGreaterThan(
-          prevBossEhp,
-        );
-        prevBossEhp = ehp;
-      } else {
-        expect(
-          ehp,
-          `Normal Wave ${w} EHP (${ehp}) must exceed previous normal wave (${prevNormalEhp})`,
-        ).toBeGreaterThan(prevNormalEhp);
-        prevNormalEhp = ehp;
+        if (def.isBoss) {
+          expect(
+            ehp,
+            `[${diff}] Boss Wave ${w} EHP (${ehp}) must exceed previous boss (${prevBossEhp})`,
+          ).toBeGreaterThan(prevBossEhp);
+          prevBossEhp = ehp;
+        } else {
+          expect(
+            ehp,
+            `[${diff}] Normal Wave ${w} EHP (${ehp}) must exceed previous normal wave (${prevNormalEhp})`,
+          ).toBeGreaterThan(prevNormalEhp);
+          prevNormalEhp = ehp;
+        }
       }
     }
 
-    // Specifically verify Wave 16 monster HP is higher than Wave 14 (previously dropped 95% from ~3700 to ~180!)
+    // Specifically verify Wave 16 monster HP is higher than Wave 14 (eliminating Wave 16 cliff)
     const wave14Hp = resolveWaveDef(data.waves, 14).monsterHp;
     const wave16Hp = resolveWaveDef(data.waves, 16).monsterHp;
     expect(wave16Hp).toBeGreaterThan(wave14Hp * 1.25);
@@ -522,51 +582,53 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
     const maxBossSecsNormal =
       Math.max(...normalRuns.map((r) => r.maxBossFightTicks)) / 30;
 
-    // Diagnostics log for transparent CI balance auditing
     console.info('[BalanceAudit][NaiveBot]', {
       normalWins: `${normalWins}/${BENCHMARK_SEEDS.length}`,
       hardWins: `${hardWins}/${BENCHMARK_SEEDS.length}`,
       hellWins: `${hellWins}/${BENCHMARK_SEEDS.length}`,
-      normalAvgWave:
-        normalRuns.reduce((a, r) => a + r.finalWave, 0) / normalRuns.length,
-      hardAvgWave: hardRuns.reduce((a, r) => a + r.finalWave, 0) / hardRuns.length,
-      hellAvgWave: hellRuns.reduce((a, r) => a + r.finalWave, 0) / hellRuns.length,
+      normalAvgWave: Number(
+        (normalRuns.reduce((a, r) => a + r.finalWave, 0) / normalRuns.length).toFixed(1),
+      ),
+      hardAvgWave: Number(
+        (hardRuns.reduce((a, r) => a + r.finalWave, 0) / hardRuns.length).toFixed(1),
+      ),
+      hellAvgWave: Number(
+        (hellRuns.reduce((a, r) => a + r.finalWave, 0) / hellRuns.length).toFixed(1),
+      ),
       maxRankWave1All,
-      avgPeakMonstersHell,
+      avgPeakMonstersHell: Number(avgPeakMonstersHell.toFixed(1)),
       maxBossSecsNormal: Number(maxBossSecsNormal.toFixed(1)),
     });
 
-    // 1. Wave 1 pacing: NaiveBot with 0 relics cannot hit Legendary (rank 4) during Wave 1
     expect(maxRankWave1All).toBeLessThanOrEqual(3);
-
-    // 2. Real battlefield tension: monsters accumulate (> 8 active) and bosses take > 5s (not 2s insta-melts)
     expect(avgPeakMonstersHell).toBeGreaterThanOrEqual(8);
     expect(maxBossSecsNormal).toBeGreaterThanOrEqual(5);
 
-    // 3. Stratified difficulty curve for NaiveBot (0 relics, no upgrades/elixirs/boons/wisps):
-    //    - Normal: clearable but non-trivial (20%..85%)
-    //    - Hard: punishing (<= 40%, strictly harder than Normal)
-    //    - Hell: 0% clear rate without mastery systems & relics!
     expect(normalWins).toBeGreaterThanOrEqual(2);
     expect(normalWins).toBeLessThanOrEqual(8);
     expect(hardWins).toBeLessThanOrEqual(4);
     expect(hardWins).toBeLessThan(normalWins);
     expect(hellWins).toBe(0);
-  });
+  }, 25_000);
 
-  it('proves system mastery + relics matter: SmartBot outperforms NaiveBot on Hard and clears Hell & Secret Realm Trials', () => {
+  it('enforces 0-relic endgame upper bounds (Hell & Secret Realm Trials) while Lv.6 relics unlock consistent clears', () => {
     const data = loadGameData();
 
-    // 1. Zero-relic Hard comparison: SmartBot (using wisps/upgrades/elixirs/boons/bounty) beats NaiveBot!
+    // 1. Zero-relic Hard comparison: SmartBot beats NaiveBot
     const naiveHard = BENCHMARK_SEEDS.slice(0, 6).map((s) => runNaiveBot(data, s, 'hard'));
     const smartHard = BENCHMARK_SEEDS.slice(0, 6).map((s) => runSmartBot(data, s, 'hard', {}));
-
     const naiveHardWaveSum = naiveHard.reduce((a, r) => a + r.finalWave, 0);
     const smartHardWaveSum = smartHard.reduce((a, r) => a + r.finalWave, 0);
     const naiveHardWins = naiveHard.filter((r) => r.victory).length;
     const smartHardWins = smartHard.filter((r) => r.victory).length;
 
-    // 2. Endgame progression: SmartBot with leveled relics clears Hell AND all 4 Secret Realm Trials!
+    // 2. Zero-relic Endgame UPPER BOUND: SmartBot with 0 relics MUST struggle on Hell & Trials (not free clears!)
+    const smartHell0 = BENCHMARK_SEEDS.slice(0, 5).map((s) => runSmartBot(data, s, 'hell', {}));
+    const smartHell0Wins = smartHell0.filter((r) => r.victory).length;
+    const smartHell0AvgWave =
+      smartHell0.reduce((a, r) => a + r.finalWave, 0) / smartHell0.length;
+
+    // 3. Endgame Progression with Lv.6 relics: meaningfully unlocks Hell & all 4 Secret Realm Trials
     const endgameRelics: Partial<Record<RelicId, number>> = {
       founding_jade_seal: 6,
       heavenly_scroll_chest: 6,
@@ -576,10 +638,12 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       immortal_furnace: 6,
     };
 
-    const smartHell = BENCHMARK_SEEDS.slice(0, 5).map((s) =>
+    const smartHell6 = BENCHMARK_SEEDS.slice(0, 5).map((s) =>
       runSmartBot(data, s, 'hell', endgameRelics),
     );
-    const smartHellWins = smartHell.filter((r) => r.victory).length;
+    const smartHell6Wins = smartHell6.filter((r) => r.victory).length;
+    const smartHell6AvgWave =
+      smartHell6.reduce((a, r) => a + r.finalWave, 0) / smartHell6.length;
 
     const trialIds: readonly TrialId[] = [
       'trial_venom_gale',
@@ -588,37 +652,131 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       'trial_chaos_trinity',
     ];
     const naiveTrialWins: Record<string, number> = {};
-    const smartTrialWins: Record<string, number> = {};
+    const smartTrial0Wins: Record<string, number> = {};
+    const smartTrial6Wins: Record<string, number> = {};
+    const smartTrial0AvgWave: Record<string, number> = {};
 
     for (const tid of trialIds) {
       const nRuns = BENCHMARK_SEEDS.slice(0, 4).map((s) => runNaiveBot(data, s, 'normal', tid));
-      const sRuns = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
+      const s0Runs = BENCHMARK_SEEDS.slice(0, 4).map((s) => runSmartBot(data, s, 'normal', {}, tid));
+      const s6Runs = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
         runSmartBot(data, s, 'normal', endgameRelics, tid),
       );
       naiveTrialWins[tid] = nRuns.filter((r) => r.victory).length;
-      smartTrialWins[tid] = sRuns.filter((r) => r.victory).length;
+      smartTrial0Wins[tid] = s0Runs.filter((r) => r.victory).length;
+      smartTrial6Wins[tid] = s6Runs.filter((r) => r.victory).length;
+      smartTrial0AvgWave[tid] = Number(
+        (s0Runs.reduce((a, r) => a + r.finalWave, 0) / s0Runs.length).toFixed(1),
+      );
     }
+
+    const totalNaiveTrialWins = Object.values(naiveTrialWins).reduce((a, b) => a + b, 0);
+    const totalSmartTrial0Wins = Object.values(smartTrial0Wins).reduce((a, b) => a + b, 0);
+    const totalSmartTrial6Wins = Object.values(smartTrial6Wins).reduce((a, b) => a + b, 0);
 
     console.info('[BalanceAudit][SmartBot]', {
       hard0RelicWins: `${smartHardWins}/6 (naive ${naiveHardWins}/6)`,
       hard0RelicAvgWave: `${(smartHardWaveSum / 6).toFixed(1)} vs naive ${(naiveHardWaveSum / 6).toFixed(1)}`,
-      hellEndgameWins: `${smartHellWins}/5`,
+      hell0Relic: `${smartHell0Wins}/5 (avgWave ${smartHell0AvgWave.toFixed(1)}, waves: [${smartHell0.map((r) => r.finalWave).join(',')}])`,
+      hellLv6Relic: `${smartHell6Wins}/5 (avgWave ${smartHell6AvgWave.toFixed(1)})`,
       naiveTrialWins,
-      smartTrialWins,
+      smartTrial0Wins: `${totalSmartTrial0Wins}/16 (${JSON.stringify(smartTrial0Wins)})`,
+      smartTrial0AvgWave,
+      smartTrial6Wins: `${totalSmartTrial6Wins}/16 (${JSON.stringify(smartTrial6Wins)})`,
     });
 
-    expect(
-      smartHardWins > naiveHardWins || smartHardWaveSum > naiveHardWaveSum,
-    ).toBe(true);
-    expect(smartHellWins).toBeGreaterThanOrEqual(2);
+    // Hard: SmartBot clearly outperforms NaiveBot
+    expect(smartHardWins > naiveHardWins || smartHardWaveSum > naiveHardWaveSum).toBe(true);
 
-    // Every Secret Realm trial must be clearable by SmartBot, while NaiveBot (0 relics) struggles across trials
-    const totalNaiveTrialWins = Object.values(naiveTrialWins).reduce((a, b) => a + b, 0);
-    const totalSmartTrialWins = Object.values(smartTrialWins).reduce((a, b) => a + b, 0);
-    expect(totalNaiveTrialWins).toBeLessThanOrEqual(6); // Out of 16 runs (previously 16/16 = 100%!)
-    expect(totalSmartTrialWins).toBeGreaterThan(totalNaiveTrialWins);
+    // Hell 0-relic upper bound: challenging late-game wall (<= 40% wins, NOT dying to Wave 5 RNG)
+    expect(smartHell0Wins).toBeLessThanOrEqual(2);
+    expect(smartHell0AvgWave).toBeGreaterThanOrEqual(12);
+
+    // Relics truly matter on Hell: Lv.6 strictly beats 0-relic and achieves >= 3/5 clears
+    expect(smartHell6Wins).toBeGreaterThanOrEqual(3);
+    expect(smartHell6Wins).toBeGreaterThan(smartHell0Wins);
+
+    // Secret Realm Trials: Naive struggles (<= 6/16), SmartBot 0-relic <= 50% (<= 8/16),
+    // and Lv.6 relics strictly beats 0-relic while clearing every single trial at least once!
+    expect(totalNaiveTrialWins).toBeLessThanOrEqual(6);
+    expect(totalSmartTrial0Wins).toBeLessThanOrEqual(8);
+    expect(totalSmartTrial6Wins).toBeGreaterThan(totalSmartTrial0Wins);
     for (const tid of trialIds) {
-      expect(smartTrialWins[tid], `SmartBot should clear ${tid} at least once`).toBeGreaterThanOrEqual(1);
+      expect(
+        smartTrial6Wins[tid],
+        `SmartBot Lv.6 should clear ${tid} at least once`,
+      ).toBeGreaterThanOrEqual(1);
     }
-  });
+  }, 30_000);
+
+  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs', () => {
+    const data = loadGameData();
+    const immortalIds = data.units.filter((u) => u.grade === 'immortal').map((u) => u.id);
+    expect(immortalIds.length).toBe(6);
+
+    const midRelics: Partial<Record<RelicId, number>> = {
+      founding_jade_seal: 3,
+      heavenly_scroll_chest: 3,
+      golden_vault: 3,
+      million_sword_seal: 3,
+      bandit_dagger: 3,
+      immortal_furnace: 3,
+    };
+
+    const runs = BENCHMARK_SEEDS.map((s) => runSmartBot(data, s, 'hard', midRelics));
+    const immortalDmg: Record<string, number> = {};
+    const immortalCraftCount: Record<string, number> = {};
+    const immortalSurviveCount: Record<string, number> = {};
+    for (const id of immortalIds) {
+      immortalDmg[id] = 0;
+      immortalCraftCount[id] = 0;
+      immortalSurviveCount[id] = 0;
+    }
+
+    let totalImmortalDmg = 0;
+    let totalAllDmg = 0;
+    for (const r of runs) {
+      totalAllDmg += r.totalDamage;
+      for (const id of immortalIds) {
+        const d = r.damageByUnit[id] ?? 0;
+        immortalDmg[id] = (immortalDmg[id] ?? 0) + d;
+        totalImmortalDmg += d;
+      }
+      for (const id of r.craftedImmortals) {
+        immortalCraftCount[id] = (immortalCraftCount[id] ?? 0) + 1;
+      }
+      for (const id of r.survivingImmortals) {
+        immortalSurviveCount[id] = (immortalSurviveCount[id] ?? 0) + 1;
+      }
+    }
+
+    const immortalSharePct: Record<string, number> = {};
+    let maxSharePct = 0;
+    let activeImmortalCount = 0;
+    for (const id of immortalIds) {
+      const pct = totalImmortalDmg > 0 ? ((immortalDmg[id] ?? 0) / totalImmortalDmg) * 100 : 0;
+      immortalSharePct[id] = Number(pct.toFixed(1));
+      if (pct > maxSharePct) maxSharePct = pct;
+      if (pct >= 5) activeImmortalCount++;
+    }
+
+    console.info('[BalanceAudit][Immortals]', {
+      wins: `${runs.filter((r) => r.victory).length}/${runs.length}`,
+      immortalShareOfTotalPct: Number(
+        ((totalImmortalDmg / Math.max(1, totalAllDmg)) * 100).toFixed(1),
+      ),
+      immortalSharePct,
+      immortalCraftCount,
+      immortalSurviveCount,
+    });
+
+    // At least 4 of 6 Immortals must participate meaningfully (>= 5% Immortal share each)
+    expect(activeImmortalCount).toBeGreaterThanOrEqual(4);
+    // No single Immortal may monopolize > 35% of total Immortal damage (previously top 3 held 80%!)
+    expect(maxSharePct).toBeLessThanOrEqual(35);
+    // Previously never-surviving sword_immortal & asura_emperor must actually appear in runs
+    expect(
+      (immortalSurviveCount.sword_immortal ?? 0) + (immortalSurviveCount.asura_emperor ?? 0),
+    ).toBeGreaterThanOrEqual(2);
+  }, 25_000);
 });

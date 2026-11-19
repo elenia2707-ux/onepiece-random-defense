@@ -170,7 +170,7 @@
       { "unit": "plum_elder", "n": 1 },
       { "unit": "namgung_thunder", "n": 1 }
     ],
-    "priority": 180
+    "priority": 546
   },
   {
     "id": "r_murim_lord",
@@ -180,79 +180,77 @@
       { "unit": "gaebang_elder", "n": 1 },
       { "unit": "shaolin_monk", "n": 1 }
     ],
-    "priority": 190
+    "priority": 542
   },
   {
     "id": "r_mad_demon",
     "output": "mad_demon",
     "ingredients": [
-      { "unit": "tang_patriarch", "n": 1 },
-      { "unit": "blood_demon", "n": 1 }
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "tang_elder", "n": 1 },
+      { "unit": "blood_blade", "n": 1 }
     ],
-    "priority": 200
+    "priority": 550
   },
   {
     "id": "r_cheonma",
     "output": "cheonma",
     "ingredients": [
-      { "unit": "murim_lord", "n": 1 },
-      { "unit": "mad_demon", "n": 1 },
+      { "unit": "heavenly_demon_heir", "n": 1 },
       { "unit": "sword_demon", "n": 1 },
-      { "unit": "flame_demon", "n": 1 }
+      { "unit": "cult_elder", "n": 1 }
     ],
-    "priority": 210
+    "priority": 620
   },
   {
     "id": "r_sword_immortal",
     "output": "sword_immortal",
     "ingredients": [
       { "unit": "sword_saint", "n": 1 },
-      { "unit": "murim_lord", "n": 1 },
       { "unit": "hwasan_master", "n": 1 },
-      { "unit": "mudang_master", "n": 1 }
+      { "unit": "plum_elder", "n": 1 }
     ],
-    "priority": 205
+    "priority": 618
   },
   {
     "id": "r_asura_emperor",
     "output": "asura_emperor",
     "ingredients": [
       { "unit": "mad_demon", "n": 1 },
-      { "unit": "tang_patriarch", "n": 1 },
       { "unit": "blood_demon", "n": 1 },
       { "unit": "nokrim_chief", "n": 1 }
     ],
-    "priority": 208
+    "priority": 616
   },
   {
     "id": "r_thousand_venom_lord",
     "output": "thousand_venom_lord",
     "ingredients": [
+      { "unit": "poison_dragon", "n": 1 },
       { "unit": "tang_patriarch", "n": 1 },
-      { "unit": "sword_saint", "n": 1 },
-      { "unit": "poison_healer", "n": 1 }
+      { "unit": "tang_elder", "n": 1 }
     ],
-    "priority": 215
+    "priority": 614
   },
   {
     "id": "r_thunder_emperor",
     "output": "thunder_emperor",
     "ingredients": [
       { "unit": "murim_lord", "n": 1 },
-      { "unit": "sword_demon", "n": 1 },
-      { "unit": "namgung_thunder", "n": 1 }
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "plum_elder", "n": 1 }
     ],
-    "priority": 220
+    "priority": 612
   },
   {
     "id": "r_hell_flame_sovereign",
     "output": "hell_flame_sovereign",
     "ingredients": [
-      { "unit": "mad_demon", "n": 1 },
+      { "unit": "nether_blade_queen", "n": 1 },
       { "unit": "flame_demon", "n": 1 },
       { "unit": "cult_elder", "n": 1 }
     ],
-    "priority": 225
+    "priority": 610
   },
   {
     "id": "r_3x_hwasan_novice",
@@ -456,25 +454,25 @@
       { "unit": "tang_elder", "n": 1 },
       { "unit": "poison_healer", "n": 1 }
     ],
-    "priority": 202
+    "priority": 544
   },
   {
     "id": "r_heavenly_demon_heir",
     "output": "heavenly_demon_heir",
     "ingredients": [
       { "unit": "sword_demon", "n": 1 },
-      { "unit": "flame_demon", "n": 1 },
-      { "unit": "blood_bishop", "n": 1 }
+      { "unit": "blood_bishop", "n": 1 },
+      { "unit": "black_wind", "n": 1 }
     ],
-    "priority": 204
+    "priority": 548
   },
   {
     "id": "r_alt_mad_demon",
     "output": "mad_demon",
     "ingredients": [
-      { "unit": "blood_demon", "n": 1 },
-      { "unit": "flame_demon", "n": 1 },
-      { "unit": "nokrim_chief", "n": 1 }
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 },
+      { "unit": "blood_blade", "n": 1 }
     ],
     "priority": 520
   },
@@ -486,7 +484,7 @@
       { "unit": "plum_swordsman", "n": 1 },
       { "unit": "tang_assassin", "n": 1 }
     ],
-    "priority": 525
+    "priority": 495
   },
   {
     "id": "r_alt_blood_bishop",
@@ -495,7 +493,7 @@
       { "unit": "cult_protector", "n": 2 },
       { "unit": "cult_initiate", "n": 1 }
     ],
-    "priority": 530
+    "priority": 496
   },
   {
     "id": "r_alt_tang_patriarch_elder",
@@ -505,7 +503,7 @@
       { "unit": "poison_healer", "n": 1 },
       { "unit": "haomun_ronin", "n": 1 }
     ],
-    "priority": 535
+    "priority": 497
   },
   {
     "id": "r_alt_flame_demon_bishop",
@@ -515,7 +513,17 @@
       { "unit": "black_wind", "n": 1 },
       { "unit": "bone_fiend", "n": 1 }
     ],
-    "priority": 540
+    "priority": 498
+  },
+  {
+    "id": "r_alt_blood_demon",
+    "output": "blood_demon",
+    "ingredients": [
+      { "unit": "tang_elder", "n": 1 },
+      { "unit": "blood_blade", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 499
   },
   {
     "id": "r_alt_poison_dragon",
@@ -525,7 +533,7 @@
       { "unit": "tang_elder", "n": 1 },
       { "unit": "nokrim_chief", "n": 1 }
     ],
-    "priority": 545
+    "priority": 518
   },
   {
     "id": "r_alt_heavenly_demon_heir",
@@ -535,17 +543,27 @@
       { "unit": "cult_elder", "n": 1 },
       { "unit": "blood_bishop", "n": 1 }
     ],
-    "priority": 550
+    "priority": 522
   },
   {
-    "id": "r_alt_cheonma_heir",
+    "id": "r_alt_cheonma_queen",
     "output": "cheonma",
     "ingredients": [
-      { "unit": "heavenly_demon_heir", "n": 1 },
-      { "unit": "murim_lord", "n": 1 },
-      { "unit": "mad_demon", "n": 1 }
+      { "unit": "nether_blade_queen", "n": 1 },
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 }
     ],
-    "priority": 560
+    "priority": 595
+  },
+  {
+    "id": "r_alt_sword_immortal",
+    "output": "sword_immortal",
+    "ingredients": [
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 }
+    ],
+    "priority": 594
   },
   {
     "id": "r_alt_hell_flame_heir",
@@ -555,27 +573,83 @@
       { "unit": "flame_demon", "n": 1 },
       { "unit": "blood_bishop", "n": 1 }
     ],
-    "priority": 565
+    "priority": 590
   },
   {
-    "id": "r_alt_venom_lord_dragon",
+    "id": "r_alt_thunder_emperor",
+    "output": "thunder_emperor",
+    "ingredients": [
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 }
+    ],
+    "priority": 591
+  },
+  {
+    "id": "r_alt_venom_lord_saint",
     "output": "thousand_venom_lord",
     "ingredients": [
-      { "unit": "poison_dragon", "n": 1 },
+      { "unit": "sword_saint", "n": 1 },
       { "unit": "tang_patriarch", "n": 1 },
       { "unit": "tang_elder", "n": 1 }
     ],
-    "priority": 570
+    "priority": 592
   },
   {
     "id": "r_alt_asura_dragon",
     "output": "asura_emperor",
     "ingredients": [
       { "unit": "poison_dragon", "n": 1 },
-      { "unit": "mad_demon", "n": 1 },
-      { "unit": "blood_demon", "n": 1 }
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 }
     ],
-    "priority": 575
+    "priority": 593
+  },
+  {
+    "id": "r_3x_blood_acolyte",
+    "output": "black_wind",
+    "ingredients": [
+      { "unit": "blood_acolyte", "n": 3 }
+    ],
+    "priority": 395
+  },
+  {
+    "id": "r_alt_cult_protector_acolyte",
+    "output": "cult_protector",
+    "ingredients": [
+      { "unit": "cult_initiate", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 75
+  },
+  {
+    "id": "r_alt_blood_blade_acolyte",
+    "output": "blood_blade",
+    "ingredients": [
+      { "unit": "nokrim_bandit", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 55
+  },
+  {
+    "id": "r_nether_blade_queen",
+    "output": "nether_blade_queen",
+    "ingredients": [
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 },
+      { "unit": "cult_protector", "n": 1 }
+    ],
+    "priority": 540
+  },
+  {
+    "id": "r_alt_nether_blade_queen",
+    "output": "nether_blade_queen",
+    "ingredients": [
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "cult_elder", "n": 1 },
+      { "unit": "blood_blade", "n": 1 }
+    ],
+    "priority": 516
   }
 ]
 

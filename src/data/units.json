@@ -237,6 +237,32 @@
     }
   },
   {
+    "id": "blood_acolyte",
+    "name": "혈영 교도",
+    "title": "혈영대 암살교도",
+    "faction": "demonic",
+    "grade": "common",
+    "leaf": true,
+    "atk": 23,
+    "range": 214,
+    "attackIntervalSec": 0.7,
+    "critChance": 0.19,
+    "critMult": 2.0,
+    "sellCoin": 10,
+    "armorShred": 5,
+    "skill": {
+      "name": "혈영암침",
+      "desc": "3타마다 핏빛 혈영 비침이 날아들어 195% 범위 피해 및 파갑",
+      "everyN": 3,
+      "atkRatio": 1.95,
+      "splashRadius": 66,
+      "stunSec": 0,
+      "slowPct": 0.24,
+      "slowSec": 1.5,
+      "vfxTrack": "blood_slash"
+    }
+  },
+  {
     "id": "plum_swordsman",
     "name": "매화검수",
     "title": "화산파 이십사수매화검",
@@ -466,6 +492,11 @@
     "critMult": 2.15,
     "sellCoin": 75,
     "armorShred": 18,
+    "supportAura": {
+      "name": "타구호법진",
+      "atkPct": 14,
+      "speedPct": 10
+    },
     "skill": {
       "name": "항룡십팔장",
       "desc": "3타마다 금강 항룡 파동 260% 광역 피해 및 0.55초 기절",
@@ -518,6 +549,11 @@
     "critMult": 2.35,
     "sellCoin": 75,
     "armorShred": 24,
+    "supportAura": {
+      "name": "오독비전진",
+      "atkPct": 10,
+      "speedPct": 16
+    },
     "skill": {
       "name": "오독추혼침",
       "desc": "3타마다 맹독 비침이 만개해 262% 광역 피해 및 파갑·감속",
@@ -574,6 +610,11 @@
     "critMult": 2.32,
     "sellCoin": 75,
     "armorShred": 16,
+    "supportAura": {
+      "name": "적혈선봉진",
+      "atkPct": 18,
+      "speedPct": 6
+    },
     "skill": {
       "name": "혈마파천극",
       "desc": "3타마다 초승달 혈극이 내리꽂혀 272% 광역 피해 및 0.65초 기절",
@@ -757,16 +798,22 @@
     "critChance": 0.44,
     "critMult": 2.75,
     "sellCoin": 480,
+    "passiveTrait": {
+      "id": "sword_saint_pierce",
+      "name": "무극검기",
+      "desc": "적의 남은 호신강기 방어력을 35% 관통하여 베어내는 무극 검성",
+      "armorPiercePct": 0.35
+    },
     "skill": {
       "name": "만검귀종 · 매화절검",
-      "desc": "3타마다 만개한 매화 신검이 쏟아져 355% 광역 피해 및 0.9초 기절",
+      "desc": "3타마다 6자루 비검과 매화 신검이 쇄도해 355% 광역 피해 및 0.9초 기절",
       "everyN": 3,
       "atkRatio": 3.55,
       "splashRadius": 176,
       "stunSec": 0.9,
       "slowPct": 0.45,
       "slowSec": 2.4,
-      "vfxTrack": "plum_blossom"
+      "vfxTrack": "tx_sword_saint"
     }
   },
   {
@@ -787,16 +834,22 @@
       "atkPct": 24,
       "speedPct": 12
     },
+    "passiveTrait": {
+      "id": "murim_lord_authority",
+      "name": "맹주위엄",
+      "desc": "영물 보스 및 현상수배범에게 입히는 최종 피해 +26% 정파 위엄",
+      "bossDamagePct": 26
+    },
     "skill": {
       "name": "제왕검형 · 천하호령",
-      "desc": "3타마다 청백 제왕 낙뢰가 내리꽂혀 345% 광역 피해 및 1.05초 기절",
+      "desc": "3타마다 황금 용기둥과 청백 제왕 낙뢰가 내리꽂혀 345% 광역 피해 및 1.05초 기절",
       "everyN": 3,
       "atkRatio": 3.45,
       "splashRadius": 184,
       "stunSec": 1.05,
       "slowPct": 0.5,
       "slowSec": 2.5,
-      "vfxTrack": "emperor_thunder"
+      "vfxTrack": "tx_murim_lord"
     }
   },
   {
@@ -806,23 +859,30 @@
     "faction": "unorthodox",
     "grade": "transcendent",
     "leaf": false,
-    "atk": 1260,
+    "atk": 1280,
     "range": 270,
-    "attackIntervalSec": 0.45,
+    "attackIntervalSec": 0.44,
     "critChance": 0.42,
     "critMult": 2.75,
     "sellCoin": 480,
     "armorShred": 34,
+    "passiveTrait": {
+      "id": "mad_demon_slaughter",
+      "name": "광마살기",
+      "desc": "체력 50% 이하로 약화된 마물·보스 처형 피해 +38% 광폭 증폭",
+      "executeBelowHpPct": 0.5,
+      "executeDamagePct": 38
+    },
     "skill": {
       "name": "광마난무 · 적혈천하",
-      "desc": "3타마다 광기 어린 적혈 참격이 폭발해 355% 광역 피해 및 0.95초 기절",
+      "desc": "3타마다 3연속 적혈 광마조와 혈풍이 폭발해 355% 광역 피해 및 0.95초 기절",
       "everyN": 3,
       "atkRatio": 3.55,
       "splashRadius": 180,
       "stunSec": 0.95,
       "slowPct": 0.45,
       "slowSec": 2.4,
-      "vfxTrack": "blood_slash"
+      "vfxTrack": "tx_mad_demon"
     }
   },
   {
@@ -852,14 +912,14 @@
     },
     "skill": {
       "name": "만독혈사편 · 독룡출해",
-      "desc": "3타마다 맹독 사슬채찍이 휘몰아쳐 348% 광역 피해 및 극감속",
+      "desc": "3타마다 맹독 사슬채찍과 독룡아가 휘몰아쳐 348% 광역 피해 및 극감속",
       "everyN": 3,
       "atkRatio": 3.48,
       "splashRadius": 192,
       "stunSec": 0.65,
       "slowPct": 0.58,
       "slowSec": 2.8,
-      "vfxTrack": "poison_rain"
+      "vfxTrack": "tx_poison_dragon"
     }
   },
   {
@@ -893,7 +953,44 @@
       "stunSec": 0.95,
       "slowPct": 0.4,
       "slowSec": 2.2,
-      "vfxTrack": "heavenly_demon"
+      "vfxTrack": "tx_demon_heir"
+    }
+  },
+  {
+    "id": "nether_blade_queen",
+    "name": "명혼마후",
+    "title": "유혼마궁 절세마후",
+    "faction": "demonic",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1180,
+    "range": 282,
+    "attackIntervalSec": 0.44,
+    "critChance": 0.42,
+    "critMult": 2.75,
+    "sellCoin": 480,
+    "armorShred": 36,
+    "supportAura": {
+      "name": "명혼마진",
+      "atkPct": 22,
+      "speedPct": 16
+    },
+    "passiveTrait": {
+      "id": "nether_corrode",
+      "name": "명혼부식",
+      "desc": "파갑된 적 대상 최종 피해 +32% · 광역 마염파갑 36 및 아군 마진 지원",
+      "shreddedDamagePct": 32
+    },
+    "skill": {
+      "name": "명혼만화 · 유혼마진",
+      "desc": "3타마다 흑자색 유혼 연꽃과 6귀화가 회전 폭발해 350% 광역 피해 및 0.85초 기절",
+      "everyN": 3,
+      "atkRatio": 3.5,
+      "splashRadius": 188,
+      "stunSec": 0.85,
+      "slowPct": 0.5,
+      "slowSec": 2.6,
+      "vfxTrack": "tx_nether_queen"
     }
   },
   {
@@ -903,13 +1000,13 @@
     "faction": "demonic",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3150,
+    "atk": 3280,
     "range": 335,
-    "attackIntervalSec": 0.43,
-    "critChance": 0.5,
-    "critMult": 3.0,
+    "attackIntervalSec": 0.42,
+    "critChance": 0.52,
+    "critMult": 3.05,
     "sellCoin": 1400,
-    "armorShred": 30,
+    "armorShred": 32,
     "supportAura": {
       "name": "천마군림진",
       "atkPct": 30,
@@ -918,19 +1015,19 @@
     "passiveTrait": {
       "id": "overlord_dominion",
       "name": "천마위압",
-      "desc": "영물 보스 및 현상수배범에게 입히는 최종 피해 +38% 패왕 증폭",
-      "bossDamagePct": 38
+      "desc": "영물 보스 및 현상수배범에게 입히는 최종 피해 +45% 패왕 증폭",
+      "bossDamagePct": 45
     },
     "skill": {
       "name": "천마군림보 · 공간파쇄",
-      "desc": "3타마다 검붉은 흑뢰가 공간을 찢어 415% 전장 초토화 및 1.25초 기절",
+      "desc": "3타마다 8각 혈성 흑뢰가 공간을 찢어 415% 전장 초토화 및 1.25초 기절",
       "everyN": 3,
       "atkRatio": 4.15,
       "splashRadius": 225,
       "stunSec": 1.25,
       "slowPct": 0.55,
       "slowSec": 3.0,
-      "vfxTrack": "heavenly_demon"
+      "vfxTrack": "im_cheonma"
     }
   },
   {
@@ -940,34 +1037,35 @@
     "faction": "orthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 4280,
+    "atk": 3920,
     "range": 395,
-    "attackIntervalSec": 0.62,
-    "critChance": 0.68,
-    "critMult": 3.8,
+    "attackIntervalSec": 0.52,
+    "critChance": 0.66,
+    "critMult": 3.65,
     "sellCoin": 1400,
-    "armorShred": 22,
+    "armorShred": 24,
     "supportAura": {
       "name": "태상검진",
       "atkPct": 24,
-      "speedPct": 14
+      "speedPct": 16
     },
     "passiveTrait": {
       "id": "immortal_pierce",
       "name": "만검관통",
-      "desc": "초장거리(395) 극치명 저격 · 적의 남은 호신강기 방어력을 60% 무시",
-      "armorPiercePct": 0.6
+      "desc": "초장거리(395) 극치명 저격 · 적 호신강기 70% 관통 및 보스 피해 +22%",
+      "armorPiercePct": 0.7,
+      "bossDamagePct": 22
     },
     "skill": {
       "name": "태상무극 · 만검천하",
-      "desc": "3타마다 선계의 황금·청백 신검이 집중 낙하해 445% 관통 피해 및 1.15초 기절",
+      "desc": "3타마다 선계 검진에서 9자루 신검이 쏟아져 410% 관통 피해 및 1.15초 기절",
       "everyN": 3,
-      "atkRatio": 4.45,
-      "splashRadius": 175,
+      "atkRatio": 4.1,
+      "splashRadius": 205,
       "stunSec": 1.15,
       "slowPct": 0.5,
       "slowSec": 2.8,
-      "vfxTrack": "emperor_thunder"
+      "vfxTrack": "im_sword_immortal"
     }
   },
   {
@@ -978,10 +1076,10 @@
     "grade": "immortal",
     "leaf": false,
     "atk": 1960,
-    "range": 305,
-    "attackIntervalSec": 0.25,
-    "critChance": 0.54,
-    "critMult": 3.05,
+    "range": 318,
+    "attackIntervalSec": 0.24,
+    "critChance": 0.56,
+    "critMult": 3.15,
     "sellCoin": 1400,
     "armorShred": 38,
     "supportAura": {
@@ -992,20 +1090,20 @@
     "passiveTrait": {
       "id": "asura_execute",
       "name": "수라처형",
-      "desc": "0.25초 초고속 광란 쌍도 연타 · 체력 45% 이하 마물·보스 피해 +60%",
-      "executeBelowHpPct": 0.45,
-      "executeDamagePct": 60
+      "desc": "0.24초 초고속 쌍도 광란 연타 · 체력 50% 이하 마물·보스 처형 피해 +72%",
+      "executeBelowHpPct": 0.5,
+      "executeDamagePct": 72
     },
     "skill": {
       "name": "수라혈겁 · 만독멸세",
-      "desc": "4타마다 적혈 쌍도와 수라 혈풍이 휘몰아쳐 370% 광역 처형 참격",
+      "desc": "4타마다 교차 수라쌍도와 혈풍 선풍이 휘몰아쳐 425% 광역 처형 참격",
       "everyN": 4,
-      "atkRatio": 3.7,
-      "splashRadius": 208,
-      "stunSec": 1.0,
+      "atkRatio": 4.25,
+      "splashRadius": 225,
+      "stunSec": 1.05,
       "slowPct": 0.55,
       "slowSec": 2.8,
-      "vfxTrack": "blood_slash"
+      "vfxTrack": "im_asura_emperor"
     }
   },
   {
@@ -1015,11 +1113,11 @@
     "faction": "unorthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 2420,
-    "range": 350,
+    "atk": 2360,
+    "range": 348,
     "attackIntervalSec": 0.36,
     "critChance": 0.48,
-    "critMult": 2.9,
+    "critMult": 2.95,
     "sellCoin": 1400,
     "armorShred": 72,
     "supportAura": {
@@ -1030,19 +1128,19 @@
     "passiveTrait": {
       "id": "venom_corrosion",
       "name": "만독부식",
-      "desc": "최상급 파갑(72)·극감속(68%) 부여 · 파갑된 적 대상 피해 +42% 증폭",
-      "shreddedDamagePct": 42
+      "desc": "최상급 파갑(72)·극감속(68%) 부여 · 파갑된 적 대상 피해 +40% 부식 증폭",
+      "shreddedDamagePct": 40
     },
     "skill": {
       "name": "만독천화 · 무간독우",
-      "desc": "3타마다 만독천화선 부채가 펼쳐져 385% 초대형 독우 및 68% 극감속",
+      "desc": "3타마다 9골 만독천화선이 전개돼 375% 광역 독우 및 68% 극감속",
       "everyN": 3,
-      "atkRatio": 3.85,
-      "splashRadius": 255,
+      "atkRatio": 3.75,
+      "splashRadius": 230,
       "stunSec": 0.95,
       "slowPct": 0.68,
       "slowSec": 3.6,
-      "vfxTrack": "poison_rain"
+      "vfxTrack": "im_venom_lord"
     }
   },
   {
@@ -1052,11 +1150,11 @@
     "faction": "orthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 2780,
+    "atk": 2380,
     "range": 345,
-    "attackIntervalSec": 0.42,
-    "critChance": 0.56,
-    "critMult": 3.25,
+    "attackIntervalSec": 0.45,
+    "critChance": 0.52,
+    "critMult": 3.1,
     "sellCoin": 1400,
     "armorShred": 26,
     "supportAura": {
@@ -1072,14 +1170,14 @@
     },
     "skill": {
       "name": "제왕벽력 · 구천신뢰",
-      "desc": "2타마다 뇌제쌍검이 구천의 청금 신뢰를 내려 320% 광역 피해 및 1.45초 기절",
+      "desc": "2타마다 삼중 뇌옥과 육각 신인이 떨어져 285% 광역 피해 및 1.45초 기절",
       "everyN": 2,
-      "atkRatio": 3.2,
-      "splashRadius": 235,
+      "atkRatio": 2.85,
+      "splashRadius": 212,
       "stunSec": 1.45,
       "slowPct": 0.58,
       "slowSec": 3.0,
-      "vfxTrack": "emperor_thunder"
+      "vfxTrack": "im_thunder_emperor"
     }
   },
   {
@@ -1089,34 +1187,34 @@
     "faction": "demonic",
     "grade": "immortal",
     "leaf": false,
-    "atk": 5180,
-    "range": 340,
-    "attackIntervalSec": 0.78,
-    "critChance": 0.48,
-    "critMult": 3.2,
+    "atk": 3980,
+    "range": 336,
+    "attackIntervalSec": 0.94,
+    "critChance": 0.46,
+    "critMult": 3.0,
     "sellCoin": 1400,
     "armorShred": 42,
     "supportAura": {
       "name": "구천업화진",
-      "atkPct": 38,
+      "atkPct": 34,
       "speedPct": 8
     },
     "passiveTrait": {
       "id": "hellfire_cataclysm",
       "name": "구천겁화",
-      "desc": "전 협객 최고 기본공(5180) 초중량 포격 · 파갑된 적 대상 피해 +30%",
-      "shreddedDamagePct": 30
+      "desc": "전 협객 최고 기본공(3980) 초중량 포격 · 파갑된 적 대상 피해 +20%",
+      "shreddedDamagePct": 20
     },
     "skill": {
       "name": "구천겁화 · 적멸홍련",
-      "desc": "3타마다 구천마염주 9구가 대폭발해 520% 전장 소각 및 1.25초 기절",
-      "everyN": 3,
-      "atkRatio": 5.2,
-      "splashRadius": 265,
+      "desc": "4타마다 9구 구천마염주가 홍련 업화로 수렴 폭발해 355% 집중 소각 및 1.25초 기절",
+      "everyN": 4,
+      "atkRatio": 3.55,
+      "splashRadius": 182,
       "stunSec": 1.25,
       "slowPct": 0.55,
       "slowSec": 3.2,
-      "vfxTrack": "demonic_flame"
+      "vfxTrack": "im_hell_flame"
     }
   }
 ]

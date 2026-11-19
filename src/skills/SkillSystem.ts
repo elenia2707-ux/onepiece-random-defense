@@ -12,6 +12,7 @@ import type {
   FactionId,
   GameDataBundle,
   GradeId,
+  PassiveProcKind,
   RelicId,
   TrialId,
   UnitDef,
@@ -492,9 +493,13 @@ function applyHitToMonster(
   }
 
   // Apply unit-specific PassiveTraitDef multipliers (Immortal & Transcendent specialization!)
+  let executeProc = false;
+  let bossProc = false;
+  let corrodeProc = false;
   if (passive) {
     if (m.isBoss && passive.bossDamagePct && passive.bossDamagePct > 0) {
       effectiveRaw = Math.round(effectiveRaw * (1 + passive.bossDamagePct / 100));
+      bossProc = true;
     }
     if (
       passive.executeBelowHpPct &&
@@ -502,17 +507,26 @@ function applyHitToMonster(
       m.hp <= Math.round(m.maxHp * passive.executeBelowHpPct)
     ) {
       effectiveRaw = Math.round(effectiveRaw * (1 + passive.executeDamagePct / 100));
+      executeProc = true;
     }
     if (activeShred > 0 && passive.shreddedDamagePct && passive.shreddedDamagePct > 0) {
       effectiveRaw = Math.round(effectiveRaw * (1 + passive.shreddedDamagePct / 100));
+      corrodeProc = true;
     }
   }
 
   const piercePct = passive?.armorPiercePct ?? 0;
-  const netArmor =
-    rawNetArmor > 0 && piercePct > 0
-      ? Math.max(0, Math.round(rawNetArmor * (1 - piercePct)))
-      : rawNetArmor;
+  const pierceProc = rawNetArmor > 0 && piercePct > 0;
+  const netArmor = pierceProc ? Math.max(0, Math.round(rawNetArmor * (1 - piercePct))) : rawNetArmor;
+  const passiveProc: PassiveProcKind | undefined = executeProc
+    ? 'execute'
+    : pierceProc
+      ? 'pierce'
+      : bossProc
+        ? 'boss'
+        : corrodeProc
+          ? 'corrode'
+          : undefined;
 
   const maxAmp = 0.45 + 0.3 * ctx.getBoonStacks('b_armor_crusher');
   let damage = effectiveRaw;
@@ -662,6 +676,7 @@ function applyHitToMonster(
     isSkill: p.isSkill,
     armorBroken,
     justShattered,
+    passiveProc,
     tick: ctx.currentTick,
   });
 }

@@ -2,6 +2,8 @@ import {
   CLEAR_TARGET_WAVE,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
+  TITLE_DEFS,
+  TITLES_BY_ID,
   TRIAL_CONFIGS,
   TRIAL_ORDER,
 } from '../core/relicFormulas';
@@ -15,6 +17,8 @@ import type {
   RelicDef,
   RelicId,
   SkinRarity,
+  TitleDef,
+  TitleId,
   TrialId,
   UnitDef,
   UnitId,
@@ -61,6 +65,17 @@ export interface StorageLike {
   removeItem?(key: string): void;
 }
 
+export interface TrialRecord {
+  readonly clears: number;
+  readonly bestWave: number;
+  readonly bestTicks: number | null;
+}
+
+export interface TitleProgress {
+  readonly current: number;
+  readonly target: number;
+}
+
 export interface MetaProfile {
   readonly gold: number;
   readonly keys: number;
@@ -72,8 +87,13 @@ export interface MetaProfile {
   readonly selectedTrialId: TrialId | null;
   readonly unlockedDifficulties: Readonly<Record<DifficultyId, boolean>>;
   readonly clearedDifficulties: Readonly<Record<DifficultyId, boolean>>;
+  readonly difficultyBestWave: Readonly<Record<DifficultyId, number>>;
   readonly clearedTrials: Readonly<Record<TrialId, boolean>>;
+  readonly trialRecords: Readonly<Record<TrialId, TrialRecord>>;
   readonly clearedTrialCount: number;
+  readonly unlockedTitles: Readonly<Record<TitleId, boolean>>;
+  readonly unlockedTitleCount: number;
+  readonly equippedTitle: TitleId | null;
   readonly discoveredUnits: Readonly<Record<UnitId, boolean>>;
   readonly discoveredCount: number;
   readonly ownedSkins: Readonly<Record<string, boolean>>;
@@ -92,6 +112,7 @@ export interface SettlementInput {
   readonly difficulty?: DifficultyId;
   readonly trialId?: TrialId | null;
   readonly victory?: boolean;
+  readonly elapsedTicks?: number;
 }
 
 export interface SettlementReward {
@@ -113,6 +134,10 @@ export interface SettlementRecord extends SettlementReward {
   readonly firstClearBonusSilk: number;
   readonly unlockedNextDifficulty: DifficultyId | null;
   readonly unlockedSkinIds: readonly string[];
+  readonly unlockedTitleIds: readonly TitleId[];
+  readonly titleBonusGold: number;
+  readonly titleBonusKeys: number;
+  readonly titleBonusSilk: number;
   readonly totalGold: number;
   readonly totalKeys: number;
   readonly totalSilk: number;
@@ -138,6 +163,7 @@ export interface CodexDiscoveryResult {
   readonly gradeName: string;
   readonly bonusGold: number;
   readonly bonusKeys: number;
+  readonly unlockedTitleIds?: readonly TitleId[];
 }
 
 export type RelicDrawResult =
@@ -147,6 +173,7 @@ export type RelicDrawResult =
       readonly prevLevel: number;
       readonly newLevel: number;
       readonly isNew: boolean;
+      readonly unlockedTitleIds?: readonly TitleId[];
     }
   | {
       readonly ok: false;
@@ -161,6 +188,7 @@ export type RelicUpgradeResult =
       readonly newLevel: number;
       readonly wasUnlock: boolean;
       readonly spentGold: number;
+      readonly unlockedTitleIds?: readonly TitleId[];
     }
   | {
       readonly ok: false;
@@ -199,6 +227,32 @@ export type SkinCraftResult =
       readonly ok: false;
       readonly reason: string;
     };
+
+export function computeTitleProgress(profile: MetaProfile, title: TitleDef): TitleProgress {
+  switch (title.condition) {
+    case 'total_runs':
+      return { current: Math.min(title.target, profile.totalRuns), target: title.target };
+    case 'normal_clear':
+      return { current: profile.clearedDifficulties.normal ? 1 : 0, target: 1 };
+    case 'hard_clear':
+      return { current: profile.clearedDifficulties.hard ? 1 : 0, target: 1 };
+    case 'hell_clear':
+      return { current: profile.clearedDifficulties.hell ? 1 : 0, target: 1 };
+    case 'all_trials_clear':
+      return { current: profile.clearedTrialCount, target: TRIAL_ORDER.length };
+    case 'best_wave':
+      return { current: Math.min(title.target, profile.bestWave), target: title.target };
+    case 'discovered_units':
+      return { current: Math.min(title.target, profile.discoveredCount), target: title.target };
+    case 'max_relic_level': {
+      let maxLv = 0;
+      for (const lv of Object.values(profile.relics)) {
+        if (lv > maxLv) maxLv = lv;
+      }
+      return { current: Math.min(title.target, maxLv), target: title.target };
+    }
+  }
+}
 
 export function getSkinDuplicateSilk(rarity: SkinRarity): number {
   if (rarity === 'mythic') return 50;
@@ -343,6 +397,31 @@ function createEmptyClearedTrials(): Record<TrialId, boolean> {
   };
 }
 
+function createEmptyTrialRecords(): Record<TrialId, TrialRecord> {
+  return {
+    trial_venom_gale: { clears: 0, bestWave: 0, bestTicks: null },
+    trial_sword_tomb: { clears: 0, bestWave: 0, bestTicks: null },
+    trial_crimson_iron: { clears: 0, bestWave: 0, bestTicks: null },
+    trial_chaos_trinity: { clears: 0, bestWave: 0, bestTicks: null },
+  };
+}
+
+function createEmptyDifficultyBestWave(): Record<DifficultyId, number> {
+  return {
+    normal: 0,
+    hard: 0,
+    hell: 0,
+  };
+}
+
+function createEmptyUnlockedTitles(): Record<TitleId, boolean> {
+  const out: Record<string, boolean> = {};
+  for (let i = 0; i < TITLE_DEFS.length; i++) {
+    out[TITLE_DEFS[i]!.id] = false;
+  }
+  return out as Record<TitleId, boolean>;
+}
+
 function resolveDefaultStorage(): StorageLike | null {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -374,7 +453,12 @@ export class MetaStore {
     hard: false,
     hell: false,
   };
+  private readonly difficultyBestWave: Record<DifficultyId, number> =
+    createEmptyDifficultyBestWave();
   private readonly clearedTrials: Record<TrialId, boolean> = createEmptyClearedTrials();
+  private readonly trialRecords: Record<TrialId, TrialRecord> = createEmptyTrialRecords();
+  private readonly unlockedTitles: Record<TitleId, boolean> = createEmptyUnlockedTitles();
+  private equippedTitle: TitleId | null = null;
   private readonly discoveredUnits: Record<UnitId, boolean> = {};
   private readonly ownedSkins: Record<string, boolean> = {
     [DEFAULT_COURT_SKIN_ID]: true,
@@ -388,12 +472,20 @@ export class MetaStore {
     this.storage = customStorage !== undefined ? customStorage : resolveDefaultStorage();
     this.load();
     this.unlockEligibleAchievementSkins();
+    this.evaluateTitles(false);
   }
 
   public getProfile(): MetaProfile {
     const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
     const ownedSkinCount = Object.values(this.ownedSkins).filter(Boolean).length;
     const clearedTrialCount = Object.values(this.clearedTrials).filter(Boolean).length;
+    const unlockedTitleCount = Object.values(this.unlockedTitles).filter(Boolean).length;
+    const trialRecordsCopy: Record<TrialId, TrialRecord> = {
+      trial_venom_gale: { ...this.trialRecords.trial_venom_gale },
+      trial_sword_tomb: { ...this.trialRecords.trial_sword_tomb },
+      trial_crimson_iron: { ...this.trialRecords.trial_crimson_iron },
+      trial_chaos_trinity: { ...this.trialRecords.trial_chaos_trinity },
+    };
     return {
       gold: this.gold,
       keys: this.keys,
@@ -405,8 +497,13 @@ export class MetaStore {
       selectedTrialId: this.selectedTrialId,
       unlockedDifficulties: { ...this.unlockedDifficulties },
       clearedDifficulties: { ...this.clearedDifficulties },
+      difficultyBestWave: { ...this.difficultyBestWave },
       clearedTrials: { ...this.clearedTrials },
+      trialRecords: trialRecordsCopy,
       clearedTrialCount,
+      unlockedTitles: { ...this.unlockedTitles },
+      unlockedTitleCount,
+      equippedTitle: this.equippedTitle,
       discoveredUnits: { ...this.discoveredUnits },
       discoveredCount,
       ownedSkins: { ...this.ownedSkins },
@@ -447,6 +544,27 @@ export class MetaStore {
 
   public getEquippedCourtSkin(): CourtSkinId {
     return this.equippedCourtSkin;
+  }
+
+  public getEquippedTitle(): TitleId | null {
+    return this.equippedTitle;
+  }
+
+  public equipTitle(titleId: TitleId | null): boolean {
+    if (titleId === null) {
+      if (this.equippedTitle === null) return true;
+      this.equippedTitle = null;
+      this.rev++;
+      this.save();
+      return true;
+    }
+    if (!TITLES_BY_ID.has(titleId) || !this.unlockedTitles[titleId]) {
+      return false;
+    }
+    this.equippedTitle = titleId;
+    this.rev++;
+    this.save();
+    return true;
   }
 
   public setSelectedDifficulty(diff: DifficultyId): boolean {
@@ -491,6 +609,7 @@ export class MetaStore {
     const reward = getCodexDiscoveryReward(gradeDef);
     this.gold += reward.gold;
     this.keys += reward.keys;
+    const titleRes = this.evaluateTitles(true);
     this.rev++;
     this.save();
 
@@ -501,6 +620,7 @@ export class MetaStore {
       gradeName: gradeDef.name,
       bonusGold: reward.gold,
       bonusKeys: reward.keys,
+      unlockedTitleIds: titleRes.unlockedIds,
     };
   }
 
@@ -570,6 +690,7 @@ export class MetaStore {
     const prevLevel = this.relics[chosen.id] ?? 0;
     const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
     this.relics[chosen.id] = newLevel;
+    const titleRes = this.evaluateTitles(true);
     this.rev++;
     this.save();
 
@@ -579,6 +700,7 @@ export class MetaStore {
       prevLevel,
       newLevel,
       isNew: prevLevel === 0,
+      unlockedTitleIds: titleRes.unlockedIds,
     };
   }
 
@@ -596,6 +718,7 @@ export class MetaStore {
     this.gold -= cost;
     const newLevel = prevLevel + 1;
     this.relics[def.id] = newLevel;
+    const titleRes = this.evaluateTitles(true);
     this.rev++;
     this.save();
 
@@ -606,6 +729,7 @@ export class MetaStore {
       newLevel,
       wasUnlock: prevLevel === 0,
       spentGold: cost,
+      unlockedTitleIds: titleRes.unlockedIds,
     };
   }
 
@@ -776,6 +900,7 @@ export class MetaStore {
   private unlockEligibleAchievementSkins(): string[] {
     const newlyUnlocked: string[] = [];
     const anyTrialCleared = Object.values(this.clearedTrials).some(Boolean);
+    const allTrialsCleared = TRIAL_ORDER.every((t) => this.clearedTrials[t]);
     const anyCleared =
       this.clearedDifficulties.normal ||
       this.clearedDifficulties.hard ||
@@ -786,12 +911,26 @@ export class MetaStore {
       this.ownedSkins.court_golden_palace = true;
       newlyUnlocked.push('court_golden_palace');
     }
+    if (this.clearedDifficulties.hard && !this.ownedSkins.skin_hell_flame_nirvana) {
+      this.ownedSkins.skin_hell_flame_nirvana = true;
+      if (!this.equippedHeroSkins.hell_flame_sovereign) {
+        this.equippedHeroSkins.hell_flame_sovereign = 'skin_hell_flame_nirvana';
+      }
+      newlyUnlocked.push('skin_hell_flame_nirvana');
+    }
     if (this.clearedDifficulties.hell && !this.ownedSkins.skin_cheonma_golden_emperor) {
       this.ownedSkins.skin_cheonma_golden_emperor = true;
       if (!this.equippedHeroSkins.cheonma) {
         this.equippedHeroSkins.cheonma = 'skin_cheonma_golden_emperor';
       }
       newlyUnlocked.push('skin_cheonma_golden_emperor');
+    }
+    if (allTrialsCleared && !this.ownedSkins.skin_sword_immortal_celestial) {
+      this.ownedSkins.skin_sword_immortal_celestial = true;
+      if (!this.equippedHeroSkins.sword_immortal) {
+        this.equippedHeroSkins.sword_immortal = 'skin_sword_immortal_celestial';
+      }
+      newlyUnlocked.push('skin_sword_immortal_celestial');
     }
     if (this.bestWave >= 35 && !this.ownedSkins.skin_sword_demon_azure) {
       this.ownedSkins.skin_sword_demon_azure = true;
@@ -803,6 +942,42 @@ export class MetaStore {
     return newlyUnlocked;
   }
 
+  private evaluateTitles(grantRewards: boolean): {
+    readonly unlockedIds: readonly TitleId[];
+    readonly bonusGold: number;
+    readonly bonusKeys: number;
+    readonly bonusSilk: number;
+  } {
+    const profile = this.getProfile();
+    const unlockedIds: TitleId[] = [];
+    let bonusGold = 0;
+    let bonusKeys = 0;
+    let bonusSilk = 0;
+
+    for (let i = 0; i < TITLE_DEFS.length; i++) {
+      const def = TITLE_DEFS[i]!;
+      if (this.unlockedTitles[def.id]) continue;
+      const prog = computeTitleProgress(profile, def);
+      if (prog.current >= prog.target) {
+        this.unlockedTitles[def.id] = true;
+        unlockedIds.push(def.id);
+        if (this.equippedTitle === null) {
+          this.equippedTitle = def.id;
+        }
+        if (grantRewards) {
+          this.gold += def.rewardGold;
+          this.keys += def.rewardKeys;
+          this.silk += def.rewardSilk;
+          bonusGold += def.rewardGold;
+          bonusKeys += def.rewardKeys;
+          bonusSilk += def.rewardSilk;
+        }
+      }
+    }
+
+    return { unlockedIds, bonusGold, bonusKeys, bonusSilk };
+  }
+
   public settleRun(input: SettlementInput): SettlementRecord {
     const diff = input.difficulty ?? 'normal';
     const trialId = input.trialId ?? null;
@@ -811,6 +986,12 @@ export class MetaStore {
     const reward = computeSettlementReward(input);
     const wave = Math.max(1, Math.floor(input.wave));
     const isNewBest = wave > this.bestWave;
+    const elapsedTicks =
+      typeof input.elapsedTicks === 'number' &&
+      Number.isFinite(input.elapsedTicks) &&
+      input.elapsedTicks > 0
+        ? Math.floor(input.elapsedTicks)
+        : null;
 
     let firstClearBonusGold = 0;
     let firstClearBonusKeys = 0;
@@ -818,6 +999,17 @@ export class MetaStore {
     let unlockedNextDifficulty: DifficultyId | null = null;
 
     if (trialId !== null) {
+      const prevRec = this.trialRecords[trialId];
+      this.trialRecords[trialId] = {
+        clears: prevRec.clears + (victory ? 1 : 0),
+        bestWave: Math.max(prevRec.bestWave, wave),
+        bestTicks:
+          victory && elapsedTicks !== null
+            ? prevRec.bestTicks === null
+              ? elapsedTicks
+              : Math.min(prevRec.bestTicks, elapsedTicks)
+            : prevRec.bestTicks,
+      };
       if (victory && !this.clearedTrials[trialId]) {
         this.clearedTrials[trialId] = true;
         const tCfg = TRIAL_CONFIGS[trialId];
@@ -825,18 +1017,23 @@ export class MetaStore {
         firstClearBonusKeys = tCfg.firstClearKeys;
         firstClearBonusSilk = tCfg.firstClearSilk;
       }
-    } else if (victory && !this.clearedDifficulties[diff]) {
-      this.clearedDifficulties[diff] = true;
-      const cfg = DIFFICULTY_CONFIGS[diff];
-      firstClearBonusGold = cfg.firstClearGold;
-      firstClearBonusKeys = cfg.firstClearKeys;
+    } else {
+      if (wave > this.difficultyBestWave[diff]) {
+        this.difficultyBestWave[diff] = wave;
+      }
+      if (victory && !this.clearedDifficulties[diff]) {
+        this.clearedDifficulties[diff] = true;
+        const cfg = DIFFICULTY_CONFIGS[diff];
+        firstClearBonusGold = cfg.firstClearGold;
+        firstClearBonusKeys = cfg.firstClearKeys;
 
-      if (diff === 'normal' && !this.unlockedDifficulties.hard) {
-        this.unlockedDifficulties.hard = true;
-        unlockedNextDifficulty = 'hard';
-      } else if (diff === 'hard' && !this.unlockedDifficulties.hell) {
-        this.unlockedDifficulties.hell = true;
-        unlockedNextDifficulty = 'hell';
+        if (diff === 'normal' && !this.unlockedDifficulties.hard) {
+          this.unlockedDifficulties.hard = true;
+          unlockedNextDifficulty = 'hard';
+        } else if (diff === 'hard' && !this.unlockedDifficulties.hell) {
+          this.unlockedDifficulties.hell = true;
+          unlockedNextDifficulty = 'hell';
+        }
       }
     }
 
@@ -851,6 +1048,7 @@ export class MetaStore {
       this.bestWave = wave;
     }
     const unlockedSkinIds = this.unlockEligibleAchievementSkins();
+    const titleRes = this.evaluateTitles(true);
     this.clearActiveRun();
     this.rev++;
     this.save();
@@ -869,6 +1067,10 @@ export class MetaStore {
       firstClearBonusSilk,
       unlockedNextDifficulty,
       unlockedSkinIds,
+      unlockedTitleIds: titleRes.unlockedIds,
+      titleBonusGold: titleRes.bonusGold,
+      titleBonusKeys: titleRes.bonusKeys,
+      titleBonusSilk: titleRes.bonusSilk,
       goldEarned: totalGoldGain,
       keysEarned: totalKeysGain,
       totalGold: this.gold,
@@ -908,10 +1110,27 @@ export class MetaStore {
     if (wave > this.bestWave) {
       this.bestWave = wave;
     }
+    if (prevRecord.trialId !== null) {
+      const prevRec = this.trialRecords[prevRecord.trialId];
+      if (wave > prevRec.bestWave) {
+        this.trialRecords[prevRecord.trialId] = {
+          ...prevRec,
+          bestWave: wave,
+        };
+      }
+    } else if (wave > this.difficultyBestWave[prevRecord.difficulty]) {
+      this.difficultyBestWave[prevRecord.difficulty] = wave;
+    }
+
     const overtimeUnlocked = this.unlockEligibleAchievementSkins();
     const mergedSkins = [
       ...prevRecord.unlockedSkinIds,
       ...overtimeUnlocked.filter((id) => !prevRecord.unlockedSkinIds.includes(id)),
+    ];
+    const overtimeTitles = this.evaluateTitles(true);
+    const mergedTitles = [
+      ...prevRecord.unlockedTitleIds,
+      ...overtimeTitles.unlockedIds.filter((id) => !prevRecord.unlockedTitleIds.includes(id)),
     ];
     this.clearActiveRun();
     this.rev++;
@@ -928,6 +1147,10 @@ export class MetaStore {
         Math.floor(finalInput.bountiesSlain ?? 0),
       ),
       unlockedSkinIds: mergedSkins,
+      unlockedTitleIds: mergedTitles,
+      titleBonusGold: prevRecord.titleBonusGold + overtimeTitles.bonusGold,
+      titleBonusKeys: prevRecord.titleBonusKeys + overtimeTitles.bonusKeys,
+      titleBonusSilk: prevRecord.titleBonusSilk + overtimeTitles.bonusSilk,
       goldEarned: prevRecord.goldEarned + deltaGold,
       keysEarned: prevRecord.keysEarned + deltaKeys,
       totalGold: this.gold,
@@ -1065,6 +1288,7 @@ export class MetaStore {
     this.resetToCleanDefaults();
     this.applyRecord(parsed as Record<string, unknown>);
     this.unlockEligibleAchievementSkins();
+    this.evaluateTitles(false);
     this.clearActiveRun();
     this.rev++;
     this.save();
@@ -1105,9 +1329,17 @@ export class MetaStore {
     this.clearedDifficulties.normal = false;
     this.clearedDifficulties.hard = false;
     this.clearedDifficulties.hell = false;
+    for (const d of DIFFICULTY_ORDER) {
+      this.difficultyBestWave[d] = 0;
+    }
     for (const t of TRIAL_ORDER) {
       this.clearedTrials[t] = false;
+      this.trialRecords[t] = { clears: 0, bestWave: 0, bestTicks: null };
     }
+    for (let i = 0; i < TITLE_DEFS.length; i++) {
+      this.unlockedTitles[TITLE_DEFS[i]!.id] = false;
+    }
+    this.equippedTitle = null;
     for (const k of Object.keys(this.discoveredUnits)) {
       delete this.discoveredUnits[k];
     }
@@ -1164,12 +1396,68 @@ export class MetaStore {
         }
       }
     }
+    if (typeof rec.difficultyBestWave === 'object' && rec.difficultyBestWave !== null) {
+      const dbObj = rec.difficultyBestWave as Record<string, unknown>;
+      for (const d of DIFFICULTY_ORDER) {
+        const w = dbObj[d];
+        if (typeof w === 'number' && Number.isFinite(w) && w >= 0) {
+          this.difficultyBestWave[d] = Math.floor(w);
+        }
+      }
+    }
     if (typeof rec.clearedTrials === 'object' && rec.clearedTrials !== null) {
       const tObj = rec.clearedTrials as Record<string, unknown>;
       for (const t of TRIAL_ORDER) {
         if (typeof tObj[t] === 'boolean') {
           this.clearedTrials[t] = tObj[t]!;
         }
+      }
+    }
+    if (typeof rec.trialRecords === 'object' && rec.trialRecords !== null) {
+      const trObj = rec.trialRecords as Record<string, unknown>;
+      for (const t of TRIAL_ORDER) {
+        const entry = trObj[t];
+        if (typeof entry === 'object' && entry !== null) {
+          const e = entry as Record<string, unknown>;
+          const clears =
+            typeof e.clears === 'number' && Number.isFinite(e.clears) && e.clears >= 0
+              ? Math.floor(e.clears)
+              : 0;
+          const bestWave =
+            typeof e.bestWave === 'number' && Number.isFinite(e.bestWave) && e.bestWave >= 0
+              ? Math.floor(e.bestWave)
+              : 0;
+          const bestTicks =
+            typeof e.bestTicks === 'number' && Number.isFinite(e.bestTicks) && e.bestTicks > 0
+              ? Math.floor(e.bestTicks)
+              : null;
+          this.trialRecords[t] = { clears, bestWave, bestTicks };
+        }
+      }
+    }
+    // Backfill legacy clearedTrials -> trialRecords
+    for (const t of TRIAL_ORDER) {
+      if (this.clearedTrials[t] && this.trialRecords[t].clears === 0) {
+        this.trialRecords[t] = {
+          clears: 1,
+          bestWave: Math.max(this.trialRecords[t].bestWave, TRIAL_CONFIGS[t].targetWave),
+          bestTicks: this.trialRecords[t].bestTicks,
+        };
+      }
+    }
+    if (typeof rec.unlockedTitles === 'object' && rec.unlockedTitles !== null) {
+      const utObj = rec.unlockedTitles as Record<string, unknown>;
+      for (let i = 0; i < TITLE_DEFS.length; i++) {
+        const id = TITLE_DEFS[i]!.id;
+        if (utObj[id] === true) {
+          this.unlockedTitles[id] = true;
+        }
+      }
+    }
+    if (typeof rec.equippedTitle === 'string' && TITLES_BY_ID.has(rec.equippedTitle as TitleId)) {
+      const tid = rec.equippedTitle as TitleId;
+      if (this.unlockedTitles[tid]) {
+        this.equippedTitle = tid;
       }
     }
     if (
@@ -1251,7 +1539,11 @@ export class MetaStore {
       selectedTrialId: this.selectedTrialId,
       unlockedDifficulties: this.unlockedDifficulties,
       clearedDifficulties: this.clearedDifficulties,
+      difficultyBestWave: this.difficultyBestWave,
       clearedTrials: this.clearedTrials,
+      trialRecords: this.trialRecords,
+      unlockedTitles: this.unlockedTitles,
+      equippedTitle: this.equippedTitle,
       discoveredUnits: this.discoveredUnits,
       ownedSkins: this.ownedSkins,
       equippedHeroSkins: this.equippedHeroSkins,

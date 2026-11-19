@@ -4,11 +4,13 @@ import type {
   DifficultyId,
   GradeDef,
   RelicId,
+  TitleDef,
+  TitleId,
   TrialConfig,
   TrialId,
 } from '../data/types';
 
-export type { DifficultyConfig, TrialConfig };
+export type { DifficultyConfig, TitleDef, TrialConfig };
 
 export const CLEAR_TARGET_WAVE = 30;
 
@@ -26,6 +28,10 @@ export const TRIAL_ORDER: readonly TrialId[] = DATA.trials.map((t) => t.id);
 export const TRIAL_CONFIGS: Readonly<Record<TrialId, TrialConfig>> = Object.fromEntries(
   DATA.trials.map((t) => [t.id, t]),
 ) as unknown as Readonly<Record<TrialId, TrialConfig>>;
+
+export const TITLE_DEFS: readonly TitleDef[] = DATA.titles;
+
+export const TITLES_BY_ID: ReadonlyMap<TitleId, TitleDef> = DATA.titlesById;
 
 export interface SellRefundSpec {
   readonly guaranteedLuck: number;

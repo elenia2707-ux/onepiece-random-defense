@@ -376,6 +376,22 @@ export const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> =
     secondary: '#fb7185',
     heavyBlade: true,
   },
+  blood_acolyte: {
+    style: 'dagger_hidden',
+    sect: 'magyo_sword',
+    weaponLabel: '혈영 암침',
+    primary: '#be123c',
+    secondary: '#c084fc',
+    dualWield: true,
+  },
+  nether_blade_queen: {
+    style: 'sorcery_qi',
+    sect: 'magyo_flame',
+    weaponLabel: '명혼 마륜·염주',
+    primary: '#9333ea',
+    secondary: '#fb7185',
+    dualWield: true,
+  },
 };
 
 export function getUnitCombatProfile(unitId: UnitId): UnitCombatProfile {

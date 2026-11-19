@@ -120,17 +120,25 @@ export function computeWaveHpScale(
   difficulty: DifficultyId,
   trialId: TrialId | null,
   waveNum: number,
+  isBoss = false,
 ): number {
   const diffCfg = data.difficultiesById.get(difficulty) ?? data.difficulties[0]!;
   const trialCfg = trialId ? data.trialsById.get(trialId) : undefined;
   const baseMult = diffCfg.hpMult * (trialCfg ? trialCfg.hpMult : 1);
+  const effLateRamp = diffCfg.lateWaveRamp * (trialCfg ? trialCfg.lateWaveRamp : 1);
+  const bossMult = isBoss ? diffCfg.bossHpMult * (trialCfg ? trialCfg.bossHpMult : 1) : 1;
+
+  const targetWave = trialCfg ? trialCfg.targetWave : data.waves.length;
+  const rampSpan = Math.max(1, targetWave - 5);
+  const rampProgress = waveNum <= 5 ? 0 : Math.min(1, (waveNum - 5) / rampSpan);
+  const rampMult = 1 + (effLateRamp - 1) * rampProgress;
 
   if (waveNum <= data.waves.length) {
-    return baseMult;
+    return baseMult * rampMult * bossMult;
   }
-  // Endless Bloodbath (> Wave 30): exponential compounding atop the endgame cycle
+  // Endless Bloodbath (> Wave 30): exponential compounding atop the full endgame ramp
   const endlessStep = waveNum - data.waves.length;
-  return baseMult * Math.pow(1.18, endlessStep);
+  return baseMult * effLateRamp * bossMult * Math.pow(1.18, endlessStep);
 }
 
 export function computeMonsterArmor(
@@ -217,14 +225,13 @@ export function spawnBountyOutlaw(
   const spec = BOUNTY_ROSTER[bountiesCalled % BOUNTY_ROSTER.length]!;
   const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
-  const trialHpMult = trialCfg ? trialCfg.hpMult : 1;
   const trialSpdMult = trialCfg ? trialCfg.speedMult : 1;
 
-  const waveBaseHp = resolveWaveDef(ctx.data.waves, waveNumber).monsterHp;
+  const waveDef = resolveWaveDef(ctx.data.waves, waveNumber);
+  const waveBaseHp = waveDef.monsterHp;
+  const hpScale = computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false);
   const bountyHp = Math.round(
-    Math.max(1200, waveBaseHp * (resolveWaveDef(ctx.data.waves, waveNumber).isBoss ? 0.35 : 5.2)) *
-      diffCfg.hpMult *
-      trialHpMult,
+    Math.max(1200, waveBaseHp * (waveDef.isBoss ? 0.35 : 5.2)) * hpScale,
   );
   const rewardCoin = 45 + waveNumber * 10;
   const rewardLuck = waveNumber >= 14 ? 3 : 2;
@@ -304,7 +311,13 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
   const mutantMeta = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
   const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
-  const hpScale = computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber);
+  const hpScale = computeWaveHpScale(
+    ctx.data,
+    ctx.difficulty,
+    ctx.trialId,
+    waveNumber,
+    waveDef.isBoss,
+  );
   const resolvedBossName = resolveTargetBossName(
     ctx.trialId,
     ctx.clearTargetWave,

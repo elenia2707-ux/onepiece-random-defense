@@ -1095,6 +1095,28 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'blood_acolyte': {
+      // Blood Shadow Acolyte: dark crimson hood + twin shadow daggers
+      paintHead34(p, SKIN_PALE, { glint: '#fb7185', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#be123c', false);
+      paintMartialBody34(p, ROBE_DEMON, ROBE_VIOLET, '#f43f5e');
+      p.line(20, 22, 29, 15, '#e11d48', LAYER_FRONT, 2);
+      p.line(21, 24, 28, 22, '#c084fc', LAYER_FRONT, 2);
+      break;
+    }
+
+    case 'nether_blade_queen': {
+      // Nether Blade Queen: obsidian-magenta empress robe + floating soul orbs & lotus halo
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_PALE, { glint: '#fb7185', browColor: '#f5d0fe', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#facc15');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#facc15');
+      p.disc(26, 12, 2.6, ROBE_VIOLET, LAYER_FX);
+      p.disc(28, 20, 2.2, ROBE_CRIMSON, LAYER_FX);
+      p.line(20, 21, 29, 10, '#c084fc', LAYER_FRONT, 2);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

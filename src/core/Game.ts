@@ -1,9 +1,9 @@
 import type { GameCommand } from './CommandQueue';
 import { GameLoop } from './GameLoop';
-import { TRIAL_CONFIGS } from './relicFormulas';
+import { TITLES_BY_ID, TRIAL_CONFIGS } from './relicFormulas';
 import { Simulation, type UISnapshot } from './Simulation';
 import { loadGameData } from '../data/loader';
-import type { CourtSkinId, GameDataBundle, HeroSkinDef, UnitId } from '../data/types';
+import type { CourtSkinId, GameDataBundle, HeroSkinDef, TitleId, UnitId } from '../data/types';
 import { DragController } from '../input/DragController';
 import { InputManager } from '../input/InputManager';
 import { Lifecycle } from '../platform/Lifecycle';
@@ -35,6 +35,7 @@ export class Game {
   private readonly lifecycle: Lifecycle;
   private readonly sound: SoundSynthesizer;
   private readonly equippedHeroSkinsMap = new Map<UnitId, HeroSkinDef>();
+  private readonly seenCutInUnits = new Set<UnitId>();
 
   private settlementRecord: SettlementRecord | null = null;
   private endlessSettled = false;
@@ -84,6 +85,9 @@ export class Game {
         this.lastSavedWave = savedRun.waveNumber;
         this.lastAutoSaveTick = savedRun.currentTick;
         this.autoRestoredWave = savedRun.waveNumber;
+        for (const u of this.sim.getUnits()) {
+          this.seenCutInUnits.add(u.unitId);
+        }
         if (mig.migratedFrom !== null) {
           this.meta.saveActiveRun(this.sim.exportRunSave(Date.now()));
         }
@@ -193,6 +197,7 @@ export class Game {
         if (res.ok) {
           this.sound.playCraft(res.isNew ? 4 : 3);
           this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.announceUnlockedTitles(res.unlockedTitleIds);
         }
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
@@ -210,6 +215,7 @@ export class Game {
         if (res.ok) {
           this.sound.playCoinReward();
           this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.announceUnlockedTitles(res.unlockedTitleIds);
         }
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
@@ -281,6 +287,18 @@ export class Game {
         }
         return ok;
       },
+      onEquipTitle: (titleId) => {
+        const ok = this.meta.equipTitle(titleId);
+        if (ok) {
+          this.sound.playUiTap();
+          this.ui.sync(
+            this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+            performance.now(),
+            true,
+          );
+        }
+        return ok;
+      },
       onGrantDevMeta: () => {
         this.sound.playCoinReward();
         this.meta.grantDevMeta(250, 2);
@@ -325,6 +343,7 @@ export class Game {
             difficulty: snap.difficulty,
             trialId: snap.trialId,
             victory: snap.victoryAchieved,
+            elapsedTicks: this.sim.tickCount,
           });
           if (this.settlementRecord.unlockedSkinIds.length > prevUnlockLen) {
             this.syncCosmetics(true);
@@ -407,6 +426,20 @@ export class Game {
     }
   }
 
+  private announceUnlockedTitles(ids?: readonly TitleId[]): void {
+    if (!ids || ids.length === 0) return;
+    for (let i = 0; i < ids.length; i++) {
+      const def = TITLES_BY_ID.get(ids[i]!);
+      if (!def) continue;
+      const parts: string[] = [];
+      if (def.rewardGold > 0) parts.push(`주화 +${def.rewardGold}`);
+      if (def.rewardKeys > 0) parts.push(`열쇠 +${def.rewardKeys}`);
+      if (def.rewardSilk > 0) parts.push(`비단 +${def.rewardSilk}필`);
+      const rewardStr = parts.length > 0 ? ` (${parts.join(' · ')})` : '';
+      this.ui.showToast(`🏅 강호 칭호 해금! [${def.name}]${rewardStr}`);
+    }
+  }
+
   private settleCurrentRun(snap: UISnapshot): SettlementRecord {
     if (!this.settlementRecord) {
       this.settlementRecord = this.meta.settleRun({
@@ -417,6 +450,7 @@ export class Game {
         difficulty: snap.difficulty,
         trialId: snap.trialId,
         victory: snap.victoryAchieved,
+        elapsedTicks: this.sim.tickCount,
       });
       if (this.settlementRecord.unlockedSkinIds.length > 0) {
         this.syncCosmetics(true);
@@ -446,6 +480,7 @@ export class Game {
           this.ui.showToast(
             `📖 명숙록 최초 등재! [${disc.gradeName}] ${disc.unitName} (+${disc.bonusGold} 주화${keyPart})`,
           );
+          this.announceUnlockedTitles(disc.unlockedTitleIds);
         }
       }
 
@@ -471,17 +506,33 @@ export class Game {
     });
 
     this.sim.events.on('craft:done', (ev) => {
+      const unitDef = this.sim.data.unitsById.get(ev.outputUnitId);
       const gradeDef = this.sim.data.gradesById.get(ev.grade);
       const skin = this.equippedHeroSkinsMap.get(ev.outputUnitId);
       const color = skin?.primaryColor ?? gradeDef?.color ?? '#fbbf24';
       const rank = gradeDef?.rank ?? 2;
-      const unitName = this.sim.data.unitsById.get(ev.outputUnitId)?.name ?? ev.outputUnitId;
+      const unitName = unitDef?.name ?? ev.outputUnitId;
 
       this.sound.playCraft(rank);
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
       this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 합공 등선!`);
 
-      if (gradeDef?.showSkillCallout) {
+      if (gradeDef?.isCutInTier && unitDef && !this.seenCutInUnits.has(unitDef.id)) {
+        this.seenCutInUnits.add(unitDef.id);
+        this.vfx.showAscensionCutIn(
+          this.sprites.unitToken(unitDef, gradeDef, skin),
+          this.sprites.cutInBanner(
+            unitDef.id,
+            gradeDef.name,
+            unitDef.name,
+            unitDef.skill.name,
+            color,
+            unitDef.faction,
+          ),
+          color,
+          performance.now(),
+        );
+      } else if (gradeDef?.showSkillCallout) {
         this.vfx.showCraftCelebrationBanner(
           gradeDef.name,
           unitName,
@@ -563,6 +614,7 @@ export class Game {
         ev.fromX,
         ev.fromY,
         skin?.secondaryColor ?? profile.secondary,
+        ev.passiveProc,
       );
     });
 
@@ -696,13 +748,30 @@ export class Game {
       const gradeDef = this.sim.data.gradesById.get(ev.tier);
       const gName = gradeDef?.name ?? ev.tier;
       if (ev.success && ev.unitId) {
-        const uName = this.sim.data.unitsById.get(ev.unitId)?.name ?? ev.unitId;
+        const unitDef = this.sim.data.unitsById.get(ev.unitId);
+        const uName = unitDef?.name ?? ev.unitId;
+        const skin = this.equippedHeroSkinsMap.get(ev.unitId);
         const rank = gradeDef?.rank ?? 2;
-        const color = gradeDef?.color ?? '#16a34a';
+        const color = skin?.primaryColor ?? gradeDef?.color ?? '#16a34a';
         if (ev.pos) {
           this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
         }
-        if (gradeDef?.showSkillCallout) {
+        if (gradeDef?.isCutInTier && unitDef && !this.seenCutInUnits.has(unitDef.id)) {
+          this.seenCutInUnits.add(unitDef.id);
+          this.vfx.showAscensionCutIn(
+            this.sprites.unitToken(unitDef, gradeDef, skin),
+            this.sprites.cutInBanner(
+              unitDef.id,
+              gradeDef.name,
+              unitDef.name,
+              unitDef.skill.name,
+              color,
+              unitDef.faction,
+            ),
+            color,
+            performance.now(),
+          );
+        } else if (gradeDef?.showSkillCallout) {
           this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
         }
         this.ui.showToast(`✨ [${gName}] 환골탈태 대성공! ${uName} 합류!`);

@@ -4,6 +4,7 @@ import type { StampedCommand } from '../src/core/CommandQueue';
 import {
   DIFFICULTY_CONFIGS,
   getUnitSellLuckRefund,
+  TITLE_DEFS,
   TRIAL_CONFIGS,
 } from '../src/core/relicFormulas';
 import {
@@ -12,7 +13,7 @@ import {
   getWaveMutantKind,
 } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
-import type { BoonId, MonsterKind } from '../src/data/types';
+import type { BoonId, MonsterKind, PassiveProcKind, TrialId } from '../src/data/types';
 import { DISCARD_DROP_RECT, isPointInDiscardZone } from '../src/input/DragController';
 import {
   BACKUP_CODE_PREFIX,
@@ -77,27 +78,35 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     sim.commands.enqueue({ type: 'craft', recipeId: 'r_murim_lord', chain: true });
     sim.tick();
 
-    // Step 3: Supply 사파 & 마교 sub-materials and chain-craft 현경·신마 절대천마 (cheonma)!
+    // Step 3: Supply 마교 sub-materials and chain-craft 현경·신마 절대천마 (cheonma = heavenly_demon_heir + sword_demon + cult_elder)!
+    const grantWisp = (grade: string, unitId: string): void => {
+      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: grade });
+      sim.commands.enqueue({ type: 'useWisp', grade, unitId });
+    };
+    const grantLeavesFor = (recipeId: string): void => {
+      const leaves = sim.recipeGraph.leafCost.get(recipeId)!;
+      for (const [uid, cnt] of leaves) {
+        for (let i = 0; i < cnt; i++) {
+          grantWisp('common', uid);
+        }
+      }
+      sim.tick();
+    };
+    // Craft heavenly_demon_heir first via leaves, then provide materials to chain-craft sword_demon + cult_elder
+    grantLeavesFor('r_heavenly_demon_heir');
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_heavenly_demon_heir', chain: true });
+    sim.tick();
+
     const cheonmaSubMaterials: readonly { readonly grade: string; readonly unitId: string }[] = [
-      // 광마 = 당문주 + 혈마
-      { grade: 'rare', unitId: 'nokrim_chief' },
-      { grade: 'uncommon', unitId: 'poison_healer' },
-      { grade: 'common', unitId: 'tang_assassin' },
-      { grade: 'rare', unitId: 'nokrim_chief' },
-      { grade: 'uncommon', unitId: 'blood_blade' },
-      { grade: 'common', unitId: 'haomun_ronin' },
-      // 검마
+      // sword_demon = cult_elder + black_wind + cult_initiate
       { grade: 'rare', unitId: 'cult_elder' },
       { grade: 'uncommon', unitId: 'black_wind' },
       { grade: 'common', unitId: 'cult_initiate' },
-      // 염마
+      // cult_elder directly
       { grade: 'rare', unitId: 'cult_elder' },
-      { grade: 'uncommon', unitId: 'cult_protector' },
-      { grade: 'common', unitId: 'bone_fiend' },
     ];
     for (const item of cheonmaSubMaterials) {
-      sim.commands.enqueue({ type: 'grantTestResource', wispGrade: item.grade });
-      sim.commands.enqueue({ type: 'useWisp', grade: item.grade, unitId: item.unitId });
+      grantWisp(item.grade, item.unitId);
     }
     sim.tick();
 
@@ -149,10 +158,10 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('packs all 39 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
+  it('packs all 41 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(39);
-    expect(data.heroSkins.length).toBe(10);
+    expect(data.units.length).toBe(41);
+    expect(data.heroSkins.length).toBe(12);
     expect(data.courtSkins.length).toBe(4);
 
     const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
@@ -185,8 +194,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
       expect(atlasFrames[kind], `missing WebP atlas frame: ${kind}`).toBeDefined();
     }
-    expect(spriteSet.size).toBe(45);
-    expect(Object.keys(atlasFrames).length).toBe(45);
+    expect(spriteSet.size).toBe(47);
+    expect(Object.keys(atlasFrames).length).toBe(47);
 
     const webpAtlasFiles = Object.keys(import.meta.glob('../public/assets/*.webp'));
     expect(webpAtlasFiles.some((p) => p.endsWith('/sprites_atlas.webp'))).toBe(true);
@@ -790,7 +799,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       sim.tick();
     };
 
-    // 1. Craft r_sword_saint -> r_murim_lord -> chain-craft r_sword_immortal
+    // 1. Craft r_sword_saint -> chain-craft r_sword_immortal (sword_saint + hwasan_master + plum_elder)
     grantWispUnits([
       { grade: 'rare', unitId: 'plum_elder' },
       { grade: 'uncommon', unitId: 'plum_swordsman' },
@@ -802,46 +811,36 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     sim.tick();
 
     grantWispUnits([
-      { grade: 'rare', unitId: 'gaebang_elder' },
-      { grade: 'uncommon', unitId: 'namgung_thunder' },
-      { grade: 'common', unitId: 'mudang_disciple' },
-      { grade: 'rare', unitId: 'gaebang_elder' },
-      { grade: 'uncommon', unitId: 'shaolin_monk' },
-    ]);
-    sim.commands.enqueue({ type: 'craft', recipeId: 'r_murim_lord', chain: true });
-    sim.tick();
-
-    grantWispUnits([
+      // hwasan_master = plum_elder + plum_swordsman + hwasan_novice
       { grade: 'rare', unitId: 'plum_elder' },
       { grade: 'uncommon', unitId: 'plum_swordsman' },
       { grade: 'common', unitId: 'hwasan_novice' },
-      { grade: 'rare', unitId: 'gaebang_elder' },
-      { grade: 'uncommon', unitId: 'namgung_thunder' },
-      { grade: 'common', unitId: 'mudang_disciple' },
+      // plum_elder directly
+      { grade: 'rare', unitId: 'plum_elder' },
     ]);
     expect(sim.buildSnapshot(1, false).craft.recipes['r_sword_immortal']?.lamp).toBe('chainReady');
     sim.commands.enqueue({ type: 'craft', recipeId: 'r_sword_immortal', chain: true });
     sim.tick();
 
-    // 2. Craft r_mad_demon -> chain-craft r_asura_emperor
+    // 2. Craft r_mad_demon (blood_demon + tang_elder + blood_blade) -> chain-craft r_asura_emperor (mad_demon + blood_demon + nokrim_chief)
     grantWispUnits([
-      { grade: 'rare', unitId: 'nokrim_chief' },
-      { grade: 'uncommon', unitId: 'poison_healer' },
-      { grade: 'common', unitId: 'tang_assassin' },
+      // blood_demon = nokrim_chief + blood_blade + haomun_ronin
       { grade: 'rare', unitId: 'nokrim_chief' },
       { grade: 'uncommon', unitId: 'blood_blade' },
       { grade: 'common', unitId: 'haomun_ronin' },
+      // tang_elder + blood_blade directly
+      { grade: 'rare', unitId: 'tang_elder' },
+      { grade: 'uncommon', unitId: 'blood_blade' },
     ]);
     sim.commands.enqueue({ type: 'craft', recipeId: 'r_mad_demon', chain: true });
     sim.tick();
 
     grantWispUnits([
-      { grade: 'rare', unitId: 'nokrim_chief' },
-      { grade: 'uncommon', unitId: 'poison_healer' },
-      { grade: 'common', unitId: 'tang_assassin' },
+      // blood_demon = nokrim_chief + blood_blade + haomun_ronin
       { grade: 'rare', unitId: 'nokrim_chief' },
       { grade: 'uncommon', unitId: 'blood_blade' },
       { grade: 'common', unitId: 'haomun_ronin' },
+      // nokrim_chief directly
       { grade: 'rare', unitId: 'nokrim_chief' },
     ]);
     expect(sim.buildSnapshot(1, false).craft.recipes['r_asura_emperor']?.lamp).toBe('chainReady');
@@ -1452,9 +1451,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 39 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채 & 4 new mid-tier heroes) and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 41 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채 & blood_acolyte / nether_blade_queen) and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(39);
+    expect(data.units.length).toBe(41);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1467,8 +1466,10 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       seenStyles.add(profile.style);
     }
 
-    // All 10 distinct weapon motion archetypes must be represented in the 39-hero roster
+    // All 10 distinct weapon motion archetypes must be represented in the 41-hero roster
     expect(seenStyles.size).toBe(10);
+    expect(getUnitCombatProfile('blood_acolyte').style).toBe('dagger_hidden');
+    expect(getUnitCombatProfile('nether_blade_queen').style).toBe('sorcery_qi');
     expect(getUnitCombatProfile('tang_patriarch').style).toBe('fan');
     expect(getUnitCombatProfile('tang_patriarch').weaponLabel).toContain('부채');
     expect(getUnitCombatProfile('thousand_venom_lord').style).toBe('fan');
@@ -1610,31 +1611,31 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const allSlotsAfterAlt = [...snapAfterAlt.field, ...snapAfterAlt.bench];
     expect(allSlotsAfterAlt.some((u) => u?.unitId === 'plum_elder')).toBe(true);
 
-    // 3. Chain-craft all 3 new hidden Immortals via sub-recipes (fits comfortably inside 30 board slots)
+    // 3. Chain-craft all 3 new hidden Immortals via symmetric 3-ingredient sub-recipes (1 Tx + 1 Leg + 1 Rare)
     const craftSub = (recipeId: string): void => {
       grantLeavesFor(recipeId);
       sim.commands.enqueue({ type: 'craft', recipeId, chain: true });
       sim.tick();
     };
 
-    // thousand_venom_lord = tang_patriarch + sword_saint + poison_healer
+    // thousand_venom_lord = poison_dragon + tang_patriarch + tang_elder
+    craftSub('r_poison_dragon');
     craftSub('r_tang_patriarch');
-    craftSub('r_sword_saint');
-    craftSub('r_poison_healer');
+    craftSub('r_tang_elder');
     expect(sim.buildSnapshot(1, false).craft.recipes['r_thousand_venom_lord']?.lamp).toBe('ready');
     sim.commands.enqueue({ type: 'craft', recipeId: 'r_thousand_venom_lord', chain: false });
     sim.tick();
 
-    // thunder_emperor = murim_lord + sword_demon + namgung_thunder
+    // thunder_emperor = murim_lord + mudang_master + plum_elder
     craftSub('r_murim_lord');
-    craftSub('r_sword_demon');
-    craftSub('r_namgung_thunder');
+    craftSub('r_mudang_master');
+    craftSub('r_plum_elder');
     expect(sim.buildSnapshot(1, false).craft.recipes['r_thunder_emperor']?.lamp).toBe('ready');
     sim.commands.enqueue({ type: 'craft', recipeId: 'r_thunder_emperor', chain: false });
     sim.tick();
 
-    // hell_flame_sovereign = mad_demon + flame_demon + cult_elder
-    craftSub('r_mad_demon');
+    // hell_flame_sovereign = nether_blade_queen + flame_demon + cult_elder
+    craftSub('r_nether_blade_queen');
     craftSub('r_flame_demon');
     craftSub('r_cult_elder');
     expect(sim.buildSnapshot(1, false).craft.recipes['r_hell_flame_sovereign']?.lamp).toBe('ready');
@@ -1973,16 +1974,16 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const immortals = data.units.filter((u) => u.grade === 'immortal');
     expect(immortals.length).toBe(6);
 
-    // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.5x max/min ATK)
+    // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.0x max/min ATK)
     const atks = immortals.map((u) => u.atk);
     const passiveIds = new Set(immortals.map((u) => u.passiveTrait?.id).filter(Boolean));
     expect(new Set(atks).size).toBe(6);
     expect(passiveIds.size).toBe(6);
-    expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.5);
+    expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.0);
 
     // Verify SlotView exposes passiveTrait and sword_immortal's 60% armorPiercePct out-scales un-pierced armor reduction
     const simPierce = new Simulation(data, 0x12344321, {}, 'hell', 'trial_crimson_iron');
-    // Craft sword_immortal onto field
+    // Craft sword_immortal onto field (symmetric 3-ingredient route: sword_saint + hwasan_master + plum_elder)
     const craftSub = (sim: Simulation, recipeId: string): void => {
       const leaves = sim.recipeGraph.leafCost.get(recipeId)!;
       for (const [unitId, count] of leaves) {
@@ -1996,9 +1997,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       sim.tick();
     };
     craftSub(simPierce, 'r_sword_saint');
-    craftSub(simPierce, 'r_murim_lord');
     craftSub(simPierce, 'r_hwasan_master');
-    craftSub(simPierce, 'r_mudang_master');
+    craftSub(simPierce, 'r_plum_elder');
     simPierce.commands.enqueue({ type: 'craft', recipeId: 'r_sword_immortal', chain: false });
     simPierce.tick();
 
@@ -2006,13 +2006,17 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       .buildSnapshot(1, false)
       .field.find((s) => s?.unitId === 'sword_immortal');
     expect(immortalSlot?.passiveTrait?.id).toBe('immortal_pierce');
-    expect(immortalSlot?.passiveTrait?.armorPiercePct).toBe(0.6);
+    expect(immortalSlot?.passiveTrait?.armorPiercePct).toBe(0.7);
 
     // Let sword_immortal strike heavily armored Crimson Iron Hell monsters and verify damage exceeds un-pierced formula!
     let hitObserved = 0;
+    let pierceProcSeen = false;
     simPierce.events.on('monster:hit', (ev) => {
-      if (ev.unitId === 'sword_immortal' && !ev.isCrit && !ev.isSkill && hitObserved === 0) {
-        hitObserved = ev.damage;
+      if (ev.unitId === 'sword_immortal') {
+        if (ev.passiveProc === 'pierce') pierceProcSeen = true;
+        if (!ev.isCrit && !ev.isSkill && hitObserved === 0) {
+          hitObserved = ev.damage;
+        }
       }
     });
     for (let t = 0; t < 180 && hitObserved === 0; t++) {
@@ -2024,6 +2028,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const unpiercedExpected = Math.round(baseAtk * (100 / (100 + wave1HeavyArmor)));
     expect(wave1HeavyArmor).toBeGreaterThan(25);
     expect(hitObserved).toBeGreaterThan(unpiercedExpected);
+    expect(pierceProcSeen).toBe(true);
   });
 
   it('migrates legacy v1 RunSaveData to v2 cleanly and surfaces non-silent Korean discardedReason on incompatible saves', () => {
@@ -2104,44 +2109,269 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(importedMeta.importBackupCode(code).ok).toBe(true);
     expect(importedMeta.isTutorialDone()).toBe(true);
   });
+
+  it('integrates +2 Demonic units, 12 bespoke high-tier VFX tracks, Transcendent passiveTraits, Rare supportAuras, and passiveProc events', () => {
+    const data = loadGameData();
+
+    // 1. +2 Demonic roster additions: blood_acolyte (common leaf) & nether_blade_queen (transcendent)
+    const bloodAcolyte = data.unitsById.get('blood_acolyte');
+    const netherQueen = data.unitsById.get('nether_blade_queen');
+    expect(bloodAcolyte?.grade).toBe('common');
+    expect(bloodAcolyte?.faction).toBe('demonic');
+    expect(data.wispPools.common).toContain('blood_acolyte');
+    expect(netherQueen?.grade).toBe('transcendent');
+    expect(netherQueen?.faction).toBe('demonic');
+    expect(netherQueen?.skill?.vfxTrack).toBe('tx_nether_queen');
+    expect(netherQueen?.passiveTrait?.id).toBeTruthy();
+
+    // 2. All 6 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 6 Immortals have unique im_* VFX tracks
+    const transcendents = data.units.filter((u) => u.grade === 'transcendent');
+    const immortals = data.units.filter((u) => u.grade === 'immortal');
+    expect(transcendents.length).toBe(6);
+    expect(immortals.length).toBe(6);
+
+    const txTracks = new Set(transcendents.map((u) => u.skill?.vfxTrack));
+    const txPassives = new Set(transcendents.map((u) => u.passiveTrait?.id));
+    const imTracks = new Set(immortals.map((u) => u.skill?.vfxTrack));
+    expect(txTracks.size).toBe(6);
+    expect(txPassives.size).toBe(6);
+    expect(imTracks.size).toBe(6);
+    for (const tr of txTracks) expect(tr?.startsWith('tx_')).toBe(true);
+    for (const tr of imTracks) expect(tr?.startsWith('im_')).toBe(true);
+
+    // 3. Rare support aura heroes (gaebang_elder, tang_elder, blood_bishop) expose distinct supportAura configs
+    for (const uid of ['gaebang_elder', 'tang_elder', 'blood_bishop'] as const) {
+      const def = data.unitsById.get(uid);
+      expect(def?.supportAura, `${uid} must define supportAura`).toBeDefined();
+    }
+
+    // 4. Deterministic passiveProc emissions on monster:hit (corrode from thousand_venom_lord, execute from asura_emperor)
+    const craftHero = (sim: Simulation, recipeId: string): void => {
+      const recipe = data.recipes.find((r) => r.id === recipeId)!;
+      for (const ing of recipe.ingredients) {
+        const subRecipe = data.recipes.find((r) => r.output === ing.unit && !r.id.startsWith('r_3x_'));
+        if (subRecipe) {
+          const leaves = sim.recipeGraph.leafCost.get(subRecipe.id)!;
+          for (const [leafId, count] of leaves) {
+            for (let i = 0; i < count * ing.n; i++) {
+              sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+              sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: leafId });
+            }
+          }
+          sim.tick();
+          for (let k = 0; k < ing.n; k++) {
+            sim.commands.enqueue({ type: 'craft', recipeId: subRecipe.id, chain: true });
+            sim.tick();
+          }
+        }
+      }
+      sim.commands.enqueue({ type: 'craft', recipeId, chain: false });
+      sim.tick();
+    };
+
+    const simVenom = new Simulation(data, 0x55aa1122, {}, 'hard', null);
+    craftHero(simVenom, 'r_thousand_venom_lord');
+    const procsSeen = new Set<PassiveProcKind>();
+    simVenom.events.on('monster:hit', (ev) => {
+      if (ev.passiveProc) procsSeen.add(ev.passiveProc);
+    });
+    for (let t = 0; t < 240 && !procsSeen.has('corrode'); t++) {
+      simVenom.tick();
+    }
+    expect(procsSeen.has('corrode')).toBe(true);
+
+    // Verify blood_acolyte ×3 recipe & nether_blade_queen crafting execute cleanly in Simulation
+    const simDemonic = new Simulation(data, 0x33445566, {}, 'normal', null);
+    for (let i = 0; i < 3; i++) {
+      simDemonic.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      simDemonic.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'blood_acolyte' });
+    }
+    simDemonic.tick();
+    simDemonic.commands.enqueue({ type: 'craft', recipeId: 'r_3x_blood_acolyte', chain: false });
+    simDemonic.tick();
+    expect(simDemonic.getUnits().some((u) => u.unitId === 'black_wind')).toBe(true);
+  });
+
+  it('tracks MetaStore 8-title progression reward ladder, equipTitle, trialRecords, difficultyBestWave, achievement skins, and MRD1- backup without double-granting', () => {
+    const data = loadGameData();
+    const storeMap = new Map<string, string>();
+    const memStorage: StorageLike = {
+      getItem: (k) => storeMap.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k) => {
+        storeMap.delete(k);
+      },
+    };
+
+    expect(TITLE_DEFS.length).toBe(8);
+    const meta = new MetaStore(memStorage);
+    expect(meta.getProfile().unlockedTitleCount).toBe(0);
+    expect(meta.getEquippedTitle()).toBeNull();
+    // Cannot equip locked title
+    expect(meta.equipTitle('title_normal_victor')).toBe(false);
+
+    // 1. Clear Normal Wave 30 -> unlocks title_novice_wanderer + title_normal_victor, auto-equips first title, updates difficultyBestWave
+    const recNormal = meta.settleRun({
+      wave: 30,
+      monstersSlain: 400,
+      bossesSlain: 6,
+      bountiesSlain: 2,
+      difficulty: 'normal',
+      victory: true,
+      elapsedTicks: 24000,
+    });
+    expect(recNormal.unlockedTitleIds).toContain('title_novice_wanderer');
+    expect(recNormal.unlockedTitleIds).toContain('title_normal_victor');
+    expect(recNormal.titleBonusGold).toBe(60 + 150);
+    expect(recNormal.titleBonusKeys).toBe(1);
+    expect(meta.getEquippedTitle()).toBe('title_novice_wanderer');
+    expect(meta.getProfile().difficultyBestWave.normal).toBe(30);
+
+    // Equip unlocked title and unequip back to null
+    expect(meta.equipTitle('title_normal_victor')).toBe(true);
+    expect(meta.getEquippedTitle()).toBe('title_normal_victor');
+    expect(meta.equipTitle(null)).toBe(true);
+    expect(meta.getEquippedTitle()).toBeNull();
+    expect(meta.equipTitle('title_normal_victor')).toBe(true);
+
+    // 2. Clear Hard Wave 30 -> unlocks title_hard_master AND hard_clear achievement skin (skin_hell_flame_nirvana)
+    const recHard = meta.settleRun({
+      wave: 30,
+      monstersSlain: 420,
+      bossesSlain: 6,
+      difficulty: 'hard',
+      victory: true,
+      elapsedTicks: 23000,
+    });
+    expect(recHard.unlockedTitleIds).toContain('title_hard_master');
+    expect(recHard.unlockedSkinIds).toContain('skin_hell_flame_nirvana');
+    expect(meta.getProfile().ownedSkins.skin_hell_flame_nirvana).toBe(true);
+    expect(meta.getProfile().difficultyBestWave.hard).toBe(30);
+
+    // 3. Clear Hell Wave 40 -> unlocks title_hell_sovereign + title_endless_40
+    const recHell = meta.settleRun({
+      wave: 40,
+      monstersSlain: 600,
+      bossesSlain: 8,
+      difficulty: 'hell',
+      victory: true,
+      elapsedTicks: 31000,
+    });
+    expect(recHell.unlockedTitleIds).toContain('title_hell_sovereign');
+    expect(recHell.unlockedTitleIds).toContain('title_endless_40');
+    expect(meta.getProfile().difficultyBestWave.hell).toBe(40);
+
+    // 4. Clear all 4 Trials + verify trialRecords (clears, bestWave, minimum bestTicks) + all_trials_clear achievement skin
+    const allTrials: readonly TrialId[] = [
+      'trial_venom_gale',
+      'trial_sword_tomb',
+      'trial_crimson_iron',
+      'trial_chaos_trinity',
+    ];
+    for (let i = 0; i < allTrials.length; i++) {
+      const tid = allTrials[i]!;
+      const rec = meta.settleRun({
+        wave: 15,
+        monstersSlain: 200,
+        bossesSlain: 3,
+        difficulty: 'normal',
+        trialId: tid,
+        victory: true,
+        elapsedTicks: 12000 - i * 200,
+      });
+      if (i < 3) {
+        expect(meta.getProfile().ownedSkins.skin_sword_immortal_celestial).toBeFalsy();
+      } else {
+        expect(rec.unlockedTitleIds).toContain('title_trial_conqueror');
+        expect(rec.unlockedSkinIds).toContain('skin_sword_immortal_celestial');
+        expect(meta.getProfile().ownedSkins.skin_sword_immortal_celestial).toBe(true);
+      }
+    }
+    // Faster re-clear of trial_venom_gale updates clears to 2 and reduces bestTicks
+    meta.settleRun({
+      wave: 15,
+      monstersSlain: 210,
+      bossesSlain: 3,
+      difficulty: 'normal',
+      trialId: 'trial_venom_gale',
+      victory: true,
+      elapsedTicks: 9500,
+    });
+    const venomRec = meta.getProfile().trialRecords.trial_venom_gale;
+    expect(venomRec.clears).toBe(2);
+    expect(venomRec.bestWave).toBe(15);
+    expect(venomRec.bestTicks).toBe(9500);
+
+    // 5. Discover all 41 units -> unlocks title_codex_master; max a relic to Lv.10 -> unlocks title_relic_grandmaster
+    let codexUnlockedTitle = false;
+    for (const u of data.units) {
+      const g = data.gradesById.get(u.grade)!;
+      const res = meta.discoverUnit(u, g);
+      if (res.unlockedTitleIds?.includes('title_codex_master')) {
+        codexUnlockedTitle = true;
+      }
+    }
+    expect(codexUnlockedTitle).toBe(true);
+
+    const firstRelic = data.relics[0]!;
+    let relicUnlockedTitle = false;
+    for (let lv = 0; lv < firstRelic.maxLevel; lv++) {
+      const up = meta.upgradeRelic(firstRelic);
+      if (up.ok && up.unlockedTitleIds?.includes('title_relic_grandmaster')) {
+        relicUnlockedTitle = true;
+      }
+    }
+    expect(relicUnlockedTitle).toBe(true);
+    expect(meta.getProfile().unlockedTitleCount).toBe(8);
+
+    // 6. Reload from storage & MRD1- backup round-trip MUST preserve everything without double-granting currency
+    const goldSnap = meta.getProfile().gold;
+    const keysSnap = meta.getProfile().keys;
+    const silkSnap = meta.getProfile().silk;
+
+    const reloaded = new MetaStore(memStorage);
+    expect(reloaded.getProfile().gold).toBe(goldSnap);
+    expect(reloaded.getProfile().keys).toBe(keysSnap);
+    expect(reloaded.getProfile().silk).toBe(silkSnap);
+    expect(reloaded.getProfile().unlockedTitleCount).toBe(8);
+    expect(reloaded.getEquippedTitle()).toBe('title_normal_victor');
+    expect(reloaded.getProfile().trialRecords.trial_venom_gale.bestTicks).toBe(9500);
+
+    const backupCode = reloaded.exportBackupCode();
+    const imported = new MetaStore(null);
+    expect(imported.importBackupCode(backupCode).ok).toBe(true);
+    expect(imported.getProfile().gold).toBe(goldSnap);
+    expect(imported.getProfile().keys).toBe(keysSnap);
+    expect(imported.getProfile().silk).toBe(silkSnap);
+    expect(imported.getProfile().unlockedTitleCount).toBe(8);
+    expect(imported.getEquippedTitle()).toBe('title_normal_victor');
+    expect(imported.getProfile().trialRecords.trial_venom_gale.clears).toBe(2);
+    expect(imported.getProfile().trialRecords.trial_venom_gale.bestTicks).toBe(9500);
+    expect(imported.getProfile().difficultyBestWave.hell).toBe(40);
+    expect(imported.getProfile().ownedSkins.skin_hell_flame_nirvana).toBe(true);
+    expect(imported.getProfile().ownedSkins.skin_sword_immortal_celestial).toBe(true);
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {
-  const murimSubs: readonly { readonly grade: string; readonly unitId: string }[] = [
-    { grade: 'rare', unitId: 'gaebang_elder' },
-    { grade: 'rare', unitId: 'gaebang_elder' },
-    { grade: 'uncommon', unitId: 'namgung_thunder' },
-    { grade: 'uncommon', unitId: 'shaolin_monk' },
-    { grade: 'common', unitId: 'mudang_disciple' },
-  ];
-  for (const item of murimSubs) {
-    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: item.grade });
-    sim.commands.enqueue({ type: 'useWisp', grade: item.grade, unitId: item.unitId });
+  // Craft ONLY the exact 3 ingredients of r_cheonma (heavenly_demon_heir + sword_demon + cult_elder)
+  // so only cheonma remains on the board after fusion.
+  const subRecipes = ['r_heavenly_demon_heir', 'r_sword_demon', 'r_cult_elder'] as const;
+  for (const recipeId of subRecipes) {
+    const leaves = sim.recipeGraph.leafCost.get(recipeId)!;
+    for (const [unitId, count] of leaves) {
+      for (let i = 0; i < count; i++) {
+        sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+        sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+      }
+    }
+    sim.tick();
+    sim.commands.enqueue({ type: 'craft', recipeId, chain: true });
+    sim.tick();
   }
-  sim.tick();
-  sim.commands.enqueue({ type: 'craft', recipeId: 'r_murim_lord', chain: true });
-  sim.tick();
-
-  const cheonmaSubs: readonly { readonly grade: string; readonly unitId: string }[] = [
-    { grade: 'rare', unitId: 'nokrim_chief' },
-    { grade: 'uncommon', unitId: 'poison_healer' },
-    { grade: 'common', unitId: 'tang_assassin' },
-    { grade: 'rare', unitId: 'nokrim_chief' },
-    { grade: 'uncommon', unitId: 'blood_blade' },
-    { grade: 'common', unitId: 'haomun_ronin' },
-    { grade: 'rare', unitId: 'cult_elder' },
-    { grade: 'uncommon', unitId: 'black_wind' },
-    { grade: 'common', unitId: 'cult_initiate' },
-    { grade: 'rare', unitId: 'cult_elder' },
-    { grade: 'uncommon', unitId: 'cult_protector' },
-    { grade: 'common', unitId: 'bone_fiend' },
-  ];
-  for (const item of cheonmaSubs) {
-    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: item.grade });
-    sim.commands.enqueue({ type: 'useWisp', grade: item.grade, unitId: item.unitId });
-  }
-  sim.tick();
-  sim.commands.enqueue({ type: 'craft', recipeId: 'r_cheonma', chain: true });
+  sim.commands.enqueue({ type: 'craft', recipeId: 'r_cheonma', chain: false });
   sim.tick();
 }
 

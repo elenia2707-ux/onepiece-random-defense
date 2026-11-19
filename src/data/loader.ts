@@ -7,6 +7,7 @@ import rawMissions from './missions.json';
 import rawRecipes from './recipes.json';
 import rawRelics from './relics.json';
 import rawSkins from './skins.json';
+import rawTitles from './titles.json';
 import rawTrials from './trials.json';
 import rawUnits from './units.json';
 import rawUpgrades from './upgrades.json';
@@ -42,6 +43,9 @@ import type {
   SkinRarity,
   SkinUnlockCond,
   SupportAuraDef,
+  TitleConditionKind,
+  TitleDef,
+  TitleId,
   TrialConfig,
   TrialId,
   UnitDef,
@@ -67,6 +71,18 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'blood_slash',
   'demonic_flame',
   'heavenly_demon',
+  'tx_sword_saint',
+  'tx_murim_lord',
+  'tx_mad_demon',
+  'tx_poison_dragon',
+  'tx_demon_heir',
+  'tx_nether_queen',
+  'im_cheonma',
+  'im_sword_immortal',
+  'im_asura_emperor',
+  'im_venom_lord',
+  'im_thunder_emperor',
+  'im_hell_flame',
 ]);
 
 const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
@@ -126,8 +142,21 @@ const VALID_SKIN_RARITIES: ReadonlySet<string> = new Set<SkinRarity>([
 
 const VALID_SKIN_UNLOCKS: ReadonlySet<string> = new Set<SkinUnlockCond>([
   'any_clear',
+  'hard_clear',
   'hell_clear',
   'wave_35',
+  'all_trials_clear',
+]);
+
+const VALID_TITLE_CONDITIONS: ReadonlySet<string> = new Set<TitleConditionKind>([
+  'total_runs',
+  'normal_clear',
+  'hard_clear',
+  'hell_clear',
+  'all_trials_clear',
+  'best_wave',
+  'discovered_units',
+  'max_relic_level',
 ]);
 
 const VALID_SKIN_CRESTS: ReadonlySet<string> = new Set<SkinCrestKind>([
@@ -613,6 +642,8 @@ export function validateDifficulties(input: unknown): DifficultyConfig[] {
       badge: assertNonEmptyString(r.badge, `difficulties[${i}].badge`),
       desc: assertNonEmptyString(r.desc, `difficulties[${i}].desc`),
       hpMult: assertPositiveNumber(r.hpMult, `difficulties[${i}].hpMult`),
+      lateWaveRamp: assertPositiveNumber(r.lateWaveRamp, `difficulties[${i}].lateWaveRamp`),
+      bossHpMult: assertPositiveNumber(r.bossHpMult, `difficulties[${i}].bossHpMult`),
       speedMult: assertPositiveNumber(r.speedMult, `difficulties[${i}].speedMult`),
       armorBonus: Math.round(
         assertNonNegativeNumber(r.armorBonus, `difficulties[${i}].armorBonus`),
@@ -651,6 +682,8 @@ export function validateTrials(input: unknown): TrialConfig[] {
       desc: assertNonEmptyString(r.desc, `trials[${i}].desc`),
       targetWave: Math.floor(assertPositiveNumber(r.targetWave, `trials[${i}].targetWave`)),
       hpMult: assertPositiveNumber(r.hpMult, `trials[${i}].hpMult`),
+      lateWaveRamp: assertPositiveNumber(r.lateWaveRamp, `trials[${i}].lateWaveRamp`),
+      bossHpMult: assertPositiveNumber(r.bossHpMult, `trials[${i}].bossHpMult`),
       speedMult: assertPositiveNumber(r.speedMult, `trials[${i}].speedMult`),
       bonusMonsterArmor: Math.round(
         assertNonNegativeNumber(r.bonusMonsterArmor, `trials[${i}].bonusMonsterArmor`),
@@ -1083,6 +1116,51 @@ function validateBoons(rawList: unknown): BoonDef[] {
   });
 }
 
+export function validateTitles(input: unknown): TitleDef[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] titles.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `titles[${i}]`);
+    const id = assertNonEmptyString(r.id, `titles[${i}].id`);
+    if (seen.has(id)) {
+      throw new Error(`[DataValidation] duplicate title id: ${id}`);
+    }
+    seen.add(id);
+    const name = assertNonEmptyString(r.name, `titles[${i}].name`);
+    const badge = assertNonEmptyString(r.badge, `titles[${i}].badge`);
+    const color = assertNonEmptyString(r.color, `titles[${i}].color`);
+    const desc = assertNonEmptyString(r.desc, `titles[${i}].desc`);
+    const condStr = assertNonEmptyString(r.condition, `titles[${i}].condition`);
+    if (!VALID_TITLE_CONDITIONS.has(condStr)) {
+      throw new Error(`[DataValidation] titles[${i}].condition invalid: ${condStr}`);
+    }
+    const target = Math.floor(assertPositiveNumber(r.target, `titles[${i}].target`));
+    const rewardGold = Math.floor(
+      assertNonNegativeNumber(r.rewardGold, `titles[${i}].rewardGold`),
+    );
+    const rewardKeys = Math.floor(
+      assertNonNegativeNumber(r.rewardKeys, `titles[${i}].rewardKeys`),
+    );
+    const rewardSilk = Math.floor(
+      assertNonNegativeNumber(r.rewardSilk, `titles[${i}].rewardSilk`),
+    );
+    return {
+      id: id as TitleId,
+      name,
+      badge,
+      color,
+      desc,
+      condition: condStr as TitleConditionKind,
+      target,
+      rewardGold,
+      rewardKeys,
+      rewardSilk,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -1123,6 +1201,8 @@ export function loadGameData(): GameDataBundle {
   );
   const trials = validateTrials(rawTrials);
   const trialsById = new Map<TrialId, TrialConfig>(trials.map((t) => [t.id, t]));
+  const titles = validateTitles(rawTitles);
+  const titlesById = new Map<TitleId, TitleDef>(titles.map((t) => [t.id, t]));
 
   cachedBundle = {
     grades,
@@ -1150,6 +1230,8 @@ export function loadGameData(): GameDataBundle {
     difficultiesById,
     trials,
     trialsById,
+    titles,
+    titlesById,
   };
   return cachedBundle;
 }

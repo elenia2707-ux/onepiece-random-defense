@@ -1,45 +1,25 @@
 import { Pool } from '../core/Pool';
 import { TICK_DT } from '../core/time';
-import type { FactionId, VfxTrackKind } from '../data/types';
+import type { FactionId, PassiveProcKind, VfxTrackKind } from '../data/types';
 import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../platform/Viewport';
 import type { CanvasStack } from '../render/CanvasStack';
 import { PIXEL_OUTLINE } from '../render/ChibiPainter';
 import { type IRenderable, RenderLayer } from '../render/RenderLayer';
-import { hexWithAlpha, type SpriteCache } from '../render/SpriteCache';
+import { type HitBadgeKind, hexWithAlpha, type SpriteCache } from '../render/SpriteCache';
 import type { WeaponMotionStyle } from '../render/weaponProfiles';
+import { renderSkillAir, renderSkillGround, spawnSkillVfx } from './skills/index';
+import {
+  easeOutCubic,
+  type PushTrackConfig,
+  type SkillRenderContext,
+  type SkillSpawnContext,
+  type TrackVfxInstance,
+} from './types';
 
 const MAX_VFX_INSTANCES = 96;
 const MAX_PARTICLES = 1500;
 const MAX_SKILL_CALLOUTS = 2;
-
-type InternalVfxKind =
-  | 'ring'
-  | 'craft_pillar'
-  | 'hit_slash'
-  | 'armor_shatter'
-  | 'qi_resonance'
-  | VfxTrackKind;
-
-interface TrackVfxInstance {
-  kind: InternalVfxKind;
-  weaponStyle: WeaponMotionStyle;
-  startTick: number;
-  durationSec: number;
-  fromX: number;
-  fromY: number;
-  x: number;
-  y: number;
-  fromRadius: number;
-  toRadius: number;
-  color: string;
-  secondaryColor: string;
-  lineWidth: number;
-  glowRadius: number;
-  gradeRank: number;
-  progress: number;
-  renderableGround: IRenderable;
-  renderableAir: IRenderable;
-}
+const MAX_CONCURRENT_LARGE_ULTIMATES = 2;
 
 interface FloatingDamageItem {
   active: boolean;
@@ -53,7 +33,8 @@ interface FloatingDamageItem {
   isCrit: boolean;
   isSkill: boolean;
   isShred: boolean;
-  isExecute: boolean;
+  isKill: boolean;
+  passiveProc: PassiveProcKind | null;
 }
 
 interface SkillCalloutItem {
@@ -79,15 +60,25 @@ interface OverlayBannerState {
   sprite: HTMLCanvasElement;
 }
 
+interface CutInState {
+  startRealMs: number;
+  durationSec: number;
+  unitSprite: HTMLCanvasElement;
+  bannerSprite: HTMLCanvasElement;
+  accentColor: string;
+}
+
 /**
  * Pure presentation Wuxia VFX system synchronized to simulation clock:
  * t = (currentTick + alpha - startTick) * TICK_DT (AGENTS.md §3 & §4).
- * Screen banners use timeBase: 'real' (timestamp difference, never dt accumulation).
+ * Screen banners and ascension cut-ins use timeBase: 'real' (timestamp difference, never dt accumulation).
  * Screen shake is permanently disabled so the board remains rock-steady.
  * Never mutates simulation state.
  */
 export class VfxSystem {
   private readonly sprites: SpriteCache;
+  private readonly skillSpawnApi: SkillSpawnContext;
+  private readonly skillRenderCtx: SkillRenderContext;
   private readonly activeTracks: TrackVfxInstance[] = [];
   private readonly trackPool: Pool<TrackVfxInstance>;
 
@@ -108,6 +99,7 @@ export class VfxSystem {
   private readonly skillCallouts: SkillCalloutItem[] = [];
   private flash: ScreenFlashState | null = null;
   private banner: OverlayBannerState | null = null;
+  private cutIn: CutInState | null = null;
   private currentSimTimeSec = 0;
 
   private readonly particleBatchRenderable: IRenderable;
@@ -116,6 +108,14 @@ export class VfxSystem {
 
   public constructor(sprites: SpriteCache) {
     this.sprites = sprites;
+    this.skillRenderCtx = { sprites };
+    this.skillSpawnApi = {
+      pushTrack: (cfg) => this.pushTrack(cfg),
+      emitRadialBurst: (x, y, color, count, speed, lifeSec, gravity, startTick) =>
+        this.emitRadialBurst(x, y, color, count, speed, lifeSec, gravity, startTick),
+      triggerScreenFlash: (color, peakAlpha, durationSec, startTick) =>
+        this.triggerScreenFlash(color, peakAlpha, durationSec, startTick),
+    };
 
     this.trackPool = new Pool<TrackVfxInstance>(
       () => {
@@ -135,6 +135,7 @@ export class VfxSystem {
           lineWidth: 3,
           glowRadius: 42,
           gradeRank: 1,
+          isLargeUltimate: false,
           progress: 0,
           renderableGround: {
             layer: RenderLayer.GroundFx,
@@ -153,6 +154,7 @@ export class VfxSystem {
         inst.progress = 0;
         inst.gradeRank = 1;
         inst.weaponStyle = 'sword';
+        inst.isLargeUltimate = false;
       },
       36,
     );
@@ -170,7 +172,8 @@ export class VfxSystem {
         isCrit: false,
         isSkill: false,
         isShred: false,
-        isExecute: false,
+        isKill: false,
+        passiveProc: null,
       });
     }
 
@@ -279,14 +282,8 @@ export class VfxSystem {
   }
 
   /**
-   * Wuxia sect skill VFX tracks synchronized to simulation hit tick:
-   * - plum_blossom: 화산파 매화검기 (crescent sword qi + scattering pink plum petals)
-   * - emperor_thunder: 남궁 제왕검형 (sky-to-ground cyan-blue thunder sword)
-   * - golden_palm: 소림 금강권 (golden Dharma shockwave + '剛' Hanja seal)
-   * - poison_rain: 사천당문 만천화우 (venom needle barrage + toxic jade mist)
-   * - blood_slash: 사파 혈도/광마참 (crossed crimson-ink saber slashes)
-   * - demonic_flame: 마교 마염 (obsidian-scarlet hellfire vortex)
-   * - heavenly_demon: 마교 천마군림보 (black-crimson lightning spatial fracture)
+   * Delegates sect & bespoke Transcendent/Immortal skill VFX tracks to `src/vfx/skills/`.
+   * Lower-tier effects are capped compactly while up to 2 Immortal ultimates render concurrently.
    */
   public spawnSkillTrack(
     track: VfxTrackKind,
@@ -302,185 +299,21 @@ export class VfxSystem {
     skinSecondary?: string,
     weaponStyle: WeaponMotionStyle = 'sword',
   ): void {
-    switch (track) {
-      case 'plum_blossom': {
-        const plumColor = skinPrimary ?? (gradeRank >= 4 ? '#db2777' : '#f43f5e');
-        const petalLight = skinSecondary ?? '#fda4af';
-        this.pushTrack({
-          kind: 'plum_blossom',
-          weaponStyle,
-          startTick,
-          durationSec: 0.46,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 16,
-          toRadius: radius,
-          color: plumColor,
-          secondaryColor: petalLight,
-          lineWidth: 5,
-          glowRadius: Math.min(84, radius * 0.8),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, skinPrimary ?? '#fb7185', 14, 140, 0.42, 35, startTick);
-        this.emitRadialBurst(x, y, petalLight, 10, 95, 0.48, 45, startTick);
-        break;
-      }
-
-      case 'emperor_thunder': {
-        const boltMain = skinPrimary ?? '#0284c7';
-        const boltSub = skinSecondary ?? '#7dd3fc';
-        this.pushTrack({
-          kind: 'emperor_thunder',
-          weaponStyle,
-          startTick,
-          durationSec: 0.46,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 14,
-          toRadius: radius,
-          color: boltMain,
-          secondaryColor: boltSub,
-          lineWidth: 5,
-          glowRadius: Math.min(90, radius * 0.85),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, skinPrimary ?? '#38bdf8', 18, 175, 0.32, 20, startTick);
-        break;
-      }
-
-      case 'golden_palm': {
-        const palmMain = skinPrimary ?? '#d97706';
-        const palmSub = skinSecondary ?? '#facc15';
-        this.pushTrack({
-          kind: 'golden_palm',
-          weaponStyle,
-          startTick,
-          durationSec: 0.48,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 14,
-          toRadius: radius,
-          color: palmMain,
-          secondaryColor: palmSub,
-          lineWidth: 5.5,
-          glowRadius: Math.min(88, radius * 0.85),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, skinPrimary ?? '#f59e0b', 18, 155, 0.34, 0, startTick);
-        break;
-      }
-
-      case 'poison_rain': {
-        const poisonMain = skinPrimary ?? '#16a34a';
-        const poisonSub = skinSecondary ?? '#a855f7';
-        this.pushTrack({
-          kind: 'poison_rain',
-          weaponStyle,
-          startTick,
-          durationSec: weaponStyle === 'fan' ? 0.56 : 0.48,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 16,
-          toRadius: radius,
-          color: poisonMain,
-          secondaryColor: poisonSub,
-          lineWidth: 4.5,
-          glowRadius: Math.min(82, radius * 0.78),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, skinPrimary ?? '#22c55e', 15, 140, 0.36, 30, startTick);
-        this.emitRadialBurst(x, y, skinSecondary ?? '#7e22ce', 8, 100, 0.34, 20, startTick);
-        break;
-      }
-
-      case 'blood_slash': {
-        const slashMain = skinPrimary ?? '#e11d48';
-        const slashSub = skinSecondary ?? '#ffe4e6';
-        this.pushTrack({
-          kind: 'blood_slash',
-          weaponStyle,
-          startTick,
-          durationSec: 0.44,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 18,
-          toRadius: radius,
-          color: skinPrimary ?? '#be123c',
-          secondaryColor: slashSub,
-          lineWidth: 5.5,
-          glowRadius: Math.min(92, radius * 0.85),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, slashMain, 20, 175, 0.34, 0, startTick);
-        break;
-      }
-
-      case 'demonic_flame': {
-        const flameMain = skinPrimary ?? '#dc2626';
-        const flameSub = skinSecondary ?? '#a855f7';
-        this.pushTrack({
-          kind: 'demonic_flame',
-          weaponStyle,
-          startTick,
-          durationSec: 0.5,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 16,
-          toRadius: radius,
-          color: flameMain,
-          secondaryColor: flameSub,
-          lineWidth: 5.5,
-          glowRadius: Math.min(96, radius * 0.88),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, flameMain, 18, 150, 0.38, -95, startTick);
-        this.emitRadialBurst(x, y, skinSecondary ?? '#9333ea', 10, 105, 0.34, -110, startTick);
-        break;
-      }
-
-      case 'heavenly_demon': {
-        const demonMain = skinPrimary ?? '#be123c';
-        const demonSub = skinSecondary ?? '#fde047';
-        this.pushTrack({
-          kind: 'heavenly_demon',
-          weaponStyle,
-          startTick,
-          durationSec: 0.58,
-          fromX,
-          fromY,
-          x,
-          y,
-          fromRadius: 20,
-          toRadius: radius,
-          color: demonMain,
-          secondaryColor: demonSub,
-          lineWidth: 7,
-          glowRadius: Math.min(120, radius * 0.95),
-          gradeRank,
-        });
-        this.emitRadialBurst(x, y, skinPrimary ?? '#e11d48', 26, 210, 0.44, 0, startTick);
-        this.emitRadialBurst(x, y, PIXEL_OUTLINE, 16, 165, 0.4, 0, startTick);
-        this.triggerScreenFlash(demonMain, gradeRank >= 6 ? 0.14 : 0.09, 0.16, startTick);
-        break;
-      }
-
-      default: {
-        this.emitRadialBurst(x, y, skinPrimary ?? color, 12, 120, 0.3, 0, startTick);
-        break;
-      }
-    }
+    spawnSkillVfx(
+      this.skillSpawnApi,
+      track,
+      fromX,
+      fromY,
+      x,
+      y,
+      radius,
+      color,
+      gradeRank,
+      startTick,
+      skinPrimary,
+      skinSecondary,
+      weaponStyle,
+    );
   }
 
   /**
@@ -825,6 +658,7 @@ export class VfxSystem {
     fromX = x,
     fromY = y,
     secondaryColor = '#fde047',
+    passiveProc?: PassiveProcKind,
   ): void {
     const burstCount = slain ? 16 : isCrit ? 12 : isSkill ? 9 : 6;
     const burstColor = isCrit ? '#facc15' : armorBroken ? '#e879f9' : color;
@@ -934,6 +768,7 @@ export class VfxSystem {
       isSkill,
       armorBroken,
       slain,
+      passiveProc ?? null,
       startTick,
     );
   }
@@ -946,6 +781,7 @@ export class VfxSystem {
       `${bossName} 출현!`,
       '#dc2626',
     );
+    this.cutIn = null;
     this.banner = {
       startRealMs: realNowMs,
       durationSec: 1.8,
@@ -966,10 +802,31 @@ export class VfxSystem {
       `${unitName} 합공 대성공!`,
       accentColor,
     );
+    this.cutIn = null;
     this.banner = {
       startRealMs: realNowMs,
       durationSec: 1.65,
       sprite,
+    };
+  }
+
+  /**
+   * 1.25s real-time ascension cut-in sash for first craft of each Transcendent/Immortal hero.
+   * Renders cleanly in the upper corridor (y=96..224) so the 6x3 hero grid stays unobstructed.
+   */
+  public showAscensionCutIn(
+    unitSprite: HTMLCanvasElement,
+    bannerSprite: HTMLCanvasElement,
+    accentColor: string,
+    realNowMs: number,
+  ): void {
+    this.banner = null;
+    this.cutIn = {
+      startRealMs: realNowMs,
+      durationSec: 1.25,
+      unitSprite,
+      bannerSprite,
+      accentColor,
     };
   }
 
@@ -987,21 +844,36 @@ export class VfxSystem {
     this.flash = { startTick, durationSec, color, peakAlpha };
   }
 
-  private pushTrack(
-    cfg: Omit<
-      TrackVfxInstance,
-      | 'renderableGround'
-      | 'renderableAir'
-      | 'progress'
-      | 'gradeRank'
-      | 'secondaryColor'
-      | 'weaponStyle'
-    > & {
-      readonly gradeRank?: number;
-      readonly secondaryColor?: string;
-      readonly weaponStyle?: WeaponMotionStyle;
-    },
-  ): void {
+  private pushTrack(cfg: PushTrackConfig): void {
+    let effectiveKind = cfg.kind;
+    let effectiveToRadius = cfg.toRadius;
+    let effectiveGlowRadius = cfg.glowRadius;
+    let effectiveIsLargeUltimate = Boolean(cfg.isLargeUltimate);
+
+    // Enforce max 2 concurrent large Immortal ultimates to preserve board legibility
+    if (effectiveIsLargeUltimate) {
+      let activeUltCount = 0;
+      let oldestUltIdx = -1;
+      for (let i = 0; i < this.activeTracks.length; i++) {
+        if (this.activeTracks[i]!.isLargeUltimate) {
+          activeUltCount++;
+          if (oldestUltIdx < 0) oldestUltIdx = i;
+        }
+      }
+      if (activeUltCount >= MAX_CONCURRENT_LARGE_ULTIMATES) {
+        const oldestUlt = oldestUltIdx >= 0 ? this.activeTracks[oldestUltIdx] : undefined;
+        if (oldestUlt && oldestUlt.progress >= 0.35) {
+          this.activeTracks.splice(oldestUltIdx, 1);
+          this.trackPool.release(oldestUlt);
+        } else {
+          effectiveKind = 'ring';
+          effectiveToRadius = Math.min(76, cfg.toRadius * 0.55);
+          effectiveGlowRadius = Math.min(48, cfg.glowRadius * 0.6);
+          effectiveIsLargeUltimate = false;
+        }
+      }
+    }
+
     if (this.activeTracks.length >= MAX_VFX_INSTANCES) {
       const oldest = this.activeTracks.shift();
       if (oldest) {
@@ -1009,7 +881,7 @@ export class VfxSystem {
       }
     }
     const inst = this.trackPool.acquire();
-    inst.kind = cfg.kind;
+    inst.kind = effectiveKind;
     inst.weaponStyle = cfg.weaponStyle ?? 'sword';
     inst.startTick = cfg.startTick;
     inst.durationSec = cfg.durationSec;
@@ -1018,12 +890,13 @@ export class VfxSystem {
     inst.x = cfg.x;
     inst.y = cfg.y;
     inst.fromRadius = cfg.fromRadius;
-    inst.toRadius = cfg.toRadius;
+    inst.toRadius = effectiveToRadius;
     inst.color = cfg.color;
     inst.secondaryColor = cfg.secondaryColor ?? '#fde047';
     inst.lineWidth = cfg.lineWidth;
-    inst.glowRadius = cfg.glowRadius;
+    inst.glowRadius = effectiveGlowRadius;
     inst.gradeRank = cfg.gradeRank ?? 1;
+    inst.isLargeUltimate = effectiveIsLargeUltimate;
     inst.renderableGround.sortY = cfg.y;
     inst.renderableAir.sortY = cfg.y;
     this.activeTracks.push(inst);
@@ -1037,21 +910,12 @@ export class VfxSystem {
     const radius = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
     const prevAlpha = ctx.globalAlpha;
 
-    if (inst.kind === 'poison_rain') {
-      // Toxic jade-violet miasma pool on flagstones
-      ctx.globalAlpha = inv * 0.24;
-      ctx.beginPath();
-      ctx.arc(inst.x, inst.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = inst.color;
-      ctx.fill();
-    } else if (inst.kind === 'heavenly_demon') {
-      // Dark-crimson abyssal crater imprint
-      ctx.globalAlpha = inv * 0.28;
-      ctx.beginPath();
-      ctx.arc(inst.x, inst.y, radius * 0.88, 0, Math.PI * 2);
-      ctx.fillStyle = PIXEL_OUTLINE;
-      ctx.fill();
-    } else if (inst.kind === 'qi_resonance') {
+    if (renderSkillGround(ctx, inst, radius, inv)) {
+      ctx.globalAlpha = prevAlpha;
+      return;
+    }
+
+    if (inst.kind === 'qi_resonance') {
       // Elliptical martial cultivation resonance aura under hero's feet
       ctx.globalAlpha = inv * 0.9;
       ctx.beginPath();
@@ -1072,7 +936,7 @@ export class VfxSystem {
       return;
     }
 
-    // Crisp outer dark-ink outline ring + colored shockwave ring for bright white-jade contrast
+    // Crisp outer dark-ink outline ring + colored shockwave ring for core non-skill tracks
     ctx.globalAlpha = inv * 0.85;
     ctx.beginPath();
     ctx.arc(inst.x, inst.y, radius, 0, Math.PI * 2);
@@ -1086,7 +950,7 @@ export class VfxSystem {
     ctx.strokeStyle = inst.color;
     ctx.stroke();
 
-    if (inst.kind === 'golden_palm' || inst.kind === 'heavenly_demon' || inst.kind === 'craft_pillar') {
+    if (inst.kind === 'craft_pillar') {
       ctx.beginPath();
       ctx.arc(inst.x, inst.y, radius * 0.62, 0, Math.PI * 2);
       ctx.lineWidth = Math.max(1.2, inst.lineWidth * 0.7 * inv);
@@ -1109,6 +973,11 @@ export class VfxSystem {
       ctx.drawImage(glow, inst.x - r, inst.y - r, r * 2, r * 2);
     }
 
+    if (renderSkillAir(ctx, inst, this.skillRenderCtx)) {
+      ctx.globalAlpha = prevAlpha;
+      return;
+    }
+
     switch (inst.kind) {
       case 'craft_pillar': {
         const colW = Math.max(6, (1 - p * 0.65) * 34);
@@ -1120,300 +989,6 @@ export class VfxSystem {
         ctx.fillRect(inst.x - colW, inst.y - colH, colW * 2, colH + 12);
         ctx.fillStyle = '#fffbeb';
         ctx.fillRect(inst.x - colW * 0.4, inst.y - colH, colW * 0.8, colH + 8);
-        break;
-      }
-
-      case 'plum_blossom': {
-        // Hwasan 매화검기: rose crescent sword-qi + 5 scattering pink plum blossoms
-        const ang = Math.atan2(inst.y - inst.fromY, inst.x - inst.fromX);
-        const arcR = inst.toRadius * (0.45 + easeOutCubic(p) * 0.52);
-        ctx.save();
-        ctx.translate(inst.x, inst.y);
-        ctx.rotate(ang);
-        ctx.globalAlpha = inv * 0.96;
-
-        ctx.beginPath();
-        ctx.arc(0, 0, arcR, -Math.PI * 0.44, Math.PI * 0.44);
-        ctx.quadraticCurveTo(
-          arcR * 0.42,
-          0,
-          Math.cos(-Math.PI * 0.44) * arcR,
-          Math.sin(-Math.PI * 0.44) * arcR,
-        );
-        ctx.fillStyle = inst.color;
-        ctx.fill();
-        ctx.lineWidth = 2.8;
-        ctx.strokeStyle = PIXEL_OUTLINE;
-        ctx.stroke();
-        ctx.restore();
-
-        // 5-petal plum blossom silhouettes fluttering outward
-        ctx.globalAlpha = inv * 0.95;
-        for (let b = 0; b < 5; b++) {
-          const ba = (b * Math.PI * 2) / 5 + p * 2.2 + (inst.startTick % 7);
-          const br = arcR * (0.35 + p * 0.65);
-          const bx = inst.x + Math.cos(ba) * br;
-          const by = inst.y + Math.sin(ba) * br;
-          ctx.beginPath();
-          ctx.arc(bx, by, 5.2 * inv + 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = b % 2 === 0 ? inst.color : inst.secondaryColor;
-          ctx.fill();
-          ctx.lineWidth = 1.6;
-          ctx.strokeStyle = PIXEL_OUTLINE;
-          ctx.stroke();
-        }
-        break;
-      }
-
-      case 'emperor_thunder': {
-        // Namgung / Wudang 제왕검형·태극천뢰: towering sky-to-ground cyan-blue & white lightning bolt
-        ctx.globalAlpha = inv * 0.96;
-        const skyY = inst.y - 190;
-        const seed = inst.startTick * 17;
-        const traceBolt = (w: number, col: string): void => {
-          ctx.beginPath();
-          ctx.moveTo(inst.x + ((seed % 19) - 9), skyY);
-          const steps = 6;
-          for (let s = 1; s < steps; s++) {
-            const frac = s / steps;
-            const jx = (((seed + s * 31) % 29) - 14) * (1 - frac * 0.4);
-            ctx.lineTo(inst.x + jx, skyY + (inst.y - skyY) * frac);
-          }
-          ctx.lineTo(inst.x, inst.y);
-          ctx.lineWidth = w * inv;
-          ctx.strokeStyle = col;
-          ctx.stroke();
-        };
-        traceBolt(12, PIXEL_OUTLINE);
-        traceBolt(8, inst.color);
-        traceBolt(4, inst.secondaryColor);
-        traceBolt(2, '#ffffff');
-
-        if (inst.gradeRank >= 3) {
-          const seal = this.sprites.kanjiSeal('雷', inst.color);
-          const size = (inst.gradeRank >= 5 ? 74 : 62) * (0.8 + inv * 0.25);
-          ctx.globalAlpha = inv * 0.92;
-          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 26 - p * 22 - size * 0.5, size, size);
-        }
-        break;
-      }
-
-      case 'golden_palm': {
-        // Shaolin / Gaebang 금강권·항룡장: golden Hanja '剛' or '龍' martial seal rising above golden shockwave
-        const hanja = inst.gradeRank >= 3 ? '龍' : '剛';
-        const seal = this.sprites.kanjiSeal(hanja, inst.color);
-        const pop = p < 0.25 ? 0.7 + (p / 0.25) * 0.45 : 1.15 - (p - 0.25) * 0.2;
-        const size = 76 * pop;
-        const liftY = inst.y - 16 - easeOutCubic(p) * 26;
-        ctx.globalAlpha = inv * 0.96;
-        ctx.drawImage(seal, inst.x - size * 0.5, liftY - size * 0.5, size, size);
-        break;
-      }
-
-      case 'poison_rain': {
-        // Tang Sect 만천화우: unfolding grand Tang folding fan (when weaponStyle === 'fan') + poison needle storm + '毒' seal
-        ctx.globalAlpha = inv * 0.96;
-
-        if (inst.weaponStyle === 'fan') {
-          // Grand 7-rib Sichuan Tang Folding War Fan (만천화우선) snapping open above the poison storm!
-          const openT = easeOutCubic(Math.min(1, p * 2.2));
-          const halfSpan = 0.22 + openT * 1.12;
-          const fanR = (38 + openT * 18) * (inst.gradeRank >= 4 ? 1.12 : 1);
-          const innerR = 8;
-          const fx = inst.x;
-          const fy = inst.y - 38 - p * 8;
-          // Point fan canopy downward (+PI/2) so needles rain out of its ribs onto monsters
-          const centerA = Math.PI * 0.5;
-          const a0 = centerA - halfSpan;
-          const a1 = centerA + halfSpan;
-
-          ctx.save();
-          ctx.translate(fx, fy);
-
-          ctx.beginPath();
-          ctx.arc(0, 0, fanR, a0, a1);
-          ctx.arc(0, 0, innerR, a1, a0, true);
-          ctx.closePath();
-          ctx.fillStyle = '#4c1d95';
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(0, 0, fanR * 0.84, a0, a1);
-          ctx.arc(0, 0, fanR * 0.44, a1, a0, true);
-          ctx.closePath();
-          ctx.fillStyle = inst.color;
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(0, 0, fanR, a0, a1);
-          ctx.arc(0, 0, fanR * 0.84, a1, a0, true);
-          ctx.closePath();
-          ctx.fillStyle = '#facc15';
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(0, 0, fanR, a0, a1);
-          ctx.arc(0, 0, innerR, a1, a0, true);
-          ctx.closePath();
-          ctx.lineWidth = 2.8;
-          ctx.strokeStyle = PIXEL_OUTLINE;
-          ctx.stroke();
-
-          for (let rIdx = 0; rIdx < 7; rIdx++) {
-            const ra = a0 + ((a1 - a0) * rIdx) / 6;
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(ra) * 3, Math.sin(ra) * 3);
-            ctx.lineTo(Math.cos(ra) * (fanR + 2), Math.sin(ra) * (fanR + 2));
-            ctx.lineWidth = 2.6;
-            ctx.strokeStyle = PIXEL_OUTLINE;
-            ctx.stroke();
-            ctx.lineWidth = 1.2;
-            ctx.strokeStyle = '#fde68a';
-            ctx.stroke();
-          }
-
-          ctx.beginPath();
-          ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
-          ctx.fillStyle = '#facc15';
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = PIXEL_OUTLINE;
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        const seed = inst.startTick * 13;
-        const needleCount = inst.weaponStyle === 'fan' ? 16 : 12;
-        for (let n = 0; n < needleCount; n++) {
-          const spreadX = (((seed + n * 23) % 56) - 28) * (inst.toRadius / 70);
-          const spreadY = (((seed + n * 37) % 40) - 20) * (inst.toRadius / 70);
-          const fall = (1 - p) * 46;
-          const tx = inst.x + spreadX;
-          const ty = inst.y + spreadY;
-          const sx = tx - (inst.weaponStyle === 'fan' ? spreadX * 0.25 : fall * 0.55);
-          const sy = ty - fall;
-
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(tx, ty);
-          ctx.lineWidth = 4.6;
-          ctx.strokeStyle = PIXEL_OUTLINE;
-          ctx.stroke();
-
-          ctx.lineWidth = 2.3;
-          ctx.strokeStyle =
-            n % 3 === 0 ? '#ffffff' : n % 2 === 0 ? inst.color : inst.secondaryColor;
-          ctx.stroke();
-        }
-        if (inst.gradeRank >= 2) {
-          const seal = this.sprites.kanjiSeal('毒', inst.color);
-          const size = (inst.gradeRank >= 4 ? 68 : 56) * (0.85 + inv * 0.2);
-          ctx.globalAlpha = inv * 0.9;
-          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 18 - p * 18 - size * 0.5, size, size);
-        }
-        break;
-      }
-
-      case 'blood_slash': {
-        // Unorthodox 혈도·광마참: fierce X-crossed crimson-ink saber arcs + '血' seal
-        const r = inst.toRadius * (0.55 + easeOutCubic(p) * 0.42);
-        ctx.globalAlpha = inv * 0.96;
-        const drawSlash = (w: number, col: string): void => {
-          ctx.beginPath();
-          ctx.moveTo(inst.x - r, inst.y - r * 0.55);
-          ctx.quadraticCurveTo(inst.x, inst.y - 6, inst.x + r, inst.y + r * 0.55);
-          ctx.moveTo(inst.x - r * 0.85, inst.y + r * 0.65);
-          ctx.quadraticCurveTo(inst.x, inst.y + 6, inst.x + r * 0.85, inst.y - r * 0.65);
-          ctx.lineCap = 'round';
-          ctx.lineWidth = w * inv;
-          ctx.strokeStyle = col;
-          ctx.stroke();
-        };
-        drawSlash(11.5, PIXEL_OUTLINE);
-        drawSlash(6.8, inst.color);
-        drawSlash(2.6, inst.secondaryColor);
-
-        if (inst.gradeRank >= 3) {
-          const seal = this.sprites.kanjiSeal('血', inst.color);
-          const size = (inst.gradeRank >= 5 ? 76 : 62) * (0.85 + inv * 0.2);
-          ctx.globalAlpha = inv * 0.92;
-          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 24 - p * 22 - size * 0.5, size, size);
-        }
-        break;
-      }
-
-      case 'demonic_flame': {
-        // Demonic Cult 마염: swirling obsidian-crimson & violet hellfire rings + '魔' seal
-        const r = inst.toRadius * (0.35 + p * 0.58);
-        ctx.globalAlpha = inv * 0.92;
-        ctx.beginPath();
-        ctx.arc(inst.x, inst.y, r * 0.52, 0, Math.PI * 2);
-        ctx.fillStyle = PIXEL_OUTLINE;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(inst.x, inst.y, r * 0.36, 0, Math.PI * 2);
-        ctx.fillStyle = inst.secondaryColor;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(inst.x, inst.y, r, p * 4.5, p * 4.5 + Math.PI * 1.45);
-        ctx.lineWidth = 7 * inv;
-        ctx.strokeStyle = inst.color;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(inst.x, inst.y, r * 0.82, -p * 4, -p * 4 + Math.PI * 1.2);
-        ctx.lineWidth = 4.5 * inv;
-        ctx.strokeStyle = inst.secondaryColor;
-        ctx.stroke();
-
-        if (inst.gradeRank >= 3) {
-          const seal = this.sprites.kanjiSeal('魔', inst.secondaryColor);
-          const size = (inst.gradeRank >= 4 ? 72 : 60) * (0.85 + inv * 0.2);
-          ctx.globalAlpha = inv * 0.92;
-          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 24 - p * 22 - size * 0.5, size, size);
-        }
-        break;
-      }
-
-      case 'heavenly_demon': {
-        // 천마군림보: pitch-black & blood-crimson lightning spatial fracture cracks + '天' seal!
-        const maxR = inst.toRadius * (0.45 + easeOutCubic(p) * 0.58);
-        ctx.globalAlpha = inv * 0.98;
-        const traceFractures = (w: number, col: string): void => {
-          ctx.beginPath();
-          for (let b = 0; b < 7; b++) {
-            const ang = (b * Math.PI * 2) / 7 + (inst.startTick % 9) * 0.18;
-            const r1 = maxR * 0.46;
-            const x1 = inst.x + Math.cos(ang + 0.18) * r1;
-            const y1 = inst.y + Math.sin(ang + 0.18) * r1;
-            ctx.moveTo(inst.x, inst.y);
-            ctx.lineTo(x1, y1);
-            ctx.lineTo(
-              x1 + Math.cos(ang - 0.24) * (maxR * 0.54),
-              y1 + Math.sin(ang - 0.24) * (maxR * 0.54),
-            );
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(
-              x1 + Math.cos(ang + 0.42) * (maxR * 0.36),
-              y1 + Math.sin(ang + 0.42) * (maxR * 0.36),
-            );
-          }
-          ctx.lineCap = 'round';
-          ctx.lineWidth = w * inv;
-          ctx.strokeStyle = col;
-          ctx.stroke();
-        };
-        traceFractures(9.5, PIXEL_OUTLINE);
-        traceFractures(5, inst.color);
-        traceFractures(1.8, inst.secondaryColor);
-
-        if (inst.gradeRank >= 4) {
-          const seal = this.sprites.kanjiSeal('天', inst.color);
-          const size = (inst.gradeRank >= 6 ? 86 : 70) * (0.85 + inv * 0.25);
-          ctx.globalAlpha = inv * 0.95;
-          ctx.drawImage(seal, inst.x - size * 0.5, inst.y - 26 - p * 24 - size * 0.5, size, size);
-        }
         break;
       }
 
@@ -1793,7 +1368,8 @@ export class VfxSystem {
     isCrit: boolean,
     isSkill: boolean,
     isShred: boolean,
-    isExecute: boolean,
+    isKill: boolean,
+    passiveProc: PassiveProcKind | null,
     startTick: number,
   ): void {
     // Only merge simultaneous same-tick multi-pellet hits on the exact same monster so rapid volleys fan out visibly
@@ -1806,7 +1382,10 @@ export class VfxSystem {
         item.isCrit = item.isCrit || isCrit;
         item.isSkill = item.isSkill || isSkill;
         item.isShred = item.isShred || isShred;
-        item.isExecute = item.isExecute || isExecute;
+        item.isKill = item.isKill || isKill;
+        if (passiveProc && (!item.passiveProc || passiveProc === 'execute')) {
+          item.passiveProc = passiveProc;
+        }
         item.startTick = startTick;
         return;
       }
@@ -1827,7 +1406,8 @@ export class VfxSystem {
         item.isCrit = isCrit;
         item.isSkill = isSkill;
         item.isShred = isShred;
-        item.isExecute = isExecute;
+        item.isKill = isKill;
+        item.passiveProc = passiveProc;
         return;
       }
     }
@@ -1864,7 +1444,7 @@ export class VfxSystem {
     // 1. Keep #shake-layer completely steady (zero screen shake)
     stack.setShakeOffset(0, 0);
 
-    // 2. #overlay-canvas flash + BOSS WAVE / Ascension celebration banner
+    // 2. #overlay-canvas flash + BOSS WAVE / Ascension cut-in / celebration banner
     let flashActive = false;
     let flashAlpha = 0;
     let flashColor = '#ffffff';
@@ -1876,6 +1456,18 @@ export class VfxSystem {
         flashActive = true;
         flashAlpha = this.flash.peakAlpha * (1 - elapsed / this.flash.durationSec);
         flashColor = this.flash.color;
+      }
+    }
+
+    let cutInActive = false;
+    let cutInProgress = 0;
+    if (this.cutIn) {
+      const realElapsed = (realNowMs - this.cutIn.startRealMs) / 1000;
+      if (realElapsed >= this.cutIn.durationSec || realElapsed < 0) {
+        this.cutIn = null;
+      } else {
+        cutInActive = true;
+        cutInProgress = realElapsed / this.cutIn.durationSec;
       }
     }
 
@@ -1891,7 +1483,7 @@ export class VfxSystem {
       }
     }
 
-    if (!flashActive && !bannerActive) {
+    if (!flashActive && !cutInActive && !bannerActive) {
       stack.overlayCtx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
       stack.setOverlayActive(false);
       return;
@@ -1908,7 +1500,54 @@ export class VfxSystem {
       ctx.globalAlpha = 1;
     }
 
-    if (bannerActive && this.banner) {
+    if (cutInActive && this.cutIn) {
+      const cp = cutInProgress;
+      let bannerOffsetX = 0;
+      let portraitOffsetX = 0;
+      let portraitScale = 1;
+      let cutAlpha = 1;
+
+      if (cp < 0.14) {
+        const t = easeOutCubic(cp / 0.14);
+        bannerOffsetX = (1 - t) * 260;
+        portraitOffsetX = (1 - t) * -180;
+        portraitScale = 1.14 - t * 0.14;
+        cutAlpha = Math.min(1, cp / 0.1);
+      } else if (cp > 0.78) {
+        const t = (cp - 0.78) / 0.22;
+        bannerOffsetX = -t * 110;
+        portraitOffsetX = -t * 80;
+        cutAlpha = 1 - t;
+      }
+
+      // Upper corridor band y=96..224 keeps the 6x3 hero grid (y=222..586) unobstructed
+      const drawW = 684;
+      const drawH = 128;
+      const bx = (LOGICAL_WIDTH - drawW) * 0.5 + bannerOffsetX;
+      const by = 96;
+
+      ctx.globalAlpha = Math.max(0, Math.min(1, cutAlpha));
+      ctx.drawImage(this.cutIn.bannerSprite, bx, by, drawW, drawH);
+
+      // Crisp pixel-art hero portrait sliding into the left medallion halo (x ≈ 0.164 * drawW)
+      const pSize = 114 * portraitScale;
+      const px = (LOGICAL_WIDTH - drawW) * 0.5 + drawW * 0.164 + portraitOffsetX - pSize * 0.5;
+      const py = by + drawH * 0.48 - pSize * 0.5;
+      const prevSmooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(this.cutIn.unitSprite, px, py, pSize, pSize);
+      ctx.imageSmoothingEnabled = prevSmooth;
+
+      // Subtle golden rim accent flare at peak entry
+      if (cp < 0.28) {
+        const rimAlpha = (1 - cp / 0.28) * 0.35;
+        ctx.globalAlpha = rimAlpha;
+        ctx.strokeStyle = this.cutIn.accentColor;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(bx + 8, by + 12, drawW - 16, drawH - 24);
+      }
+      ctx.globalAlpha = 1;
+    } else if (bannerActive && this.banner) {
       const bp = bannerProgress;
       let slideScale = 1;
       let alphaBanner = 1;
@@ -2010,7 +1649,14 @@ export class VfxSystem {
     for (let i = 0; i < this.damageTexts.length; i++) {
       const item = this.damageTexts[i]!;
       if (!item.active) continue;
-      const life = item.isCrit ? 0.82 : item.isShred || item.isSkill ? 0.7 : 0.58;
+      const hasPassive = item.passiveProc !== null;
+      const life = item.isCrit
+        ? 0.82
+        : hasPassive
+          ? 0.78
+          : item.isShred || item.isSkill
+            ? 0.7
+            : 0.58;
       const elapsed = this.currentSimTimeSec - item.startTick * TICK_DT;
       if (elapsed >= life || elapsed < 0) {
         item.active = false;
@@ -2019,7 +1665,7 @@ export class VfxSystem {
       const p = elapsed / life;
       const rawDrawX = item.x + item.offsetX + item.driftVx * elapsed;
       const drawX = Math.max(34, Math.min(LOGICAL_WIDTH - 34, rawDrawX));
-      const riseDist = item.isCrit ? 46 : item.isShred || item.isSkill ? 36 : 28;
+      const riseDist = item.isCrit || hasPassive ? 46 : item.isShred || item.isSkill ? 36 : 28;
       const riseY = item.y - easeOutCubic(p) * riseDist;
       const fade = p < 0.72 ? 1 : 1 - (p - 0.72) / 0.28;
 
@@ -2031,11 +1677,11 @@ export class VfxSystem {
             : p < 0.28
               ? 1.26 - ((p - 0.13) / 0.15) * 0.34
               : 0.92 - (p - 0.28) * 0.08;
-      } else if (item.isShred || item.isSkill) {
+      } else if (hasPassive || item.isShred || item.isSkill) {
         scale =
           p < 0.14
-            ? 0.62 + (p / 0.14) * 0.32
-            : 0.94 - Math.min(0.18, (p - 0.14) * 0.28);
+            ? 0.64 + (p / 0.14) * 0.34
+            : 0.98 - Math.min(0.18, (p - 0.14) * 0.28);
       } else {
         scale =
           p < 0.14
@@ -2044,30 +1690,32 @@ export class VfxSystem {
       }
 
       const formatted = formatDamageValue(item.value);
-      const label = item.isCrit || item.isShred ? `${formatted}!` : formatted;
+      const label = item.isCrit || item.isShred || hasPassive ? `${formatted}!` : formatted;
       const style = item.isCrit
         ? 'crit'
         : item.isShred
           ? 'shred'
-          : item.isSkill
+          : item.isSkill || hasPassive
             ? 'skill'
             : 'normal';
       this.sprites.drawGlyphString(ctx, label, drawX, riseY, scale, fade, style);
 
-      // Pre-rendered mini Wuxia impact stamp above critical / armor-broken / heavy execution hits
-      const badgeKind =
-        item.isCrit && item.isShred
-          ? 'shred'
-          : item.isCrit
-            ? 'crit'
-            : item.isShred
-              ? 'shred'
-              : item.isExecute && item.value >= 180
-                ? 'execute'
-                : null;
+      // Pre-rendered mini Wuxia stamp above passive proc / critical / armor-broken / heavy kill hits
+      const badgeKind: HitBadgeKind | null =
+        item.passiveProc !== null
+          ? item.passiveProc
+          : item.isCrit && item.isShred
+            ? 'shred'
+            : item.isCrit
+              ? 'crit'
+              : item.isShred
+                ? 'shred'
+                : item.isKill && item.value >= 180
+                  ? 'kill'
+                  : null;
       if (badgeKind) {
         const badge = this.sprites.hitBadge(badgeKind);
-        const bScale = (item.isCrit ? 0.56 : 0.48) * Math.min(1.08, scale / 0.8);
+        const bScale = (item.isCrit || hasPassive ? 0.56 : 0.48) * Math.min(1.08, scale / 0.8);
         const bw = badge.width * bScale;
         const bh = badge.height * bScale;
         ctx.globalAlpha = prevAlpha * Math.max(0, Math.min(1, fade * 0.96));
@@ -2093,9 +1741,4 @@ function formatDamageValue(val: number): string {
     return `${k},${rem}`;
   }
   return String(n);
-}
-
-function easeOutCubic(t: number): number {
-  const inv = 1 - Math.max(0, Math.min(1, t));
-  return 1 - inv * inv * inv;
 }

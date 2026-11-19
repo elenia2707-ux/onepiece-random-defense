@@ -4,16 +4,39 @@ import { loadGameData } from '../../src/data/loader';
 import type { RecipeDef, UnitDef } from '../../src/data/types';
 
 describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
-  it('validates production Murim 3-faction game data cleanly (39 units, 61 recipes, R1..R5)', () => {
+  it('validates production Murim 3-faction game data cleanly (41 units, 68 recipes, R1..R5, symmetric 3-ingredient Immortal routes)', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(39);
-    expect(data.recipes.length).toBe(61);
+    expect(data.units.length).toBe(41);
+    expect(data.recipes.length).toBe(69);
     const graph = new RecipeGraph(data.units, data.gradesById, data.recipes);
     expect(graph.topo.length).toBe(data.recipes.length);
-    expect(graph.byOutput.get('cheonma')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('thousand_venom_lord')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('thunder_emperor')?.length).toBeGreaterThan(0);
-    expect(graph.byOutput.get('hell_flame_sovereign')?.length).toBeGreaterThan(0);
+    expect(data.unitsById.get('blood_acolyte')?.leaf).toBe(true);
+    expect(data.unitsById.get('nether_blade_queen')?.grade).toBe('transcendent');
+    expect(graph.byOutput.get('nether_blade_queen')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('cheonma')?.length).toBe(2);
+    expect(graph.byOutput.get('sword_immortal')?.length).toBe(2);
+    expect(graph.byOutput.get('asura_emperor')?.length).toBe(2);
+    expect(graph.byOutput.get('thousand_venom_lord')?.length).toBe(2);
+    expect(graph.byOutput.get('thunder_emperor')?.length).toBe(2);
+    expect(graph.byOutput.get('hell_flame_sovereign')?.length).toBe(2);
+
+    // Every Immortal recipe uses exact 3 distinct ingredients: 1 Transcendent + 1 Legendary + 1 Rare
+    const immortalRecipes = data.recipes.filter(
+      (r) => data.unitsById.get(r.output)?.grade === 'immortal',
+    );
+    expect(immortalRecipes.length).toBe(12);
+    for (const rec of immortalRecipes) {
+      expect(rec.ingredients.length, `${rec.id} must have 3 ingredients`).toBe(3);
+      const grades = rec.ingredients
+        .map((i) => data.unitsById.get(i.unit)?.grade)
+        .sort();
+      expect(grades, `${rec.id} must combine 1 transcendent + 1 legendary + 1 rare`).toEqual([
+        'legendary',
+        'rare',
+        'transcendent',
+      ]);
+    }
+
     expect(graph.byOutput.get('tang_elder')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('blood_bishop')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('poison_dragon')?.length).toBeGreaterThanOrEqual(2);

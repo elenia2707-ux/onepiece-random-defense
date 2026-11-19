@@ -2,6 +2,7 @@ import type { GameCommand, SlotRef } from '../core/CommandQueue';
 import {
   DIFFICULTY_CONFIGS,
   formatCompactNumber,
+  TITLES_BY_ID,
   TRIAL_CONFIGS,
 } from '../core/relicFormulas';
 import type { SlotView, UISnapshot } from '../core/Simulation';
@@ -16,6 +17,7 @@ import type {
   GradeId,
   RecipeDef,
   RelicId,
+  TitleId,
   TrialId,
   UnitId,
   UpgradeGroupId,
@@ -78,6 +80,7 @@ export interface UIControlHandlers {
   onCraftSkin(skinId: string): SkinCraftResult;
   onEquipHeroSkin(unitId: UnitId, skinId: string | null): boolean;
   onEquipCourtSkin(courtId: CourtSkinId): boolean;
+  onEquipTitle(titleId: TitleId | null): boolean;
   onGrantDevMeta(): void;
   getSelectedSlot(): SlotRef | null;
   getDragDiscardView(): DragDiscardView;
@@ -404,7 +407,7 @@ export class UIManager {
         <button id="btn-bounty" type="button" class="tac-pill bounty interactive" title="강호 현상수배범 호출 (30초 내 처치 시 영단·은자 획득)">📜 수배 (2장~)</button>
         <button id="btn-mission" type="button" class="tac-pill mission interactive" title="강호 의뢰 목록">📋 의뢰 0/10</button>
         <button id="btn-dps" type="button" class="tac-pill dps interactive" title="실시간 협객 딜량 순위표">⚔ 딜량표</button>
-        <button id="btn-wardrobe" type="button" class="tac-pill wardrobe interactive" title="금수화장각 — 의복·검기 스킨 뽑기 및 비무대 테마">👘 화장각 1/14</button>
+        <button id="btn-wardrobe" type="button" class="tac-pill wardrobe interactive" title="금수화장각 — 의복·검기 스킨 뽑기 및 비무대 테마">👘 화장각 1/${this.data.heroSkins.length + this.data.courtSkins.length}</button>
         <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 명숙록 · 난이도 · 비경 시련">📖 명숙록 0/${this.data.units.length}</button>
       </nav>
 
@@ -702,8 +705,10 @@ export class UIManager {
     this.waveBoxEl.addEventListener('click', () => this.toggleSheet('codex'));
     this.relicBtnEl.addEventListener('click', () => this.toggleSheet('relic'));
     this.relicBuffStripEl.addEventListener('click', (ev) => {
-      const boonTrigger = (ev.target as HTMLElement | null)?.closest('[data-open-boons]');
-      if (boonTrigger) {
+      const targetEl = ev.target as HTMLElement | null;
+      if (targetEl?.closest('[data-open-titles]')) {
+        this.toggleSheet('codex');
+      } else if (targetEl?.closest('[data-open-boons]')) {
         this.toggleSheet('upgrade');
       } else {
         this.toggleSheet('relic');
@@ -1151,6 +1156,18 @@ export class UIManager {
         this.codexFilter = (btn.dataset.filter ?? 'all') as CodexFilterId;
         this.prevSheetSignature = '';
         if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'equip-title') {
+        const rawTitle = btn.dataset.titleId ?? '';
+        const titleId = rawTitle ? (rawTitle as TitleId) : null;
+        const ok = this.handlers.onEquipTitle(titleId);
+        if (ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          const def = titleId ? TITLES_BY_ID.get(titleId) : null;
+          this.showToast(
+            def ? `🏅 강호 칭호 [${def.name}] 장착 완료!` : '칭호 장착을 해제했습니다.',
+          );
+        }
       } else if (action === 'replay-tutorial') {
         this.closeSheet();
         this.tutorial.restart();
@@ -1738,7 +1755,7 @@ export class UIManager {
       this.setText(this.gameOverRestartBtnEl, '재출정');
     }
 
-    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}`;
+    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.titleBonusGold ?? 0}:${rec?.titleBonusKeys ?? 0}:${rec?.titleBonusSilk ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}:${rec?.unlockedTitleIds.join(',') ?? ''}`;
     if (rec && sig !== this.prevSettlementRenderedSig) {
       this.prevSettlementRenderedSig = sig;
       const multBadge = trialCfg
@@ -1761,6 +1778,21 @@ export class UIManager {
         `;
       }
 
+      let titleUnlockBanner = '';
+      if (rec.unlockedTitleIds.length > 0) {
+        const names = rec.unlockedTitleIds.map((id) => TITLES_BY_ID.get(id)?.name ?? id);
+        const bonusParts: string[] = [];
+        if (rec.titleBonusGold > 0) bonusParts.push(`주화 +${rec.titleBonusGold}`);
+        if (rec.titleBonusKeys > 0) bonusParts.push(`열쇠 +${rec.titleBonusKeys}`);
+        if (rec.titleBonusSilk > 0) bonusParts.push(`비단 +${rec.titleBonusSilk}필`);
+        const bonusTxt = bonusParts.length > 0 ? ` (${bonusParts.join(' · ')})` : '';
+        titleUnlockBanner = `
+          <div class="first-clear-banner title-unlock-banner">
+            🏅 강호 칭호 영구 해금! [${escapeHtml(names.join(', '))}]${escapeHtml(bonusTxt)}
+          </div>
+        `;
+      }
+
       let skinUnlockBanner = '';
       if (rec.unlockedSkinIds.length > 0) {
         const names = rec.unlockedSkinIds.map(
@@ -1776,35 +1808,40 @@ export class UIManager {
         `;
       }
 
+      const totalSilkGain = rec.firstClearBonusSilk + rec.titleBonusSilk;
       const silkLootHtml =
-        rec.firstClearBonusSilk > 0
+        totalSilkGain > 0
           ? `
           <div class="settlement-loot-item">
             ${ICON.silk}
             <div class="settlement-loot-meta">
-              <span class="settlement-loot-gain">+${rec.firstClearBonusSilk}필 운금비단</span>
+              <span class="settlement-loot-gain">+${totalSilkGain}필 운금비단</span>
               <span class="settlement-loot-total">보유 ${rec.totalSilk}필</span>
             </div>
           </div>
         `
           : '';
 
+      const displayGoldGain = rec.goldEarned + rec.titleBonusGold;
+      const displayKeysGain = rec.keysEarned + rec.titleBonusKeys;
+
       this.gameOverLootEl.innerHTML = `
         <div class="settlement-loot-title">출정 정산 영구 보상${multBadge}</div>
         ${firstClearBanner}
+        ${titleUnlockBanner}
         ${skinUnlockBanner}
         <div class="settlement-loot-row">
           <div class="settlement-loot-item">
             ${ICON.goldCoin}
             <div class="settlement-loot-meta">
-              <span class="settlement-loot-gain">+${rec.goldEarned.toLocaleString('ko-KR')} 천하주화</span>
+              <span class="settlement-loot-gain">+${displayGoldGain.toLocaleString('ko-KR')} 천하주화</span>
               <span class="settlement-loot-total">보유 ${rec.totalGold.toLocaleString('ko-KR')}</span>
             </div>
           </div>
           <div class="settlement-loot-item">
             ${ICON.key}
             <div class="settlement-loot-meta">
-              <span class="settlement-loot-gain">+${rec.keysEarned} 기보함 열쇠</span>
+              <span class="settlement-loot-gain">+${displayKeysGain} 기보함 열쇠</span>
               <span class="settlement-loot-total">보유 ${rec.totalKeys}개</span>
             </div>
           </div>
@@ -1823,11 +1860,20 @@ export class UIManager {
     const swordBps = snapshot.relicBonus.wealthAtkBps;
     const boonStacks = snapshot.totalBoonStacks;
     const activeRelicCount = this.data.relics.filter((d) => (snapshot.relics[d.id] ?? 0) > 0).length;
-    const sig = `${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${activeRelicCount}:${meta.keys}`;
+    const equippedTitleId = meta.equippedTitle ?? '';
+    const sig = `${equippedTitleId}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
     const pills: string[] = [];
+    if (meta.equippedTitle) {
+      const titleDef = TITLES_BY_ID.get(meta.equippedTitle);
+      if (titleDef) {
+        pills.push(
+          `<span class="relic-buff-pill hud-title-pill" data-open-titles="1" style="background:${titleDef.color}" title="장착 중인 강호 칭호: ${escapeHtml(titleDef.name)}">🏅 ${escapeHtml(titleDef.badge)}</span>`,
+        );
+      }
+    }
     if (boonStacks > 0) {
       pills.push(
         `<span class="relic-buff-pill boon-active" data-open-boons="1" title="이번 출정 전수받은 강호 기연 보기">☯ 기연 ${boonStacks}중</span>`,
