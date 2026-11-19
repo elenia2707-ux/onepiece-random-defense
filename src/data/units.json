@@ -505,6 +505,32 @@
     }
   },
   {
+    "id": "tang_elder",
+    "name": "당가 태상장로",
+    "title": "오독비전 암기숙로",
+    "faction": "unorthodox",
+    "grade": "rare",
+    "leaf": false,
+    "atk": 172,
+    "range": 236,
+    "attackIntervalSec": 0.52,
+    "critChance": 0.3,
+    "critMult": 2.35,
+    "sellCoin": 75,
+    "armorShred": 24,
+    "skill": {
+      "name": "오독추혼침",
+      "desc": "3타마다 맹독 비침이 만개해 262% 광역 피해 및 파갑·감속",
+      "everyN": 3,
+      "atkRatio": 2.62,
+      "splashRadius": 118,
+      "stunSec": 0.35,
+      "slowPct": 0.42,
+      "slowSec": 2.2,
+      "vfxTrack": "poison_rain"
+    }
+  },
+  {
     "id": "cult_elder",
     "name": "마교 장로",
     "title": "천마신교 원로",
@@ -532,6 +558,32 @@
       "slowPct": 0.35,
       "slowSec": 2.0,
       "vfxTrack": "demonic_flame"
+    }
+  },
+  {
+    "id": "blood_bishop",
+    "name": "혈교 호법사자",
+    "title": "적혈마극 선봉호법",
+    "faction": "demonic",
+    "grade": "rare",
+    "leaf": false,
+    "atk": 194,
+    "range": 198,
+    "attackIntervalSec": 0.62,
+    "critChance": 0.27,
+    "critMult": 2.32,
+    "sellCoin": 75,
+    "armorShred": 16,
+    "skill": {
+      "name": "혈마파천극",
+      "desc": "3타마다 초승달 혈극이 내리꽂혀 272% 광역 피해 및 0.65초 기절",
+      "everyN": 3,
+      "atkRatio": 2.72,
+      "splashRadius": 114,
+      "stunSec": 0.65,
+      "slowPct": 0,
+      "slowSec": 0,
+      "vfxTrack": "blood_slash"
     }
   },
   {
@@ -579,7 +631,7 @@
     },
     "skill": {
       "name": "태극천뢰검",
-      "desc": "3타마다 태극 청뢰가 낙하해 305% 광역 피해 및 0.75초 기절",
+      "desc": "3타마다 태극 청뢰가 낙하해 305% 광역 피해 및 0.8초 기절",
       "everyN": 3,
       "atkRatio": 3.05,
       "splashRadius": 144,
@@ -774,29 +826,106 @@
     }
   },
   {
+    "id": "poison_dragon",
+    "name": "독룡",
+    "title": "만독사슬 사파독존",
+    "faction": "unorthodox",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1140,
+    "range": 288,
+    "attackIntervalSec": 0.39,
+    "critChance": 0.4,
+    "critMult": 2.7,
+    "sellCoin": 480,
+    "armorShred": 48,
+    "supportAura": {
+      "name": "독룡만장진",
+      "atkPct": 16,
+      "speedPct": 18
+    },
+    "passiveTrait": {
+      "id": "venom_whip",
+      "name": "만독침식",
+      "desc": "파갑된 적에게 입히는 피해 +28% 및 고효율 광역 파갑 48",
+      "shreddedDamagePct": 28
+    },
+    "skill": {
+      "name": "만독혈사편 · 독룡출해",
+      "desc": "3타마다 맹독 사슬채찍이 휘몰아쳐 348% 광역 피해 및 극감속",
+      "everyN": 3,
+      "atkRatio": 3.48,
+      "splashRadius": 192,
+      "stunSec": 0.65,
+      "slowPct": 0.58,
+      "slowSec": 2.8,
+      "vfxTrack": "poison_rain"
+    }
+  },
+  {
+    "id": "heavenly_demon_heir",
+    "name": "소천마",
+    "title": "천마신교 소교주",
+    "faction": "demonic",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1380,
+    "range": 268,
+    "attackIntervalSec": 0.48,
+    "critChance": 0.46,
+    "critMult": 2.9,
+    "sellCoin": 480,
+    "armorShred": 30,
+    "passiveTrait": {
+      "id": "young_demon_edge",
+      "name": "소천마기",
+      "desc": "보스 대상 피해 +25% · 체력 45% 이하 마물 처형 피해 +25%",
+      "bossDamagePct": 25,
+      "executeBelowHpPct": 0.45,
+      "executeDamagePct": 25
+    },
+    "skill": {
+      "name": "천마흑도 · 단혼참",
+      "desc": "3타마다 자색 흑뢰 대검이 공간을 갈라 365% 광역 피해 및 0.95초 기절",
+      "everyN": 3,
+      "atkRatio": 3.65,
+      "splashRadius": 182,
+      "stunSec": 0.95,
+      "slowPct": 0.4,
+      "slowSec": 2.2,
+      "vfxTrack": "heavenly_demon"
+    }
+  },
+  {
     "id": "cheonma",
     "name": "절대천마",
     "title": "군림천하 천마신군",
     "faction": "demonic",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3250,
+    "atk": 3150,
     "range": 335,
-    "attackIntervalSec": 0.4,
+    "attackIntervalSec": 0.43,
     "critChance": 0.5,
     "critMult": 3.0,
     "sellCoin": 1400,
-    "armorShred": 24,
+    "armorShred": 30,
     "supportAura": {
       "name": "천마군림진",
-      "atkPct": 32,
+      "atkPct": 30,
       "speedPct": 12
+    },
+    "passiveTrait": {
+      "id": "overlord_dominion",
+      "name": "천마위압",
+      "desc": "영물 보스 및 현상수배범에게 입히는 최종 피해 +38% 패왕 증폭",
+      "bossDamagePct": 38
     },
     "skill": {
       "name": "천마군림보 · 공간파쇄",
-      "desc": "3타마다 검붉은 흑뢰가 공간을 찢어 400% 전장 초토화 및 1.25초 기절",
+      "desc": "3타마다 검붉은 흑뢰가 공간을 찢어 415% 전장 초토화 및 1.25초 기절",
       "everyN": 3,
-      "atkRatio": 4.1,
+      "atkRatio": 4.15,
       "splashRadius": 225,
       "stunSec": 1.25,
       "slowPct": 0.55,
@@ -811,25 +940,31 @@
     "faction": "orthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3180,
-    "range": 330,
-    "attackIntervalSec": 0.41,
-    "critChance": 0.5,
-    "critMult": 2.95,
+    "atk": 4280,
+    "range": 395,
+    "attackIntervalSec": 0.62,
+    "critChance": 0.68,
+    "critMult": 3.8,
     "sellCoin": 1400,
-    "armorShred": 28,
+    "armorShred": 22,
     "supportAura": {
       "name": "태상검진",
-      "atkPct": 28,
+      "atkPct": 24,
       "speedPct": 14
+    },
+    "passiveTrait": {
+      "id": "immortal_pierce",
+      "name": "만검관통",
+      "desc": "초장거리(395) 극치명 저격 · 적의 남은 호신강기 방어력을 60% 무시",
+      "armorPiercePct": 0.6
     },
     "skill": {
       "name": "태상무극 · 만검천하",
-      "desc": "3타마다 선계의 황금·청백 만검이 강림해 405% 전장 광역 피해 및 1.2초 기절",
+      "desc": "3타마다 선계의 황금·청백 신검이 집중 낙하해 445% 관통 피해 및 1.15초 기절",
       "everyN": 3,
-      "atkRatio": 4.05,
-      "splashRadius": 220,
-      "stunSec": 1.2,
+      "atkRatio": 4.45,
+      "splashRadius": 175,
+      "stunSec": 1.15,
       "slowPct": 0.5,
       "slowSec": 2.8,
       "vfxTrack": "emperor_thunder"
@@ -842,27 +977,34 @@
     "faction": "unorthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3220,
-    "range": 325,
-    "attackIntervalSec": 0.39,
-    "critChance": 0.52,
+    "atk": 1960,
+    "range": 305,
+    "attackIntervalSec": 0.25,
+    "critChance": 0.54,
     "critMult": 3.05,
     "sellCoin": 1400,
-    "armorShred": 42,
+    "armorShred": 38,
     "supportAura": {
       "name": "혈해수라진",
-      "atkPct": 20,
-      "speedPct": 22
+      "atkPct": 16,
+      "speedPct": 26
+    },
+    "passiveTrait": {
+      "id": "asura_execute",
+      "name": "수라처형",
+      "desc": "0.25초 초고속 광란 쌍도 연타 · 체력 45% 이하 마물·보스 피해 +60%",
+      "executeBelowHpPct": 0.45,
+      "executeDamagePct": 60
     },
     "skill": {
       "name": "수라혈겁 · 만독멸세",
-      "desc": "3타마다 적혈 쌍도와 맹독 폭풍이 전장을 휩쓸어 408% 광역 파갑 피해 및 1.15초 기절",
-      "everyN": 3,
-      "atkRatio": 4.08,
-      "splashRadius": 222,
-      "stunSec": 1.15,
-      "slowPct": 0.6,
-      "slowSec": 3.0,
+      "desc": "4타마다 적혈 쌍도와 수라 혈풍이 휘몰아쳐 370% 광역 처형 참격",
+      "everyN": 4,
+      "atkRatio": 3.7,
+      "splashRadius": 208,
+      "stunSec": 1.0,
+      "slowPct": 0.55,
+      "slowSec": 2.8,
       "vfxTrack": "blood_slash"
     }
   },
@@ -873,27 +1015,33 @@
     "faction": "unorthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3160,
-    "range": 340,
-    "attackIntervalSec": 0.37,
-    "critChance": 0.5,
-    "critMult": 3.0,
+    "atk": 2420,
+    "range": 350,
+    "attackIntervalSec": 0.36,
+    "critChance": 0.48,
+    "critMult": 2.9,
     "sellCoin": 1400,
-    "armorShred": 46,
+    "armorShred": 72,
     "supportAura": {
       "name": "만독천화진",
-      "atkPct": 22,
-      "speedPct": 24
+      "atkPct": 20,
+      "speedPct": 22
+    },
+    "passiveTrait": {
+      "id": "venom_corrosion",
+      "name": "만독부식",
+      "desc": "최상급 파갑(72)·극감속(68%) 부여 · 파갑된 적 대상 피해 +42% 증폭",
+      "shreddedDamagePct": 42
     },
     "skill": {
       "name": "만독천화 · 무간독우",
-      "desc": "3타마다 만독천화선 부채가 펼쳐져 412% 전장 맹독 폭우 및 1.15초 기절·극감속",
+      "desc": "3타마다 만독천화선 부채가 펼쳐져 385% 초대형 독우 및 68% 극감속",
       "everyN": 3,
-      "atkRatio": 4.12,
-      "splashRadius": 228,
-      "stunSec": 1.15,
-      "slowPct": 0.65,
-      "slowSec": 3.2,
+      "atkRatio": 3.85,
+      "splashRadius": 255,
+      "stunSec": 0.95,
+      "slowPct": 0.68,
+      "slowSec": 3.6,
       "vfxTrack": "poison_rain"
     }
   },
@@ -904,27 +1052,33 @@
     "faction": "orthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3240,
-    "range": 330,
-    "attackIntervalSec": 0.4,
-    "critChance": 0.54,
-    "critMult": 3.15,
+    "atk": 2780,
+    "range": 345,
+    "attackIntervalSec": 0.42,
+    "critChance": 0.56,
+    "critMult": 3.25,
     "sellCoin": 1400,
-    "armorShred": 30,
+    "armorShred": 26,
     "supportAura": {
       "name": "창궁뇌제진",
-      "atkPct": 26,
-      "speedPct": 18
+      "atkPct": 22,
+      "speedPct": 22
+    },
+    "passiveTrait": {
+      "id": "thunder_judgment",
+      "name": "구천신뢰",
+      "desc": "단 2타마다 광역 벽력 기절(1.45초) 발동 · 보스 대상 피해 +22%",
+      "bossDamagePct": 22
     },
     "skill": {
       "name": "제왕벽력 · 구천신뢰",
-      "desc": "3타마다 뇌제쌍검이 구천의 청금 신뢰를 내려 415% 광역 피해 및 1.3초 기절",
-      "everyN": 3,
-      "atkRatio": 4.15,
-      "splashRadius": 224,
-      "stunSec": 1.3,
-      "slowPct": 0.55,
-      "slowSec": 2.9,
+      "desc": "2타마다 뇌제쌍검이 구천의 청금 신뢰를 내려 320% 광역 피해 및 1.45초 기절",
+      "everyN": 2,
+      "atkRatio": 3.2,
+      "splashRadius": 235,
+      "stunSec": 1.45,
+      "slowPct": 0.58,
+      "slowSec": 3.0,
       "vfxTrack": "emperor_thunder"
     }
   },
@@ -935,30 +1089,37 @@
     "faction": "demonic",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3320,
-    "range": 335,
-    "attackIntervalSec": 0.42,
-    "critChance": 0.5,
-    "critMult": 3.05,
+    "atk": 5180,
+    "range": 340,
+    "attackIntervalSec": 0.78,
+    "critChance": 0.48,
+    "critMult": 3.2,
     "sellCoin": 1400,
-    "armorShred": 36,
+    "armorShred": 42,
     "supportAura": {
       "name": "구천업화진",
-      "atkPct": 34,
-      "speedPct": 12
+      "atkPct": 38,
+      "speedPct": 8
+    },
+    "passiveTrait": {
+      "id": "hellfire_cataclysm",
+      "name": "구천겁화",
+      "desc": "전 협객 최고 기본공(5180) 초중량 포격 · 파갑된 적 대상 피해 +30%",
+      "shreddedDamagePct": 30
     },
     "skill": {
       "name": "구천겁화 · 적멸홍련",
-      "desc": "3타마다 구천마염주 9구가 연쇄 폭발해 420% 전장 소각 및 1.2초 기절",
+      "desc": "3타마다 구천마염주 9구가 대폭발해 520% 전장 소각 및 1.25초 기절",
       "everyN": 3,
-      "atkRatio": 4.2,
-      "splashRadius": 232,
-      "stunSec": 1.2,
+      "atkRatio": 5.2,
+      "splashRadius": 265,
+      "stunSec": 1.25,
       "slowPct": 0.55,
-      "slowSec": 3.0,
+      "slowSec": 3.2,
       "vfxTrack": "demonic_flame"
     }
   }
 ]
+
 
 

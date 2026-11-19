@@ -38,9 +38,9 @@
     "gapY": 10
   },
   "economy": {
-    "initialCoin": 500,
-    "initialLuckStone": 5,
-    "baseSummonCost": 20,
-    "summonCostStep": 2
+    "initialCoin": 130,
+    "initialLuckStone": 2,
+    "baseSummonCost": 22,
+    "summonCostStep": 3
   }
 }

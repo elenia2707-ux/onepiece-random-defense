@@ -19,9 +19,10 @@ export class RecipeGraph {
       unitsById.set(u.id, u);
     }
 
-    // R1: Referential integrity (every output and ingredient unit id must exist)
+    // R1: Referential integrity + heterogeneous vs rank-1 leaf ×3 rule
     for (const r of recipes) {
-      if (!unitsById.has(r.output)) {
+      const outUnit = unitsById.get(r.output);
+      if (!outUnit) {
         throw new Error(`[R1] Recipe '${r.id}' references unknown output unit '${r.output}'`);
       }
       if (r.ingredients.length < 1) {
@@ -53,6 +54,26 @@ export class RecipeGraph {
       if (totalCount < 2) {
         throw new Error(
           `[R1] Recipe '${r.id}' must combine at least 2 total ingredient units`,
+        );
+      }
+      const outGrade = gradesById.get(outUnit.grade);
+      if (r.ingredients.length === 1) {
+        const onlyIng = r.ingredients[0]!;
+        const ingUnit = unitsById.get(onlyIng.unit)!;
+        const ingGrade = gradesById.get(ingUnit.grade);
+        if (
+          onlyIng.n !== 3 ||
+          !ingUnit.leaf ||
+          (ingGrade && ingGrade.rank !== 1) ||
+          (outGrade && outGrade.rank !== 2)
+        ) {
+          throw new Error(
+            `[R1] Single-ingredient recipe '${r.id}' is only allowed for rank-1 leaf ×3 -> rank-2 promotion`,
+          );
+        }
+      } else if (outGrade && outGrade.rank >= 3 && r.ingredients.length < 2) {
+        throw new Error(
+          `[R1] High-tier recipe '${r.id}' (rank ${outGrade.rank}) requires >= 2 distinct ingredients`,
         );
       }
     }

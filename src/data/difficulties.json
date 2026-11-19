@@ -1,0 +1,38 @@
+[
+  {
+    "id": "normal",
+    "name": "강호 초입",
+    "badge": "초입 1.0x",
+    "desc": "표준 무림 전장 · 제30장 마신 토벌 시 『무림 고수』 해금",
+    "hpMult": 1.0,
+    "speedMult": 1.0,
+    "armorBonus": 0,
+    "rewardMult": 1.0,
+    "firstClearGold": 280,
+    "firstClearKeys": 2
+  },
+  {
+    "id": "hard",
+    "name": "무림 고수",
+    "badge": "고수 1.6x",
+    "desc": "마물 체력 1.66배 · 호신강기 +9 · 이속 증가 · 정산 천하주화 1.6배 보상",
+    "hpMult": 1.66,
+    "speedMult": 1.08,
+    "armorBonus": 9,
+    "rewardMult": 1.6,
+    "firstClearGold": 480,
+    "firstClearKeys": 3
+  },
+  {
+    "id": "hell",
+    "name": "아수라 혈겁",
+    "badge": "혈겁 2.5x",
+    "desc": "마물 체력 3.10배 · 호신강기 +24 · 보스 압박 극대화 · 정산 천하주화 2.5배 대보상",
+    "hpMult": 3.1,
+    "speedMult": 1.15,
+    "armorBonus": 24,
+    "rewardMult": 2.5,
+    "firstClearGold": 850,
+    "firstClearKeys": 5
+  }
+]

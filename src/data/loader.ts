@@ -1,11 +1,13 @@
 import rawBoard from './board.json';
 import rawBoons from './boons.json';
+import rawDifficulties from './difficulties.json';
 import rawGambleRates from './gamble_rates.json';
 import rawGrades from './grades.json';
 import rawMissions from './missions.json';
 import rawRecipes from './recipes.json';
 import rawRelics from './relics.json';
 import rawSkins from './skins.json';
+import rawTrials from './trials.json';
 import rawUnits from './units.json';
 import rawUpgrades from './upgrades.json';
 import rawWaves from './waves.json';
@@ -19,6 +21,8 @@ import type {
   BoonRarity,
   CourtSkinDef,
   CourtSkinId,
+  DifficultyConfig,
+  DifficultyId,
   FactionId,
   GambleRateDef,
   GameDataBundle,
@@ -28,6 +32,7 @@ import type {
   MissionConditionKind,
   MissionDef,
   MonsterKind,
+  PassiveTraitDef,
   RawUnitDef,
   RawWaveDef,
   RecipeDef,
@@ -37,6 +42,8 @@ import type {
   SkinRarity,
   SkinUnlockCond,
   SupportAuraDef,
+  TrialConfig,
+  TrialId,
   UnitDef,
   UnitSkillDef,
   UpgradeGroupDef,
@@ -84,6 +91,19 @@ const VALID_RELIC_IDS: ReadonlySet<string> = new Set<RelicId>([
   'immortal_furnace',
   'founding_jade_seal',
   'heavenly_scroll_chest',
+]);
+
+const VALID_DIFFICULTY_IDS: ReadonlySet<string> = new Set<DifficultyId>([
+  'normal',
+  'hard',
+  'hell',
+]);
+
+const VALID_TRIAL_IDS: ReadonlySet<string> = new Set<TrialId>([
+  'trial_venom_gale',
+  'trial_sword_tomb',
+  'trial_crimson_iron',
+  'trial_chaos_trinity',
 ]);
 
 const VALID_MISSION_CONDITIONS: ReadonlySet<string> = new Set<MissionConditionKind>([
@@ -152,6 +172,13 @@ function assertNonEmptyString(val: unknown, label: string): string {
   return val;
 }
 
+function assertBoolean(val: unknown, label: string): boolean {
+  if (typeof val !== 'boolean') {
+    throw new Error(`[DataValidation] ${label} must be boolean`);
+  }
+  return val;
+}
+
 export function validateGrades(input: unknown): GradeDef[] {
   if (!Array.isArray(input) || input.length === 0) {
     throw new Error('[DataValidation] grades.json must be a non-empty array');
@@ -169,10 +196,41 @@ export function validateGrades(input: unknown): GradeDef[] {
       throw new Error(`[DataValidation] grades[${i}].rank must be an integer`);
     }
     const color = assertNonEmptyString(row.color, `grades[${i}].color`);
-    if (typeof row.summonable !== 'boolean') {
-      throw new Error(`[DataValidation] grades[${i}].summonable must be boolean`);
-    }
+    const summonable = assertBoolean(row.summonable, `grades[${i}].summonable`);
     const summonWeight = assertNonNegativeNumber(row.summonWeight, `grades[${i}].summonWeight`);
+    const isSurplusCleanupTarget = assertBoolean(
+      row.isSurplusCleanupTarget,
+      `grades[${i}].isSurplusCleanupTarget`,
+    );
+    const starterWispCount = Math.floor(
+      assertNonNegativeNumber(row.starterWispCount, `grades[${i}].starterWispCount`),
+    );
+    const scrollChestUnlockLv = Math.floor(
+      assertNonNegativeNumber(row.scrollChestUnlockLv, `grades[${i}].scrollChestUnlockLv`),
+    );
+    const scrollChestBonusLv = Math.floor(
+      assertNonNegativeNumber(row.scrollChestBonusLv, `grades[${i}].scrollChestBonusLv`),
+    );
+    const sellLuckGuaranteed = Math.floor(
+      assertNonNegativeNumber(row.sellLuckGuaranteed, `grades[${i}].sellLuckGuaranteed`),
+    );
+    const sellLuckChancePct = assertNonNegativeNumber(
+      row.sellLuckChancePct,
+      `grades[${i}].sellLuckChancePct`,
+    );
+    const codexRewardGold = Math.floor(
+      assertNonNegativeNumber(row.codexRewardGold, `grades[${i}].codexRewardGold`),
+    );
+    const codexRewardKeys = Math.floor(
+      assertNonNegativeNumber(row.codexRewardKeys, `grades[${i}].codexRewardKeys`),
+    );
+    const showSkillCallout = assertBoolean(
+      row.showSkillCallout,
+      `grades[${i}].showSkillCallout`,
+    );
+    const isHighTierToast = assertBoolean(row.isHighTierToast, `grades[${i}].isHighTierToast`);
+    const isCutInTier = assertBoolean(row.isCutInTier, `grades[${i}].isCutInTier`);
+
     if (seenIds.has(id)) {
       throw new Error(`[DataValidation] duplicate grade id: ${id}`);
     }
@@ -186,9 +244,20 @@ export function validateGrades(input: unknown): GradeDef[] {
       name,
       rank,
       color,
-      summonable: row.summonable,
+      summonable,
       summonWeight,
       fx: typeof row.fx === 'string' ? row.fx : undefined,
+      isSurplusCleanupTarget,
+      starterWispCount,
+      scrollChestUnlockLv,
+      scrollChestBonusLv,
+      sellLuckGuaranteed,
+      sellLuckChancePct,
+      codexRewardGold,
+      codexRewardKeys,
+      showSkillCallout,
+      isHighTierToast,
+      isCutInTier,
     });
   }
 
@@ -224,6 +293,44 @@ function validateUnitSkill(input: unknown, label: string): UnitSkillDef {
     slowPct: Math.min(0.85, slowPct),
     slowTicks: slowSec > 0 ? Math.max(1, secToTicks(slowSec)) : 0,
     vfxTrack: vfxStr as VfxTrackKind,
+  };
+}
+
+function validatePassiveTrait(input: unknown, label: string): PassiveTraitDef {
+  const r = assertRecord(input, label);
+  const id = assertNonEmptyString(r.id, `${label}.id`);
+  const name = assertNonEmptyString(r.name, `${label}.name`);
+  const desc = assertNonEmptyString(r.desc, `${label}.desc`);
+  const bossDamagePct =
+    r.bossDamagePct !== undefined
+      ? assertNonNegativeNumber(r.bossDamagePct, `${label}.bossDamagePct`)
+      : undefined;
+  const executeBelowHpPct =
+    r.executeBelowHpPct !== undefined
+      ? assertNonNegativeNumber(r.executeBelowHpPct, `${label}.executeBelowHpPct`)
+      : undefined;
+  const executeDamagePct =
+    r.executeDamagePct !== undefined
+      ? assertNonNegativeNumber(r.executeDamagePct, `${label}.executeDamagePct`)
+      : undefined;
+  const shreddedDamagePct =
+    r.shreddedDamagePct !== undefined
+      ? assertNonNegativeNumber(r.shreddedDamagePct, `${label}.shreddedDamagePct`)
+      : undefined;
+  const armorPiercePct =
+    r.armorPiercePct !== undefined
+      ? Math.min(0.95, assertNonNegativeNumber(r.armorPiercePct, `${label}.armorPiercePct`))
+      : undefined;
+
+  return {
+    id,
+    name,
+    desc,
+    bossDamagePct,
+    executeBelowHpPct,
+    executeDamagePct,
+    shreddedDamagePct,
+    armorPiercePct,
   };
 }
 
@@ -287,6 +394,10 @@ export function validateUnits(
       }
       supportAura = { name: auraName, atkPct, speedPct };
     }
+    const passiveTrait =
+      row.passiveTrait !== undefined
+        ? validatePassiveTrait(row.passiveTrait, `units[${i}].passiveTrait`)
+        : undefined;
     const skill = validateUnitSkill(row.skill, `units[${i}].skill`);
 
     out.push({
@@ -304,6 +415,7 @@ export function validateUnits(
       sellCoin,
       armorShred,
       supportAura,
+      passiveTrait,
       skill,
     });
   }
@@ -423,13 +535,19 @@ export function validateBoard(input: unknown): BoardConfig {
   };
 }
 
-export function validateWaves(input: unknown): WaveDef[] {
+export function validateWaves(
+  input: unknown,
+  gradesById?: ReadonlyMap<string, GradeDef>,
+): WaveDef[] {
   if (!Array.isArray(input) || input.length === 0) {
     throw new Error('[DataValidation] waves.json must be a non-empty array');
   }
   return input.map((item, i) => {
     const row = assertRecord(item, `waves[${i}]`) as unknown as RawWaveDef;
     const wave = assertPositiveNumber(row.wave, `waves[${i}].wave`);
+    if (wave !== i + 1) {
+      throw new Error(`[DataValidation] waves[${i}].wave must equal ${i + 1} (got ${wave})`);
+    }
     const durationSec = assertPositiveNumber(row.durationSec, `waves[${i}].durationSec`);
     const spawnCount = assertPositiveNumber(row.spawnCount, `waves[${i}].spawnCount`);
     const spawnIntervalSec = assertPositiveNumber(
@@ -445,7 +563,17 @@ export function validateWaves(input: unknown): WaveDef[] {
       throw new Error(`[DataValidation] waves[${i}].monsterKind invalid: ${kindStr}`);
     }
     const isBoss = Boolean(row.isBoss);
-    const bossName = typeof row.bossName === 'string' && row.bossName.trim() ? row.bossName : undefined;
+    const bossName =
+      typeof row.bossName === 'string' && row.bossName.trim() ? row.bossName : undefined;
+    const rewardWispGrade =
+      typeof row.rewardWispGrade === 'string' && row.rewardWispGrade.trim()
+        ? row.rewardWispGrade
+        : undefined;
+    if (rewardWispGrade && gradesById && !gradesById.has(rewardWispGrade)) {
+      throw new Error(
+        `[DataValidation] waves[${i}].rewardWispGrade unknown: ${rewardWispGrade}`,
+      );
+    }
 
     return {
       wave,
@@ -459,6 +587,109 @@ export function validateWaves(input: unknown): WaveDef[] {
       monsterKind: kindStr as MonsterKind,
       isBoss,
       bossName,
+      rewardWispGrade,
+    };
+  });
+}
+
+export function validateDifficulties(input: unknown): DifficultyConfig[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] difficulties.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `difficulties[${i}]`);
+    const idStr = assertNonEmptyString(r.id, `difficulties[${i}].id`);
+    if (!VALID_DIFFICULTY_IDS.has(idStr)) {
+      throw new Error(`[DataValidation] difficulties[${i}].id invalid: ${idStr}`);
+    }
+    if (seen.has(idStr)) {
+      throw new Error(`[DataValidation] duplicate difficulty id: ${idStr}`);
+    }
+    seen.add(idStr);
+    return {
+      id: idStr as DifficultyId,
+      name: assertNonEmptyString(r.name, `difficulties[${i}].name`),
+      badge: assertNonEmptyString(r.badge, `difficulties[${i}].badge`),
+      desc: assertNonEmptyString(r.desc, `difficulties[${i}].desc`),
+      hpMult: assertPositiveNumber(r.hpMult, `difficulties[${i}].hpMult`),
+      speedMult: assertPositiveNumber(r.speedMult, `difficulties[${i}].speedMult`),
+      armorBonus: Math.round(
+        assertNonNegativeNumber(r.armorBonus, `difficulties[${i}].armorBonus`),
+      ),
+      rewardMult: assertPositiveNumber(r.rewardMult, `difficulties[${i}].rewardMult`),
+      firstClearGold: Math.floor(
+        assertNonNegativeNumber(r.firstClearGold, `difficulties[${i}].firstClearGold`),
+      ),
+      firstClearKeys: Math.floor(
+        assertNonNegativeNumber(r.firstClearKeys, `difficulties[${i}].firstClearKeys`),
+      ),
+    };
+  });
+}
+
+export function validateTrials(input: unknown): TrialConfig[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] trials.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `trials[${i}]`);
+    const idStr = assertNonEmptyString(r.id, `trials[${i}].id`);
+    if (!VALID_TRIAL_IDS.has(idStr)) {
+      throw new Error(`[DataValidation] trials[${i}].id invalid: ${idStr}`);
+    }
+    if (seen.has(idStr)) {
+      throw new Error(`[DataValidation] duplicate trial id: ${idStr}`);
+    }
+    seen.add(idStr);
+    return {
+      id: idStr as TrialId,
+      name: assertNonEmptyString(r.name, `trials[${i}].name`),
+      badge: assertNonEmptyString(r.badge, `trials[${i}].badge`),
+      ruleTag: assertNonEmptyString(r.ruleTag, `trials[${i}].ruleTag`),
+      desc: assertNonEmptyString(r.desc, `trials[${i}].desc`),
+      targetWave: Math.floor(assertPositiveNumber(r.targetWave, `trials[${i}].targetWave`)),
+      hpMult: assertPositiveNumber(r.hpMult, `trials[${i}].hpMult`),
+      speedMult: assertPositiveNumber(r.speedMult, `trials[${i}].speedMult`),
+      bonusMonsterArmor: Math.round(
+        assertNonNegativeNumber(r.bonusMonsterArmor, `trials[${i}].bonusMonsterArmor`),
+      ),
+      bossCooldownMult: assertPositiveNumber(
+        r.bossCooldownMult,
+        `trials[${i}].bossCooldownMult`,
+      ),
+      disableInterest: assertBoolean(r.disableInterest, `trials[${i}].disableInterest`),
+      orthodoxCritMultBonus: assertNonNegativeNumber(
+        r.orthodoxCritMultBonus,
+        `trials[${i}].orthodoxCritMultBonus`,
+      ),
+      unorthodoxSpeedMult: assertPositiveNumber(
+        r.unorthodoxSpeedMult,
+        `trials[${i}].unorthodoxSpeedMult`,
+      ),
+      unorthodoxBonusShred: Math.round(
+        assertNonNegativeNumber(r.unorthodoxBonusShred, `trials[${i}].unorthodoxBonusShred`),
+      ),
+      demonicSkillRatioMult: assertPositiveNumber(
+        r.demonicSkillRatioMult,
+        `trials[${i}].demonicSkillRatioMult`,
+      ),
+      gambleBonusPct: assertNonNegativeNumber(r.gambleBonusPct, `trials[${i}].gambleBonusPct`),
+      trinityAtkBonusPct: assertNonNegativeNumber(
+        r.trinityAtkBonusPct,
+        `trials[${i}].trinityAtkBonusPct`,
+      ),
+      rewardMult: assertPositiveNumber(r.rewardMult, `trials[${i}].rewardMult`),
+      firstClearGold: Math.floor(
+        assertNonNegativeNumber(r.firstClearGold, `trials[${i}].firstClearGold`),
+      ),
+      firstClearKeys: Math.floor(
+        assertNonNegativeNumber(r.firstClearKeys, `trials[${i}].firstClearKeys`),
+      ),
+      firstClearSilk: Math.floor(
+        assertNonNegativeNumber(r.firstClearSilk, `trials[${i}].firstClearSilk`),
+      ),
     };
   });
 }
@@ -864,7 +1095,7 @@ export function loadGameData(): GameDataBundle {
   const unitsById = new Map(units.map((u) => [u.id, u]));
   const recipes = validateRecipesShape(rawRecipes);
   const board = validateBoard(rawBoard);
-  const waves = validateWaves(rawWaves);
+  const waves = validateWaves(rawWaves, gradesById);
   const wispPools = validateWispPools(rawWispPools, gradesById, unitsById);
   const gambleRates = validateGambleRates(rawGambleRates, gradesById);
   const upgrades = validateUpgrades(rawUpgrades);
@@ -886,6 +1117,12 @@ export function loadGameData(): GameDataBundle {
     heroSkinsByUnit.set(s.unitId, arr);
   }
   const courtSkinsById = new Map<CourtSkinId, CourtSkinDef>(courtSkins.map((c) => [c.id, c]));
+  const difficulties = validateDifficulties(rawDifficulties);
+  const difficultiesById = new Map<DifficultyId, DifficultyConfig>(
+    difficulties.map((d) => [d.id, d]),
+  );
+  const trials = validateTrials(rawTrials);
+  const trialsById = new Map<TrialId, TrialConfig>(trials.map((t) => [t.id, t]));
 
   cachedBundle = {
     grades,
@@ -909,9 +1146,10 @@ export function loadGameData(): GameDataBundle {
     heroSkinsByUnit,
     courtSkins,
     courtSkinsById,
+    difficulties,
+    difficultiesById,
+    trials,
+    trialsById,
   };
   return cachedBundle;
 }
-
-
-

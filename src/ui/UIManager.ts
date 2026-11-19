@@ -1,59 +1,62 @@
 import type { GameCommand, SlotRef } from '../core/CommandQueue';
 import {
   DIFFICULTY_CONFIGS,
-  DIFFICULTY_ORDER,
   formatCompactNumber,
-  formatRelicStatSummary,
-  getVaultInterestCap,
-  getVaultInterestPct,
   TRIAL_CONFIGS,
-  TRIAL_ORDER,
 } from '../core/relicFormulas';
 import type { SlotView, UISnapshot } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
   BoonDef,
-  BoonIconKind,
   BoonId,
-  BoonRarity,
   CourtSkinId,
   DifficultyId,
-  FactionId,
   GameDataBundle,
   GradeId,
-  HeroSkinDef,
   RecipeDef,
   RelicId,
-  SkinRarity,
-  SkinUnlockCond,
   TrialId,
-  UnitDef,
   UnitId,
   UpgradeGroupId,
 } from '../data/types';
 import type { DragDiscardView } from '../input/DragController';
 import {
   type BackupImportResult,
-  computeSettlementReward,
-  getCodexDiscoveryReward,
-  getRelicUpgradeGoldCost,
   type MetaProfile,
   RELIC_CHEST_GOLD_COST,
   type RelicDrawResult,
   type RelicUpgradeResult,
   type SettlementRecord,
-  SKIN_MULTI5_GOLD_COST,
   SKIN_SINGLE_GOLD_COST,
   type SkinCraftResult,
   type SkinGachaResult,
-  type SkinPullItem,
 } from '../platform/MetaStore';
 import type { SpriteCache } from '../render/SpriteCache';
 import { getUnitCombatProfile } from '../render/weaponProfiles';
+import { buildCodexPanelView } from './panels/CodexPanel';
+import { buildRelicPanelView, buildWardrobePanelView } from './panels/RelicSkinPanel';
+import { TutorialOverlay } from './TutorialOverlay';
+import {
+  BOON_RARITY_META,
+  buildUnitRoleBadgesHtml,
+  type CodexFilterId,
+  escapeHtml,
+  FACTION_META,
+  getEquippedSkinDef,
+  hasUnownedGachaSkin,
+  ICON,
+  type RelicNoticeView,
+  renderBoonIconSvg,
+  SKIN_RARITY_META,
+  type SkinPullView,
+  type WardrobeSubTab,
+} from './uiShared';
 
 export interface UIControlHandlers {
   onDispatch(cmd: GameCommand): void;
+  isTutorialDone(): boolean;
+  onSetTutorialDone(done: boolean): void;
   onPickBoon(boonId: BoonId): void;
   onCycleSpeed(): void;
   onTogglePause(): void;
@@ -81,18 +84,18 @@ export interface UIControlHandlers {
   clearSelection(): void;
 }
 
-type SheetKind = 'craft' | 'wisp' | 'gamble' | 'upgrade' | 'relic' | 'wardrobe' | 'codex' | 'mission';
+type SheetKind =
+  | 'craft'
+  | 'wisp'
+  | 'gamble'
+  | 'upgrade'
+  | 'relic'
+  | 'wardrobe'
+  | 'codex'
+  | 'mission';
 type CraftTabId = 'all' | GradeId;
-type CodexFilterId = 'all' | FactionId;
-type WardrobeSubTab = 'hero' | 'court';
 
 const NORMAL_SYNC_INTERVAL_MS = 100; // Max 10Hz for non-priority HUD fields (AGENTS.md §4)
-
-const GAMBLE_REP_UNIT: Readonly<Record<string, UnitId>> = {
-  uncommon: 'plum_swordsman',
-  rare: 'plum_elder',
-  legendary: 'hwasan_master',
-};
 
 const UPGRADE_REP_UNIT: Readonly<Record<UpgradeGroupId, UnitId>> = {
   orthodox: 'hwasan_master',
@@ -100,103 +103,13 @@ const UPGRADE_REP_UNIT: Readonly<Record<UpgradeGroupId, UnitId>> = {
   demonic: 'cheonma',
 };
 
-const FACTION_META: Readonly<Record<FactionId, { readonly label: string; readonly color: string }>> = {
-  orthodox: { label: '정파', color: '#0284c7' },
-  unorthodox: { label: '사파', color: '#15803d' },
-  demonic: { label: '마교', color: '#be123c' },
-};
-
-const BOON_RARITY_META: Readonly<
-  Record<BoonRarity, { readonly label: string; readonly badge: string; readonly color: string }>
-> = {
-  rare: { label: '현급 기연', badge: '현급', color: '#0284c7' },
-  epic: { label: '지급 비전', badge: '지급', color: '#9333ea' },
-  mythic: { label: '천급 신공', badge: '천급', color: '#e11d48' },
-};
-
-const SKIN_RARITY_META: Readonly<
-  Record<SkinRarity, { readonly label: string; readonly color: string; readonly rank: number }>
-> = {
-  achievement: { label: '한정업적', color: '#7c3aed', rank: 4 },
-  mythic: { label: '신화', color: '#e11d48', rank: 3 },
-  legendary: { label: '전설', color: '#d97706', rank: 2 },
-  rare: { label: '명품', color: '#0284c7', rank: 1 },
-};
-
-const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
-  any_clear: '제 30 장 천하통일 제패 시 영구 해금',
-  hell_clear: '아수라 혈겁 난이도 제 30 장 제패 시 영구 해금',
-  wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
-};
-
-/** Inline Oriental Wuxia SVG game icons (thick #1a1224 ink outline + bright cel fill). */
-const SVG_OPEN = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">';
-const INK = '#1a1224';
-const ICON = {
-  // 엽전/은자 (Square-holed brass Oriental coin)
-  coin: `${SVG_OPEN}<circle cx="12" cy="12" r="9.5" fill="#ffd23f" stroke="${INK}" stroke-width="2.4"/><circle cx="12" cy="12" r="6.8" fill="none" stroke="#d97706" stroke-width="1.5"/><rect x="8.8" y="8.8" width="6.4" height="6.4" rx="1" fill="${INK}"/><path d="M7.5 7.2l1.8-1.2" stroke="#fffbeb" stroke-width="1.8" stroke-linecap="round"/></svg>`,
-  // 천하주화 (Octagonal imperial gold coin with crimson jewel core)
-  goldCoin: `${SVG_OPEN}<polygon points="8.2,2.5 15.8,2.5 21.5,8.2 21.5,15.8 15.8,21.5 8.2,21.5 2.5,15.8 2.5,8.2" fill="#fde047" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><polygon points="9.2,5.2 14.8,5.2 18.8,9.2 18.8,14.8 14.8,18.8 9.2,18.8 5.2,14.8 5.2,9.2" fill="#f59e0b" stroke="#b45309" stroke-width="1.2"/><circle cx="12" cy="12" r="3.4" fill="#e11d48" stroke="${INK}" stroke-width="1.8"/><circle cx="11" cy="11" r="1.1" fill="#fef08a"/></svg>`,
-  // 기보함 열쇠 (Ornate golden treasury key with crimson tassel)
-  key: `${SVG_OPEN}<circle cx="8" cy="9" r="5.2" fill="#fde047" stroke="${INK}" stroke-width="2.3"/><circle cx="8" cy="9" r="2" fill="${INK}"/><path d="M12.2 12l8.3 6.5M16.5 15.4l-2.2 2.8M19.5 17.7l-2.3 2.9" stroke="${INK}" stroke-width="4.4" stroke-linecap="round"/><path d="M12.2 12l8.3 6.5M16.5 15.4l-2.2 2.8M19.5 17.7l-2.3 2.9" stroke="#facc15" stroke-width="2.1" stroke-linecap="round"/><path d="M4.2 13.2l-1.7 4.2" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/></svg>`,
-  // 운금비단 (Rolled imperial brocade silk bolt with golden sash)
-  silk: `${SVG_OPEN}<rect x="3.5" y="6" width="17" height="12" rx="4" fill="#c084fc" stroke="${INK}" stroke-width="2.3"/><ellipse cx="7.5" cy="12" rx="2.7" ry="5.5" fill="#f3e8ff" stroke="${INK}" stroke-width="1.8"/><path d="M13 6v12" stroke="#facc15" stroke-width="2.8"/><path d="M11 12h4" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/></svg>`,
-  // 전설 금의 (Imperial martial silk robe)
-  robe: `${SVG_OPEN}<path d="M8 4l4 3.5L16 4l4.5 3.5-2.5 4.2-2-1.2V20H8v-9.5L6 11.7 3.5 7.5 8 4z" fill="#f43f5e" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><path d="M9.5 5.2L12 10l2.5-4.8" fill="none" stroke="#fef08a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="8" y="12.2" width="8" height="2.4" fill="#facc15" stroke="${INK}" stroke-width="1.5"/></svg>`,
-  // 기보함 (Lacquered Wuxia relic chest)
-  chest: `${SVG_OPEN}<rect x="3" y="8.5" width="18" height="12" rx="2.5" fill="#b45309" stroke="${INK}" stroke-width="2.3"/><path d="M3 9.5C3 6.5 6 5 12 5s9 1.5 9 4.5H3z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="3" y="10.5" width="18" height="2.6" fill="#facc15" stroke="${INK}" stroke-width="1.6"/><rect x="10" y="9.5" width="4" height="5" rx="1" fill="#fef08a" stroke="${INK}" stroke-width="1.8"/></svg>`,
-  // 영단 (Glowing crimson-gold medicinal elixir pill)
-  elixir: `${SVG_OPEN}<circle cx="12" cy="12.5" r="8.8" fill="#f43f5e" stroke="${INK}" stroke-width="2.4"/><path d="M6.5 14.5a7 7 0 0 0 11.2 1.2" fill="none" stroke="#9f1239" stroke-width="2.2" stroke-linecap="round"/><circle cx="9.4" cy="9.2" r="2.6" fill="#fef08a"/><circle cx="16.5" cy="6" r="2" fill="#4ade80" stroke="${INK}" stroke-width="1.6"/></svg>`,
-  // 기연 비급 (Rolled jade-and-gold martial arts scroll)
-  wisp: `${SVG_OPEN}<path d="M6 4.5h11a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 6 4.5z" fill="#5eead4" stroke="${INK}" stroke-width="2.4"/><rect x="4" y="3.5" width="3.6" height="17" rx="1.6" fill="#facc15" stroke="${INK}" stroke-width="2"/><path d="M11 9h5M11 13h5M13.5 7v10" stroke="#0f766e" stroke-width="2" stroke-linecap="round"/></svg>`,
-  // 초출강호 (Bamboo satgat + martial sword)
-  summon: `${SVG_OPEN}<path d="M3 14.5L12 6l9 8.5H3z" fill="#fde047" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M6.5 14.5c1.5 3 3.5 4.5 5.5 4.5s4-1.5 5.5-4.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M7.5 11.5h9" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round"/></svg>`,
-  // 영약 호리병 (Double-bulb Wuxia elixir gourd)
-  gourd: `${SVG_OPEN}<path d="M10.2 3h3.6v2.5h-3.6z" fill="#b45309" stroke="${INK}" stroke-width="2"/><circle cx="12" cy="8.5" r="4" fill="#4ade80" stroke="${INK}" stroke-width="2.3"/><circle cx="12" cy="16" r="5.8" fill="#22c55e" stroke="${INK}" stroke-width="2.4"/><path d="M8.2 11.6h7.6" stroke="#dc2626" stroke-width="2.6" stroke-linecap="round"/><circle cx="9.8" cy="14.5" r="1.5" fill="#dcfce7"/></svg>`,
-  // 합공·등선 (Crossed jian & saber)
-  swords: `${SVG_OPEN}<g stroke-linecap="round"><g stroke="${INK}" stroke-width="5.2"><path d="M4 4l11 11M20 4L9 15M14 18l4-4M6 14l4 4M17.5 17.5l2.5 2.5M6.5 17.5L4 20"/></g><g stroke="#f8fafc" stroke-width="2.4"><path d="M4 4l11 11M20 4L9 15"/></g><g stroke="#facc15" stroke-width="2.4"><path d="M14 18l4-4M6 14l4 4M17.5 17.5l2.5 2.5M6.5 17.5L4 20"/></g></g></svg>`,
-  // 내공 수련 (Rising golden dantian qi flame)
-  qi: `${SVG_OPEN}<path d="M12 2.2c3.8 4.4 6.8 7.5 6.8 11.8a6.8 6.8 0 0 1-13.6 0c0-2.8 1.5-5 3.2-6.6.3 1.7 1.1 2.8 2.2 3.1C10.2 7.8 10.8 5 12 2.2z" fill="#fb923c" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M12 10.5c1.9 2.1 3.2 3.5 3.2 5.2a3.2 3.2 0 0 1-6.4 0c0-1.6 1.2-3.1 3.2-5.2z" fill="#fef08a"/></svg>`,
-  // 문파 대기석 (Oriental dancheong roof)
-  pavilion: `${SVG_OPEN}<path d="M2.5 11.5L12 4l9.5 7.5H2.5z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="5.5" y="11.5" width="13" height="8" rx="1.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M9.5 19.5v-5h5v5" fill="#991b1b" stroke="${INK}" stroke-width="1.8"/></svg>`,
-} as const;
-
-function renderBoonIconSvg(kind: BoonIconKind): string {
-  const S = '<svg class="boon-svg" viewBox="0 0 32 32" aria-hidden="true">';
-  switch (kind) {
-    case 'vault':
-      return `${S}<rect x="4" y="9" width="24" height="17" rx="4" fill="#d97706" stroke="${INK}" stroke-width="2.6"/><path d="M4 13h24" stroke="${INK}" stroke-width="2.4"/><circle cx="16" cy="18" r="5" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><rect x="14.2" y="16.2" width="3.6" height="3.6" fill="${INK}"/><path d="M9 6h14l3 3H6l3-3z" fill="#fbbf24" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
-    case 'wealth_sword':
-      return `${S}<circle cx="16" cy="16" r="11" fill="#fde047" stroke="${INK}" stroke-width="2.5"/><rect x="12.5" y="12.5" width="7" height="7" fill="${INK}"/><path d="M6 26L26 6M20 5l7 0 0 7" stroke="${INK}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 26L26 6M20 5l7 0 0 7" stroke="#fb7185" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    case 'orthodox':
-      return `${S}<circle cx="16" cy="16" r="11.5" fill="#38bdf8" stroke="${INK}" stroke-width="2.6"/><path d="M16 4.5a5.75 5.75 0 0 1 0 11.5 5.75 5.75 0 0 0 0 11.5 11.5 11.5 0 0 1 0-23z" fill="#e0f2fe"/><circle cx="16" cy="10.2" r="2.1" fill="#0284c7"/><circle cx="16" cy="21.8" r="2.1" fill="#f8fafc"/><path d="M16 2v28" stroke="${INK}" stroke-width="2" stroke-dasharray="2 3"/></svg>`;
-    case 'pillage':
-      return `${S}<path d="M6 24L23 7l3 3-11 15-9-1z" fill="#4ade80" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="22" cy="22" r="5.5" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><rect x="20.4" y="20.4" width="3.2" height="3.2" fill="${INK}"/></svg>`;
-    case 'demonic':
-      return `${S}<path d="M16 3c5 5.5 9 9.5 9 15a9 9 0 0 1-18 0c0-4 2.2-7.2 4.6-9.6.5 2.4 1.6 3.8 3.2 4.2C13.6 9.5 14.4 6.5 16 3z" fill="#e11d48" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M16 14c2.5 2.8 4.2 4.6 4.2 7a4.2 4.2 0 0 1-8.4 0c0-2.1 1.6-4.1 4.2-7z" fill="#fde047"/></svg>`;
-    case 'shatter':
-      return `${S}<polygon points="16,3 27,8 25,20 16,29 7,20 5,8" fill="#c084fc" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M18 5l-5 10h6l-5 11" fill="none" stroke="#fef08a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    case 'formation':
-      return `${S}<polygon points="16,3 27,9.5 27,22.5 16,29 5,22.5 5,9.5" fill="#14b8a6" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><polygon points="16,8 22.5,12 22.5,20 16,24 9.5,20 9.5,12" fill="#99f6e4" stroke="${INK}" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="#fde047" stroke="${INK}" stroke-width="1.8"/></svg>`;
-    case 'acupoint':
-      return `${S}<circle cx="16" cy="16" r="10.5" fill="#1e293b" stroke="${INK}" stroke-width="2.6"/><circle cx="16" cy="16" r="5.5" fill="#f43f5e" stroke="#fde047" stroke-width="2"/><path d="M16 2v7M16 23v7M2 16h7M23 16h7" stroke="#5eead4" stroke-width="2.6" stroke-linecap="round"/></svg>`;
-    case 'furnace':
-      return `${S}<ellipse cx="16" cy="19" rx="10" ry="8" fill="#ea580c" stroke="${INK}" stroke-width="2.6"/><rect x="10" y="7" width="12" height="5" rx="2" fill="#facc15" stroke="${INK}" stroke-width="2.3"/><circle cx="16" cy="18" r="3.5" fill="#fef08a"/><path d="M10 26l-2 4M22 26l2 4" stroke="${INK}" stroke-width="2.8" stroke-linecap="round"/></svg>`;
-    case 'reinforce':
-      return `${S}<rect x="7" y="5" width="18" height="22" rx="3" fill="#5eead4" stroke="${INK}" stroke-width="2.6"/><rect x="4" y="4" width="4.5" height="24" rx="2" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><path d="M13 11h8M13 16h8M13 21h5" stroke="#0f766e" stroke-width="2.4" stroke-linecap="round"/></svg>`;
-    case 'bounty':
-      return `${S}<rect x="6" y="4" width="20" height="24" rx="3" fill="#fef3c7" stroke="${INK}" stroke-width="2.6"/><circle cx="16" cy="14" r="5" fill="#fb7185" stroke="${INK}" stroke-width="2.2"/><path d="M13 14h6M16 11v6" stroke="#fffbeb" stroke-width="2" stroke-linecap="round"/><path d="M10 23h12" stroke="#b91c1c" stroke-width="2.6" stroke-linecap="round"/></svg>`;
-    case 'trinity':
-      return `${S}<polygon points="16,3 28,25 4,25" fill="#fde047" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="16" cy="11" r="3.2" fill="#38bdf8" stroke="${INK}" stroke-width="1.8"/><circle cx="11" cy="21" r="3.2" fill="#4ade80" stroke="${INK}" stroke-width="1.8"/><circle cx="21" cy="21" r="3.2" fill="#f43f5e" stroke="${INK}" stroke-width="1.8"/></svg>`;
-  }
-}
-
 export class UIManager {
   private readonly root: HTMLElement;
   private readonly data: GameDataBundle;
   private readonly recipeGraph: RecipeGraph;
   private readonly sprites: SpriteCache;
   private readonly handlers: UIControlHandlers;
+  private readonly tutorial: TutorialOverlay;
 
   private waveBoxEl!: HTMLElement;
   private waveBadgeEl!: HTMLElement;
@@ -210,6 +123,7 @@ export class UIManager {
   private speedBtnEl!: HTMLButtonElement;
   private pauseBtnEl!: HTMLButtonElement;
   private muteBtnEl!: HTMLButtonElement;
+  private helpBtnEl!: HTMLButtonElement;
   private devBtnEl!: HTMLButtonElement;
   private devPopoverEl!: HTMLElement;
   private devSimMetaEl!: HTMLElement;
@@ -346,27 +260,19 @@ export class UIManager {
   private wardrobeSubTab: WardrobeSubTab = 'hero';
   private wispTab: GradeId;
   private readonly craftTabs: readonly { readonly id: CraftTabId; readonly label: string }[];
-  private readonly wispTabs: readonly { readonly id: GradeId; readonly label: string }[];
+  private readonly wispTabs: readonly {
+    readonly id: GradeId;
+    readonly name: string;
+    readonly label: string;
+  }[];
   private devOpen = false;
   private gameOverDismissed = false;
   private victoryDismissed = false;
   private lastAnimatedGambleSeq = 0;
-  private lastRelicNotice: {
-    readonly text: string;
-    readonly isWin: boolean;
-    readonly seq: number;
-    readonly relicId?: RelicId;
-    readonly prevLevel?: number;
-    readonly newLevel?: number;
-    readonly isNew?: boolean;
-  } | null = null;
+  private lastRelicNotice: RelicNoticeView | null = null;
   private relicNoticeSeq = 0;
   private lastAnimatedRelicSeq = 0;
-  private lastSkinPull: {
-    readonly items: readonly SkinPullItem[];
-    readonly totalSilkRefund: number;
-    readonly seq: number;
-  } | null = null;
+  private lastSkinPull: SkinPullView | null = null;
   private skinPullSeq = 0;
   private lastAnimatedSkinSeq = 0;
   private backupInputDraft = '';
@@ -388,6 +294,13 @@ export class UIManager {
     this.sprites = sprites;
     this.handlers = handlers;
 
+    this.tutorial = new TutorialOverlay({
+      data,
+      isTutorialDone: () => this.handlers.isTutorialDone(),
+      onSetTutorialDone: (done) => this.handlers.onSetTutorialDone(done),
+      onToast: (msg) => this.showToast(msg),
+    });
+
     const craftableGradeIds = new Set<GradeId>();
     for (const r of data.recipes) {
       const out = data.unitsById.get(r.output);
@@ -402,10 +315,10 @@ export class UIManager {
 
     this.wispTabs = data.grades
       .filter((g) => Boolean(data.wispPools[g.id]?.length))
-      .map((g) => ({ id: g.id, label: `${g.name} 기연` }));
+      .map((g) => ({ id: g.id, name: g.name, label: `${g.name} 기연` }));
     this.wispTab = this.wispTabs[0]?.id ?? data.grades[0]!.id;
 
-    // External PNG pixel-sheet arrived (public/sprites/{id}.png) -> refresh DOM portraits.
+    // External WebP sprite atlas arrived -> refresh DOM portraits.
     this.sprites.onSpriteUpdated(() => {
       this.prevSelectSignature = '';
       this.prevSheetSignature = '';
@@ -426,6 +339,16 @@ export class UIManager {
 
   public mount(): void {
     const mutedInit = this.handlers.isSoundMuted();
+    const devLowWisp = this.wispTabs[0];
+    const devHighWisp = this.wispTabs[this.wispTabs.length - 1];
+    const devWispBtnsHtml = [devLowWisp, devHighWisp]
+      .filter((t): t is NonNullable<typeof devLowWisp> => Boolean(t))
+      .map(
+        (t) =>
+          `<button type="button" class="dev-chip-btn interactive" data-dev-action="wisp" data-wisp-grade="${escapeHtml(t.id)}">+1 ${escapeHtml(t.name)} 기연</button>`,
+      )
+      .join('');
+
     this.root.innerHTML = `
       <header class="hud-bar" aria-label="무림 전황">
         <button id="hud-wave-box" type="button" class="wave-box interactive" title="출정 난이도 및 명숙록 보기">
@@ -451,6 +374,7 @@ export class UIManager {
           <button id="btn-speed" type="button" class="hud-btn interactive active" aria-label="배속">1x</button>
           <button id="btn-pause" type="button" class="hud-btn interactive" aria-label="일시정지">⏸</button>
           <button id="btn-mute" type="button" class="hud-btn mute-btn interactive${mutedInit ? ' muted' : ''}" aria-label="효과음 전환">${mutedInit ? '🔇' : '🔊'}</button>
+          <button id="btn-help" type="button" class="hud-btn help-btn interactive" title="강호 입문 교범 보기" aria-label="강호 입문 교범">?</button>
           <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴">DEV</button>
         </div>
       </header>
@@ -481,7 +405,7 @@ export class UIManager {
         <button id="btn-mission" type="button" class="tac-pill mission interactive" title="강호 의뢰 목록">📋 의뢰 0/10</button>
         <button id="btn-dps" type="button" class="tac-pill dps interactive" title="실시간 협객 딜량 순위표">⚔ 딜량표</button>
         <button id="btn-wardrobe" type="button" class="tac-pill wardrobe interactive" title="금수화장각 — 의복·검기 스킨 뽑기 및 비무대 테마">👘 화장각 1/14</button>
-        <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 35인 명숙록 · 난이도 · 비경 시련">📖 명숙록 0/35</button>
+        <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 명숙록 · 난이도 · 비경 시련">📖 명숙록 0/${this.data.units.length}</button>
       </nav>
 
       <aside id="dps-panel" class="dps-panel interactive" aria-label="실시간 협객 딜량표">
@@ -498,8 +422,7 @@ export class UIManager {
         <div class="dev-popover-grid">
           <button type="button" class="dev-chip-btn interactive" data-dev-action="coin">+500 은자</button>
           <button type="button" class="dev-chip-btn interactive" data-dev-action="luck">+5 영단</button>
-          <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-common">+1 삼류 기연</button>
-          <button type="button" class="dev-chip-btn interactive" data-dev-action="wisp-rare">+1 일류 기연</button>
+          ${devWispBtnsHtml}
           <button type="button" class="dev-chip-btn dev-span-2 interactive" data-dev-action="meta">+250 주화 · +2 열쇠 · +180 비단 (난이도 해금)</button>
         </div>
       </aside>
@@ -512,7 +435,7 @@ export class UIManager {
 
       <div id="bench-badge" class="bench-badge">${ICON.pavilion}<span>문파 대기석</span><b id="val-bench-count">0/12</b></div>
       <button id="btn-auto-arrange" type="button" class="auto-arrange-btn interactive" title="비무대 빈칸 자동출전 및 대기석 서열 정렬">⚡ 자동출전</button>
-      <button id="btn-bulk-cleanup" type="button" class="bulk-cleanup-btn interactive" title="문파 대기석의 잠금 해제된 삼류(일반) 협객 일괄 정리">🧹 잉여정리 <b id="val-surplus-count">0</b></button>
+      <button id="btn-bulk-cleanup" type="button" class="bulk-cleanup-btn interactive" title="문파 대기석의 잠금 해제된 초급 협객 일괄 정리">🧹 잉여정리 <b id="val-surplus-count">0</b></button>
 
       <div id="synergy-bar" class="synergy-bar" aria-label="출전 문파 진법 공명">
         <button id="btn-syn-orthodox" type="button" class="syn-pill syn-orthodox interactive" data-syn="orthodox" title="정파 북두검진">정<b id="syn-val-orthodox">0</b></button>
@@ -571,7 +494,7 @@ export class UIManager {
           <button id="btn-summon" type="button" class="action-btn btn-summon interactive">
             <span class="action-icon">${ICON.summon}</span>
             <span class="action-title">초출강호</span>
-            <span class="action-cost">${ICON.coin}<span id="val-summon-cost">20</span></span>
+            <span class="action-cost">${ICON.coin}<span id="val-summon-cost">22</span></span>
           </button>
 
           <button id="btn-gamble" type="button" class="action-btn btn-gamble interactive">
@@ -650,6 +573,8 @@ export class UIManager {
       </div>
     `;
 
+    this.tutorial.mount(this.root);
+
     this.waveBoxEl = this.mustGet('hud-wave-box');
     this.waveBadgeEl = this.mustGet('hud-wave-badge');
     this.waveTimerEl = this.mustGet('hud-wave-timer');
@@ -662,6 +587,7 @@ export class UIManager {
     this.speedBtnEl = this.mustGet('btn-speed') as HTMLButtonElement;
     this.pauseBtnEl = this.mustGet('btn-pause') as HTMLButtonElement;
     this.muteBtnEl = this.mustGet('btn-mute') as HTMLButtonElement;
+    this.helpBtnEl = this.mustGet('btn-help') as HTMLButtonElement;
     this.devBtnEl = this.mustGet('btn-dev') as HTMLButtonElement;
     this.devPopoverEl = this.mustGet('dev-popover');
     this.devSimMetaEl = this.mustGet('dev-sim-meta');
@@ -763,6 +689,15 @@ export class UIManager {
     this.bindEvents();
   }
 
+  private isTutorialBlocked(): boolean {
+    return (
+      this.activeSheet !== null ||
+      this.dpsOpen ||
+      this.devOpen ||
+      this.handlers.getDragDiscardView().active
+    );
+  }
+
   private bindEvents(): void {
     this.waveBoxEl.addEventListener('click', () => this.toggleSheet('codex'));
     this.relicBtnEl.addEventListener('click', () => this.toggleSheet('relic'));
@@ -801,6 +736,19 @@ export class UIManager {
       this.muteBtnEl.classList.toggle('muted', muted);
       this.setText(this.muteBtnEl, muted ? '🔇' : '🔊');
     });
+    this.helpBtnEl.addEventListener('click', () => {
+      this.closeSheet();
+      this.dpsOpen = false;
+      this.dpsBtnEl.classList.remove('active');
+      this.dpsPanelEl.classList.remove('open');
+      this.devOpen = false;
+      this.devBtnEl.classList.remove('active');
+      this.devPopoverEl.classList.remove('open');
+      this.tutorial.restart();
+      if (this.lastSnapshot) {
+        this.tutorial.sync(this.lastSnapshot, false);
+      }
+    });
 
     this.bountyBtnEl.addEventListener('click', () => {
       this.handlers.onDispatch({ type: 'callBounty' });
@@ -810,15 +758,21 @@ export class UIManager {
       this.dpsOpen = !this.dpsOpen;
       this.dpsBtnEl.classList.toggle('active', this.dpsOpen);
       this.dpsPanelEl.classList.toggle('open', this.dpsOpen);
-      if (this.dpsOpen && this.lastSnapshot) {
-        this.prevDpsSig = '';
-        this.refreshDpsPanel(this.lastSnapshot);
+      if (this.lastSnapshot) {
+        if (this.dpsOpen) {
+          this.prevDpsSig = '';
+          this.refreshDpsPanel(this.lastSnapshot);
+        }
+        this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
       }
     });
     this.mustGet('btn-dps-close').addEventListener('click', () => {
       this.dpsOpen = false;
       this.dpsBtnEl.classList.remove('active');
       this.dpsPanelEl.classList.remove('open');
+      if (this.lastSnapshot) {
+        this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
+      }
     });
     this.wardrobeBtnEl.addEventListener('click', () => this.toggleSheet('wardrobe'));
     this.codexBtnEl.addEventListener('click', () => this.toggleSheet('codex'));
@@ -860,6 +814,9 @@ export class UIManager {
       this.devOpen = !this.devOpen;
       this.devBtnEl.classList.toggle('active', this.devOpen);
       this.devPopoverEl.classList.toggle('open', this.devOpen);
+      if (this.lastSnapshot) {
+        this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
+      }
     });
 
     this.devPopoverEl.addEventListener('click', (ev) => {
@@ -872,12 +829,13 @@ export class UIManager {
       } else if (act === 'luck') {
         this.handlers.onDispatch({ type: 'grantTestResource', luck: 5 });
         this.showToast('DEV: +5 영단 지급');
-      } else if (act === 'wisp-common') {
-        this.handlers.onDispatch({ type: 'grantTestResource', wispGrade: 'common' });
-        this.showToast('DEV: +1 삼류 기연 지급');
-      } else if (act === 'wisp-rare') {
-        this.handlers.onDispatch({ type: 'grantTestResource', wispGrade: 'rare' });
-        this.showToast('DEV: +1 일류 기연 지급');
+      } else if (act === 'wisp') {
+        const wispGrade = btn.dataset.wispGrade;
+        if (wispGrade) {
+          const gName = this.data.gradesById.get(wispGrade)?.name ?? wispGrade;
+          this.handlers.onDispatch({ type: 'grantTestResource', wispGrade });
+          this.showToast(`DEV: +1 ${gName} 기연 지급`);
+        }
       } else if (act === 'meta') {
         this.handlers.onGrantDevMeta();
         this.showToast('DEV: +250 천하주화 · +2 열쇠 · +180 운금비단 · 전 난이도 해금');
@@ -912,7 +870,9 @@ export class UIManager {
     });
 
     this.unitShortcutsEl.addEventListener('click', (ev) => {
-      const chip = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-shortcut-recipe]');
+      const chip = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>(
+        '[data-shortcut-recipe]',
+      );
       if (!chip || !this.lastSnapshot) return;
       const rid = chip.dataset.shortcutRecipe!;
       const st = this.lastSnapshot.craft.recipes[rid];
@@ -1017,7 +977,9 @@ export class UIManager {
     });
 
     this.sheetBodyEl.addEventListener('click', (ev) => {
-      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-sheet-action]');
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>(
+        '[data-sheet-action]',
+      );
       if (!btn || btn.classList.contains('cta-disabled')) return;
 
       const action = btn.dataset.sheetAction;
@@ -1189,6 +1151,12 @@ export class UIManager {
         this.codexFilter = (btn.dataset.filter ?? 'all') as CodexFilterId;
         this.prevSheetSignature = '';
         if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'replay-tutorial') {
+        this.closeSheet();
+        this.tutorial.restart();
+        if (this.lastSnapshot) {
+          this.tutorial.sync(this.lastSnapshot, false);
+        }
       } else if (action === 'enter-endless') {
         this.victoryDismissed = true;
         this.closeSheet();
@@ -1208,7 +1176,10 @@ export class UIManager {
         this.abandonConfirmUntilMs = now + 4000;
         this.prevSheetSignature = '';
         if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
-        this.showToast('⚠ 현재 출정 기록이 초기화됩니다. 4초 내 한 번 더 누르면 처음부터 재출정합니다.', true);
+        this.showToast(
+          '⚠ 현재 출정 기록이 초기화됩니다. 4초 내 한 번 더 누르면 처음부터 재출정합니다.',
+          true,
+        );
       } else if (action === 'backup-export') {
         const code = this.handlers.onExportBackup();
         this.backupInputDraft = code;
@@ -1224,7 +1195,9 @@ export class UIManager {
               this.showToast('💾 영구 백업 코드가 클립보드에 복사되었습니다!');
             })
             .catch(() => {
-              this.showToast('💾 백업 코드가 생성되었습니다. 입력창의 코드를 복사해 보관하세요!');
+              this.showToast(
+                '💾 백업 코드가 생성되었습니다. 입력창의 코드를 복사해 보관하세요!',
+              );
             });
         } else {
           this.showToast('💾 백업 코드가 생성되었습니다. 입력창의 코드를 복사해 보관하세요!');
@@ -1290,6 +1263,7 @@ export class UIManager {
     this.sheetBackdropEl.classList.add('open');
     if (this.lastSnapshot) {
       this.refreshSheet(this.lastSnapshot);
+      this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
     }
   }
 
@@ -1297,6 +1271,9 @@ export class UIManager {
     this.activeSheet = null;
     this.prevSheetSignature = '';
     this.sheetBackdropEl.classList.remove('open');
+    if (this.lastSnapshot) {
+      this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
+    }
   }
 
   private toggleSheet(kind: SheetKind): void {
@@ -1310,6 +1287,7 @@ export class UIManager {
   public sync(snapshot: UISnapshot, nowMs: number, forcePriority: boolean): void {
     if (!forcePriority && nowMs - this.lastSyncMs < NORMAL_SYNC_INTERVAL_MS) {
       this.refreshDragDiscardZone(snapshot);
+      this.tutorial.sync(snapshot, this.isTutorialBlocked());
       return;
     }
     this.lastSyncMs = nowMs;
@@ -1433,9 +1411,9 @@ export class UIManager {
     this.missionBtnEl.classList.toggle('active', this.activeSheet === 'mission');
 
     const totalSkinCount = this.data.heroSkins.length + this.data.courtSkins.length;
-    const hasUnownedGachaSkin = this.hasUnownedGachaSkin(meta);
+    const unownedSkinExists = hasUnownedGachaSkin(this.data, meta);
     const canDrawSkinNow =
-      hasUnownedGachaSkin && (meta.keys >= 1 || meta.gold >= SKIN_SINGLE_GOLD_COST);
+      unownedSkinExists && (meta.keys >= 1 || meta.gold >= SKIN_SINGLE_GOLD_COST);
     this.setText(this.wardrobeBtnEl, `👘 화장각 ${meta.ownedSkinCount}/${totalSkinCount}`);
     this.wardrobeBtnEl.classList.toggle('active', this.activeSheet === 'wardrobe');
     this.wardrobeBtnEl.classList.toggle(
@@ -1545,9 +1523,7 @@ export class UIManager {
     );
 
     const totalUpLv =
-      snapshot.upgradeLv.orthodox +
-      snapshot.upgradeLv.unorthodox +
-      snapshot.upgradeLv.demonic;
+      snapshot.upgradeLv.orthodox + snapshot.upgradeLv.unorthodox + snapshot.upgradeLv.demonic;
     this.setText(this.upgradeCostEl, `Lv.${totalUpLv}`);
 
     // 3. Reject notices
@@ -1570,6 +1546,9 @@ export class UIManager {
 
     // 7. Victory / Game Over Settlement Modal
     this.refreshSettlementModal(snapshot, waveStr);
+
+    // 8. Interactive First-Run Tutorial Coach
+    this.tutorial.sync(snapshot, this.isTutorialBlocked());
   }
 
   private refreshBoonModal(snapshot: UISnapshot): void {
@@ -1654,55 +1633,6 @@ export class UIManager {
     this.boonModalEl.classList.add('open');
   }
 
-  private getEquippedSkinDef(unitId: UnitId, meta: MetaProfile): HeroSkinDef | null {
-    const skinId = meta.equippedHeroSkins[unitId];
-    if (!skinId) return null;
-    return this.data.heroSkinsById.get(skinId) ?? null;
-  }
-
-  private hasUnownedGachaSkin(meta: MetaProfile): boolean {
-    for (let i = 0; i < this.data.heroSkins.length; i++) {
-      const s = this.data.heroSkins[i]!;
-      if (s.rarity !== 'achievement' && !s.unlockCond && !meta.ownedSkins[s.id]) {
-        return true;
-      }
-    }
-    for (let i = 0; i < this.data.courtSkins.length; i++) {
-      const c = this.data.courtSkins[i]!;
-      if (
-        c.id !== 'court_bamboo_dawn' &&
-        c.rarity !== 'achievement' &&
-        !c.unlockCond &&
-        !meta.ownedSkins[c.id]
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private buildUnitRoleBadgesHtml(u: UnitDef, includeWeapon = false): string {
-    const chips: string[] = [];
-    if (includeWeapon) {
-      const wp = getUnitCombatProfile(u.id);
-      chips.push(
-        `<span class="role-chip weapon" title="전용 병장기 및 공격 모션: ${escapeHtml(wp.weaponLabel)}">🗡${escapeHtml(wp.weaponLabel)}</span>`,
-      );
-    }
-    if (u.supportAura) {
-      const spdPart = u.supportAura.speedPct > 0 ? `·속+${u.supportAura.speedPct}%` : '';
-      chips.push(
-        `<span class="role-chip totem" title="${escapeHtml(u.supportAura.name)}: 비무대 십자 인접 아군 공격력 +${u.supportAura.atkPct}%${spdPart}">✦고무 +${u.supportAura.atkPct}%</span>`,
-      );
-    }
-    if ((u.armorShred ?? 0) > 0) {
-      chips.push(
-        `<span class="role-chip shred" title="타격 시 마물 호신강기 -${u.armorShred} 파쇄 (중첩)">💥파갑 ${u.armorShred}</span>`,
-      );
-    }
-    return chips.join('');
-  }
-
   private refreshDpsPanel(snapshot: UISnapshot): void {
     const meta = this.handlers.getMetaProfile();
     const dm = snapshot.damageMeter;
@@ -1722,7 +1652,9 @@ export class UIManager {
         const u = this.data.unitsById.get(entry.unitId);
         const g = u ? this.data.gradesById.get(u.grade) : undefined;
         const imgUrl =
-          u && g ? this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta)) : '';
+          u && g
+            ? this.sprites.unitPortraitUrl(u, g, getEquippedSkinDef(this.data, u.id, meta))
+            : '';
         const fColor = FACTION_META[entry.faction].color;
         return `
           <div class="dps-row">
@@ -1810,9 +1742,9 @@ export class UIManager {
     if (rec && sig !== this.prevSettlementRenderedSig) {
       this.prevSettlementRenderedSig = sig;
       const multBadge = trialCfg
-        ? ` <span class="settlement-mult-badge">${trialCfg.badge} ${trialCfg.rewardMult}x</span>`
+        ? ` <span class="settlement-mult-badge">${escapeHtml(trialCfg.badge)} ${trialCfg.rewardMult}x</span>`
         : diffCfg.rewardMult > 1
-          ? ` <span class="settlement-mult-badge">${diffCfg.badge}</span>`
+          ? ` <span class="settlement-mult-badge">${escapeHtml(diffCfg.badge)}</span>`
           : '';
       let firstClearBanner = '';
       if (rec.firstClearBonusGold > 0) {
@@ -1941,6 +1873,7 @@ export class UIManager {
       this.refreshDragDiscardZone(this.lastSnapshot);
       this.refreshSelectedUnitBar(this.lastSnapshot);
       this.refreshRecommendBar(this.lastSnapshot);
+      this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
     }
   }
 
@@ -1952,7 +1885,8 @@ export class UIManager {
       if (!r) continue;
       const st = snapshot.craft.recipes[r.id];
       if (!st) continue;
-      const rank = this.data.gradesById.get(this.data.unitsById.get(r.output)?.grade ?? '')?.rank ?? 0;
+      const rank =
+        this.data.gradesById.get(this.data.unitsById.get(r.output)?.grade ?? '')?.rank ?? 0;
       let score: number;
       if (st.lamp === 'ready') score = 3000 + rank * 10;
       else if (st.lamp === 'chainReady') score = 2000 + rank * 10;
@@ -1995,7 +1929,7 @@ export class UIManager {
     this.recImgEl.src = this.sprites.unitPortraitUrl(
       outUnit,
       outGrade,
-      this.getEquippedSkinDef(outUnit.id, meta),
+      getEquippedSkinDef(this.data, outUnit.id, meta),
     );
     this.recImgEl.alt = outUnit.name;
     this.recGradeEl.textContent = outGrade.name;
@@ -2011,7 +1945,7 @@ export class UIManager {
         const owned = Math.min(ing.n, unlocked.get(ing.unit) ?? 0);
         const ok = owned >= ing.n;
         const cnt = ing.n > 1 ? `${owned}/${ing.n}` : ok ? '✓' : '✕';
-        return `<span class="rec-ing ${ok ? 'ok' : 'miss'}"><img src="${this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta))}" alt="${escapeHtml(u.name)}" /><b>${cnt}</b></span>`;
+        return `<span class="rec-ing ${ok ? 'ok' : 'miss'}"><img src="${this.sprites.unitPortraitUrl(u, g, getEquippedSkinDef(this.data, u.id, meta))}" alt="${escapeHtml(u.name)}" /><b>${cnt}</b></span>`;
       })
       .join('');
 
@@ -2043,7 +1977,6 @@ export class UIManager {
       cur.el.className = `toast-item show toast-bump${isReject ? ' reject' : ''}`;
       cur.el.textContent = cur.repeatCount >= 2 ? `${message} ×${cur.repeatCount}` : message;
 
-      // Re-trigger bump animation cleanly without reflow thrashing
       window.setTimeout(() => {
         cur.el.classList.remove('toast-bump');
       }, 150);
@@ -2182,7 +2115,7 @@ export class UIManager {
     this.unitPortraitImgEl.src = this.sprites.unitPortraitUrl(
       unitDef,
       gradeDef,
-      this.getEquippedSkinDef(unitDef.id, meta),
+      getEquippedSkinDef(this.data, unitDef.id, meta),
     );
     this.unitPortraitImgEl.alt = slotView.name;
 
@@ -2222,6 +2155,13 @@ export class UIManager {
       warnChip.className = 'shortcut-chip hazard-chip warn';
       warnChip.textContent = '🚨 주박 예고! 다른 칸으로 드래그 회피';
       this.unitShortcutsEl.appendChild(warnChip);
+    }
+
+    if (slotView.passiveTrait) {
+      const passiveChip = document.createElement('span');
+      passiveChip.className = 'shortcut-chip passive-chip';
+      passiveChip.textContent = `✦ ${slotView.passiveTrait.name}: ${slotView.passiveTrait.desc}`;
+      this.unitShortcutsEl.appendChild(passiveChip);
     }
 
     const weaponChip = document.createElement('span');
@@ -2316,7 +2256,10 @@ export class UIManager {
     if (kind === 'craft') {
       sig = `craft:${meta.rev}:${this.craftTab}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'wisp') {
-      sig = `wisp:${meta.rev}:${this.wispTab}:${snapshot.wisps.common ?? 0}:${snapshot.wisps.uncommon ?? 0}:${snapshot.wisps.rare ?? 0}:${snapshot.craft.rev}:${totalSlotsUsed}`;
+      const wispCountsSig = Object.entries(snapshot.wisps)
+        .map(([k, v]) => `${k}=${v ?? 0}`)
+        .join(',');
+      sig = `wisp:${meta.rev}:${this.wispTab}:${wispCountsSig}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'gamble') {
       sig = `gamble:${meta.rev}:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
     } else if (kind === 'upgrade') {
@@ -2409,8 +2352,10 @@ export class UIManager {
         return st && (st.lamp === 'ready' || st.lamp === 'chainReady');
       })
       .sort((a, b) => {
-        const rankA = this.data.gradesById.get(this.data.unitsById.get(a.output)?.grade ?? '')?.rank ?? 0;
-        const rankB = this.data.gradesById.get(this.data.unitsById.get(b.output)?.grade ?? '')?.rank ?? 0;
+        const rankA =
+          this.data.gradesById.get(this.data.unitsById.get(a.output)?.grade ?? '')?.rank ?? 0;
+        const rankB =
+          this.data.gradesById.get(this.data.unitsById.get(b.output)?.grade ?? '')?.rank ?? 0;
         return rankB !== rankA ? rankB - rankA : a.priority - b.priority;
       });
 
@@ -2467,13 +2412,13 @@ export class UIManager {
     const portraitUrl = this.sprites.unitPortraitUrl(
       outUnit,
       outGrade,
-      this.getEquippedSkinDef(outUnit.id, meta),
+      getEquippedSkinDef(this.data, outUnit.id, meta),
     );
-    const roleBadges = this.buildUnitRoleBadgesHtml(outUnit, true);
+    const roleBadges = buildUnitRoleBadgesHtml(outUnit, true);
 
     const isTriple = recipe.ingredients.length === 1 && recipe.ingredients[0]!.n >= 3;
     let routeBadgeHtml = '<span class="route-pill canon">정통 합공</span>';
-    if (outUnit.grade === 'immortal') {
+    if (outGrade.fx === 'rainbow') {
       routeBadgeHtml = '<span class="route-pill immortal">✦ 은거진선 비전</span>';
     } else if (isTriple) {
       routeBadgeHtml = '<span class="route-pill triple">×3 동문합일</span>';
@@ -2487,7 +2432,11 @@ export class UIManager {
         if (!ingUnit) return '';
         const ingGrade = this.data.gradesById.get(ingUnit.grade);
         const ingImg = ingGrade
-          ? this.sprites.unitPortraitUrl(ingUnit, ingGrade, this.getEquippedSkinDef(ingUnit.id, meta))
+          ? this.sprites.unitPortraitUrl(
+              ingUnit,
+              ingGrade,
+              getEquippedSkinDef(this.data, ingUnit.id, meta),
+            )
           : '';
         const owned = unlocked.get(ing.unit) ?? 0;
         const ok = owned >= ing.n;
@@ -2557,9 +2506,7 @@ export class UIManager {
       }
     }
 
-    const orderedUnitIds: UnitId[] = hints
-      ? hints.map((h) => h.unitId)
-      : [...pool];
+    const orderedUnitIds: UnitId[] = hints ? hints.map((h) => h.unitId) : [...pool];
 
     const cardsHtml = orderedUnitIds
       .map((uid) => {
@@ -2568,16 +2515,22 @@ export class UIManager {
         const g = this.data.gradesById.get(u.grade);
         if (!g) return '';
         const fMeta = FACTION_META[u.faction];
-        const portrait = this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta));
+        const portrait = this.sprites.unitPortraitUrl(
+          u,
+          g,
+          getEquippedSkinDef(this.data, u.id, meta),
+        );
         const owned = unlocked.get(uid) ?? 0;
         const hint = hintMap.get(uid);
-        const roleBadges = this.buildUnitRoleBadgesHtml(u);
+        const roleBadges = buildUnitRoleBadgesHtml(u);
 
         let hintBadge = `<span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>`;
         let recommendClass = '';
         if (hint?.completes) {
           const completedOut = this.recipeGraph.recipesById.get(hint.completes)?.output;
-          const outName = completedOut ? (this.data.unitsById.get(completedOut)?.name ?? '상위 고수') : '상위 고수';
+          const outName = completedOut
+            ? (this.data.unitsById.get(completedOut)?.name ?? '상위 고수')
+            : '상위 고수';
           hintBadge = `<span class="hint-pill">⚡ ${escapeHtml(outName)}</span>`;
           recommendClass = ' wisp-recommend';
         } else if (hint && hint.gain > 0) {
@@ -2656,15 +2609,22 @@ export class UIManager {
     const rateCards = this.data.gambleRates
       .map((rate) => {
         const gradeDef = this.data.gradesById.get(rate.tier);
-        const repId = GAMBLE_REP_UNIT[rate.tier] ?? 'plum_swordsman';
-        const repUnit = this.data.unitsById.get(repId);
+        const repUnit = this.data.units.find((u) => u.grade === rate.tier);
         const portrait =
           repUnit && gradeDef
-            ? this.sprites.unitPortraitUrl(repUnit, gradeDef, this.getEquippedSkinDef(repUnit.id, meta))
+            ? this.sprites.unitPortraitUrl(
+                repUnit,
+                gradeDef,
+                getEquippedSkinDef(this.data, repUnit.id, meta),
+              )
             : '';
 
         const canRoll = snapshot.luckStone >= rate.costLuck && hasFreeSlot;
-        const btnText = !hasFreeSlot ? '가득참' : snapshot.luckStone >= rate.costLuck ? '복용!' : '영단 부족';
+        const btnText = !hasFreeSlot
+          ? '가득참'
+          : snapshot.luckStone >= rate.costLuck
+            ? '복용!'
+            : '영단 부족';
         const effectivePct = Math.min(95, rate.chancePct + furnaceBonus);
         const pctLabel =
           furnaceBonus > 0
@@ -2725,7 +2685,7 @@ export class UIManager {
     const relicDot = hasRelicNotif ? '<span class="sheet-tab-dot"></span>' : '';
     const totalSkins = this.data.heroSkins.length + this.data.courtSkins.length;
     const hasWardrobeNotif =
-      this.hasUnownedGachaSkin(meta) && (meta.keys >= 1 || meta.gold >= SKIN_SINGLE_GOLD_COST);
+      hasUnownedGachaSkin(this.data, meta) && (meta.keys >= 1 || meta.gold >= SKIN_SINGLE_GOLD_COST);
     const wardrobeDot = hasWardrobeNotif ? '<span class="sheet-tab-dot"></span>' : '';
     this.sheetTabsEl.style.display = 'flex';
     this.sheetTabsEl.innerHTML = `
@@ -2757,14 +2717,19 @@ export class UIManager {
             ? Math.max(1, Math.round(rawCost * Math.max(0.5, 1 - 0.25 * harmonyStacks)))
             : rawCost;
         const icon = up.currency === 'coin' ? ICON.coin : ICON.elixir;
-        const affordable = up.currency === 'coin' ? snapshot.coin >= cost : snapshot.luckStone >= cost;
+        const affordable =
+          up.currency === 'coin' ? snapshot.coin >= cost : snapshot.luckStone >= cost;
 
         const fMeta = FACTION_META[up.faction];
         const repUnit = this.data.unitsById.get(UPGRADE_REP_UNIT[up.id]);
         const repGrade = repUnit ? this.data.gradesById.get(repUnit.grade) : undefined;
         const portrait =
           repUnit && repGrade
-            ? this.sprites.unitPortraitUrl(repUnit, repGrade, this.getEquippedSkinDef(repUnit.id, meta))
+            ? this.sprites.unitPortraitUrl(
+                repUnit,
+                repGrade,
+                getEquippedSkinDef(this.data, repUnit.id, meta),
+              )
             : '';
 
         const curPct = lv * up.atkBonusPctPerLv;
@@ -2842,281 +2807,20 @@ export class UIManager {
   }
 
   private renderRelicSheet(snapshot: UISnapshot, meta: MetaProfile): void {
-    const ownedCount = this.data.relics.filter((d) => (meta.relics[d.id] ?? 0) > 0).length;
-    const allMaxed = this.data.relics.every((d) => (meta.relics[d.id] ?? 0) >= d.maxLevel);
-    const bestWaveStr = String(meta.bestWave).padStart(2, '0');
-
-    this.setText(this.sheetTitleEl, '무림 신물 · 기보고');
-    this.setText(
-      this.sheetSubtitleEl,
-      `해금 ${ownedCount}/${this.data.relics.length} · 최고 기록 제 ${bestWaveStr} 장 · 영구 계승`,
-    );
-    this.renderGrowthTabs('relic', meta);
-
-    const canDrawKey = !allMaxed && meta.keys >= 1;
-    const canDrawGold = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST;
-
-    let noticeHtml = '';
-    if (this.lastRelicNotice?.relicId) {
-      const n = this.lastRelicNotice;
-      const rDef = this.data.relicsById.get(n.relicId!);
-      const rLv = n.newLevel ?? 1;
-      const rPrev = n.prevLevel ?? 0;
-      const rPortrait = this.sprites.relicPortraitUrl(n.relicId!, rLv);
-      const badgeLabel = n.isNew
-        ? '✨ NEW 신물 해금'
-        : rLv >= (rDef?.maxLevel ?? 10)
-          ? '👑 극의 달성!'
-          : `⬆️ 제련 승급 Lv.${rPrev} → Lv.${rLv}`;
-      const tierCls = rLv >= 10 ? ' tier-mythic' : rLv >= 5 ? ' tier-master' : '';
-      noticeHtml = `
-        <div id="relic-notice-banner" class="relic-pull-showcase${tierCls}">
-          <div class="relic-pull-avatar">
-            <img src="${rPortrait}" alt="${escapeHtml(rDef?.name ?? '')}" />
-          </div>
-          <div class="relic-pull-meta">
-            <div class="relic-pull-badges">
-              <span class="relic-pull-state">${badgeLabel}</span>
-              ${rDef ? `<span class="grade-pill relic-tag-pill">${escapeHtml(rDef.tag)}</span>` : ''}
-            </div>
-            <div class="relic-pull-title">${escapeHtml(rDef?.name ?? n.text)}</div>
-            <div class="relic-pull-stat">${escapeHtml(formatRelicStatSummary(n.relicId!, rLv))}</div>
-          </div>
-        </div>
-      `;
-    } else {
-      const noticeText = this.lastRelicNotice
-        ? this.lastRelicNotice.text
-        : '🏺 기보함을 개봉해 복리 이자(금고)·이자 데미지(만금쾌검패) 등 무림 6대 신물을 제련하세요!';
-      const noticeClass = this.lastRelicNotice ? 'relic-notice-banner win' : 'relic-notice-banner';
-      noticeHtml = `<div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>`;
-    }
-
-    const cardsHtml = this.data.relics
-      .map((def) => {
-        const lv = meta.relics[def.id] ?? 0;
-        const isOwned = lv > 0;
-        const isMax = lv >= def.maxLevel;
-        const cost = getRelicUpgradeGoldCost(def, lv);
-        const affordable = !isMax && meta.gold >= cost;
-
-        let liveBadgeHtml = '';
-        if (def.id === 'golden_vault' && isOwned) {
-          const pct = getVaultInterestPct(lv);
-          const cap = getVaultInterestCap(lv);
-          const est = Math.min(cap, Math.floor((snapshot.coin * pct) / 100));
-          liveBadgeHtml = `<span class="relic-live-chip">예상 이자 +${est} 은자</span>`;
-        } else if (def.id === 'million_sword_seal' && isOwned) {
-          const curPct = (snapshot.relicBonus.wealthAtkBps / 100).toFixed(1);
-          liveBadgeHtml = `<span class="relic-live-chip">현재 공증 +${curPct}%</span>`;
-        } else if (def.id === 'bandit_dagger' && snapshot.relicBonus.pilferedCoinTotal > 0) {
-          liveBadgeHtml = `<span class="relic-live-chip">강탈 +${snapshot.relicBonus.pilferedCoinTotal} 은자</span>`;
-        }
-
-        let statLine = '';
-        if (!isOwned) {
-          statLine = `<span class="relic-lore">${escapeHtml(def.desc)}</span> · 해금(Lv.1): <b class="up-next">${escapeHtml(formatRelicStatSummary(def.id, 1))}</b>`;
-        } else if (isMax) {
-          statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, lv))}</b> <span class="relic-max-note">(천하제일 극의 달성)</span>`;
-        } else {
-          statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} → <b class="up-next">Lv.${lv + 1}: ${escapeHtml(formatRelicStatSummary(def.id, lv + 1))}</b>`;
-        }
-
-        const lvBadgeBg = isMax ? '#dc2626' : lv >= 5 ? '#b45309' : isOwned ? '#d97706' : '#334155';
-        const lvBadgeTxt = isMax ? `극의 Lv.${lv}` : isOwned ? `Lv.${lv}/${def.maxLevel}` : '봉인됨';
-        const ctaLabel = isMax ? '극의' : isOwned ? '제련' : '지정 해금';
-        const cardTierCls = isMax
-          ? ' relic-owned relic-mythic'
-          : lv >= 5
-            ? ' relic-owned relic-master'
-            : isOwned
-              ? ' relic-owned'
-              : ' relic-locked';
-        const portraitUrl = this.sprites.relicPortraitUrl(def.id, lv);
-        const pipsHtml = Array.from({ length: def.maxLevel }, (_, idx) => {
-          const filled = idx < lv;
-          const pipCls = !filled ? '' : isMax ? ' max' : lv >= 5 ? ' high' : ' on';
-          return `<span class="relic-lv-pip${pipCls}"></span>`;
-        }).join('');
-
-        return `
-          <div class="sheet-card relic-card${cardTierCls}">
-            <div class="card-left">
-              <div class="card-avatar relic-avatar">
-                <img src="${portraitUrl}" alt="${escapeHtml(def.name)}" />
-              </div>
-              <div class="card-info">
-                <div class="card-name-row">
-                  <span class="grade-pill" style="background:${lvBadgeBg}">${lvBadgeTxt}</span>
-                  <span class="grade-pill relic-tag-pill">${escapeHtml(def.tag)}</span>
-                  <span class="card-name">${escapeHtml(def.name)}</span>
-                  ${liveBadgeHtml}
-                </div>
-                <div class="card-sub">${statLine}</div>
-                <div class="relic-lv-track" aria-hidden="true">${pipsHtml}</div>
-              </div>
-            </div>
-            <button
-              type="button"
-              class="card-cta-btn ${affordable ? (isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
-              data-sheet-action="relic-upgrade"
-              data-relic-id="${def.id}"
-              ${affordable ? '' : 'disabled'}
-            >
-              <span>${ctaLabel}</span>
-              ${isMax ? '' : `<span class="mini-price">${ICON.goldCoin}${cost}</span>`}
-            </button>
-          </div>
-        `;
-      })
-      .join('');
-
-    const settledRec = this.handlers.getSettlementRecord();
-    const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
-    const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
-    const modeBadge = trialCfg ? `${trialCfg.badge} ${trialCfg.rewardMult}x` : diffCfg.badge;
-    const preview = computeSettlementReward({
-      wave: snapshot.wave,
-      monstersSlain: snapshot.monstersSlain,
-      bossesSlain: snapshot.bossesSlain,
-      bountiesSlain: snapshot.bounty.bountiesSlain,
-      difficulty: snapshot.difficulty,
-      trialId: snapshot.trialId,
-      victory: snapshot.victoryAchieved,
+    const view = buildRelicPanelView({
+      data: this.data,
+      sprites: this.sprites,
+      snapshot,
+      meta,
+      settledRec: this.handlers.getSettlementRecord(),
+      lastRelicNotice: this.lastRelicNotice,
+      backupInputDraft: this.backupInputDraft,
+      confirmArmed: this.abandonConfirmUntilMs > performance.now(),
     });
-    const canEarlySettle = !snapshot.gameOver && !snapshot.victoryHold && snapshot.wave >= 2;
-    const targetWaveStr = String(snapshot.clearTargetWave).padStart(2, '0');
-    const confirmArmed = this.abandonConfirmUntilMs > performance.now();
-
-    let settleFooterHtml = '';
-    if (snapshot.victoryHold) {
-      settleFooterHtml = `
-        <div class="settlement-preview-bar victory-bar">
-          <div class="settlement-preview-info">
-            <span class="settlement-preview-title">🏆 제 ${targetWaveStr} 장 ${trialCfg ? '비경 제패' : '천하통일'} 정산 완료!</span>
-            <span class="settlement-preview-sub">신물을 제련한 뒤 즉시 ${snapshot.clearTargetWave + 1}장 무한 혈투에 돌입하거나 금의환향할 수 있습니다!</span>
-          </div>
-          <div class="relic-draw-btns">
-            <button type="button" class="card-cta-btn cta-crimson interactive" data-sheet-action="enter-endless">
-              <span>⚔ 무한 혈투</span>
-            </button>
-            <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="restart-run">
-              <span>새 출정</span>
-            </button>
-          </div>
-        </div>
-      `;
-    } else if (snapshot.gameOver) {
-      settleFooterHtml = `
-        <div class="settlement-preview-bar">
-          <div class="settlement-preview-info">
-            <span class="settlement-preview-title">이번 출정 정산 완료!</span>
-            <span class="settlement-preview-sub">획득 보상: 천하주화 +${settledRec?.goldEarned ?? preview.goldEarned} · 열쇠 +${settledRec?.keysEarned ?? preview.keysEarned}</span>
-          </div>
-          <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="restart-run">
-            <span>재출정</span>
-          </button>
-        </div>
-      `;
-    } else {
-      settleFooterHtml = `
-        <div class="settlement-preview-bar">
-          <div class="settlement-preview-info">
-            <span class="settlement-preview-title">현재 출정 정산 예상 (제 ${String(snapshot.wave).padStart(2, '0')} 장 · ${modeBadge})</span>
-            <span class="settlement-preview-sub">회군 시 영구 보상: 천하주화 +${preview.goldEarned.toLocaleString('ko-KR')} · 기보함 열쇠 +${preview.keysEarned}개</span>
-          </div>
-          <button
-            type="button"
-            class="card-cta-btn ${canEarlySettle ? 'cta-green interactive' : 'cta-disabled'}"
-            data-sheet-action="settle-run"
-            ${canEarlySettle ? '' : 'disabled'}
-          >
-            <span>${canEarlySettle ? '회군 정산' : '2장부터'}</span>
-          </button>
-        </div>
-      `;
-    }
-
-    const abandonBtnHtml =
-      !snapshot.gameOver && !snapshot.victoryHold
-        ? `
-          <button
-            type="button"
-            class="card-cta-btn ${confirmArmed ? 'cta-crimson' : ''} interactive"
-            data-sheet-action="abandon-restart"
-          >
-            <span>${confirmArmed ? '⚠ 한 번 더 터치' : '🔄 처음부터'}</span>
-          </button>
-        `
-        : '';
-
-    const backupPanelHtml = `
-      <div class="backup-save-panel">
-        <div class="backup-save-top">
-          <div class="settlement-preview-info">
-            <span class="settlement-preview-title">💾 자동 이어하기 작동 중 · 영구 세이브 백업</span>
-            <span class="settlement-preview-sub">브라우저를 닫거나 새로고침해도 현재 출정 장수가 자동 복원됩니다. 기기 변경 시 백업 코드로 영구 재화·신물·스킨·명숙록을 계승하세요.</span>
-          </div>
-          <div class="relic-draw-btns">
-            ${abandonBtnHtml}
-            <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="backup-export">
-              <span>📋 백업 복사</span>
-            </button>
-          </div>
-        </div>
-        <div class="backup-code-row">
-          <input
-            id="backup-code-input"
-            type="text"
-            class="backup-code-input interactive"
-            value="${escapeHtml(this.backupInputDraft)}"
-            placeholder="MRD1-... 백업 코드를 붙여넣고 [코드 복원]을 누르세요"
-            spellcheck="false"
-            autocomplete="off"
-          />
-          <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="backup-import">
-            <span>📥 코드 복원</span>
-          </button>
-        </div>
-      </div>
-    `;
-
-    this.sheetBodyEl.innerHTML = `
-      <div class="relic-gacha-panel">
-        <div class="relic-wallet-row">
-          <div class="relic-wallet-pills">
-            <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
-            <span class="relic-wallet-pill key">${ICON.key}<span>기보함 열쇠</span><b>${meta.keys}</b></span>
-          </div>
-          <div class="relic-draw-btns">
-            <button
-              type="button"
-              class="card-cta-btn cta-green ${canDrawKey ? 'interactive' : 'cta-disabled'}"
-              data-sheet-action="relic-draw"
-              data-pay="key"
-              ${canDrawKey ? '' : 'disabled'}
-            >
-              <span>열쇠 개봉</span>
-              <span class="mini-price">${ICON.key}1</span>
-            </button>
-            <button
-              type="button"
-              class="card-cta-btn ${canDrawGold ? 'interactive' : 'cta-disabled'}"
-              data-sheet-action="relic-draw"
-              data-pay="gold"
-              ${canDrawGold ? '' : 'disabled'}
-            >
-              <span>주화 개봉</span>
-              <span class="mini-price">${ICON.goldCoin}${RELIC_CHEST_GOLD_COST}</span>
-            </button>
-          </div>
-        </div>
-        ${noticeHtml}
-      </div>
-      ${cardsHtml}
-      ${settleFooterHtml}
-      ${backupPanelHtml}
-    `;
+    this.setText(this.sheetTitleEl, '무림 신물 · 기보고');
+    this.setText(this.sheetSubtitleEl, view.subtitle);
+    this.renderGrowthTabs('relic', meta);
+    this.sheetBodyEl.innerHTML = view.bodyHtml;
 
     if (this.lastRelicNotice && this.lastRelicNotice.seq !== this.lastAnimatedRelicSeq) {
       this.lastAnimatedRelicSeq = this.lastRelicNotice.seq;
@@ -3130,298 +2834,17 @@ export class UIManager {
   }
 
   private renderWardrobeSheet(meta: MetaProfile): void {
-    const totalSkins = this.data.heroSkins.length + this.data.courtSkins.length;
-    const ownedHeroCount = this.data.heroSkins.filter((s) => Boolean(meta.ownedSkins[s.id])).length;
-    const ownedCourtCount = this.data.courtSkins.filter((c) => Boolean(meta.ownedSkins[c.id])).length;
-
+    const view = buildWardrobePanelView({
+      data: this.data,
+      sprites: this.sprites,
+      meta,
+      subTab: this.wardrobeSubTab,
+      lastSkinPull: this.lastSkinPull,
+    });
     this.setText(this.sheetTitleEl, '금수화장각 · 전설 의복 & 비무대');
-    this.setText(
-      this.sheetSubtitleEl,
-      `수집 ${meta.ownedSkinCount}/${totalSkins}종 · 의복·검기·절기 이펙트 영구 변모 (전투 능력치 변동 없음)`,
-    );
+    this.setText(this.sheetSubtitleEl, view.subtitle);
     this.renderGrowthTabs('wardrobe', meta);
-
-    const canDrawKey1 = meta.keys >= 1;
-    const canDrawGold1 = meta.gold >= SKIN_SINGLE_GOLD_COST;
-    const canDrawGold5 = meta.gold >= SKIN_MULTI5_GOLD_COST;
-
-    let showcaseHtml = '';
-    if (this.lastSkinPull) {
-      const pullCards = this.lastSkinPull.items
-        .map((item) => {
-          const rMeta = SKIN_RARITY_META[item.rarity];
-          let imgUrl = '';
-          let subName = '비무대 테마';
-          if (item.kind === 'hero') {
-            const skinDef = this.data.heroSkinsById.get(item.skinId);
-            const u = item.unitId ? this.data.unitsById.get(item.unitId) : undefined;
-            const g = u ? this.data.gradesById.get(u.grade) : undefined;
-            if (u && g && skinDef) {
-              imgUrl = this.sprites.unitPortraitUrl(u, g, skinDef);
-              subName = u.name;
-            }
-          } else {
-            const courtDef = this.data.courtSkinsById.get(item.skinId as CourtSkinId);
-            if (courtDef) {
-              imgUrl = this.sprites.courtPreviewUrl(courtDef);
-            }
-          }
-
-          const tagHtml = item.isNew
-            ? '<span class="pull-tag new">✨ NEW</span>'
-            : `<span class="pull-tag refund">+${item.silkRefund}필</span>`;
-
-          return `
-            <div class="skin-pull-card rarity-${item.rarity}">
-              <span class="skin-rarity-pill" style="background:${rMeta.color}">${rMeta.label}</span>
-              <div class="skin-pull-avatar"><img src="${imgUrl}" alt="${escapeHtml(item.name)}" /></div>
-              <div class="skin-pull-name">${escapeHtml(item.name)}</div>
-              <div class="skin-pull-target">${escapeHtml(subName)}</div>
-              ${tagHtml}
-            </div>
-          `;
-        })
-        .join('');
-
-      const multiClass = this.lastSkinPull.items.length > 1 ? ' multi-5' : ' single-1';
-      const refundNote =
-        this.lastSkinPull.totalSilkRefund > 0
-          ? `<div class="skin-pull-summary">🧶 중복 의복 환급 합계: <b>운금비단 +${this.lastSkinPull.totalSilkRefund}필</b> (보유 ${meta.silk}필)</div>`
-          : '';
-      showcaseHtml = `
-        <div id="skin-pull-showcase" class="skin-pull-showcase${multiClass}">
-          <div class="skin-pull-grid">${pullCards}</div>
-          ${refundNote}
-        </div>
-      `;
-    }
-
-    let listHtml = '';
-    if (this.wardrobeSubTab === 'hero') {
-      const sortedHeroSkins = [...this.data.heroSkins].sort((a, b) => {
-        const eqA = meta.equippedHeroSkins[a.unitId] === a.id ? 1 : 0;
-        const eqB = meta.equippedHeroSkins[b.unitId] === b.id ? 1 : 0;
-        if (eqA !== eqB) return eqB - eqA;
-        const ownA = meta.ownedSkins[a.id] ? 1 : 0;
-        const ownB = meta.ownedSkins[b.id] ? 1 : 0;
-        if (ownA !== ownB) return ownB - ownA;
-        return SKIN_RARITY_META[b.rarity].rank - SKIN_RARITY_META[a.rarity].rank;
-      });
-
-      listHtml = sortedHeroSkins
-        .map((skin) => {
-          const u = this.data.unitsById.get(skin.unitId);
-          const g = u ? this.data.gradesById.get(u.grade) : undefined;
-          if (!u || !g) return '';
-          const rMeta = SKIN_RARITY_META[skin.rarity];
-          const fMeta = FACTION_META[u.faction];
-          const isOwned = Boolean(meta.ownedSkins[skin.id]);
-          const isEquipped = meta.equippedHeroSkins[skin.unitId] === skin.id;
-          const portrait = this.sprites.unitPortraitUrl(u, g, skin);
-
-          const condText =
-            !isOwned && skin.unlockCond
-              ? ` · <b class="skin-cond-note">🏆 ${escapeHtml(UNLOCK_COND_LABEL[skin.unlockCond])}</b>`
-              : '';
-
-          let ctaHtml = '';
-          if (isEquipped) {
-            ctaHtml = `
-              <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="skin-equip-hero" data-unit-id="${skin.unitId}" data-skin-id="">
-                <span>장착중 ✓</span>
-                <span class="mini-price">해제</span>
-              </button>
-            `;
-          } else if (isOwned) {
-            ctaHtml = `
-              <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="skin-equip-hero" data-unit-id="${skin.unitId}" data-skin-id="${skin.id}">
-                <span>의복 장착</span>
-              </button>
-            `;
-          } else if (skin.unlockCond) {
-            ctaHtml = `
-              <button type="button" class="card-cta-btn cta-disabled" disabled>
-                <span>업적 전용</span>
-              </button>
-            `;
-          } else {
-            const canCraft = meta.silk >= skin.silkCost;
-            ctaHtml = `
-              <button
-                type="button"
-                class="card-cta-btn ${canCraft ? 'interactive' : 'cta-disabled'}"
-                data-sheet-action="skin-craft"
-                data-skin-id="${skin.id}"
-                ${canCraft ? '' : 'disabled'}
-              >
-                <span>확정 재단</span>
-                <span class="mini-price">${ICON.silk}${skin.silkCost}필</span>
-              </button>
-            `;
-          }
-
-          return `
-            <div class="sheet-card skin-card${isEquipped ? ' skin-equipped' : isOwned ? ' skin-owned' : ' skin-locked'}">
-              <div class="card-left">
-                <div class="card-avatar skin-avatar"><img src="${portrait}" alt="${escapeHtml(skin.name)}" /></div>
-                <div class="card-info">
-                  <div class="card-name-row">
-                    <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label}</span>
-                    <span class="grade-pill" style="background:${fMeta.color}">${escapeHtml(u.name)}</span>
-                    <span class="card-name">${escapeHtml(skin.name)}</span>
-                    <span class="skin-swatches" title="검기·절기 색상">
-                      <i style="background:${skin.primaryColor}"></i>
-                      <i style="background:${skin.secondaryColor}"></i>
-                    </span>
-                  </div>
-                  <div class="card-sub">${escapeHtml(skin.desc)}${condText}</div>
-                </div>
-              </div>
-              ${ctaHtml}
-            </div>
-          `;
-        })
-        .join('');
-    } else {
-      listHtml = this.data.courtSkins
-        .map((court) => {
-          const rMeta = SKIN_RARITY_META[court.rarity];
-          const isOwned = Boolean(meta.ownedSkins[court.id]);
-          const isEquipped = meta.equippedCourtSkin === court.id;
-          const previewUrl = this.sprites.courtPreviewUrl(court);
-          const condText =
-            !isOwned && court.unlockCond
-              ? ` · <b class="skin-cond-note">🏆 ${escapeHtml(UNLOCK_COND_LABEL[court.unlockCond])}</b>`
-              : '';
-
-          let ctaHtml = '';
-          if (isEquipped) {
-            ctaHtml = `
-              <button type="button" class="card-cta-btn cta-green cta-disabled" disabled>
-                <span>적용중 ✓</span>
-              </button>
-            `;
-          } else if (isOwned) {
-            ctaHtml = `
-              <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="skin-equip-court" data-court-id="${court.id}">
-                <span>테마 적용</span>
-              </button>
-            `;
-          } else if (court.unlockCond) {
-            ctaHtml = `
-              <button type="button" class="card-cta-btn cta-disabled" disabled>
-                <span>업적 전용</span>
-              </button>
-            `;
-          } else {
-            const canCraft = meta.silk >= court.silkCost;
-            ctaHtml = `
-              <button
-                type="button"
-                class="card-cta-btn ${canCraft ? 'interactive' : 'cta-disabled'}"
-                data-sheet-action="skin-craft"
-                data-skin-id="${court.id}"
-                ${canCraft ? '' : 'disabled'}
-              >
-                <span>확정 재단</span>
-                <span class="mini-price">${ICON.silk}${court.silkCost}필</span>
-              </button>
-            `;
-          }
-
-          return `
-            <div class="sheet-card skin-card${isEquipped ? ' skin-equipped' : isOwned ? ' skin-owned' : ' skin-locked'}">
-              <div class="card-left">
-                <div class="card-avatar court-avatar"><img src="${previewUrl}" alt="${escapeHtml(court.name)}" /></div>
-                <div class="card-info">
-                  <div class="card-name-row">
-                    <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label}</span>
-                    <span class="card-name">${escapeHtml(court.name)}</span>
-                    <span class="skin-swatches" title="등불·꽃잎 분위기 색상">
-                      <i style="background:${court.lanternColor}"></i>
-                      <i style="background:${court.petalPrimary}"></i>
-                    </span>
-                  </div>
-                  <div class="card-sub">${escapeHtml(court.desc)}${condText}</div>
-                </div>
-              </div>
-              ${ctaHtml}
-            </div>
-          `;
-        })
-        .join('');
-    }
-
-    this.sheetBodyEl.innerHTML = `
-      <div class="wardrobe-gacha-panel">
-        <div class="relic-wallet-row">
-          <div class="relic-wallet-pills">
-            <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
-            <span class="relic-wallet-pill key">${ICON.key}<span>열쇠</span><b>${meta.keys}</b></span>
-            <span class="relic-wallet-pill silk">${ICON.silk}<span>운금비단</span><b>${meta.silk}필</b></span>
-          </div>
-          <div class="relic-draw-btns">
-            <button
-              type="button"
-              class="card-cta-btn cta-green ${canDrawKey1 ? 'interactive' : 'cta-disabled'}"
-              data-sheet-action="skin-draw"
-              data-count="1"
-              data-pay="key"
-              ${canDrawKey1 ? '' : 'disabled'}
-            >
-              <span>열쇠 초빙</span>
-              <span class="mini-price">${ICON.key}1</span>
-            </button>
-            <button
-              type="button"
-              class="card-cta-btn ${canDrawGold1 ? 'interactive' : 'cta-disabled'}"
-              data-sheet-action="skin-draw"
-              data-count="1"
-              data-pay="gold"
-              ${canDrawGold1 ? '' : 'disabled'}
-            >
-              <span>1회 초빙</span>
-              <span class="mini-price">${ICON.goldCoin}${SKIN_SINGLE_GOLD_COST}</span>
-            </button>
-            <button
-              type="button"
-              class="card-cta-btn cta-crimson ${canDrawGold5 ? 'interactive' : 'cta-disabled'}"
-              data-sheet-action="skin-draw"
-              data-count="5"
-              data-pay="gold"
-              ${canDrawGold5 ? '' : 'disabled'}
-            >
-              <span>5연속 (10%↓)</span>
-              <span class="mini-price">${ICON.goldCoin}${SKIN_MULTI5_GOLD_COST}</span>
-            </button>
-          </div>
-        </div>
-        <div class="wardrobe-rate-note">
-          ✨ 확률: <b>신화 15%</b> · <b>전설 35%</b> · <b>명품 50%</b> ｜ 중복 당첨 시 운금비단 자동 환급 (+15/+30/+50필)
-        </div>
-        ${showcaseHtml}
-      </div>
-
-      <div class="wardrobe-subtabs">
-        <button
-          type="button"
-          class="wardrobe-subtab-btn interactive${this.wardrobeSubTab === 'hero' ? ' active' : ''}"
-          data-sheet-action="wardrobe-subtab"
-          data-subtab="hero"
-        >
-          👘 협객 전설 의복 (${ownedHeroCount}/${this.data.heroSkins.length})
-        </button>
-        <button
-          type="button"
-          class="wardrobe-subtab-btn interactive${this.wardrobeSubTab === 'court' ? ' active' : ''}"
-          data-sheet-action="wardrobe-subtab"
-          data-subtab="court"
-        >
-          🏯 비무대 테마 (${ownedCourtCount}/${this.data.courtSkins.length})
-        </button>
-      </div>
-      ${listHtml}
-    `;
+    this.sheetBodyEl.innerHTML = view.bodyHtml;
 
     if (this.lastSkinPull && this.lastSkinPull.seq !== this.lastAnimatedSkinSeq) {
       this.lastAnimatedSkinSeq = this.lastSkinPull.seq;
@@ -3458,7 +2881,9 @@ export class UIManager {
           rewards.push(`<span class="mission-reward-pill coin">${ICON.coin}+${m.rewardCoin}</span>`);
         }
         if (m.rewardLuck > 0) {
-          rewards.push(`<span class="mission-reward-pill luck">${ICON.elixir}+${m.rewardLuck}</span>`);
+          rewards.push(
+            `<span class="mission-reward-pill luck">${ICON.elixir}+${m.rewardLuck}</span>`,
+          );
         }
         if (m.rewardWispGrade) {
           const gName = this.data.gradesById.get(m.rewardWispGrade)?.name ?? m.rewardWispGrade;
@@ -3493,219 +2918,18 @@ export class UIManager {
   }
 
   private renderCodexSheet(snapshot: UISnapshot, meta: MetaProfile): void {
+    const view = buildCodexPanelView({
+      data: this.data,
+      recipeGraph: this.recipeGraph,
+      sprites: this.sprites,
+      snapshot,
+      meta,
+      codexFilter: this.codexFilter,
+    });
     this.setText(this.sheetTitleEl, '무림 명숙록 · 난이도 & 무림 비경');
-    this.setText(
-      this.sheetSubtitleEl,
-      `등재 협객 ${meta.discoveredCount}/${this.data.units.length}인 · 비경 제패 ${meta.clearedTrialCount}/${TRIAL_ORDER.length} · 초회 등재 영구 보상`,
-    );
+    this.setText(this.sheetSubtitleEl, view.subtitle);
     this.renderGrowthTabs('codex', meta);
-
-    const diffCards = DIFFICULTY_ORDER.map((diff) => {
-      const cfg = DIFFICULTY_CONFIGS[diff];
-      const unlocked = meta.unlockedDifficulties[diff];
-      const cleared = meta.clearedDifficulties[diff];
-      const active = snapshot.trialId === null && snapshot.difficulty === diff;
-
-      const clearBadge = cleared
-        ? '<span class="diff-clear-pill">🏆 30장 제패</span>'
-        : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys}</span>`;
-
-      const btnLabel = active
-        ? '출정 중 ✓'
-        : unlocked
-          ? snapshot.trialId !== null
-            ? '일반 복귀'
-            : '출정 전환'
-          : '🔒 미해금';
-      const btnClass = active
-        ? 'card-cta-btn cta-green interactive'
-        : unlocked
-          ? 'card-cta-btn interactive'
-          : 'card-cta-btn cta-disabled';
-
-      return `
-        <div class="diff-card${active ? ' diff-active' : ''}${!unlocked ? ' diff-locked' : ''}">
-          <div class="diff-info">
-            <div class="card-name-row">
-              <span class="grade-pill" style="background:${diff === 'hell' ? '#be123c' : diff === 'hard' ? '#d97706' : '#0f766e'}">${cfg.badge}</span>
-              <span class="card-name">${escapeHtml(cfg.name)}</span>
-              ${clearBadge}
-            </div>
-            <div class="card-sub">${escapeHtml(cfg.desc)}</div>
-          </div>
-          <button
-            type="button"
-            class="${btnClass}"
-            data-sheet-action="select-difficulty"
-            data-difficulty="${diff}"
-            ${unlocked ? '' : 'disabled'}
-          >
-            <span>${btnLabel}</span>
-          </button>
-        </div>
-      `;
-    }).join('');
-
-    const trialAccent: Readonly<Record<TrialId, string>> = {
-      trial_venom_gale: '#15803d',
-      trial_sword_tomb: '#0369a1',
-      trial_crimson_iron: '#b91c1c',
-      trial_chaos_trinity: '#7e22ce',
-    };
-
-    const trialCards = TRIAL_ORDER.map((tid) => {
-      const cfg = TRIAL_CONFIGS[tid];
-      const cleared = Boolean(meta.clearedTrials[tid]);
-      const active = snapshot.trialId === tid;
-      const clearBadge = cleared
-        ? `<span class="diff-clear-pill">🏆 ${cfg.targetWave}장 제패</span>`
-        : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys} · 비단+${cfg.firstClearSilk}필</span>`;
-
-      const btnClass = active
-        ? 'card-cta-btn cta-green interactive'
-        : 'card-cta-btn cta-crimson interactive';
-      const btnLabel = active ? '출정 중 · 해제' : '비경 출정';
-      const targetTrialAttr = active ? '' : tid;
-
-      return `
-        <div class="diff-card trial-card${active ? ' diff-active trial-active' : ''}">
-          <div class="diff-info">
-            <div class="card-name-row">
-              <span class="grade-pill" style="background:${trialAccent[tid]}">${cfg.badge} · ${cfg.rewardMult}x</span>
-              <span class="card-name">${escapeHtml(cfg.name)}</span>
-              <span class="trial-rule-tag">${escapeHtml(cfg.ruleTag)}</span>
-              ${clearBadge}
-            </div>
-            <div class="card-sub">${escapeHtml(cfg.desc)}</div>
-          </div>
-          <button
-            type="button"
-            class="${btnClass}"
-            data-sheet-action="select-trial"
-            data-trial-id="${targetTrialAttr}"
-          >
-            <span>${btnLabel}</span>
-          </button>
-        </div>
-      `;
-    }).join('');
-
-    const orthodoxTotal = this.data.units.filter((u) => u.faction === 'orthodox').length;
-    const unorthodoxTotal = this.data.units.filter((u) => u.faction === 'unorthodox').length;
-    const demonicTotal = this.data.units.filter((u) => u.faction === 'demonic').length;
-
-    const filters: readonly { readonly id: CodexFilterId; readonly label: string }[] = [
-      { id: 'all', label: `전체 (${this.data.units.length})` },
-      { id: 'orthodox', label: `정파 (${orthodoxTotal})` },
-      { id: 'unorthodox', label: `사파 (${unorthodoxTotal})` },
-      { id: 'demonic', label: `마교 (${demonicTotal})` },
-    ];
-    const filterHtml = filters
-      .map(
-        (f) =>
-          `<button type="button" class="codex-filter-btn interactive${this.codexFilter === f.id ? ' active' : ''}" data-sheet-action="codex-filter" data-filter="${f.id}">${f.label}</button>`,
-      )
-      .join('');
-
-    const filteredUnits = this.data.units
-      .filter((u) => this.codexFilter === 'all' || u.faction === this.codexFilter)
-      .sort((a, b) => {
-        const rA = this.data.gradesById.get(a.grade)?.rank ?? 0;
-        const rB = this.data.gradesById.get(b.grade)?.rank ?? 0;
-        if (rA !== rB) return rB - rA;
-        if (a.faction !== b.faction) return a.faction.localeCompare(b.faction);
-        return b.atk - a.atk;
-      });
-
-    const unitCards = filteredUnits
-      .map((u) => {
-        const g = this.data.gradesById.get(u.grade);
-        if (!g) return '';
-        const fMeta = FACTION_META[u.faction];
-        const discovered = Boolean(meta.discoveredUnits[u.id]);
-        const discReward = getCodexDiscoveryReward(g.rank);
-        const portrait = this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta));
-        const roleBadges = this.buildUnitRoleBadgesHtml(u, true);
-
-        const lowerRecs = this.recipeGraph.byOutput.get(u.id) ?? [];
-        let lowerLine = '획득처: 초출강호(일반 소환) · 기연 초빙';
-        if (lowerRecs.length > 0) {
-          const formulaStrings = lowerRecs.map((rec) =>
-            rec.ingredients
-              .map((ing) => {
-                const ingName = this.data.unitsById.get(ing.unit)?.name ?? ing.unit;
-                return ing.n > 1 ? `${ingName}×${ing.n}` : ingName;
-              })
-              .join(' + '),
-          );
-          lowerLine =
-            lowerRecs.length > 1
-              ? `조합식(${lowerRecs.length}종): ${formulaStrings.join('  ｜  ')}`
-              : `하위 조합: ${formulaStrings[0]!}`;
-        } else if (!u.leaf) {
-          lowerLine = '획득처: 영약 복용 · 기연 초빙';
-        }
-
-        const upperRecs = this.recipeGraph.byIngredient.get(u.id) ?? [];
-        const upperNames = Array.from(
-          new Set(
-            upperRecs
-              .map((r) => this.data.unitsById.get(r.output)?.name)
-              .filter((n): n is string => Boolean(n)),
-          ),
-        );
-        const upperLine =
-          upperNames.length > 0
-            ? `상위 등선: ${upperNames.join(' / ')}`
-            : '상위 등선: ★ 최종 지존 경지';
-
-        const statusBadge = discovered
-          ? '<span class="codex-disc-badge ok">등재 완료 ✓</span>'
-          : `<span class="codex-disc-badge locked">미등재 · 초회 +${discReward.gold}주화${discReward.keys > 0 ? ` · 열쇠+${discReward.keys}` : ''}</span>`;
-
-        const extraTactical: string[] = [];
-        if (u.supportAura) {
-          const spd = u.supportAura.speedPct > 0 ? `·속+${u.supportAura.speedPct}%` : '';
-          extraTactical.push(`인접고무 [${u.supportAura.name}] 공+${u.supportAura.atkPct}%${spd}`);
-        }
-        if ((u.armorShred ?? 0) > 0) {
-          extraTactical.push(`호신강기 파쇄 -${u.armorShred}`);
-        }
-        const tacticalNote =
-          extraTactical.length > 0 ? ` · <b>${escapeHtml(extraTactical.join(' / '))}</b>` : '';
-
-        return `
-          <div class="sheet-card codex-card${discovered ? ' codex-discovered' : ' codex-undiscovered'}">
-            <div class="card-left">
-              <div class="card-avatar"><img src="${portrait}" alt="${escapeHtml(u.name)}" /></div>
-              <div class="card-info">
-                <div class="card-name-row">
-                  <span class="grade-pill" style="background:${g.color}">${escapeHtml(g.name)}</span>
-                  <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
-                  <span class="card-name">${escapeHtml(u.name)}</span>
-                  ${roleBadges}
-                  ${statusBadge}
-                </div>
-                <div class="card-sub">⚔${u.atk} · 사거리 ${u.range} · 절기 <b>[${escapeHtml(u.skill.name)}]</b>${tacticalNote}</div>
-                <div class="codex-lineage">${escapeHtml(lowerLine)} · <span>${escapeHtml(upperLine)}</span></div>
-              </div>
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-
-    this.sheetBodyEl.innerHTML = `
-      <div class="sheet-section-label">⚔ 표준 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
-      <div class="diff-list">${diffCards}</div>
-      <div class="sheet-section-label">🌀 무림 비경 — 특수 규칙 엔드게임 시련 (${meta.clearedTrialCount}/${TRIAL_ORDER.length} 제패)</div>
-      <div class="diff-list trial-list">${trialCards}</div>
-      <div class="codex-header-bar">
-        <span class="sheet-section-label">📖 무림 ${this.data.units.length}인 명숙록 (${meta.discoveredCount}/${this.data.units.length})</span>
-        <div class="codex-filter-row">${filterHtml}</div>
-      </div>
-      ${unitCards}
-    `;
+    this.sheetBodyEl.innerHTML = view.bodyHtml;
   }
 
   private setText(el: HTMLElement, next: string): void {
@@ -3721,12 +2945,4 @@ export class UIManager {
     }
     return el;
   }
-}
-
-function escapeHtml(raw: string): string {
-  return raw
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

@@ -29,6 +29,17 @@ export interface GradeDef {
   readonly summonable: boolean;
   readonly summonWeight: number;
   readonly fx?: string;
+  readonly isSurplusCleanupTarget: boolean;
+  readonly starterWispCount: number;
+  readonly scrollChestUnlockLv: number;
+  readonly scrollChestBonusLv: number;
+  readonly sellLuckGuaranteed: number;
+  readonly sellLuckChancePct: number;
+  readonly codexRewardGold: number;
+  readonly codexRewardKeys: number;
+  readonly showSkillCallout: boolean;
+  readonly isHighTierToast: boolean;
+  readonly isCutInTier: boolean;
 }
 
 export interface RawUnitSkillDef {
@@ -61,6 +72,17 @@ export interface SupportAuraDef {
   readonly speedPct: number;
 }
 
+export interface PassiveTraitDef {
+  readonly id: string;
+  readonly name: string;
+  readonly desc: string;
+  readonly bossDamagePct?: number;
+  readonly executeBelowHpPct?: number;
+  readonly executeDamagePct?: number;
+  readonly shreddedDamagePct?: number;
+  readonly armorPiercePct?: number;
+}
+
 export interface RawUnitDef {
   readonly id: UnitId;
   readonly name: string;
@@ -76,6 +98,7 @@ export interface RawUnitDef {
   readonly sellCoin: number;
   readonly armorShred?: number;
   readonly supportAura?: SupportAuraDef;
+  readonly passiveTrait?: PassiveTraitDef;
   readonly skill: RawUnitSkillDef;
 }
 
@@ -94,6 +117,7 @@ export interface UnitDef {
   readonly sellCoin: number;
   readonly armorShred: number;
   readonly supportAura?: SupportAuraDef;
+  readonly passiveTrait?: PassiveTraitDef;
   readonly skill: UnitSkillDef;
 }
 
@@ -156,6 +180,7 @@ export interface RawWaveDef {
   readonly monsterKind: MonsterKind;
   readonly isBoss: boolean;
   readonly bossName?: string;
+  readonly rewardWispGrade?: GradeId;
 }
 
 export interface WaveDef {
@@ -170,6 +195,7 @@ export interface WaveDef {
   readonly monsterKind: MonsterKind;
   readonly isBoss: boolean;
   readonly bossName?: string;
+  readonly rewardWispGrade?: GradeId;
 }
 
 export interface GambleRateDef {
@@ -214,11 +240,48 @@ export interface RelicDef {
 
 export type DifficultyId = 'normal' | 'hard' | 'hell';
 
+export interface DifficultyConfig {
+  readonly id: DifficultyId;
+  readonly name: string;
+  readonly badge: string;
+  readonly desc: string;
+  readonly hpMult: number;
+  readonly speedMult: number;
+  readonly armorBonus: number;
+  readonly rewardMult: number;
+  readonly firstClearGold: number;
+  readonly firstClearKeys: number;
+}
+
 export type TrialId =
   | 'trial_venom_gale'
   | 'trial_sword_tomb'
   | 'trial_crimson_iron'
   | 'trial_chaos_trinity';
+
+export interface TrialConfig {
+  readonly id: TrialId;
+  readonly name: string;
+  readonly badge: string;
+  readonly ruleTag: string;
+  readonly desc: string;
+  readonly targetWave: number;
+  readonly hpMult: number;
+  readonly speedMult: number;
+  readonly bonusMonsterArmor: number;
+  readonly bossCooldownMult: number;
+  readonly disableInterest: boolean;
+  readonly orthodoxCritMultBonus: number;
+  readonly unorthodoxSpeedMult: number;
+  readonly unorthodoxBonusShred: number;
+  readonly demonicSkillRatioMult: number;
+  readonly gambleBonusPct: number;
+  readonly trinityAtkBonusPct: number;
+  readonly rewardMult: number;
+  readonly firstClearGold: number;
+  readonly firstClearKeys: number;
+  readonly firstClearSilk: number;
+}
 
 export type GameOverReason = 'overrun' | 'boss_timeout';
 
@@ -346,6 +409,8 @@ export interface GameDataBundle {
   readonly heroSkinsByUnit: ReadonlyMap<UnitId, readonly HeroSkinDef[]>;
   readonly courtSkins: readonly CourtSkinDef[];
   readonly courtSkinsById: ReadonlyMap<CourtSkinId, CourtSkinDef>;
+  readonly difficulties: readonly DifficultyConfig[];
+  readonly difficultiesById: ReadonlyMap<DifficultyId, DifficultyConfig>;
+  readonly trials: readonly TrialConfig[];
+  readonly trialsById: ReadonlyMap<TrialId, TrialConfig>;
 }
-
-

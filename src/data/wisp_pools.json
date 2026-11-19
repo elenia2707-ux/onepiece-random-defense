@@ -19,5 +19,12 @@
     "black_wind",
     "cult_protector"
   ],
-  "rare": ["plum_elder", "gaebang_elder", "nokrim_chief", "cult_elder"]
+  "rare": [
+    "plum_elder",
+    "gaebang_elder",
+    "nokrim_chief",
+    "tang_elder",
+    "cult_elder",
+    "blood_bishop"
+  ]
 }

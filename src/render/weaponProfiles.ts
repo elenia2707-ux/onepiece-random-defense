@@ -344,6 +344,38 @@ export const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> =
     secondary: '#e11d48',
     dualWield: true,
   },
+  tang_elder: {
+    style: 'dagger_hidden',
+    sect: 'tang_poison',
+    weaponLabel: '비전 폭우침통',
+    primary: '#4ade80',
+    secondary: '#eab308',
+    dualWield: true,
+  },
+  blood_bishop: {
+    style: 'spear_staff',
+    sect: 'magyo_bone',
+    weaponLabel: '혈광 언월극',
+    primary: '#e11d48',
+    secondary: '#fde047',
+    heavyBlade: true,
+  },
+  poison_dragon: {
+    style: 'dagger_hidden',
+    sect: 'tang_poison',
+    weaponLabel: '만독 혈사편',
+    primary: '#22c55e',
+    secondary: '#c084fc',
+    dualWield: true,
+  },
+  heavenly_demon_heir: {
+    style: 'sword',
+    sect: 'magyo_sword',
+    weaponLabel: '소천마 흑뢰도',
+    primary: '#a855f7',
+    secondary: '#fb7185',
+    heavyBlade: true,
+  },
 };
 
 export function getUnitCombatProfile(unitId: UnitId): UnitCombatProfile {

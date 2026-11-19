@@ -1049,6 +1049,52 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'tang_elder': {
+      // Tang Grand Elder: silver-haired elder in emerald-gold robe + golden poison needle box
+      paintCapeLeft(p, ROBE_JADE, true);
+      paintHead34(p, SKIN_PALE, { glint: '#4ade80', browColor: '#e2e8f0', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#eab308');
+      paintMartialBody34(p, ROBE_JADE, ROBE_VIOLET, '#eab308');
+      p.rect(20, 19, 6, 4, '#eab308', LAYER_FRONT);
+      p.line(25, 20, 30, 14, '#86efac', LAYER_FX, 1);
+      p.line(25, 21, 30, 19, '#4ade80', LAYER_FX, 1);
+      break;
+    }
+
+    case 'blood_bishop': {
+      // Blood Cult Guardian Bishop: obsidian-crimson armor + horned coronet + crimson halberd
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#fb7185', fierce: true });
+      paintFlowingMane(p, HAIR_CRIMSON, '#facc15');
+      paintMartialBody34(p, ROBE_DEMON, ROBE_CRIMSON, '#facc15');
+      p.line(18, 28, 28, 5, '#94a3b8', LAYER_FRONT, 2);
+      p.line(25, 7, 30, 12, '#f43f5e', LAYER_FRONT, 2);
+      break;
+    }
+
+    case 'poison_dragon': {
+      // Poison Dragon: emerald-violet mantle + venom-fang chain whip
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_PALE, { glint: '#4ade80', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#22c55e');
+      paintMartialBody34(p, ROBE_JADE, ROBE_VIOLET, '#4ade80');
+      p.line(20, 22, 27, 15, '#22c55e', LAYER_FRONT, 2);
+      p.line(27, 15, 29, 7, '#a855f7', LAYER_FX, 2);
+      p.disc(28, 6, 1.8, VENOM_QI, LAYER_FX);
+      break;
+    }
+
+    case 'heavenly_demon_heir': {
+      // Young Heavenly Demon: silver-purple mane + violet-crimson greatsword
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#c084fc', browColor: '#ffffff', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#a855f7');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_VIOLET, '#f43f5e');
+      paintDiagonalSword(p, ROBE_VIOLET, '#fde047', true);
+      p.line(23, 14, 29, 4, '#c084fc', LAYER_FX, 1);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

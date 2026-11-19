@@ -180,7 +180,8 @@ export class CraftIndex {
 
       const r = this.graph.recipesById.get(rid)!;
       const outUnit = this.unitsById.get(r.output);
-      const gradeId = outUnit ? outUnit.grade : 'common';
+      if (!outUnit) continue;
+      const gradeId = outUnit.grade;
 
       if (!byGrade[gradeId]) {
         byGrade[gradeId] = { ready: 0, chainReady: 0 };

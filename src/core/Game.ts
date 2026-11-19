@@ -45,6 +45,7 @@ export class Game {
   private runSaveDirty = false;
   private suppressAutoSave = false;
   private autoRestoredWave: number | null = null;
+  private discardedSaveReason: string | null = null;
 
   public constructor() {
     const data = loadGameData();
@@ -65,20 +66,30 @@ export class Game {
       this.meta.getSelectedTrialId(),
     );
 
-    // Attempt seamless auto-resume of unfinished expedition matching current mode
-    const savedRun = this.meta.loadActiveRun();
-    if (
-      savedRun &&
-      !savedRun.gameOver &&
-      !savedRun.victoryHold &&
-      !savedRun.victoryAchieved &&
-      savedRun.difficulty === this.sim.difficulty &&
-      (savedRun.trialId ?? null) === this.sim.trialId &&
-      this.sim.restoreRunSave(savedRun)
-    ) {
-      this.lastSavedWave = savedRun.waveNumber;
-      this.lastAutoSaveTick = savedRun.currentTick;
-      this.autoRestoredWave = savedRun.waveNumber;
+    // Attempt seamless auto-resume of unfinished expedition with schema migration (v1 -> v2)
+    const mig = this.meta.loadActiveRunMigrated(data);
+    if (mig.discardedReason) {
+      this.discardedSaveReason = mig.discardedReason;
+      this.meta.clearActiveRun();
+    } else if (mig.save) {
+      const savedRun = mig.save;
+      if (
+        !savedRun.gameOver &&
+        !savedRun.victoryHold &&
+        !savedRun.victoryAchieved &&
+        savedRun.difficulty === this.sim.difficulty &&
+        (savedRun.trialId ?? null) === this.sim.trialId &&
+        this.sim.restoreRunSave(savedRun)
+      ) {
+        this.lastSavedWave = savedRun.waveNumber;
+        this.lastAutoSaveTick = savedRun.currentTick;
+        this.autoRestoredWave = savedRun.waveNumber;
+        if (mig.migratedFrom !== null) {
+          this.meta.saveActiveRun(this.sim.exportRunSave(Date.now()));
+        }
+      } else if (!this.autoRestoredWave) {
+        this.meta.clearActiveRun();
+      }
     }
 
     this.stack = new CanvasStack();
@@ -98,6 +109,8 @@ export class Game {
 
     this.ui = new UIManager(data, this.sim.recipeGraph, this.sprites, {
       onDispatch: (cmd) => this.dispatchCommand(cmd),
+      isTutorialDone: () => this.meta.isTutorialDone(),
+      onSetTutorialDone: (done) => this.meta.setTutorialDone(done),
       onCycleSpeed: () => {
         this.sound.playUiTap();
         const next = this.loop.cycleSpeed();
@@ -372,7 +385,7 @@ export class Game {
       return;
     }
     if (this.sim.tickCount <= 0) return;
-    this.meta.saveActiveRun(this.sim.exportRunSave());
+    this.meta.saveActiveRun(this.sim.exportRunSave(Date.now()));
     this.lastAutoSaveTick = this.sim.tickCount;
     this.runSaveDirty = false;
   }
@@ -468,9 +481,9 @@ export class Game {
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
       this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 합공 등선!`);
 
-      if (rank >= 4) {
+      if (gradeDef?.showSkillCallout) {
         this.vfx.showCraftCelebrationBanner(
-          gradeDef?.name ?? '절정',
+          gradeDef.name,
           unitName,
           color,
           performance.now(),
@@ -495,6 +508,8 @@ export class Game {
     this.sim.events.on('skill:impact', (ev) => {
       const skin = this.equippedHeroSkinsMap.get(ev.unitId);
       const profile = getUnitCombatProfile(ev.unitId);
+      const uDef = this.sim.data.unitsById.get(ev.unitId);
+      const uGrade = uDef ? this.sim.data.gradesById.get(uDef.grade) : undefined;
       this.vfx.spawnSkillTrack(
         ev.vfxTrack,
         ev.fromX,
@@ -509,9 +524,8 @@ export class Game {
         skin?.secondaryColor ?? profile.secondary,
         profile.style,
       );
-      // Only show floating scroll plaques for 절정+ (gradeRank >= 4) masters so field units are never cluttered!
-      if (ev.gradeRank >= 4) {
-        const uDef = this.sim.data.unitsById.get(ev.unitId);
+      // Only show floating scroll plaques for grades configured with showSkillCallout in grades.json
+      if (uGrade?.showSkillCallout) {
         this.vfx.spawnSkillCallout(
           ev.fromX,
           ev.fromY - 68,
@@ -688,7 +702,7 @@ export class Game {
         if (ev.pos) {
           this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
         }
-        if (rank >= 4) {
+        if (gradeDef?.showSkillCallout) {
           this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
         }
         this.ui.showToast(`✨ [${gName}] 환골탈태 대성공! ${uName} 합류!`);
@@ -744,7 +758,9 @@ export class Game {
 
     const initialSnap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
     this.ui.sync(initialSnap, performance.now(), true);
-    if (this.autoRestoredWave !== null) {
+    if (this.discardedSaveReason) {
+      this.ui.showToast(`⚠️ ${this.discardedSaveReason}`, true);
+    } else if (this.autoRestoredWave !== null) {
       const wStr = String(this.autoRestoredWave).padStart(2, '0');
       this.ui.showToast(`💾 이전 출정(제 ${wStr}장) 자동 이어하기 완료!`);
     }

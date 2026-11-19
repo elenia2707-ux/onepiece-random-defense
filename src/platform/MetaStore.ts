@@ -5,11 +5,11 @@ import {
   TRIAL_CONFIGS,
   TRIAL_ORDER,
 } from '../core/relicFormulas';
-import type { RunSaveData } from '../core/Simulation';
 import type {
   CourtSkinDef,
   CourtSkinId,
   DifficultyId,
+  GameDataBundle,
   GradeDef,
   HeroSkinDef,
   RelicDef,
@@ -19,6 +19,12 @@ import type {
   UnitDef,
   UnitId,
 } from '../data/types';
+import {
+  migrateRunSave,
+  RUN_SAVE_SCHEMA_VERSION,
+  type RunSaveData,
+  type SaveMigrationResult,
+} from './SaveMigration';
 
 export const RELIC_ORDER: readonly RelicId[] = [
   'golden_vault',
@@ -74,6 +80,7 @@ export interface MetaProfile {
   readonly ownedSkinCount: number;
   readonly equippedHeroSkins: Readonly<Record<UnitId, string>>;
   readonly equippedCourtSkin: CourtSkinId;
+  readonly tutorialDone: boolean;
   readonly rev: number;
 }
 
@@ -220,16 +227,17 @@ export function getRelicUpgradeGoldCost(def: RelicDef, currentLevel: number): nu
   return def.baseUpgradeGold + currentLevel * def.stepUpgradeGold;
 }
 
-export function getCodexDiscoveryReward(gradeRank: number): {
+export function getCodexDiscoveryReward(gradeDef: GradeDef | undefined): {
   readonly gold: number;
   readonly keys: number;
 } {
-  if (gradeRank >= 6) return { gold: 300, keys: 3 };
-  if (gradeRank === 5) return { gold: 130, keys: 1 };
-  if (gradeRank === 4) return { gold: 65, keys: 1 };
-  if (gradeRank === 3) return { gold: 35, keys: 0 };
-  if (gradeRank === 2) return { gold: 20, keys: 0 };
-  return { gold: 10, keys: 0 };
+  if (!gradeDef) {
+    return { gold: 0, keys: 0 };
+  }
+  return {
+    gold: gradeDef.codexRewardGold,
+    keys: gradeDef.codexRewardKeys,
+  };
 }
 
 export function computeSettlementReward(input: SettlementInput): SettlementReward {
@@ -373,6 +381,7 @@ export class MetaStore {
   };
   private readonly equippedHeroSkins: Record<UnitId, string> = {};
   private equippedCourtSkin: CourtSkinId = DEFAULT_COURT_SKIN_ID;
+  private tutorialDone = false;
   private rev = 1;
 
   public constructor(customStorage?: StorageLike | null) {
@@ -404,8 +413,20 @@ export class MetaStore {
       ownedSkinCount,
       equippedHeroSkins: { ...this.equippedHeroSkins },
       equippedCourtSkin: this.equippedCourtSkin,
+      tutorialDone: this.tutorialDone,
       rev: this.rev,
     };
+  }
+
+  public isTutorialDone(): boolean {
+    return this.tutorialDone;
+  }
+
+  public setTutorialDone(done: boolean): void {
+    if (this.tutorialDone === done) return;
+    this.tutorialDone = done;
+    this.rev++;
+    this.save();
   }
 
   public getRelicLevels(): Readonly<Record<RelicId, number>> {
@@ -467,7 +488,7 @@ export class MetaStore {
       };
     }
     this.discoveredUnits[unitDef.id] = true;
-    const reward = getCodexDiscoveryReward(gradeDef.rank);
+    const reward = getCodexDiscoveryReward(gradeDef);
     this.gold += reward.gold;
     this.keys += reward.keys;
     this.rev++;
@@ -929,16 +950,50 @@ export class MetaStore {
     }
   }
 
-  public loadActiveRun(): RunSaveData | null {
+  public loadActiveRunMigrated(data: GameDataBundle): SaveMigrationResult {
+    if (!this.storage) {
+      return { save: null, migratedFrom: null, discardedReason: null };
+    }
+    let raw: string | null = null;
+    try {
+      raw = this.storage.getItem(RUN_STORAGE_KEY);
+    } catch {
+      return { save: null, migratedFrom: null, discardedReason: null };
+    }
+    if (!raw) {
+      return { save: null, migratedFrom: null, discardedReason: null };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      this.clearActiveRun();
+      return {
+        save: null,
+        migratedFrom: null,
+        discardedReason: '저장된 출정 자동저장 데이터가 손상되어 새 전장으로 시작합니다.',
+      };
+    }
+    const result = migrateRunSave(parsed, data);
+    if (!result.save) {
+      this.clearActiveRun();
+    }
+    return result;
+  }
+
+  public loadActiveRun(data?: GameDataBundle): RunSaveData | null {
     if (!this.storage) return null;
     try {
       const raw = this.storage.getItem(RUN_STORAGE_KEY);
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
+      if (data) {
+        return migrateRunSave(parsed, data).save;
+      }
       if (typeof parsed !== 'object' || parsed === null) return null;
-      const candidate = parsed as Partial<RunSaveData>;
+      const candidate = parsed as Record<string, unknown>;
       if (
-        candidate.version !== 1 ||
+        (candidate.version !== 1 && candidate.version !== RUN_SAVE_SCHEMA_VERSION) ||
         candidate.gameOver === true ||
         typeof candidate.currentTick !== 'number' ||
         candidate.currentTick <= 0 ||
@@ -948,7 +1003,7 @@ export class MetaStore {
       ) {
         return null;
       }
-      return candidate as RunSaveData;
+      return candidate as unknown as RunSaveData;
     } catch {
       return null;
     }
@@ -1064,6 +1119,7 @@ export class MetaStore {
       delete this.equippedHeroSkins[k];
     }
     this.equippedCourtSkin = DEFAULT_COURT_SKIN_ID;
+    this.tutorialDone = false;
   }
 
   private applyRecord(rec: Record<string, unknown>): void {
@@ -1165,6 +1221,9 @@ export class MetaStore {
     ) {
       this.equippedCourtSkin = rec.equippedCourtSkin as CourtSkinId;
     }
+    if (typeof rec.tutorialDone === 'boolean') {
+      this.tutorialDone = rec.tutorialDone;
+    }
   }
 
   private load(): void {
@@ -1197,6 +1256,7 @@ export class MetaStore {
       ownedSkins: this.ownedSkins,
       equippedHeroSkins: this.equippedHeroSkins,
       equippedCourtSkin: this.equippedCourtSkin,
+      tutorialDone: this.tutorialDone,
     });
   }
 

@@ -3814,3 +3814,162 @@ button {
   border-color: #fde047;
   box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.45), inset 0 2px 4px rgba(0, 0, 0, 0.45);
 }
+
+/* =========================================================
+   Update v5: Onboarding Tutorial Coach (y: 594..706) & Immortal Passive Traits
+   ========================================================= */
+.hud-btn.help-btn {
+  min-width: 38px;
+  padding: 0 6px;
+  background: linear-gradient(180deg, #38bdf8 0%, #0369a1 100%);
+  color: #fffbeb;
+  font-family: var(--font-display);
+  font-size: 19px;
+}
+
+.role-chip.passive {
+  background: linear-gradient(180deg, #9333ea 0%, #581c87 100%);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px #fde047;
+  color: #fef08a;
+}
+
+.shortcut-chip.passive-chip {
+  background: linear-gradient(180deg, #6b21a8 0%, #3b0764 100%);
+  color: #fef08a;
+  border-color: var(--ink);
+  box-shadow: 0 2px 0 var(--ink), inset 0 1px 0 rgba(254, 240, 138, 0.45);
+  text-shadow: var(--outline-1);
+}
+
+.codex-guide-banner {
+  padding: 11px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #0f3d38 0%, #072320 100%);
+  border: 2.8px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 1.5px 0 rgba(125, 211, 252, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Strictly positioned at y = 594..706: below 6x3 field (y=222..586) & above 6x2 bench (y=752..930) */
+.tutorial-coach {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 594px;
+  min-height: 108px;
+  padding: 9px 14px 10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(15, 61, 56, 0.97) 0%, rgba(8, 30, 28, 0.98) 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 5px 0 var(--ink), 0 0 0 2px #fde047, inset 0 2px 0 rgba(255, 255, 255, 0.25);
+  color: #fffdf9;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  z-index: 30;
+}
+
+.tutorial-coach.visible {
+  display: flex;
+  animation: barPopIn 140ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+.tutorial-coach-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.tutorial-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tutorial-skip-btn {
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: rgba(15, 23, 42, 0.85);
+  color: #cbd5e1;
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.tutorial-coach-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tutorial-body {
+  margin: 0;
+  flex: 1;
+  font-size: 13.5px;
+  line-height: 1.32;
+  color: #f0fdfa;
+  text-shadow: var(--outline-1);
+  word-break: keep-all;
+}
+
+.tutorial-next-btn {
+  min-width: 78px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 13px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #ea580c 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.tutorial-next-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.tutorial-focus-ring {
+  outline: 3px solid #fde047 !important;
+  outline-offset: 2px;
+  animation: tutorialRingPulse 0.8s ease-in-out infinite alternate !important;
+}
+
+@keyframes tutorialRingPulse {
+  from {
+    outline-color: #fde047;
+  }
+  to {
+    outline-color: #fb7185;
+  }
+}
+

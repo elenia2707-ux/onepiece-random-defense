@@ -7,14 +7,10 @@ import {
 import { EventBus } from './EventBus';
 import {
   CLEAR_TARGET_WAVE,
-  DIFFICULTY_CONFIGS,
-  getBanditPilferCoin,
-  getBanditProcPer1000,
   getFurnaceChanceBonusPct,
   getFurnaceRefundPct,
   getJadeSealStartCoin,
-  getScrollChestBossLuckBonus,
-  getScrollChestStartWisps,
+  getScrollChestGradeBonusCount,
   getUnitSellLuckRefund,
   getVaultInterestCap,
   getVaultInterestPct,
@@ -39,6 +35,7 @@ import type {
   GradeId,
   MissionDef,
   MonsterKind,
+  PassiveTraitDef,
   RelicId,
   SupportAuraDef,
   TrialId,
@@ -46,17 +43,58 @@ import type {
   UpgradeGroupId,
   Vec2,
   VfxTrackKind,
-  WaveDef,
   WaveMutantKind,
 } from '../data/types';
+import {
+  migrateRunSave,
+  RUN_SAVE_SCHEMA_VERSION,
+  type RunSaveData,
+} from '../platform/SaveMigration';
+import {
+  type CombatSystemContext,
+  computeFieldSynergy,
+  computeFieldTileBuffs,
+  computeUnitEffectiveAtk,
+  type FactionSynergySnapshot,
+  stepCombat,
+  type TileAuraBuff,
+} from '../skills/SkillSystem';
 import { Board } from '../world/Board';
 import { LoopPath } from '../world/Path';
+import {
+  type BossSkillKind,
+  BOUNTY_COOLDOWN_TICKS,
+  BOUNTY_DURATION_TICKS,
+  computeMonsterArmor,
+  getWaveMutantKind,
+  HAZARD_SEAL_TICKS,
+  HAZARD_WARNING_TICKS,
+  resolveWaveDef,
+  spawnBountyOutlaw,
+  stepMonstersAndBosses,
+  stepWaveAndSpawn,
+  WAVE_MUTANT_META,
+  type WaveMutantMeta,
+  type WaveSystemContext,
+} from '../world/WaveSystem';
 import type { MonsterEntity, ProjectileEntity, TileHazard, UnitEntity } from '../world/entities';
 
-export const BOUNTY_COOLDOWN_TICKS = 1350; // 45s
-export const BOUNTY_DURATION_TICKS = 900; // 30s
-export const HAZARD_WARNING_TICKS = 60; // 2.0s telegraph warning
-export const HAZARD_SEAL_TICKS = 135; // 4.5s active seal duration
+export {
+  BOUNTY_COOLDOWN_TICKS,
+  BOUNTY_DURATION_TICKS,
+  getWaveMutantKind,
+  HAZARD_SEAL_TICKS,
+  HAZARD_WARNING_TICKS,
+  RUN_SAVE_SCHEMA_VERSION,
+  WAVE_MUTANT_META,
+};
+export type {
+  BossSkillKind,
+  FactionSynergySnapshot,
+  RunSaveData,
+  TileAuraBuff,
+  WaveMutantMeta,
+};
 
 export const BOON_IDS_ORDERED: readonly BoonId[] = [
   'b_usury_vault',
@@ -71,88 +109,6 @@ export const BOON_IDS_ORDERED: readonly BoonId[] = [
   'b_heavenly_reinforce',
   'b_bounty_hunter',
   'b_trinity_harmony',
-];
-
-export interface WaveMutantMeta {
-  readonly kind: WaveMutantKind;
-  readonly name: string;
-  readonly badge: string;
-  readonly desc: string;
-  readonly hpMult: number;
-  readonly speedMult: number;
-  readonly countMult: number;
-  readonly intervalMult: number;
-  readonly bonusArmor: number;
-  readonly bonusCoin: number;
-}
-
-export const WAVE_MUTANT_META: Readonly<Record<WaveMutantKind, WaveMutantMeta>> = {
-  swift_raid: {
-    kind: 'swift_raid',
-    name: '경공 야습단',
-    badge: '⚡ 경공야습',
-    desc: '이동속도 +28% · 체력 -20% · 은자 +1',
-    hpMult: 0.8,
-    speedMult: 1.28,
-    countMult: 1.0,
-    intervalMult: 0.9,
-    bonusArmor: 0,
-    bonusCoin: 1,
-  },
-  iron_wall: {
-    kind: 'iron_wall',
-    name: '철갑 중장병',
-    badge: '🛡 철갑중장',
-    desc: '호신강기 +22 · 체력 +35% · 소수정예 · 은자 +4',
-    hpMult: 1.35,
-    speedMult: 0.88,
-    countMult: 0.65,
-    intervalMult: 1.25,
-    bonusArmor: 22,
-    bonusCoin: 4,
-  },
-  blood_swarm: {
-    kind: 'blood_swarm',
-    name: '혈해 인해전술',
-    badge: '🩸 인해전술',
-    desc: '마물 머릿수 +35% · 체력 -18%',
-    hpMult: 0.82,
-    speedMult: 1.05,
-    countMult: 1.35,
-    intervalMult: 0.75,
-    bonusArmor: 0,
-    bonusCoin: 0,
-  },
-};
-
-export function getWaveMutantKind(waveNum: number, isBoss: boolean): WaveMutantKind | null {
-  if (isBoss || waveNum < 6) return null;
-  const rem = waveNum % 5;
-  if (rem !== 2 && rem !== 4) return null;
-  const cycleIdx = (Math.floor(waveNum / 5) + (rem === 4 ? 1 : 0)) % 3;
-  if (cycleIdx === 0) return 'iron_wall';
-  if (cycleIdx === 1) return 'swift_raid';
-  return 'blood_swarm';
-}
-
-export type BossSkillKind =
-  | 'tiger_roar'
-  | 'tiger_sprint'
-  | 'serpent_shell'
-  | 'serpent_heal'
-  | 'serpent_shatter'
-  | 'patriarch_telegraph'
-  | 'patriarch_seal'
-  | 'patriarch_summon';
-
-const BOUNTY_ROSTER: readonly {
-  readonly name: string;
-  readonly kind: MonsterKind;
-  readonly radius: number;
-}[] = [
-  { name: '현상수배 · 만독귀 사마현', kind: 'blood_zealot', radius: 24 },
-  { name: '현상수배 · 철혈마도 악무극', kind: 'jiangshi', radius: 25 },
-  { name: '현상수배 · 흑살령주 혈무영', kind: 'blood_patriarch', radius: 26 },
 ];
 
 export interface SimEventMap {
@@ -340,11 +296,6 @@ export interface SimEventMap {
   };
 }
 
-export interface TileAuraBuff {
-  readonly atkPct: number;
-  readonly speedPct: number;
-}
-
 export interface SlotView {
   readonly uid: number;
   readonly unitId: UnitId;
@@ -361,6 +312,7 @@ export interface SlotView {
   readonly skillName: string;
   readonly armorShred: number;
   readonly supportAura?: SupportAuraDef;
+  readonly passiveTrait?: PassiveTraitDef;
   readonly tileBuffAtkPct: number;
   readonly tileBuffSpeedPct: number;
   readonly sealed: boolean;
@@ -379,14 +331,6 @@ export interface GambleResultSnapshot {
   readonly success: boolean;
   readonly unitId: UnitId | null;
   readonly refundedLuck: boolean;
-}
-
-export interface FactionSynergySnapshot {
-  readonly counts: Readonly<Record<FactionId, number>>;
-  readonly orthodoxTier: 0 | 1 | 2;
-  readonly unorthodoxTier: 0 | 1 | 2;
-  readonly demonicTier: 0 | 1 | 2;
-  readonly trinityActive: boolean;
 }
 
 export interface RelicBonusSnapshot {
@@ -433,56 +377,6 @@ export interface BoonOfferSnapshot {
   readonly seq: number;
   readonly wave: number;
   readonly options: readonly BoonId[];
-}
-
-export interface RunSaveData {
-  readonly version: 1;
-  readonly savedAtMs: number;
-  readonly difficulty: DifficultyId;
-  readonly trialId: TrialId | null;
-  readonly currentTick: number;
-  readonly rngState: number;
-  readonly nextUid: number;
-  readonly nextMonsterId: number;
-  readonly nextProjectileId: number;
-  readonly gambleSeq: number;
-  readonly gambleWins: number;
-  readonly coin: number;
-  readonly luckStone: number;
-  readonly summonCount: number;
-  readonly wisps: Readonly<Record<GradeId, number>>;
-  readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
-  readonly relicLv: Readonly<Record<RelicId, number>>;
-  readonly activeBoons: Readonly<Record<BoonId, number>>;
-  readonly boonOfferSeq: number;
-  readonly pendingBoonOffers: readonly BoonOfferSnapshot[];
-  readonly appliedStartCoinBonus: number;
-  readonly appliedStartCommonWisp: number;
-  readonly appliedStartUncommonWisp: number;
-  readonly lastWaveInterest: number;
-  readonly pilferedCoinTotal: number;
-  readonly monstersSlain: number;
-  readonly bossesSlain: number;
-  readonly bountiesCalled: number;
-  readonly bountiesSlain: number;
-  readonly bountyReadyTick: number;
-  readonly completedMissions: readonly string[];
-  readonly damageByUnit: readonly (readonly [UnitId, number])[];
-  readonly totalDamageDealt: number;
-  readonly lastGambleResult: GambleResultSnapshot | null;
-  readonly waveNumber: number;
-  readonly waveTicksLeft: number;
-  readonly spawnedInWave: number;
-  readonly nextSpawnTick: number;
-  readonly gameOver: boolean;
-  readonly gameOverReason: GameOverReason;
-  readonly victoryAchieved: boolean;
-  readonly victoryHold: boolean;
-  readonly endlessMode: boolean;
-  readonly units: readonly UnitEntity[];
-  readonly monsters: readonly MonsterEntity[];
-  readonly projectiles: readonly ProjectileEntity[];
-  readonly tileHazards: readonly TileHazard[];
 }
 
 export interface UISnapshot {
@@ -585,11 +479,7 @@ export class Simulation {
   private coin: number;
   private luckStone: number;
   private summonCount = 0;
-  private readonly wisps: Record<GradeId, number> = {
-    common: 2,
-    uncommon: 1,
-    rare: 0,
-  };
+  private readonly wisps: Record<GradeId, number> = {};
   private readonly upgradeLv: Record<UpgradeGroupId, number> = {
     orthodox: 0,
     unorthodox: 0,
@@ -620,8 +510,7 @@ export class Simulation {
   private boonOfferSeq = 0;
   private readonly pendingBoonOffers: BoonOfferSnapshot[] = [];
   private appliedStartCoinBonus = 0;
-  private appliedStartCommonWisp = 0;
-  private appliedStartUncommonWisp = 0;
+  private readonly appliedStartWisps: Record<GradeId, number> = {};
   private lastWaveInterest = 0;
   private pilferedCoinTotal = 0;
   private monstersSlain = 0;
@@ -669,6 +558,16 @@ export class Simulation {
     this.luckStone = data.board.economy.initialLuckStone;
     this.waveTicksLeft = data.waves[0]?.durationTicks ?? 840;
 
+    for (const poolGradeId of Object.keys(data.wispPools)) {
+      this.wisps[poolGradeId] = 0;
+    }
+    for (let i = 0; i < data.grades.length; i++) {
+      const g = data.grades[i]!;
+      if (g.starterWispCount > 0) {
+        this.wisps[g.id] = g.starterWispCount;
+      }
+    }
+
     this.summonableGrades = data.grades.filter((g) => g.summonable && g.summonWeight > 0);
     const byGrade = new Map<GradeId, UnitId[]>();
     for (const u of data.units) {
@@ -702,19 +601,16 @@ export class Simulation {
       this.appliedStartCoinBonus = targetCoinBonus;
     }
 
-    const targetWisps = getScrollChestStartWisps(this.relicLv.heavenly_scroll_chest);
     let wispChanged = false;
-    if (targetWisps.common > this.appliedStartCommonWisp) {
-      this.wisps.common =
-        (this.wisps.common ?? 0) + (targetWisps.common - this.appliedStartCommonWisp);
-      this.appliedStartCommonWisp = targetWisps.common;
-      wispChanged = true;
-    }
-    if (targetWisps.uncommon > this.appliedStartUncommonWisp) {
-      this.wisps.uncommon =
-        (this.wisps.uncommon ?? 0) + (targetWisps.uncommon - this.appliedStartUncommonWisp);
-      this.appliedStartUncommonWisp = targetWisps.uncommon;
-      wispChanged = true;
+    for (let i = 0; i < this.data.grades.length; i++) {
+      const g = this.data.grades[i]!;
+      const targetCnt = getScrollChestGradeBonusCount(this.relicLv.heavenly_scroll_chest, g);
+      const prevApplied = this.appliedStartWisps[g.id] ?? 0;
+      if (targetCnt > prevApplied) {
+        this.wisps[g.id] = (this.wisps[g.id] ?? 0) + (targetCnt - prevApplied);
+        this.appliedStartWisps[g.id] = targetCnt;
+        wispChanged = true;
+      }
     }
     if (wispChanged && recomputeHints) {
       this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
@@ -845,32 +741,7 @@ export class Simulation {
   }
 
   public computeFieldSynergy(): FactionSynergySnapshot {
-    let orthodox = 0;
-    let unorthodox = 0;
-    let demonic = 0;
-
-    for (let i = 0; i < this.units.length; i++) {
-      const u = this.units[i]!;
-      if (u.slot.area !== 'field') continue;
-      const def = this.data.unitsById.get(u.unitId);
-      if (!def) continue;
-      if (def.faction === 'orthodox') orthodox++;
-      else if (def.faction === 'unorthodox') unorthodox++;
-      else if (def.faction === 'demonic') demonic++;
-    }
-
-    const orthodoxTier: 0 | 1 | 2 = orthodox >= 6 ? 2 : orthodox >= 3 ? 1 : 0;
-    const unorthodoxTier: 0 | 1 | 2 = unorthodox >= 6 ? 2 : unorthodox >= 3 ? 1 : 0;
-    const demonicTier: 0 | 1 | 2 = demonic >= 6 ? 2 : demonic >= 3 ? 1 : 0;
-    const trinityActive = orthodox >= 2 && unorthodox >= 2 && demonic >= 2;
-
-    return {
-      counts: { orthodox, unorthodox, demonic },
-      orthodoxTier,
-      unorthodoxTier,
-      demonicTier,
-      trinityActive,
-    };
+    return computeFieldSynergy(this.units, this.data.unitsById);
   }
 
   public getOrthogonalFieldNeighbors(fieldIndex: number): number[] {
@@ -888,59 +759,23 @@ export class Simulation {
   }
 
   public computeFieldTileBuffs(): readonly TileAuraBuff[] {
-    const cap = this.board.field.capacity;
-    const cols = this.board.config.field.cols;
-    const rows = this.board.config.field.rows;
-    const out: TileAuraBuff[] = new Array<TileAuraBuff>(cap);
-    const swiftStacks = this.getBoonStacks('b_swift_formation');
-    const auraMult = 1 + 0.5 * swiftStacks;
-    const atkCap = 65 + 25 * swiftStacks;
-    const speedCap = 45 + 20 * swiftStacks;
-
-    for (let idx = 0; idx < cap; idx++) {
-      const col = idx % cols;
-      const row = Math.floor(idx / cols);
-      let atkPct = 0;
-      let speedPct = 0;
-
-      const checkNeighbor = (nIdx: number): void => {
-        const nUid = this.board.field.getUidAt(nIdx);
-        if (nUid === null) return;
-        const nUnit = this.unitsByUid.get(nUid);
-        if (!nUnit) return;
-        const nDef = this.data.unitsById.get(nUnit.unitId);
-        if (!nDef?.supportAura) return;
-        atkPct += Math.round(nDef.supportAura.atkPct * auraMult);
-        speedPct += Math.round(nDef.supportAura.speedPct * auraMult);
-      };
-
-      if (col > 0) checkNeighbor(idx - 1);
-      if (col < cols - 1) checkNeighbor(idx + 1);
-      if (row > 0) checkNeighbor(idx - cols);
-      if (row < rows - 1) checkNeighbor(idx + cols);
-
-      out[idx] = {
-        atkPct: Math.min(atkCap, atkPct),
-        speedPct: Math.min(speedCap, speedPct),
-      };
-    }
-    return out;
+    return computeFieldTileBuffs(
+      this.board,
+      this.unitsByUid,
+      this.data.unitsById,
+      this.getBoonStacks('b_swift_formation'),
+    );
   }
 
   public computeMonsterArmor(waveNum: number, isBoss: boolean, isBounty: boolean): number {
-    const trialArmor = this.trialId ? TRIAL_CONFIGS[this.trialId].bonusMonsterArmor : 0;
-    if (waveNum <= 2 && !isBounty) {
-      return trialArmor;
-    }
-    const mutantKind = !isBoss && !isBounty ? getWaveMutantKind(waveNum, false) : null;
-    const mutantArmor = mutantKind ? WAVE_MUTANT_META[mutantKind].bonusArmor : 0;
-    const base =
-      Math.max(0, waveNum - 2) * 2.6 +
-      (isBoss && !isBounty ? 18 : 0) +
-      (isBounty ? 12 : 0) +
-      mutantArmor +
-      trialArmor;
-    return Math.min(165, Math.round(base));
+    return computeMonsterArmor(
+      this.data,
+      this.difficulty,
+      this.trialId,
+      waveNum,
+      isBoss,
+      isBounty,
+    );
   }
 
   public getUnitEffectiveAtk(
@@ -948,42 +783,17 @@ export class Simulation {
     precomputedSynergy?: FactionSynergySnapshot,
     tileBuffAtkPct = 0,
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
-    const def = this.data.unitsById.get(unitId);
-    if (!def) return { baseAtk: 0, bonusAtk: 0 };
-    const upDef = this.data.upgradesByFaction.get(def.faction);
-    const lv = upDef ? (this.upgradeLv[upDef.id] ?? 0) : 0;
-    const upPct = upDef && lv > 0 ? lv * upDef.atkBonusPctPerLv : 0;
-
-    const syn = precomputedSynergy ?? this.computeFieldSynergy();
-    const trialTrinityPct =
-      syn.trinityActive && this.trialId ? TRIAL_CONFIGS[this.trialId].trinityAtkBonusPct : 0;
-    let synPct = (syn.trinityActive ? 18 : 0) + trialTrinityPct;
-    if (def.faction === 'orthodox' && syn.orthodoxTier === 2) {
-      synPct += 20;
-    } else if (def.faction === 'unorthodox' && syn.unorthodoxTier === 2) {
-      synPct += 20;
-    } else if (def.faction === 'demonic' && syn.demonicTier === 2) {
-      synPct += 25;
-    }
-
-    let boonPct = this.getBoonStacks('b_trinity_harmony') * 22;
-    if (def.faction === 'demonic') {
-      boonPct += this.getBoonStacks('b_demonic_overdrive') * 35;
-    }
-
-    const traitPct = upPct + synPct + boonPct + Math.max(0, tileBuffAtkPct);
-    const wealthBps = this.getEffectiveWealthBps();
-    if (traitPct <= 0 && wealthBps <= 0) {
-      return { baseAtk: def.atk, bonusAtk: 0 };
-    }
-    if (wealthBps <= 0) {
-      const bonusAtk = Math.round((def.atk * traitPct) / 100);
-      return { baseAtk: def.atk, bonusAtk };
-    }
-    const effectiveTotal = Math.round(
-      (def.atk * (100 + traitPct) * (10000 + wealthBps)) / 1_000_000,
+    return computeUnitEffectiveAtk(
+      this.data,
+      unitId,
+      this.upgradeLv,
+      precomputedSynergy ?? this.computeFieldSynergy(),
+      tileBuffAtkPct,
+      this.getEffectiveWealthBps(),
+      this.getBoonStacks('b_trinity_harmony'),
+      this.getBoonStacks('b_demonic_overdrive'),
+      this.trialId,
     );
-    return { baseAtk: def.atk, bonusAtk: Math.max(0, effectiveTotal - def.atk) };
   }
 
   public scheduleCommandsForReplay(log: readonly StampedCommand[]): void {
@@ -1034,17 +844,19 @@ export class Simulation {
     }
 
     if (!this.gameOver && !this.victoryHold) {
+      const waveCtx = this.createWaveSystemContext();
+
       // 2. Wave & Spawn progression
-      this.stepWaveAndSpawn();
+      stepWaveAndSpawn(waveCtx);
 
       // 3. Monster path movement & boss pattern execution
       if (!this.gameOver && !this.victoryHold) {
-        this.stepMonsters();
+        stepMonstersAndBosses(waveCtx);
       }
 
       // 4. Field unit auto-combat & projectiles
       if (!this.gameOver && !this.victoryHold) {
-        this.stepCombat();
+        stepCombat(this.createCombatSystemContext());
       }
     }
 
@@ -1062,6 +874,129 @@ export class Simulation {
     }
 
     this.currentTick++;
+  }
+
+  private createWaveSystemContext(): WaveSystemContext {
+    return {
+      data: this.data,
+      difficulty: this.difficulty,
+      trialId: this.trialId,
+      clearTargetWave: this.clearTargetWave,
+      board: this.board,
+      path: this.path,
+      rng: this.rng,
+      events: this.events,
+      units: this.units,
+      monsters: this.monsters,
+      tileHazards: this.tileHazards,
+      currentTick: this.currentTick,
+      getWaveNumber: () => this.waveNumber,
+      setWaveNumber: (v) => {
+        this.waveNumber = v;
+      },
+      getWaveTicksLeft: () => this.waveTicksLeft,
+      setWaveTicksLeft: (v) => {
+        this.waveTicksLeft = v;
+      },
+      getSpawnedInWave: () => this.spawnedInWave,
+      setSpawnedInWave: (v) => {
+        this.spawnedInWave = v;
+      },
+      getNextSpawnTick: () => this.nextSpawnTick,
+      setNextSpawnTick: (v) => {
+        this.nextSpawnTick = v;
+      },
+      allocateMonsterId: () => this.nextMonsterId++,
+      getCoin: () => this.coin,
+      setCoin: (v) => {
+        this.coin = v;
+      },
+      addLuckStone: (delta) => {
+        this.luckStone += delta;
+      },
+      setLastWaveInterest: (v) => {
+        this.lastWaveInterest = v;
+      },
+      getEffectiveInterestConfig: () => this.getEffectiveInterestConfig(),
+      hasFieldHazard: (fieldIndex) => this.hasFieldHazard(fieldIndex),
+      markGameOver: (reason) => {
+        this.gameOver = true;
+        this.gameOverReason = reason;
+        this.priorityDirty = true;
+      },
+      markPriorityDirty: () => {
+        this.priorityDirty = true;
+      },
+    };
+  }
+
+  private createCombatSystemContext(): CombatSystemContext {
+    return {
+      data: this.data,
+      difficulty: this.difficulty,
+      trialId: this.trialId,
+      clearTargetWave: this.clearTargetWave,
+      board: this.board,
+      rng: this.rng,
+      events: this.events,
+      units: this.units,
+      unitsByUid: this.unitsByUid,
+      monsters: this.monsters,
+      projectiles: this.projectiles,
+      tileHazards: this.tileHazards,
+      relicLv: this.relicLv,
+      currentTick: this.currentTick,
+      waveNumber: this.waveNumber,
+      endlessMode: this.endlessMode,
+      victoryAchieved: this.victoryAchieved,
+      getBoonStacks: (id) => this.getBoonStacks(id),
+      isFieldSlotSealed: (fieldIndex) => this.isFieldSlotSealed(fieldIndex),
+      getUnitEffectiveAtk: (unitId, synergy, tileBuffAtkPct) =>
+        this.getUnitEffectiveAtk(unitId, synergy, tileBuffAtkPct),
+      allocateProjectileId: () => this.nextProjectileId++,
+      recordDamage: (unitId, amount) => {
+        this.damageByUnit.set(unitId, (this.damageByUnit.get(unitId) ?? 0) + amount);
+        this.totalDamageDealt += amount;
+      },
+      addCoin: (delta, isPilfer = false) => {
+        this.coin += delta;
+        if (isPilfer && delta > 0) {
+          this.pilferedCoinTotal += delta;
+          this.priorityDirty = true;
+        }
+      },
+      addLuckStone: (delta) => {
+        this.luckStone += delta;
+      },
+      grantBossWisp: (gradeId) => {
+        this.wisps[gradeId] = (this.wisps[gradeId] ?? 0) + 1;
+        this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+      },
+      onMonsterSlain: (isWaveBoss, isBounty) => {
+        this.monstersSlain++;
+        if (isWaveBoss) {
+          this.bossesSlain++;
+        } else if (isBounty) {
+          this.bountiesSlain++;
+        }
+      },
+      triggerVictory: () => {
+        this.victoryAchieved = true;
+        this.victoryHold = true;
+        this.events.emit('run:victory', {
+          wave: this.waveNumber,
+          difficulty: this.difficulty,
+          trialId: this.trialId,
+          tick: this.currentTick,
+        });
+      },
+      offerBossBoons: (wave) => {
+        this.offerBossBoons(wave);
+      },
+      markPriorityDirty: () => {
+        this.priorityDirty = true;
+      },
+    };
   }
 
   private applyCommand(cmd: GameCommand): void {
@@ -1108,12 +1043,18 @@ export class Simulation {
         this.activeBoons[cmd.boonId] = nextStacks;
         this.pendingBoonOffers.shift();
 
-        // Immediate one-shot resource grants on pickup
+        // Immediate one-shot resource grants on pickup (100% data-driven wisp grades)
         if (cmd.boonId === 'b_elixir_jackpot') {
           this.luckStone += 6;
         } else if (cmd.boonId === 'b_heavenly_reinforce') {
-          this.wisps.rare = (this.wisps.rare ?? 0) + 1;
-          this.wisps.uncommon = (this.wisps.uncommon ?? 0) + 1;
+          const sortedPoolGrades = Object.keys(this.data.wispPools).sort(
+            (a, b) =>
+              (this.data.gradesById.get(b)?.rank ?? 0) - (this.data.gradesById.get(a)?.rank ?? 0),
+          );
+          for (let i = 0; i < Math.min(2, sortedPoolGrades.length); i++) {
+            const gId = sortedPoolGrades[i]!;
+            this.wisps[gId] = (this.wisps[gId] ?? 0) + 1;
+          }
           this.coin += 120;
           this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
         }
@@ -1284,65 +1225,14 @@ export class Simulation {
           return;
         }
 
-        const spec = BOUNTY_ROSTER[this.bountiesCalled % BOUNTY_ROSTER.length]!;
-        const diffCfg = DIFFICULTY_CONFIGS[this.difficulty];
-        const trialHpMult = this.trialId ? TRIAL_CONFIGS[this.trialId].hpMult : 1;
-        const trialSpdMult = this.trialId ? TRIAL_CONFIGS[this.trialId].speedMult : 1;
-        const bountyHp = Math.round(
-          (950 + Math.pow(this.waveNumber, 1.82) * 92) * diffCfg.hpMult * trialHpMult,
-        );
-        const rewardCoin = 55 + this.waveNumber * 12;
-        const rewardLuck = this.waveNumber >= 12 ? 3 : 2;
-        const startPos = this.path.sample(0);
-
-        const outlaw: MonsterEntity = {
-          entityId: this.nextMonsterId++,
-          kind: spec.kind,
-          isBoss: true,
-          isBounty: true,
-          expireTick: this.currentTick + BOUNTY_DURATION_TICKS,
-          bountyRewardLuck: rewardLuck,
-          bossName: spec.name,
-          hp: bountyHp,
-          maxHp: bountyHp,
-          armor: this.computeMonsterArmor(this.waveNumber, false, true),
-          armorShred: 0,
-          shredExpireTick: 0,
-          shieldHp: 0,
-          shieldMaxHp: 0,
-          shieldExpireTick: 0,
-          hasteUntilTick: 0,
-          nextBossSkillTick: 999999999,
-          phaseTriggered: true,
-          speedPerTick: 3.4 * diffCfg.speedMult * trialSpdMult,
-          radius: spec.radius,
-          rewardCoin,
-          spawnTick: this.currentTick,
-          stunUntilTick: 0,
-          slowUntilTick: 0,
-          slowFactor: 1,
-          lastHitTick: -100,
-          prevDistance: 0,
-          currDistance: 0,
-          prevX: startPos.x,
-          prevY: startPos.y,
-          currX: startPos.x,
-          currY: startPos.y,
-        };
-
-        this.monsters.push(outlaw);
-        this.bountiesCalled++;
         const hunterStacks = this.getBoonStacks('b_bounty_hunter');
-        const cdMult = Math.max(0.3, 1 - 0.35 * hunterStacks);
-        this.bountyReadyTick = this.currentTick + Math.round(BOUNTY_COOLDOWN_TICKS * cdMult);
-        this.priorityDirty = true;
-
-        this.events.emit('bounty:called', {
-          bossName: spec.name,
-          rewardCoin,
-          rewardLuck,
-          tick: this.currentTick,
-        });
+        const { nextBountyReadyTick } = spawnBountyOutlaw(
+          this.createWaveSystemContext(),
+          this.bountiesCalled,
+          hunterStacks,
+        );
+        this.bountiesCalled++;
+        this.bountyReadyTick = nextBountyReadyTick;
         return;
       }
 
@@ -1433,8 +1323,8 @@ export class Simulation {
           return;
         }
         const def = this.data.unitsById.get(unit.unitId);
-        const gradeRank = this.data.gradesById.get(unit.grade)?.rank ?? 1;
-        const refundSpec = getUnitSellLuckRefund(gradeRank);
+        const gradeDef = this.data.gradesById.get(unit.grade);
+        const refundSpec = getUnitSellLuckRefund(gradeDef);
         const coinEarned = def ? def.sellCoin : 10;
         let luckEarned = refundSpec.guaranteedLuck;
         if (refundSpec.chancePct > 0 && this.rng.nextInt(100) < refundSpec.chancePct) {
@@ -1470,12 +1360,12 @@ export class Simulation {
           const uid = this.board.bench.getUidAt(i);
           if (uid === null) continue;
           const u = this.unitsByUid.get(uid);
-          if (u && !u.locked && u.grade === 'common') {
+          if (u && !u.locked && this.data.gradesById.get(u.grade)?.isSurplusCleanupTarget) {
             toSellUids.push(uid);
           }
         }
         if (toSellUids.length === 0) {
-          this.reject('sellSurplusCommon', '대기석에 정리할 잠금 해제 삼류 협객이 없습니다.');
+          this.reject('sellSurplusCommon', '대기석에 정리할 잠금 해제 초입 협객이 없습니다.');
           return;
         }
         let coinEarned = 0;
@@ -1603,7 +1493,6 @@ export class Simulation {
   }
 
   private executeAutoArrange(): void {
-    // 0. Evacuate any field units standing on active/telegraphed hazard tiles into safe empty field slots
     const safeEmptyFieldSlots: number[] = [];
     const hazardEmptyFieldSlots: number[] = [];
     const endangeredUnits: UnitEntity[] = [];
@@ -1642,7 +1531,6 @@ export class Simulation {
       deployedCount++;
     }
 
-    // 1. Deploy strongest bench units into remaining empty field slots (safe slots first!)
     const emptyFieldSlots = [...safeEmptyFieldSlots, ...hazardEmptyFieldSlots];
     const benchUnits: UnitEntity[] = [];
     for (let i = 0; i < this.board.bench.capacity; i++) {
@@ -1678,7 +1566,6 @@ export class Simulation {
       }
     }
 
-    // 2. Compact & sort remaining bench slots cleanly from index 0
     for (let i = 0; i < this.board.bench.capacity; i++) {
       this.board.setUid({ area: 'bench', index: i }, null);
     }
@@ -1799,8 +1686,9 @@ export class Simulation {
       totalWeight += this.summonableGrades[i]!.summonWeight;
     }
 
+    const defaultGradeId = this.data.grades[0]!.id;
     let roll = this.rng.nextInt(Math.max(1, totalWeight));
-    let chosenGrade: GradeId = this.summonableGrades[0]?.id ?? 'common';
+    let chosenGrade: GradeId = this.summonableGrades[0]?.id ?? defaultGradeId;
 
     for (let i = 0; i < this.summonableGrades.length; i++) {
       const g = this.summonableGrades[i]!;
@@ -1813,7 +1701,7 @@ export class Simulation {
 
     const pool = this.unitsByGrade.get(chosenGrade);
     if (!pool || pool.length === 0) {
-      const fallback = this.unitsByGrade.get('common');
+      const fallback = this.unitsByGrade.get(defaultGradeId);
       return fallback?.[0] ?? this.data.units[0]!.id;
     }
     const idx = this.rng.nextInt(pool.length);
@@ -1892,217 +1780,6 @@ export class Simulation {
     return oldSlot;
   }
 
-  private getWaveDef(waveNum: number): WaveDef {
-    return this.data.waves[(waveNum - 1) % this.data.waves.length] ?? this.data.waves[0]!;
-  }
-
-  private computeWaveHpScale(waveNum: number, isBoss: boolean): number {
-    const trialHpMult = this.trialId ? TRIAL_CONFIGS[this.trialId].hpMult : 1;
-    const diffMult = DIFFICULTY_CONFIGS[this.difficulty].hpMult * trialHpMult;
-    const targetWave = this.clearTargetWave;
-    if (waveNum <= 15) {
-      return diffMult;
-    }
-    if (waveNum <= targetWave) {
-      // Escalating second cycle culminating in Wave 30 Grand Demon God
-      const step = waveNum - 15; // 1..15
-      const cycle2 = 1.45 + step * 0.13 + (waveNum === targetWave && isBoss ? 0.55 : 0);
-      return cycle2 * diffMult;
-    }
-    // Endless Bloodbath: exponential scaling beyond clearTargetWave
-    const endlessStep = waveNum - targetWave;
-    const baseAtTarget = targetWave <= 15 ? 1.55 : 3.95;
-    return baseAtTarget * Math.pow(1.135, endlessStep) * diffMult;
-  }
-
-  private resolveTargetBossName(waveNum: number, waveDef: WaveDef): string | undefined {
-    if (!waveDef.isBoss) return waveDef.bossName;
-    if (waveNum === this.clearTargetWave) {
-      return this.trialId
-        ? `비경수호신 · ${waveDef.bossName ?? '아수라 혈마존'}`
-        : '천마대제 아수라 혈마신';
-    }
-    return waveDef.bossName;
-  }
-
-  private stepWaveAndSpawn(): void {
-    // 0. Check active bounty outlaw 30s escape timer
-    for (let i = this.monsters.length - 1; i >= 0; i--) {
-      const m = this.monsters[i]!;
-      if (m.isBounty && m.expireTick !== undefined && this.currentTick >= m.expireTick) {
-        const stolenCoin = Math.min(100, Math.floor(this.coin * 0.15));
-        this.coin = Math.max(0, this.coin - stolenCoin);
-        this.monsters.splice(i, 1);
-        this.priorityDirty = true;
-        this.events.emit('bounty:escaped', {
-          bossName: m.bossName ?? '현상수배범',
-          stolenCoin,
-          tick: this.currentTick,
-        });
-      }
-    }
-
-    const waveDef = this.getWaveDef(this.waveNumber);
-    const mutantKind = getWaveMutantKind(this.waveNumber, waveDef.isBoss);
-    const mutantMeta = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
-    const diffCfg = DIFFICULTY_CONFIGS[this.difficulty];
-    const trialCfg = this.trialId ? TRIAL_CONFIGS[this.trialId] : null;
-    const hpScale = this.computeWaveHpScale(this.waveNumber, waveDef.isBoss);
-    const resolvedBossName = this.resolveTargetBossName(this.waveNumber, waveDef);
-
-    const effectiveSpawnCount = mutantMeta
-      ? Math.max(4, Math.round(waveDef.spawnCount * mutantMeta.countMult))
-      : waveDef.spawnCount;
-    const effectiveSpawnInterval = mutantMeta
-      ? Math.max(8, Math.round(waveDef.spawnIntervalTicks * mutantMeta.intervalMult))
-      : waveDef.spawnIntervalTicks;
-
-    if (this.spawnedInWave < effectiveSpawnCount && this.currentTick >= this.nextSpawnTick) {
-      const startPos = this.path.sample(0);
-      const hpMult = mutantMeta ? mutantMeta.hpMult : 1;
-      const speedMult = (mutantMeta ? mutantMeta.speedMult : 1) * (trialCfg ? trialCfg.speedMult : 1);
-      const bonusCoin = mutantMeta ? mutantMeta.bonusCoin : 0;
-      const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale * hpMult));
-
-      const bossCdMult = trialCfg ? trialCfg.bossCooldownMult : 1;
-      const initialSkillDelay = !waveDef.isBoss
-        ? 999999999
-        : Math.max(
-            45,
-            Math.round(
-              (waveDef.monsterKind === 'white_tiger'
-                ? 120
-                : waveDef.monsterKind === 'black_serpent'
-                  ? 135
-                  : 105) * bossCdMult,
-            ),
-          );
-
-      const monster: MonsterEntity = {
-        entityId: this.nextMonsterId++,
-        kind: waveDef.monsterKind,
-        isBoss: waveDef.isBoss,
-        bossName: resolvedBossName,
-        hp: scaledHp,
-        maxHp: scaledHp,
-        armor: this.computeMonsterArmor(this.waveNumber, waveDef.isBoss, false),
-        armorShred: 0,
-        shredExpireTick: 0,
-        shieldHp: 0,
-        shieldMaxHp: 0,
-        shieldExpireTick: 0,
-        hasteUntilTick: 0,
-        nextBossSkillTick: this.currentTick + initialSkillDelay,
-        phaseTriggered: false,
-        speedPerTick: waveDef.monsterSpeedPerTick * diffCfg.speedMult * speedMult,
-        radius: waveDef.monsterRadius,
-        rewardCoin: waveDef.rewardCoin + bonusCoin,
-        spawnTick: this.currentTick,
-        stunUntilTick: 0,
-        slowUntilTick: 0,
-        slowFactor: 1,
-        lastHitTick: -100,
-        prevDistance: 0,
-        currDistance: 0,
-        prevX: startPos.x,
-        prevY: startPos.y,
-        currX: startPos.x,
-        currY: startPos.y,
-      };
-      this.monsters.push(monster);
-      this.spawnedInWave++;
-      this.nextSpawnTick = this.currentTick + effectiveSpawnInterval;
-
-      if (this.monsters.length >= this.data.board.path.monsterCap) {
-        this.gameOver = true;
-        this.gameOverReason = 'overrun';
-        this.priorityDirty = true;
-        return;
-      }
-    }
-
-    // Fast-forward boss wave remaining idle timer once the wave boss is slain
-    if (
-      waveDef.isBoss &&
-      this.spawnedInWave >= effectiveSpawnCount &&
-      !this.monsters.some((m) => m.isBoss && !m.isBounty) &&
-      this.waveTicksLeft > 45
-    ) {
-      this.waveTicksLeft = 45;
-      this.priorityDirty = true;
-    }
-
-    this.waveTicksLeft--;
-    if (this.waveTicksLeft <= 0) {
-      // Boss Time-Limit Rule: failing to slay a wave boss before timer hits 0 ends the run!
-      if (waveDef.isBoss) {
-        const survivingBoss = this.monsters.find((m) => m.isBoss && !m.isBounty);
-        if (survivingBoss) {
-          this.gameOver = true;
-          this.gameOverReason = 'boss_timeout';
-          this.priorityDirty = true;
-          this.events.emit('boss:timeout', {
-            wave: this.waveNumber,
-            bossName: survivingBoss.bossName ?? resolvedBossName ?? '영물 보스',
-            tick: this.currentTick,
-          });
-          return;
-        }
-      }
-
-      const completedWave = this.waveNumber;
-      const { pct: interestPct, cap: interestCap } = this.getEffectiveInterestConfig();
-      const interestCoin =
-        interestPct > 0
-          ? Math.min(interestCap, Math.floor((this.coin * interestPct) / 100))
-          : 0;
-      this.lastWaveInterest = interestCoin;
-
-      this.tileHazards.length = 0;
-      this.waveNumber++;
-      const nextWaveDef = this.getWaveDef(this.waveNumber);
-      this.waveTicksLeft = nextWaveDef.durationTicks;
-      this.spawnedInWave = 0;
-      this.nextSpawnTick = this.currentTick + 15;
-      this.coin += 20 + interestCoin;
-      this.luckStone += 1;
-      this.priorityDirty = true;
-
-      if (interestCoin > 0) {
-        this.events.emit('wave:interest', {
-          completedWave,
-          interestCoin,
-          pct: interestPct,
-          totalCoin: this.coin,
-          tick: this.currentTick,
-        });
-      }
-
-      if (nextWaveDef.isBoss) {
-        const nextBossName =
-          this.resolveTargetBossName(this.waveNumber, nextWaveDef) ?? '웨이브 보스';
-        this.events.emit('wave:boss', {
-          wave: this.waveNumber,
-          bossName: nextBossName,
-          monsterKind: nextWaveDef.monsterKind,
-          tick: this.currentTick,
-        });
-      } else {
-        const nextMutant = getWaveMutantKind(this.waveNumber, false);
-        if (nextMutant) {
-          const meta = WAVE_MUTANT_META[nextMutant];
-          this.events.emit('wave:mutant', {
-            wave: this.waveNumber,
-            mutant: nextMutant,
-            name: meta.name,
-            desc: meta.desc,
-            tick: this.currentTick,
-          });
-        }
-      }
-    }
-  }
-
   private offerBossBoons(wave: number): void {
     const eligible = this.data.boons.filter(
       (b) => (this.activeBoons[b.id] ?? 0) < b.maxStacks,
@@ -2164,698 +1841,6 @@ export class Simulation {
     });
   }
 
-  private pickHazardTiles(count: number): number[] {
-    const occupiedSafe: number[] = [];
-    const emptySafe: number[] = [];
-    for (let i = 0; i < this.board.field.capacity; i++) {
-      if (this.hasFieldHazard(i)) continue;
-      if (this.board.field.getUidAt(i) !== null) occupiedSafe.push(i);
-      else emptySafe.push(i);
-    }
-
-    const picked: number[] = [];
-    while (picked.length < count && occupiedSafe.length > 0) {
-      const r = this.rng.nextInt(occupiedSafe.length);
-      picked.push(occupiedSafe.splice(r, 1)[0]!);
-    }
-    while (picked.length < count && emptySafe.length > 0) {
-      const r = this.rng.nextInt(emptySafe.length);
-      picked.push(emptySafe.splice(r, 1)[0]!);
-    }
-    return picked;
-  }
-
-  private stepMonsters(): void {
-    // 0. Prune expired tile hazards & emit seal activation when warning completes
-    if (this.tileHazards.length > 0) {
-      const activatedIndices: number[] = [];
-      for (let i = this.tileHazards.length - 1; i >= 0; i--) {
-        const h = this.tileHazards[i]!;
-        if (this.currentTick >= h.expireTick) {
-          this.tileHazards.splice(i, 1);
-          this.priorityDirty = true;
-        } else if (this.currentTick === h.activateTick) {
-          activatedIndices.push(h.fieldIndex);
-          this.priorityDirty = true;
-        }
-      }
-      if (activatedIndices.length > 0) {
-        const firstCenter = this.board.getSlotCenter({
-          area: 'field',
-          index: activatedIndices[0]!,
-        });
-        this.events.emit('boss:skill', {
-          entityId: 0,
-          bossKind: 'blood_patriarch',
-          skillKind: 'patriarch_seal',
-          skillName: '혈옥주박 봉인 발동!',
-          x: firstCenter.x,
-          y: firstCenter.y,
-          tileIndices: activatedIndices,
-          tick: this.currentTick,
-        });
-      }
-    }
-
-    const spawnedEscorts: MonsterEntity[] = [];
-    const bossCdMult = this.trialId ? TRIAL_CONFIGS[this.trialId].bossCooldownMult : 1;
-
-    for (let i = 0; i < this.monsters.length; i++) {
-      const m = this.monsters[i]!;
-
-      // Unbroken Black Serpent poison-shell barrier expires -> heals boss 6% Max HP!
-      if (m.shieldHp > 0 && this.currentTick >= m.shieldExpireTick) {
-        m.shieldHp = 0;
-        m.shieldMaxHp = 0;
-        m.shieldExpireTick = 0;
-        const healAmt = Math.max(1, Math.round(m.maxHp * 0.06));
-        m.hp = Math.min(m.maxHp, m.hp + healAmt);
-        this.priorityDirty = true;
-        this.events.emit('boss:skill', {
-          entityId: m.entityId,
-          bossKind: m.kind,
-          skillKind: 'serpent_heal',
-          skillName: '만년독갑 흡수 · 재생!',
-          x: m.currX,
-          y: m.currY,
-          tick: this.currentTick,
-        });
-      }
-
-      if (this.currentTick < m.stunUntilTick) {
-        continue;
-      }
-
-      const slowMult = this.currentTick < m.slowUntilTick ? m.slowFactor : 1;
-      const hasteMult = this.currentTick < m.hasteUntilTick ? 1.55 : 1;
-      m.currDistance += m.speedPerTick * slowMult * hasteMult;
-      const pos = this.path.sample(m.currDistance);
-      m.currX = pos.x;
-      m.currY = pos.y;
-
-      // Active Wave Boss Patterns (excludes bounty outlaws)
-      if (m.isBoss && !m.isBounty) {
-        // 1) 55% HP threshold phase trigger
-        if (!m.phaseTriggered && m.hp <= Math.round(m.maxHp * 0.55)) {
-          m.phaseTriggered = true;
-          if (m.kind === 'white_tiger') {
-            m.hasteUntilTick = this.currentTick + 90; // 3.0s sprint
-            m.slowUntilTick = 0;
-            m.slowFactor = 1;
-            this.priorityDirty = true;
-            this.events.emit('boss:skill', {
-              entityId: m.entityId,
-              bossKind: m.kind,
-              skillKind: 'tiger_sprint',
-              skillName: '백호 광풍질주!',
-              x: m.currX,
-              y: m.currY,
-              tick: this.currentTick,
-            });
-          } else if (m.kind === 'blood_patriarch') {
-            const escortCount = this.waveNumber >= this.clearTargetWave ? 3 : 2;
-            const room = Math.max(
-              0,
-              this.data.board.path.monsterCap - 2 - (this.monsters.length + spawnedEscorts.length),
-            );
-            const toSpawn = Math.min(escortCount, room);
-            for (let s = 0; s < toSpawn; s++) {
-              const offsetDist = Math.max(0, m.currDistance - 28 * (s + 1));
-              const ePos = this.path.sample(offsetDist);
-              const eHp = Math.max(80, Math.round(m.maxHp * 0.045));
-              spawnedEscorts.push({
-                entityId: this.nextMonsterId++,
-                kind: 'blood_zealot',
-                isBoss: false,
-                hp: eHp,
-                maxHp: eHp,
-                armor: Math.round(m.armor * 0.5),
-                armorShred: 0,
-                shredExpireTick: 0,
-                shieldHp: 0,
-                shieldMaxHp: 0,
-                shieldExpireTick: 0,
-                hasteUntilTick: 0,
-                nextBossSkillTick: 999999999,
-                phaseTriggered: true,
-                speedPerTick: m.speedPerTick * 1.18,
-                radius: 17,
-                rewardCoin: 10,
-                spawnTick: this.currentTick,
-                stunUntilTick: 0,
-                slowUntilTick: 0,
-                slowFactor: 1,
-                lastHitTick: -100,
-                prevDistance: offsetDist,
-                currDistance: offsetDist,
-                prevX: ePos.x,
-                prevY: ePos.y,
-                currX: ePos.x,
-                currY: ePos.y,
-              });
-            }
-            if (toSpawn > 0) {
-              this.priorityDirty = true;
-              this.events.emit('boss:skill', {
-                entityId: m.entityId,
-                bossKind: m.kind,
-                skillKind: 'patriarch_summon',
-                skillName: '혈마호위 강림!',
-                x: m.currX,
-                y: m.currY,
-                tick: this.currentTick,
-              });
-            }
-          }
-        }
-
-        // 2) Periodic boss signature skill
-        if (this.currentTick >= m.nextBossSkillTick) {
-          if (m.kind === 'white_tiger') {
-            m.nextBossSkillTick = this.currentTick + Math.max(90, Math.round(240 * bossCdMult));
-            const roarRadiusSq = 195 * 195;
-            for (let uIdx = 0; uIdx < this.units.length; uIdx++) {
-              const u = this.units[uIdx]!;
-              if (u.slot.area !== 'field') continue;
-              const dx = u.currX - m.currX;
-              const dy = u.currY - m.currY;
-              if (dx * dx + dy * dy <= roarRadiusSq) {
-                u.cooldownTicks = Math.min(90, u.cooldownTicks + 36);
-              }
-            }
-            this.events.emit('boss:skill', {
-              entityId: m.entityId,
-              bossKind: m.kind,
-              skillKind: 'tiger_roar',
-              skillName: '백호 호포진!',
-              x: m.currX,
-              y: m.currY,
-              tick: this.currentTick,
-            });
-          } else if (m.kind === 'black_serpent') {
-            m.nextBossSkillTick = this.currentTick + Math.max(90, Math.round(270 * bossCdMult));
-            const shieldAmt = Math.max(60, Math.round(m.maxHp * 0.12));
-            m.shieldHp = shieldAmt;
-            m.shieldMaxHp = shieldAmt;
-            m.shieldExpireTick = this.currentTick + 150; // 5.0s
-            this.priorityDirty = true;
-            this.events.emit('boss:skill', {
-              entityId: m.entityId,
-              bossKind: m.kind,
-              skillKind: 'serpent_shell',
-              skillName: '만년현무 독갑!',
-              x: m.currX,
-              y: m.currY,
-              tick: this.currentTick,
-            });
-          } else if (m.kind === 'blood_patriarch') {
-            m.nextBossSkillTick = this.currentTick + Math.max(90, Math.round(225 * bossCdMult));
-            const sealCount = this.waveNumber >= this.clearTargetWave ? 3 : 2;
-            const chosenTiles = this.pickHazardTiles(sealCount);
-            if (chosenTiles.length > 0) {
-              for (let c = 0; c < chosenTiles.length; c++) {
-                this.tileHazards.push({
-                  fieldIndex: chosenTiles[c]!,
-                  startTick: this.currentTick,
-                  activateTick: this.currentTick + HAZARD_WARNING_TICKS,
-                  expireTick: this.currentTick + HAZARD_WARNING_TICKS + HAZARD_SEAL_TICKS,
-                });
-              }
-              this.priorityDirty = true;
-              this.events.emit('boss:skill', {
-                entityId: m.entityId,
-                bossKind: m.kind,
-                skillKind: 'patriarch_telegraph',
-                skillName: '혈옥주박진 예고! (영웅 이동 회피)',
-                x: m.currX,
-                y: m.currY,
-                tileIndices: chosenTiles,
-                tick: this.currentTick,
-              });
-            }
-          }
-        }
-      }
-    }
-
-    if (spawnedEscorts.length > 0) {
-      for (let i = 0; i < spawnedEscorts.length; i++) {
-        this.monsters.push(spawnedEscorts[i]!);
-      }
-    }
-  }
-
-  private stepCombat(): void {
-    const synergy = this.computeFieldSynergy();
-    const tileBuffs = this.computeFieldTileBuffs();
-    const trialCfg = this.trialId ? TRIAL_CONFIGS[this.trialId] : null;
-    const harmonyStacks = this.getBoonStacks('b_trinity_harmony');
-    const swiftStacks = this.getBoonStacks('b_swift_formation');
-    const pillageStacks = this.getBoonStacks('b_unorthodox_pillage');
-    const acupointStacks = this.getBoonStacks('b_hidden_acupoint');
-    const orthodoxBoonStacks = this.getBoonStacks('b_orthodox_zenith');
-    const demonicBoonStacks = this.getBoonStacks('b_demonic_overdrive');
-    const crusherStacks = this.getBoonStacks('b_armor_crusher');
-
-    if (this.monsters.length > 0) {
-      for (let i = 0; i < this.units.length; i++) {
-        const u = this.units[i]!;
-        if (u.slot.area !== 'field') {
-          continue;
-        }
-        // Units standing on an active Blood-Jade Seal tile are petrified until moved or expired!
-        if (this.isFieldSlotSealed(u.slot.index)) {
-          continue;
-        }
-        if (u.cooldownTicks > 0) {
-          u.cooldownTicks--;
-        }
-        if (u.cooldownTicks > 0) {
-          continue;
-        }
-
-        const def = this.data.unitsById.get(u.unitId);
-        if (!def) continue;
-
-        const effectiveRange = def.range + harmonyStacks * 25;
-        const rangeSq = effectiveRange * effectiveRange;
-        let bestTarget: MonsterEntity | null = null;
-
-        // Deterministic target order (AGENTS.md §3): path progress desc -> entityId asc
-        for (let j = 0; j < this.monsters.length; j++) {
-          const m = this.monsters[j]!;
-          const dx = m.currX - u.currX;
-          const dy = m.currY - u.currY;
-          if (dx * dx + dy * dy > rangeSq) {
-            continue;
-          }
-          if (
-            bestTarget === null ||
-            m.currDistance > bestTarget.currDistance ||
-            (m.currDistance === bestTarget.currDistance && m.entityId < bestTarget.entityId)
-          ) {
-            bestTarget = m;
-          }
-        }
-
-        if (bestTarget !== null) {
-          const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
-          let speedMult = synergy.trinityActive ? 1.1 : 1.0;
-          if (swiftStacks > 0) {
-            speedMult *= 1 + 0.16 * swiftStacks;
-          }
-          if (def.faction === 'unorthodox') {
-            if (synergy.unorthodoxTier === 2) speedMult *= 1.32;
-            else if (synergy.unorthodoxTier === 1) speedMult *= 1.18;
-            if (pillageStacks > 0) {
-              speedMult *= 1 + 0.22 * pillageStacks;
-            }
-            if (trialCfg && trialCfg.unorthodoxSpeedMult !== 1) {
-              speedMult *= trialCfg.unorthodoxSpeedMult;
-            }
-          }
-          if (tileBuff.speedPct > 0) {
-            speedMult *= 1 + tileBuff.speedPct / 100;
-          }
-          u.cooldownTicks = Math.max(1, Math.round(def.attackIntervalTicks / speedMult));
-          u.attackCount++;
-          u.lastAttackTick = this.currentTick;
-
-          const dx = bestTarget.currX - u.currX;
-          const dy = bestTarget.currY - u.currY;
-          const dist = Math.hypot(dx, dy);
-          u.attackDirX = dist > 0.001 ? dx / dist : 0;
-          u.attackDirY = dist > 0.001 ? dy / dist : 1;
-
-          const travelTicks = Math.max(2, Math.min(10, Math.round(dist / 32)));
-          const gradeDef = this.data.gradesById.get(u.grade);
-          const gradeColor = gradeDef?.color ?? '#94a3b8';
-          const gradeRank = gradeDef?.rank ?? 1;
-
-          const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
-            u.unitId,
-            synergy,
-            tileBuff.atkPct,
-          );
-          const totalAtk = baseAtk + bonusAtk;
-          const effectiveEveryN = Math.max(2, def.skill.everyN - acupointStacks);
-          const isSkill = u.attackCount % effectiveEveryN === 0;
-
-          let critChance = def.critChance;
-          let critMult = def.critMult;
-          let skillRatio = def.skill.atkRatio;
-          let ccMult = 1 + 0.35 * acupointStacks;
-
-          if (def.faction === 'orthodox') {
-            if (synergy.orthodoxTier === 2) {
-              critChance = Math.min(0.95, critChance + 0.18);
-              ccMult *= 1.4;
-            } else if (synergy.orthodoxTier === 1) {
-              critChance = Math.min(0.95, critChance + 0.1);
-              ccMult *= 1.25;
-            }
-            if (orthodoxBoonStacks > 0) {
-              critChance = Math.min(0.95, critChance + 0.15 * orthodoxBoonStacks);
-              critMult += 0.55 * orthodoxBoonStacks;
-            }
-            if (trialCfg && trialCfg.orthodoxCritMultBonus > 0) {
-              critMult += trialCfg.orthodoxCritMultBonus;
-            }
-          } else if (def.faction === 'demonic') {
-            if (synergy.demonicTier === 2) {
-              critMult += 0.8;
-              skillRatio *= 1.45;
-            } else if (synergy.demonicTier === 1) {
-              critMult += 0.4;
-              skillRatio *= 1.25;
-            }
-            if (demonicBoonStacks > 0) {
-              skillRatio *= 1 + 0.3 * demonicBoonStacks;
-            }
-            if (trialCfg && trialCfg.demonicSkillRatioMult !== 1) {
-              skillRatio *= trialCfg.demonicSkillRatioMult;
-            }
-          }
-
-          const isCrit = this.rng.nextInt(1000) < Math.round(critChance * 1000);
-
-          let damage = totalAtk;
-          if (isSkill) {
-            damage = Math.round(damage * skillRatio);
-          }
-          if (isCrit) {
-            damage = Math.round(damage * critMult);
-          }
-
-          const trialShred =
-            def.faction === 'unorthodox' && trialCfg ? trialCfg.unorthodoxBonusShred : 0;
-          const unitBaseShred = def.armorShred + crusherStacks * 6 + trialShred;
-          const projectileShred =
-            unitBaseShred > 0
-              ? isSkill
-                ? Math.round(unitBaseShred * 1.5)
-                : unitBaseShred
-              : 0;
-
-          this.projectiles.push({
-            id: this.nextProjectileId++,
-            unitId: u.unitId,
-            startTick: this.currentTick,
-            arriveTick: this.currentTick + travelTicks,
-            fromX: u.currX,
-            fromY: u.currY - 8,
-            targetEntityId: bestTarget.entityId,
-            targetX: bestTarget.currX,
-            targetY: bestTarget.currY,
-            prevX: u.currX,
-            prevY: u.currY - 8,
-            currX: u.currX,
-            currY: u.currY - 8,
-            damage: Math.max(1, damage),
-            armorShred: projectileShred,
-            color: gradeColor,
-            gradeRank,
-            isCrit,
-            isSkill,
-            skillName: def.skill.name,
-            vfxTrack: def.skill.vfxTrack,
-            splashRadius: isSkill ? def.skill.splashRadius : 0,
-            stunTicks:
-              isSkill && def.skill.stunTicks > 0
-                ? Math.max(1, Math.round(def.skill.stunTicks * ccMult))
-                : 0,
-            slowPct: isSkill ? def.skill.slowPct : 0,
-            slowTicks:
-              isSkill && def.skill.slowTicks > 0
-                ? Math.max(1, Math.round(def.skill.slowTicks * ccMult))
-                : 0,
-          });
-        }
-      }
-    } else {
-      for (let i = 0; i < this.units.length; i++) {
-        const u = this.units[i]!;
-        if (u.slot.area === 'field' && !this.isFieldSlotSealed(u.slot.index) && u.cooldownTicks > 0) {
-          u.cooldownTicks--;
-        }
-      }
-    }
-
-    // Advance projectiles & apply integer-tick arrival hits
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const p = this.projectiles[i]!;
-      const targetIdx = this.monsters.findIndex((m) => m.entityId === p.targetEntityId);
-      const target = targetIdx !== -1 ? this.monsters[targetIdx] : undefined;
-
-      if (target) {
-        p.targetX = target.currX;
-        p.targetY = target.currY;
-      }
-
-      const span = Math.max(1, p.arriveTick - p.startTick);
-      const prog = Math.max(0, Math.min(1, (this.currentTick - p.startTick + 1) / span));
-      p.currX = p.fromX + (p.targetX - p.fromX) * prog;
-      p.currY = p.fromY + (p.targetY - p.fromY) * prog;
-
-      if (this.currentTick >= p.arriveTick) {
-        const impactX = target ? target.currX : p.targetX;
-        const impactY = target ? target.currY : p.targetY;
-
-        if (p.isSkill) {
-          this.events.emit('skill:impact', {
-            unitId: p.unitId,
-            skillName: p.skillName,
-            vfxTrack: p.vfxTrack,
-            fromX: p.fromX,
-            fromY: p.fromY,
-            x: impactX,
-            y: impactY,
-            radius: Math.max(48, p.splashRadius),
-            color: p.color,
-            gradeRank: p.gradeRank,
-            tick: this.currentTick,
-          });
-        }
-
-        if (p.splashRadius > 0) {
-          const rSq = p.splashRadius * p.splashRadius;
-          // Deterministic hit ordering: path progress desc -> entityId asc
-          const victims = this.monsters
-            .filter((m) => {
-              const dx = m.currX - impactX;
-              const dy = m.currY - impactY;
-              return dx * dx + dy * dy <= rSq;
-            })
-            .sort((a, b) =>
-              b.currDistance !== a.currDistance
-                ? b.currDistance - a.currDistance
-                : a.entityId - b.entityId,
-            );
-
-          for (let v = 0; v < victims.length; v++) {
-            const m = victims[v]!;
-            // Primary target takes 100%, splash neighbors take 75%
-            const dealt =
-              m.entityId === p.targetEntityId ? p.damage : Math.max(1, Math.round(p.damage * 0.75));
-            this.applyHitToMonster(m, dealt, p, synergy);
-          }
-        } else if (target) {
-          this.applyHitToMonster(target, p.damage, p, synergy);
-        }
-
-        this.projectiles.splice(i, 1);
-      }
-    }
-  }
-
-  private applyHitToMonster(
-    m: MonsterEntity,
-    rawDamage: number,
-    p: ProjectileEntity,
-    synergy: FactionSynergySnapshot,
-  ): void {
-    const idx = this.monsters.indexOf(m);
-    if (idx === -1) return;
-
-    const prevShredBeforeHit = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
-    const prevNetArmor = m.armor - prevShredBeforeHit;
-
-    if (p.armorShred > 0) {
-      m.armorShred = Math.min(160, prevShredBeforeHit + p.armorShred);
-      m.shredExpireTick = Math.max(m.shredExpireTick, this.currentTick + 120);
-    }
-
-    const activeShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
-    const netArmor = m.armor - activeShred;
-    let justShattered = m.armor > 0 && prevNetArmor > 0 && netArmor <= 0;
-    const armorBroken = netArmor < 0 || (m.armor > 0 && netArmor <= 0);
-
-    let effectiveRaw = rawDamage;
-    const hunterStacks = this.getBoonStacks('b_bounty_hunter');
-    if (m.isBoss && hunterStacks > 0) {
-      effectiveRaw = Math.round(effectiveRaw * (1 + 0.28 * hunterStacks));
-    }
-
-    const maxAmp = 0.45 + 0.3 * this.getBoonStacks('b_armor_crusher');
-    let damage = effectiveRaw;
-    if (netArmor > 0) {
-      damage = Math.max(1, Math.round(effectiveRaw * (100 / (100 + netArmor))));
-    } else if (netArmor < 0) {
-      const amp = Math.min(maxAmp, -netArmor * 0.0075);
-      damage = Math.max(1, Math.round(effectiveRaw * (1 + amp)));
-    }
-
-    // Black Serpent poison-shell barrier absorption (armor-shredding attacks deal 1.8x bonus vs barrier!)
-    if (m.shieldHp > 0 && this.currentTick < m.shieldExpireTick) {
-      const shieldDamage = p.armorShred > 0 ? Math.round(damage * 1.8) : damage;
-      if (shieldDamage < m.shieldHp) {
-        m.shieldHp -= shieldDamage;
-        m.lastHitTick = this.currentTick;
-        this.damageByUnit.set(p.unitId, (this.damageByUnit.get(p.unitId) ?? 0) + damage);
-        this.totalDamageDealt += damage;
-        damage = shieldDamage;
-      } else {
-        const shieldMult = p.armorShred > 0 ? 1.8 : 1;
-        const overflow = Math.max(0, Math.round((shieldDamage - m.shieldHp) / shieldMult));
-        m.shieldHp = 0;
-        m.shieldMaxHp = 0;
-        m.shieldExpireTick = 0;
-        m.hp -= overflow;
-        m.lastHitTick = this.currentTick;
-        m.stunUntilTick = Math.max(m.stunUntilTick, this.currentTick + 45);
-        m.armorShred = Math.min(160, activeShred + 25);
-        m.shredExpireTick = Math.max(m.shredExpireTick, this.currentTick + 150);
-        justShattered = true;
-        this.damageByUnit.set(p.unitId, (this.damageByUnit.get(p.unitId) ?? 0) + damage);
-        this.totalDamageDealt += damage;
-        this.events.emit('boss:skill', {
-          entityId: m.entityId,
-          bossKind: m.kind,
-          skillKind: 'serpent_shatter',
-          skillName: '현무 독갑 격파! (기절)',
-          x: m.currX,
-          y: m.currY,
-          tick: this.currentTick,
-        });
-      }
-    } else {
-      m.hp -= damage;
-      m.lastHitTick = this.currentTick;
-      this.damageByUnit.set(p.unitId, (this.damageByUnit.get(p.unitId) ?? 0) + damage);
-      this.totalDamageDealt += damage;
-    }
-
-    if (p.stunTicks > 0) {
-      const bossFactor = this.difficulty === 'hell' ? 0.35 : 0.45;
-      const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * bossFactor)) : p.stunTicks;
-      m.stunUntilTick = Math.max(m.stunUntilTick, this.currentTick + stunDur);
-    }
-    if (p.slowTicks > 0 && p.slowPct > 0 && this.currentTick >= m.hasteUntilTick) {
-      m.slowUntilTick = Math.max(m.slowUntilTick, this.currentTick + p.slowTicks);
-      m.slowFactor = Math.min(m.slowFactor, Math.max(0.3, 1 - p.slowPct));
-    }
-
-    if (!p.isSkill && this.relicLv.bandit_dagger > 0) {
-      const procPer1000 = getBanditProcPer1000(this.relicLv.bandit_dagger);
-      if (this.rng.nextInt(1000) < procPer1000) {
-        const pilfer = getBanditPilferCoin(this.relicLv.bandit_dagger);
-        this.coin += pilfer;
-        this.pilferedCoinTotal += pilfer;
-        this.priorityDirty = true;
-      }
-    }
-
-    const slain = m.hp <= 0;
-    const hitX = m.currX;
-    const hitY = m.currY;
-
-    if (slain) {
-      this.monstersSlain++;
-      let pillageBonus = 0;
-      const attackerFaction = this.data.unitsById.get(p.unitId)?.faction;
-      if (attackerFaction === 'unorthodox') {
-        if (synergy.unorthodoxTier > 0) {
-          pillageBonus += synergy.unorthodoxTier === 2 ? 2 : 1;
-        }
-        const pillageBoonStacks = this.getBoonStacks('b_unorthodox_pillage');
-        if (pillageBoonStacks > 0 && this.rng.nextInt(100) < Math.min(90, pillageBoonStacks * 35)) {
-          pillageBonus += 2;
-          this.pilferedCoinTotal += 2;
-        }
-      }
-      this.coin += m.rewardCoin + pillageBonus;
-      this.monsters.splice(idx, 1);
-
-      if (m.isBoss) {
-        if (m.isBounty) {
-          this.bountiesSlain++;
-          const rewardLuck = m.bountyRewardLuck ?? 2;
-          this.luckStone += rewardLuck;
-          this.priorityDirty = true;
-          this.events.emit('bounty:slain', {
-            bossName: m.bossName ?? '현상수배범',
-            rewardCoin: m.rewardCoin,
-            rewardLuck,
-            tick: this.currentTick,
-          });
-        } else {
-          this.bossesSlain++;
-          this.tileHazards.length = 0;
-          const rewardLuck = 2 + getScrollChestBossLuckBonus(this.relicLv.heavenly_scroll_chest);
-          this.luckStone += rewardLuck;
-          const rewardGrade: GradeId = m.kind === 'white_tiger' ? 'uncommon' : 'rare';
-          this.wisps[rewardGrade] = (this.wisps[rewardGrade] ?? 0) + 1;
-          this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
-          this.priorityDirty = true;
-          this.events.emit('boss:slain', {
-            wave: this.waveNumber,
-            bossName: m.bossName ?? '영물 보스',
-            rewardWispGrade: rewardGrade,
-            rewardLuck,
-            tick: this.currentTick,
-          });
-
-          const noWaveBossRemaining = !this.monsters.some((o) => o.isBoss && !o.isBounty);
-          if (
-            this.waveNumber === this.clearTargetWave &&
-            !this.endlessMode &&
-            !this.victoryAchieved &&
-            noWaveBossRemaining
-          ) {
-            this.victoryAchieved = true;
-            this.victoryHold = true;
-            this.events.emit('run:victory', {
-              wave: this.waveNumber,
-              difficulty: this.difficulty,
-              trialId: this.trialId,
-              tick: this.currentTick,
-            });
-          } else if (noWaveBossRemaining) {
-            // Offer 3-choice Wuxia Roguelike Boon scroll!
-            this.offerBossBoons(this.waveNumber);
-          }
-        }
-      }
-    }
-
-    this.events.emit('monster:hit', {
-      entityId: m.entityId,
-      unitId: p.unitId,
-      fromX: p.fromX,
-      fromY: p.fromY,
-      x: hitX,
-      y: hitY,
-      damage,
-      color: p.color,
-      slain,
-      isCrit: p.isCrit,
-      isSkill: p.isSkill,
-      armorBroken,
-      justShattered,
-      tick: this.currentTick,
-    });
-  }
-
   private reject(cmd: GameCommand['type'], reason: string): void {
     const notice: RejectNotice = { cmd, reason, tick: this.currentTick };
     this.pendingRejects.push(notice);
@@ -2880,7 +1865,7 @@ export class Simulation {
     for (let i = 0; i < this.board.bench.capacity; i++) {
       const uid = this.board.bench.getUidAt(i);
       const view = uid !== null ? this.toSlotView(uid, synergy, zeroBuff) : null;
-      if (view && !view.locked && view.grade === 'common') {
+      if (view && !view.locked && this.data.gradesById.get(view.grade)?.isSurplusCleanupTarget) {
         benchSurplusCommonCount++;
       }
       benchViews.push(view);
@@ -2889,7 +1874,7 @@ export class Simulation {
     const rejects = this.pendingRejects.slice();
     this.pendingRejects.length = 0;
 
-    const waveDef = this.getWaveDef(this.waveNumber);
+    const waveDef = resolveWaveDef(this.data.waves, this.waveNumber);
     const mutantKind = getWaveMutantKind(this.waveNumber, waveDef.isBoss);
     const waveMutant = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
     const waveBoss = this.monsters.find((m) => m.isBoss && !m.isBounty);
@@ -2933,6 +1918,7 @@ export class Simulation {
       };
     });
 
+    const defaultGradeId = this.data.grades[0]!.id;
     const dmgEntries: DamageEntrySnapshot[] = [...this.damageByUnit.entries()]
       .filter(([, dmg]) => dmg > 0)
       .sort((a, b) => (b[1] !== a[1] ? b[1] - a[1] : a[0].localeCompare(b[0])))
@@ -2947,7 +1933,7 @@ export class Simulation {
           unitId,
           name: def?.name ?? unitId,
           faction: def?.faction ?? 'orthodox',
-          grade: def?.grade ?? 'common',
+          grade: def?.grade ?? defaultGradeId,
           damage: dmg,
           sharePct,
         };
@@ -3073,8 +2059,8 @@ export class Simulation {
       def?.faction === 'unorthodox' && this.trialId
         ? TRIAL_CONFIGS[this.trialId].unorthodoxBonusShred
         : 0;
-    const gradeRank = this.data.gradesById.get(u.grade)?.rank ?? 1;
-    const refundSpec = getUnitSellLuckRefund(gradeRank);
+    const gradeDef = this.data.gradesById.get(u.grade);
+    const refundSpec = getUnitSellLuckRefund(gradeDef);
     return {
       uid: u.uid,
       unitId: u.unitId,
@@ -3091,6 +2077,7 @@ export class Simulation {
       skillName: def?.skill.name ?? '기본 초식',
       armorShred: (def?.armorShred ?? 0) + crusherShred + trialShred,
       supportAura: def?.supportAura,
+      passiveTrait: def?.passiveTrait,
       tileBuffAtkPct: tileBuff.atkPct,
       tileBuffSpeedPct: tileBuff.speedPct,
       sealed: isField ? this.isFieldSlotSealed(u.slot.index) : false,
@@ -3098,10 +2085,10 @@ export class Simulation {
     };
   }
 
-  public exportRunSave(): RunSaveData {
+  public exportRunSave(savedAtMs = 0): RunSaveData {
     return {
-      version: 1,
-      savedAtMs: Date.now(),
+      version: RUN_SAVE_SCHEMA_VERSION,
+      savedAtMs,
       difficulty: this.difficulty,
       trialId: this.trialId,
       currentTick: this.currentTick,
@@ -3125,8 +2112,7 @@ export class Simulation {
         options: [...o.options],
       })),
       appliedStartCoinBonus: this.appliedStartCoinBonus,
-      appliedStartCommonWisp: this.appliedStartCommonWisp,
-      appliedStartUncommonWisp: this.appliedStartUncommonWisp,
+      appliedStartWisps: { ...this.appliedStartWisps },
       lastWaveInterest: this.lastWaveInterest,
       pilferedCoinTotal: this.pilferedCoinTotal,
       monstersSlain: this.monstersSlain,
@@ -3157,17 +2143,12 @@ export class Simulation {
     };
   }
 
-  public restoreRunSave(save: RunSaveData): boolean {
-    if (!save || save.version !== 1) return false;
-    if (save.difficulty !== this.difficulty || save.trialId !== this.trialId) return false;
-    if (!Number.isFinite(save.currentTick) || save.currentTick < 0) return false;
-    if (!Array.isArray(save.units) || !Array.isArray(save.monsters)) return false;
-
-    for (let i = 0; i < save.units.length; i++) {
-      const u = save.units[i]!;
-      if (!this.data.unitsById.has(u.unitId) || !this.board.isValidSlot(u.slot)) {
-        return false;
-      }
+  public restoreRunSave(rawSave: unknown): boolean {
+    const mig = migrateRunSave(rawSave, this.data);
+    const save = mig.save;
+    if (!save) return false;
+    if (save.difficulty !== this.difficulty || (save.trialId ?? null) !== this.trialId) {
+      return false;
     }
 
     this.currentTick = Math.floor(save.currentTick);
@@ -3183,6 +2164,9 @@ export class Simulation {
 
     for (const k of Object.keys(this.wisps)) {
       delete this.wisps[k];
+    }
+    for (const poolGradeId of Object.keys(this.data.wispPools)) {
+      this.wisps[poolGradeId] = 0;
     }
     for (const [g, c] of Object.entries(save.wisps ?? {})) {
       if (typeof c === 'number' && Number.isFinite(c) && c >= 0) {
@@ -3218,8 +2202,15 @@ export class Simulation {
     }
 
     this.appliedStartCoinBonus = Math.max(0, Math.floor(save.appliedStartCoinBonus ?? 0));
-    this.appliedStartCommonWisp = Math.max(0, Math.floor(save.appliedStartCommonWisp ?? 0));
-    this.appliedStartUncommonWisp = Math.max(0, Math.floor(save.appliedStartUncommonWisp ?? 0));
+    for (const k of Object.keys(this.appliedStartWisps)) {
+      delete this.appliedStartWisps[k];
+    }
+    for (const [gId, cnt] of Object.entries(save.appliedStartWisps ?? {})) {
+      if (typeof cnt === 'number' && Number.isFinite(cnt) && cnt > 0) {
+        this.appliedStartWisps[gId] = Math.floor(cnt);
+      }
+    }
+
     this.lastWaveInterest = Math.max(0, Math.floor(save.lastWaveInterest ?? 0));
     this.pilferedCoinTotal = Math.max(0, Math.floor(save.pilferedCoinTotal ?? 0));
     this.monstersSlain = Math.max(0, Math.floor(save.monstersSlain ?? 0));
@@ -3443,5 +2434,3 @@ export class Simulation {
     return `${h1.toString(16).padStart(8, '0')}-${h2.toString(16).padStart(8, '0')}`;
   }
 }
-
-

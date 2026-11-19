@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import atlasRaw from '../public/assets/sprites_atlas.json';
 import type { StampedCommand } from '../src/core/CommandQueue';
-import { getUnitSellLuckRefund, TRIAL_CONFIGS } from '../src/core/relicFormulas';
+import {
+  DIFFICULTY_CONFIGS,
+  getUnitSellLuckRefund,
+  TRIAL_CONFIGS,
+} from '../src/core/relicFormulas';
 import {
   HAZARD_WARNING_TICKS,
   Simulation,
@@ -13,11 +18,13 @@ import {
   BACKUP_CODE_PREFIX,
   DEFAULT_COURT_SKIN_ID,
   MetaStore,
+  RUN_STORAGE_KEY,
   SKIN_MULTI5_GOLD_COST,
   SKIN_SINGLE_GOLD_COST,
   getSkinDuplicateSilk,
   type StorageLike,
 } from '../src/platform/MetaStore';
+import { migrateRunSave, RUN_SAVE_SCHEMA_VERSION } from '../src/platform/SaveMigration';
 import { SoundSynthesizer } from '../src/platform/SoundSynthesizer';
 import {
   UNIT_COMBAT_PROFILES,
@@ -142,19 +149,28 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('provides bespoke 1:1 pixel-art PNG sprites for all 35 units and all 6 monsters/bosses plus validated skin catalog', () => {
+  it('packs all 39 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(35);
+    expect(data.units.length).toBe(39);
     expect(data.heroSkins.length).toBe(10);
     expect(data.courtSkins.length).toBe(4);
 
-    const spriteFiles = Object.keys(import.meta.glob('../public/sprites/*.png'));
+    const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
     const spriteSet = new Set(
       spriteFiles.map((p) => p.slice(p.lastIndexOf('/') + 1)),
     );
 
+    const atlasFrames = atlasRaw.frames as Record<
+      string,
+      { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
+    >;
+
     for (const unit of data.units) {
-      expect(spriteSet.has(`${unit.id}.png`), `missing unit sprite: ${unit.id}.png`).toBe(true);
+      expect(spriteSet.has(`${unit.id}.png`), `missing unit source sprite: ${unit.id}.png`).toBe(
+        true,
+      );
+      expect(atlasFrames[unit.id], `missing WebP atlas frame: ${unit.id}`).toBeDefined();
+      expect(atlasFrames[unit.id]!.w).toBeGreaterThan(0);
     }
 
     const monsterKinds: readonly MonsterKind[] = [
@@ -167,8 +183,13 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     ];
     for (const kind of monsterKinds) {
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
+      expect(atlasFrames[kind], `missing WebP atlas frame: ${kind}`).toBeDefined();
     }
-    expect(spriteSet.size).toBe(41);
+    expect(spriteSet.size).toBe(45);
+    expect(Object.keys(atlasFrames).length).toBe(45);
+
+    const webpAtlasFiles = Object.keys(import.meta.glob('../public/assets/*.webp'));
+    expect(webpAtlasFiles.some((p) => p.endsWith('/sprites_atlas.webp'))).toBe(true);
 
     const bgFiles = Object.keys(import.meta.glob('../public/bg/*.png'));
     expect(bgFiles.some((p) => p.endsWith('/murim_arena_bg.png'))).toBe(true);
@@ -245,9 +266,11 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     });
 
     const snap0 = sim.buildSnapshot(1, false);
+    const commonStarter = data.gradesById.get('common')?.starterWispCount ?? 0;
+    const uncommonStarter = data.gradesById.get('uncommon')?.starterWispCount ?? 0;
     expect(snap0.coin).toBe(data.board.economy.initialCoin + 100);
-    expect(snap0.wisps.common).toBe(3); // base 2 + 1
-    expect(snap0.wisps.uncommon).toBe(2); // base 1 + 1
+    expect(snap0.wisps.common).toBe(commonStarter + 1);
+    expect(snap0.wisps.uncommon).toBe(uncommonStarter + 1);
 
     const atkBeforeGrant = sim.getUnitEffectiveAtk('hwasan_master').bonusAtk;
     expect(atkBeforeGrant).toBeGreaterThan(0);
@@ -488,7 +511,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       simEscape.tick();
     }
     expect(escapedStolen).toBeGreaterThan(0);
-    expect(escapedStolen).toBe(Math.min(100, Math.floor(coinAtEscapeTick * 0.15)));
+    expect(escapedStolen).toBe(
+      Math.min(100, Math.min(coinAtEscapeTick, Math.max(30, Math.floor(coinAtEscapeTick * 0.15)))),
+    );
     expect(simEscape.buildSnapshot(1, false).bounty.active).toBe(false);
 
     // Part B: Slaying bounty outlaw grants luckStone + coin and completes m_bounty_hunt mission
@@ -523,7 +548,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
 
     // Trigger m_wealth_1000 (만금거상: >= 1000 coin -> +2 luckStone)
     const startLuck = sim.buildSnapshot(1, false).luckStone;
-    sim.commands.enqueue({ type: 'grantTestCoin', amount: 600 });
+    sim.commands.enqueue({ type: 'grantTestCoin', amount: 900 });
     sim.tick();
 
     const snapWealth = sim.buildSnapshot(1, false);
@@ -588,9 +613,16 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       simHell.tick();
     }
 
-    expect(simNormal.getMonsters()[0]?.maxHp).toBe(115);
-    expect(simHard.getMonsters()[0]?.maxHp).toBe(Math.round(115 * 1.65));
-    expect(simHell.getMonsters()[0]?.maxHp).toBe(Math.round(115 * 2.65));
+    const wave1Hp = data.waves[0]!.monsterHp;
+    expect(simNormal.getMonsters()[0]?.maxHp).toBe(
+      Math.round(wave1Hp * DIFFICULTY_CONFIGS.normal.hpMult),
+    );
+    expect(simHard.getMonsters()[0]?.maxHp).toBe(
+      Math.round(wave1Hp * DIFFICULTY_CONFIGS.hard.hpMult),
+    );
+    expect(simHell.getMonsters()[0]?.maxHp).toBe(
+      Math.round(wave1Hp * DIFFICULTY_CONFIGS.hell.hpMult),
+    );
 
     // 2. Clear Wave 30 Grand Demon God & enter Wave 31+ Endless Mode
     const simRun = new Simulation(
@@ -658,8 +690,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       victory: true,
     });
     expect(clearSettlement.clearedWaves).toBe(30);
-    expect(clearSettlement.firstClearBonusGold).toBe(250);
-    expect(clearSettlement.firstClearBonusKeys).toBe(2);
+    expect(clearSettlement.firstClearBonusGold).toBe(DIFFICULTY_CONFIGS.normal.firstClearGold);
+    expect(clearSettlement.firstClearBonusKeys).toBe(DIFFICULTY_CONFIGS.normal.firstClearKeys);
     expect(clearSettlement.unlockedNextDifficulty).toBe('hard');
     expect(store.getProfile().unlockedDifficulties.hard).toBe(true);
     expect(store.setSelectedDifficulty('hard')).toBe(true);
@@ -917,14 +949,17 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
 
   it('enforces monster 호신강기 (armor) scaling and 파갑 (armorShred) defense break + negative-armor damage amplification', () => {
     const data = loadGameData();
+    const simNormalWave1 = new Simulation(data, 0x99112233, undefined, 'normal');
     const sim = new Simulation(data, 0x99112233, undefined, 'hard');
 
-    // Wave 1 regular monsters have 0 armor
+    // Wave 1 regular monsters have 0 armor on Normal and floor(armorBonus * 0.5) on Hard
     for (let t = 0; t < 45; t++) {
+      simNormalWave1.tick();
       sim.tick();
     }
+    expect(simNormalWave1.getMonsters()[0]?.armor).toBe(0);
     expect(sim.getMonsters().length).toBeGreaterThan(0);
-    expect(sim.getMonsters()[0]?.armor).toBe(0);
+    expect(sim.getMonsters()[0]?.armor).toBe(Math.floor(DIFFICULTY_CONFIGS.hard.armorBonus * 0.5));
 
     // Place armor-shredding heroes (gaebang_elder: 18, tang_assassin: 7) on field to fight Wave 2 armored bounty
     for (let i = 0; i < 4; i++) {
@@ -1417,9 +1452,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 35 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채 & 3 new hidden Immortals) and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 39 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채 & 4 new mid-tier heroes) and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(35);
+    expect(data.units.length).toBe(39);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1432,12 +1467,16 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       seenStyles.add(profile.style);
     }
 
-    // All 10 distinct weapon motion archetypes must be represented in the 35-hero roster
+    // All 10 distinct weapon motion archetypes must be represented in the 39-hero roster
     expect(seenStyles.size).toBe(10);
     expect(getUnitCombatProfile('tang_patriarch').style).toBe('fan');
     expect(getUnitCombatProfile('tang_patriarch').weaponLabel).toContain('부채');
     expect(getUnitCombatProfile('thousand_venom_lord').style).toBe('fan');
     expect(getUnitCombatProfile('thousand_venom_lord').weaponLabel).toContain('부채');
+    expect(getUnitCombatProfile('tang_elder').style).toBe('dagger_hidden');
+    expect(getUnitCombatProfile('blood_bishop').style).toBe('spear_staff');
+    expect(getUnitCombatProfile('poison_dragon').style).toBe('dagger_hidden');
+    expect(getUnitCombatProfile('heavenly_demon_heir').style).toBe('sword');
     expect(getUnitCombatProfile('thunder_emperor').style).toBe('dual_sword');
     expect(getUnitCombatProfile('hell_flame_sovereign').style).toBe('sorcery_qi');
     expect(getUnitCombatProfile('tang_assassin').style).toBe('dagger_hidden');
@@ -1614,13 +1653,31 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const data = loadGameData();
     const sim = new Simulation(data, 0x99887766);
 
-    // 1. Verify grade-scaled elixir refund table
-    expect(getUnitSellLuckRefund(1)).toEqual({ guaranteedLuck: 0, chancePct: 0 });
-    expect(getUnitSellLuckRefund(2)).toEqual({ guaranteedLuck: 0, chancePct: 35 });
-    expect(getUnitSellLuckRefund(3)).toEqual({ guaranteedLuck: 1, chancePct: 0 });
-    expect(getUnitSellLuckRefund(4)).toEqual({ guaranteedLuck: 2, chancePct: 0 });
-    expect(getUnitSellLuckRefund(5)).toEqual({ guaranteedLuck: 4, chancePct: 0 });
-    expect(getUnitSellLuckRefund(6)).toEqual({ guaranteedLuck: 7, chancePct: 0 });
+    // 1. Verify data-driven grade-scaled elixir refund table (no hardcoded grade numbers)
+    expect(getUnitSellLuckRefund(data.gradesById.get('common'))).toEqual({
+      guaranteedLuck: 0,
+      chancePct: 0,
+    });
+    expect(getUnitSellLuckRefund(data.gradesById.get('uncommon'))).toEqual({
+      guaranteedLuck: 0,
+      chancePct: 35,
+    });
+    expect(getUnitSellLuckRefund(data.gradesById.get('rare'))).toEqual({
+      guaranteedLuck: 1,
+      chancePct: 0,
+    });
+    expect(getUnitSellLuckRefund(data.gradesById.get('legendary'))).toEqual({
+      guaranteedLuck: 2,
+      chancePct: 0,
+    });
+    expect(getUnitSellLuckRefund(data.gradesById.get('transcendent'))).toEqual({
+      guaranteedLuck: 4,
+      chancePct: 0,
+    });
+    expect(getUnitSellLuckRefund(data.gradesById.get('immortal'))).toEqual({
+      guaranteedLuck: 7,
+      chancePct: 0,
+    });
 
     // 2. Verify DISCARD_DROP_RECT strictly sits between monster corridor (y=652) & bench header (y=715)
     //    with zero overlap against all 18 field cells and 12 bench cells
@@ -1731,11 +1788,10 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     metaA.grantDevMeta(1200, 5, 220);
     const drawRes = metaA.drawRelic(data.relics, 'key', () => 0.25);
     expect(drawRes.ok).toBe(true);
-    metaA.discoverUnit(data.unitsById.get('cheonma')!, data.gradesById.get('transcendent')!);
+    metaA.discoverUnit(data.unitsById.get('cheonma')!, data.gradesById.get('immortal')!);
 
     // Run live simulation for 320 ticks with summons, upgrades, moves, and active combat
     const liveSim = new Simulation(data, 0x51525354, metaA.getRelicLevels(), 'normal', null);
-    liveSim.commands.enqueue({ type: 'summon' });
     liveSim.commands.enqueue({ type: 'summon' });
     liveSim.commands.enqueue({ type: 'summon' });
     liveSim.commands.enqueue({ type: 'summon' });
@@ -1745,7 +1801,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     }
 
     // Export mid-run snapshot -> persist via MetaStore -> reload into fresh Simulation
-    const savedRun = liveSim.exportRunSave();
+    const savedRun = liveSim.exportRunSave(1700000000000);
+    expect(savedRun.version).toBe(RUN_SAVE_SCHEMA_VERSION);
+    expect(savedRun.savedAtMs).toBe(1700000000000);
     metaA.saveActiveRun(savedRun);
 
     const loadedRun = metaA.loadActiveRun();
@@ -1805,7 +1863,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(metaB.getRelicLevels()).toEqual(metaA.getRelicLevels());
   });
 
-  it('applies 무림 비경 Secret Realm modifiers (0% interest, +28 armor/+15% gamble, +12 shred, boosted 삼재합진) and awards first-clear silk + gold + keys once', () => {
+  it('applies 무림 비경 Secret Realm modifiers (0% interest, +armor/+gamble, +12 shred, boosted 삼재합진) and awards first-clear silk + gold + keys once', () => {
     const data = loadGameData();
 
     // 1. 검총비경 (trial_sword_tomb): targetWave = 15 & golden_vault interest strictly sealed to 0
@@ -1821,11 +1879,12 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snapTomb0.trialId).toBe('trial_sword_tomb');
     expect(snapTomb0.relicBonus.interestPct).toBe(0);
 
-    // 2. 철혈비경 (trial_crimson_iron): +15% gambleBonusPct & +28 bonus monster armor on spawn
+    // 2. 철혈비경 (trial_crimson_iron): +15% gambleBonusPct & bonus monster armor on spawn
     const stdSim = new Simulation(data, 0x10203040, {}, 'normal', null);
     const ironSim = new Simulation(data, 0x10203040, {}, 'normal', 'trial_crimson_iron');
     expect(ironSim.buildSnapshot(1, false).relicBonus.gambleBonusPct).toBe(
-      stdSim.buildSnapshot(1, false).relicBonus.gambleBonusPct + 15,
+      stdSim.buildSnapshot(1, false).relicBonus.gambleBonusPct +
+        TRIAL_CONFIGS.trial_crimson_iron.gambleBonusPct,
     );
     for (let t = 0; t < 40; t++) {
       stdSim.tick();
@@ -1845,7 +1904,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     stdSim.tick();
     const venomTang = venomSim.buildSnapshot(1, false).field.find((u) => u?.unitId === 'tang_assassin')!;
     const stdTang = stdSim.buildSnapshot(1, false).field.find((u) => u?.unitId === 'tang_assassin')!;
-    expect(venomTang.armorShred).toBe(stdTang.armorShred + 12);
+    expect(venomTang.armorShred).toBe(
+      stdTang.armorShred + TRIAL_CONFIGS.trial_venom_gale.unorthodoxBonusShred,
+    );
 
     // 4. 삼재비경 (trial_chaos_trinity): 2 Orthodox + 2 Unorthodox + 2 Demonic activates boosted 삼재합진 (+130% vs +30%)
     const trinitySim = new Simulation(data, 0x44556677, {}, 'normal', 'trial_chaos_trinity');
@@ -1905,6 +1966,143 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(rec2.firstClearBonusGold).toBe(0);
     expect(rec2.firstClearBonusKeys).toBe(0);
     expect(rec2.firstClearBonusSilk).toBe(0);
+  });
+
+  it('differentiates all 6 현경·신마 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
+    const data = loadGameData();
+    const immortals = data.units.filter((u) => u.grade === 'immortal');
+    expect(immortals.length).toBe(6);
+
+    // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.5x max/min ATK)
+    const atks = immortals.map((u) => u.atk);
+    const passiveIds = new Set(immortals.map((u) => u.passiveTrait?.id).filter(Boolean));
+    expect(new Set(atks).size).toBe(6);
+    expect(passiveIds.size).toBe(6);
+    expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.5);
+
+    // Verify SlotView exposes passiveTrait and sword_immortal's 60% armorPiercePct out-scales un-pierced armor reduction
+    const simPierce = new Simulation(data, 0x12344321, {}, 'hell', 'trial_crimson_iron');
+    // Craft sword_immortal onto field
+    const craftSub = (sim: Simulation, recipeId: string): void => {
+      const leaves = sim.recipeGraph.leafCost.get(recipeId)!;
+      for (const [unitId, count] of leaves) {
+        for (let i = 0; i < count; i++) {
+          sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+          sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+        }
+      }
+      sim.tick();
+      sim.commands.enqueue({ type: 'craft', recipeId, chain: true });
+      sim.tick();
+    };
+    craftSub(simPierce, 'r_sword_saint');
+    craftSub(simPierce, 'r_murim_lord');
+    craftSub(simPierce, 'r_hwasan_master');
+    craftSub(simPierce, 'r_mudang_master');
+    simPierce.commands.enqueue({ type: 'craft', recipeId: 'r_sword_immortal', chain: false });
+    simPierce.tick();
+
+    const immortalSlot = simPierce
+      .buildSnapshot(1, false)
+      .field.find((s) => s?.unitId === 'sword_immortal');
+    expect(immortalSlot?.passiveTrait?.id).toBe('immortal_pierce');
+    expect(immortalSlot?.passiveTrait?.armorPiercePct).toBe(0.6);
+
+    // Let sword_immortal strike heavily armored Crimson Iron Hell monsters and verify damage exceeds un-pierced formula!
+    let hitObserved = 0;
+    simPierce.events.on('monster:hit', (ev) => {
+      if (ev.unitId === 'sword_immortal' && !ev.isCrit && !ev.isSkill && hitObserved === 0) {
+        hitObserved = ev.damage;
+      }
+    });
+    for (let t = 0; t < 180 && hitObserved === 0; t++) {
+      simPierce.tick();
+    }
+    const atkStats = simPierce.getUnitEffectiveAtk('sword_immortal');
+    const baseAtk = atkStats.baseAtk + atkStats.bonusAtk;
+    const wave1HeavyArmor = simPierce.computeMonsterArmor(1, false, false);
+    const unpiercedExpected = Math.round(baseAtk * (100 / (100 + wave1HeavyArmor)));
+    expect(wave1HeavyArmor).toBeGreaterThan(25);
+    expect(hitObserved).toBeGreaterThan(unpiercedExpected);
+  });
+
+  it('migrates legacy v1 RunSaveData to v2 cleanly and surfaces non-silent Korean discardedReason on incompatible saves', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x22446688);
+    sim.commands.enqueue({ type: 'summon' });
+    sim.tick();
+
+    const v2Save = sim.exportRunSave(1700001234567);
+    // Construct a legacy v1 save payload with appliedStartCommonWisp / appliedStartUncommonWisp
+    const legacyV1Raw: Record<string, unknown> = {
+      ...v2Save,
+      version: 1,
+      appliedStartCommonWisp: 2,
+      appliedStartUncommonWisp: 1,
+    };
+    delete legacyV1Raw.appliedStartWisps;
+
+    const migOk = migrateRunSave(legacyV1Raw, data);
+    expect(migOk.discardedReason).toBeNull();
+    expect(migOk.migratedFrom).toBe(1);
+    expect(migOk.save?.version).toBe(RUN_SAVE_SCHEMA_VERSION);
+    expect(migOk.save?.appliedStartWisps.common).toBe(2);
+    expect(migOk.save?.appliedStartWisps.uncommon).toBe(1);
+
+    const restored = new Simulation(data, 0x11111111);
+    expect(restored.restoreRunSave(migOk.save!)).toBe(true);
+
+    // Unknown/removed unitId -> returns explicit Korean discardedReason and clears persisted storage
+    const brokenUnitSave = {
+      ...v2Save,
+      units: [{ ...v2Save.units[0]!, unitId: 'deleted_legacy_hero_999' }],
+    };
+    const storeMap = new Map<string, string>();
+    const memStorage: StorageLike = {
+      getItem: (k) => storeMap.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k) => {
+        storeMap.delete(k);
+      },
+    };
+    memStorage.setItem(RUN_STORAGE_KEY, JSON.stringify(brokenUnitSave));
+    const meta = new MetaStore(memStorage);
+    const loadBroken = meta.loadActiveRunMigrated(data);
+    expect(loadBroken.save).toBeNull();
+    expect(loadBroken.discardedReason).toContain('협객 데이터');
+    expect(storeMap.has(RUN_STORAGE_KEY)).toBe(false);
+
+    // Unsupported future/ancient schema version -> explicit Korean discardedReason
+    const badVer = migrateRunSave({ ...v2Save, version: 99 }, data);
+    expect(badVer.save).toBeNull();
+    expect(badVer.discardedReason).toContain('v99');
+  });
+
+  it('persists first-run onboarding tutorial completion (tutorialDone) across storage reloads and MRD1- backup codes', () => {
+    const storeMap = new Map<string, string>();
+    const memStorage: StorageLike = {
+      getItem: (k) => storeMap.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap.set(k, v);
+      },
+    };
+
+    const meta1 = new MetaStore(memStorage);
+    expect(meta1.isTutorialDone()).toBe(false);
+
+    meta1.setTutorialDone(true);
+    expect(meta1.isTutorialDone()).toBe(true);
+
+    const metaReloaded = new MetaStore(memStorage);
+    expect(metaReloaded.isTutorialDone()).toBe(true);
+
+    const code = metaReloaded.exportBackupCode();
+    const importedMeta = new MetaStore(null);
+    expect(importedMeta.isTutorialDone()).toBe(false);
+    expect(importedMeta.importBackupCode(code).ok).toBe(true);
+    expect(importedMeta.isTutorialDone()).toBe(true);
   });
 });
 

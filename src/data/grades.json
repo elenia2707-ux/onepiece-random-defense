@@ -5,7 +5,18 @@
     "rank": 1,
     "color": "#64748b",
     "summonable": true,
-    "summonWeight": 78
+    "summonWeight": 84,
+    "isSurplusCleanupTarget": true,
+    "starterWispCount": 1,
+    "scrollChestUnlockLv": 1,
+    "scrollChestBonusLv": 8,
+    "sellLuckGuaranteed": 0,
+    "sellLuckChancePct": 0,
+    "codexRewardGold": 10,
+    "codexRewardKeys": 0,
+    "showSkillCallout": false,
+    "isHighTierToast": false,
+    "isCutInTier": false
   },
   {
     "id": "uncommon",
@@ -13,7 +24,18 @@
     "rank": 2,
     "color": "#16a34a",
     "summonable": true,
-    "summonWeight": 22
+    "summonWeight": 16,
+    "isSurplusCleanupTarget": false,
+    "starterWispCount": 0,
+    "scrollChestUnlockLv": 4,
+    "scrollChestBonusLv": 0,
+    "sellLuckGuaranteed": 0,
+    "sellLuckChancePct": 35,
+    "codexRewardGold": 20,
+    "codexRewardKeys": 0,
+    "showSkillCallout": false,
+    "isHighTierToast": false,
+    "isCutInTier": false
   },
   {
     "id": "rare",
@@ -21,7 +43,18 @@
     "rank": 3,
     "color": "#2563eb",
     "summonable": false,
-    "summonWeight": 0
+    "summonWeight": 0,
+    "isSurplusCleanupTarget": false,
+    "starterWispCount": 0,
+    "scrollChestUnlockLv": 0,
+    "scrollChestBonusLv": 0,
+    "sellLuckGuaranteed": 1,
+    "sellLuckChancePct": 0,
+    "codexRewardGold": 35,
+    "codexRewardKeys": 0,
+    "showSkillCallout": false,
+    "isHighTierToast": true,
+    "isCutInTier": false
   },
   {
     "id": "legendary",
@@ -29,7 +62,18 @@
     "rank": 4,
     "color": "#ea580c",
     "summonable": false,
-    "summonWeight": 0
+    "summonWeight": 0,
+    "isSurplusCleanupTarget": false,
+    "starterWispCount": 0,
+    "scrollChestUnlockLv": 0,
+    "scrollChestBonusLv": 0,
+    "sellLuckGuaranteed": 2,
+    "sellLuckChancePct": 0,
+    "codexRewardGold": 65,
+    "codexRewardKeys": 1,
+    "showSkillCallout": true,
+    "isHighTierToast": true,
+    "isCutInTier": false
   },
   {
     "id": "transcendent",
@@ -37,7 +81,18 @@
     "rank": 5,
     "color": "#e11d48",
     "summonable": false,
-    "summonWeight": 0
+    "summonWeight": 0,
+    "isSurplusCleanupTarget": false,
+    "starterWispCount": 0,
+    "scrollChestUnlockLv": 0,
+    "scrollChestBonusLv": 0,
+    "sellLuckGuaranteed": 4,
+    "sellLuckChancePct": 0,
+    "codexRewardGold": 130,
+    "codexRewardKeys": 1,
+    "showSkillCallout": true,
+    "isHighTierToast": true,
+    "isCutInTier": true
   },
   {
     "id": "immortal",
@@ -46,6 +101,17 @@
     "color": "#9333ea",
     "summonable": false,
     "summonWeight": 0,
-    "fx": "rainbow"
+    "fx": "rainbow",
+    "isSurplusCleanupTarget": false,
+    "starterWispCount": 0,
+    "scrollChestUnlockLv": 0,
+    "scrollChestBonusLv": 0,
+    "sellLuckGuaranteed": 7,
+    "sellLuckChancePct": 0,
+    "codexRewardGold": 300,
+    "codexRewardKeys": 3,
+    "showSkillCallout": true,
+    "isHighTierToast": true,
+    "isCutInTier": true
   }
 ]

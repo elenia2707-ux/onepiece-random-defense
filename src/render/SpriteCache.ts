@@ -7,6 +7,7 @@ import type {
   RelicId,
   UnitDef,
 } from '../data/types';
+import { type AtlasFrameRect, spriteAtlasLoader } from './AssetLoader';
 import {
   paintMonsterChibi,
   paintRelicPixelArt,
@@ -74,8 +75,6 @@ export class SpriteCache {
   private readonly statusBadgeSpecs = new Map<string, StatusBadgeKind>();
   private readonly skinnedVariants = new Map<string, Array<{ key: string; skin: HeroSkinDef }>>();
   private readonly probed = new Set<string>();
-  private readonly loadedSheetImages = new Map<string, HTMLImageElement>();
-  private readonly pendingSheetCallbacks = new Map<string, Array<(img: HTMLImageElement) => void>>();
   private readonly spriteListeners: Array<() => void> = [];
   private glyphCanvas: HTMLCanvasElement | null = null;
   private readonly glyphMap = new Map<string, GlyphMetric>();
@@ -120,8 +119,6 @@ export class SpriteCache {
     this.hitBadgeSpecs.clear();
     this.statusBadgeSpecs.clear();
     this.skinnedVariants.clear();
-    this.loadedSheetImages.clear();
-    this.pendingSheetCallbacks.clear();
     if (this.glyphCanvas) {
       this.glyphCanvas.width = 0;
       this.glyphCanvas.height = 0;
@@ -173,62 +170,49 @@ export class SpriteCache {
   }
 
   /* ---------------------------------------------------------------- */
-  /*  Hybrid external pixel-sheet loader (`public/sprites/{id}.png`)   */
+  /*  Hybrid WebP atlas loader (`public/assets/sprites_atlas.webp`)     */
   /* ---------------------------------------------------------------- */
 
   public onSpriteUpdated(cb: () => void): void {
     this.spriteListeners.push(cb);
   }
 
-  private probeExternal(id: string, onLoad: (img: HTMLImageElement) => void): void {
+  private probeExternal(
+    id: string,
+    onLoad: (img: HTMLImageElement, frame: AtlasFrameRect) => void,
+  ): void {
     if (this.probed.has(id) || typeof Image === 'undefined') return;
     this.probed.add(id);
-
-    const fileId = id;
-    const cached = this.loadedSheetImages.get(fileId);
-    if (cached) {
-      onLoad(cached);
-      return;
-    }
-
-    const list = this.pendingSheetCallbacks.get(fileId);
-    if (list) {
-      list.push(onLoad);
-      return;
-    }
-
-    const callbacks: Array<(img: HTMLImageElement) => void> = [onLoad];
-    this.pendingSheetCallbacks.set(fileId, callbacks);
-
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => {
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        this.loadedSheetImages.set(fileId, img);
-        const queued = this.pendingSheetCallbacks.get(fileId) ?? [];
-        this.pendingSheetCallbacks.delete(fileId);
-        for (const cb of queued) cb(img);
-      }
-    };
-    img.onerror = () => {
-      this.pendingSheetCallbacks.delete(fileId);
-    };
-    img.src = `${import.meta.env.BASE_URL}sprites/${fileId}.png`;
+    spriteAtlasLoader.requestFrame(id, onLoad);
   }
 
-  /** Nearest-neighbor contain-fit, bottom-anchored so pixel edges never blur. */
-  private paintExternal(canvas: HTMLCanvasElement, img: HTMLImageElement): void {
-    const targetSize = Math.max(UNIT_PIXEL_SIZE, img.naturalWidth, img.naturalHeight);
+  /** Nearest-neighbor atlas slice, bottom-anchored so pixel edges never blur. */
+  private paintExternal(
+    canvas: HTMLCanvasElement,
+    atlasImg: HTMLImageElement,
+    frame: AtlasFrameRect,
+  ): void {
+    const targetSize = Math.max(UNIT_PIXEL_SIZE, frame.w, frame.h);
     canvas.width = targetSize;
     canvas.height = targetSize;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
-    const k = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
-    const w = Math.round(img.naturalWidth * k);
-    const h = Math.round(img.naturalHeight * k);
-    ctx.drawImage(img, Math.round((canvas.width - w) * 0.5), canvas.height - h, w, h);
+    const k = Math.min(canvas.width / frame.w, canvas.height / frame.h);
+    const w = Math.round(frame.w * k);
+    const h = Math.round(frame.h * k);
+    ctx.drawImage(
+      atlasImg,
+      frame.x,
+      frame.y,
+      frame.w,
+      frame.h,
+      Math.round((canvas.width - w) * 0.5),
+      canvas.height - h,
+      w,
+      h,
+    );
   }
 
   private notifySpriteUpdated(): void {
@@ -420,8 +404,8 @@ export class SpriteCache {
       if (ctx) paintUnitChibi(ctx, unit.id, UNIT_PIXEL_SIZE);
       this.cache.set(baseKey, created);
 
-      this.probeExternal(unit.id, (img) => {
-        this.paintExternal(created, img);
+      this.probeExternal(unit.id, (img, frame) => {
+        this.paintExternal(created, img, frame);
         this.portraitUrls.delete(`url:${unit.id}`);
         const variants = this.skinnedVariants.get(unit.id);
         if (variants) {
@@ -866,8 +850,8 @@ export class SpriteCache {
       if (bctx) paintMonsterChibi(bctx, kind, size);
       this.cache.set(baseKey, created);
 
-      this.probeExternal(kind, (img) => {
-        this.paintExternal(created, img);
+      this.probeExternal(kind, (img, frame) => {
+        this.paintExternal(created, img, frame);
         const flash = this.cache.get(flashKey);
         if (flash) this.paintFlash(flash, created);
         this.portraitUrls.delete(`url:monster:${kind}`);

@@ -430,6 +430,45 @@
     "priority": 510
   },
   {
+    "id": "r_tang_elder",
+    "output": "tang_elder",
+    "ingredients": [
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "tang_assassin", "n": 2 }
+    ],
+    "priority": 105
+  },
+  {
+    "id": "r_blood_bishop",
+    "output": "blood_bishop",
+    "ingredients": [
+      { "unit": "cult_protector", "n": 1 },
+      { "unit": "blood_blade", "n": 1 },
+      { "unit": "bone_fiend", "n": 1 }
+    ],
+    "priority": 115
+  },
+  {
+    "id": "r_poison_dragon",
+    "output": "poison_dragon",
+    "ingredients": [
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "tang_elder", "n": 1 },
+      { "unit": "poison_healer", "n": 1 }
+    ],
+    "priority": 202
+  },
+  {
+    "id": "r_heavenly_demon_heir",
+    "output": "heavenly_demon_heir",
+    "ingredients": [
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 }
+    ],
+    "priority": 204
+  },
+  {
     "id": "r_alt_mad_demon",
     "output": "mad_demon",
     "ingredients": [
@@ -438,7 +477,107 @@
       { "unit": "nokrim_chief", "n": 1 }
     ],
     "priority": 520
+  },
+  {
+    "id": "r_alt_tang_elder",
+    "output": "tang_elder",
+    "ingredients": [
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "plum_swordsman", "n": 1 },
+      { "unit": "tang_assassin", "n": 1 }
+    ],
+    "priority": 525
+  },
+  {
+    "id": "r_alt_blood_bishop",
+    "output": "blood_bishop",
+    "ingredients": [
+      { "unit": "cult_protector", "n": 2 },
+      { "unit": "cult_initiate", "n": 1 }
+    ],
+    "priority": 530
+  },
+  {
+    "id": "r_alt_tang_patriarch_elder",
+    "output": "tang_patriarch",
+    "ingredients": [
+      { "unit": "tang_elder", "n": 1 },
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 }
+    ],
+    "priority": 535
+  },
+  {
+    "id": "r_alt_flame_demon_bishop",
+    "output": "flame_demon",
+    "ingredients": [
+      { "unit": "blood_bishop", "n": 1 },
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "bone_fiend", "n": 1 }
+    ],
+    "priority": 540
+  },
+  {
+    "id": "r_alt_poison_dragon",
+    "output": "poison_dragon",
+    "ingredients": [
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "tang_elder", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 }
+    ],
+    "priority": 545
+  },
+  {
+    "id": "r_alt_heavenly_demon_heir",
+    "output": "heavenly_demon_heir",
+    "ingredients": [
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "cult_elder", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 }
+    ],
+    "priority": 550
+  },
+  {
+    "id": "r_alt_cheonma_heir",
+    "output": "cheonma",
+    "ingredients": [
+      { "unit": "heavenly_demon_heir", "n": 1 },
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "mad_demon", "n": 1 }
+    ],
+    "priority": 560
+  },
+  {
+    "id": "r_alt_hell_flame_heir",
+    "output": "hell_flame_sovereign",
+    "ingredients": [
+      { "unit": "heavenly_demon_heir", "n": 1 },
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 }
+    ],
+    "priority": 565
+  },
+  {
+    "id": "r_alt_venom_lord_dragon",
+    "output": "thousand_venom_lord",
+    "ingredients": [
+      { "unit": "poison_dragon", "n": 1 },
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "tang_elder", "n": 1 }
+    ],
+    "priority": 570
+  },
+  {
+    "id": "r_alt_asura_dragon",
+    "output": "asura_emperor",
+    "ingredients": [
+      { "unit": "poison_dragon", "n": 1 },
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "blood_demon", "n": 1 }
+    ],
+    "priority": 575
   }
 ]
+
 
 
