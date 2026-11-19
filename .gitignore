@@ -5,8 +5,10 @@ coverage/
 *.log
 *.tsbuildinfo
 
-# OS / Editor
+# OS / Editor / Tooling caches
 .DS_Store
+__pycache__/
+*.pyc
 
 # Workspace home dotfiles
 /.bash_logout
