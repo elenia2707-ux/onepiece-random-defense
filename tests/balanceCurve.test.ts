@@ -269,6 +269,18 @@ function runSmartBot(
         return 76;
       case 'b_trinity_harmony':
         return 72;
+      case 'b_reaper_seal':
+        return 94;
+      case 'b_chain_thunder':
+        return 89;
+      case 'b_frost_shatter':
+        return 88;
+      case 'b_piercing_echo':
+        return 86;
+      case 'b_relic_resonance':
+        return Object.values(relics).filter((v) => (v ?? 0) > 0).length >= 6 ? 98 : 35;
+      case 'b_bench_support':
+        return 74;
       default:
         return 50;
     }
@@ -746,12 +758,51 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
 
     expect(abyss0Wins).toBe(0);
     expect(abyss15Wins).toBeGreaterThanOrEqual(2);
-  }, 25_000);
 
-  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs', () => {
+    // Also verify v2.0 new trials: trial_gale_blitz (Lv.6 unlockable) & trial_abyss_sanctum (apex Lv.15 gate)
+    const lv6Relics: Partial<Record<RelicId, number>> = {
+      founding_jade_seal: 6,
+      heavenly_scroll_chest: 6,
+      golden_vault: 6,
+      million_sword_seal: 6,
+      bandit_dagger: 6,
+      immortal_furnace: 6,
+    };
+    const gale0 = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
+      runSmartBot(data, s, 'normal', {}, 'trial_gale_blitz'),
+    );
+    const gale6 = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
+      runSmartBot(data, s, 'normal', lv6Relics, 'trial_gale_blitz'),
+    );
+    const sanctum0 = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
+      runSmartBot(data, s, 'normal', {}, 'trial_abyss_sanctum'),
+    );
+    const sanctum15 = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
+      runSmartBot(data, s, 'normal', full16Lv15, 'trial_abyss_sanctum'),
+    );
+
+    const gale0Wins = gale0.filter((r) => r.victory).length;
+    const gale6Wins = gale6.filter((r) => r.victory).length;
+    const sanctum0Wins = sanctum0.filter((r) => r.victory).length;
+    const sanctum15Wins = sanctum15.filter((r) => r.victory).length;
+
+    console.info('[BalanceAudit][v2Trials]', {
+      galeBlitz0: `${gale0Wins}/4 (waves: [${gale0.map((r) => r.finalWave).join(',')}])`,
+      galeBlitzLv6: `${gale6Wins}/4 (waves: [${gale6.map((r) => r.finalWave).join(',')}])`,
+      abyssSanctum0: `${sanctum0Wins}/4 (waves: [${sanctum0.map((r) => r.finalWave).join(',')}])`,
+      abyssSanctum16xLv15: `${sanctum15Wins}/4 (waves: [${sanctum15.map((r) => r.finalWave).join(',')}])`,
+    });
+
+    expect(gale0Wins).toBeLessThanOrEqual(2);
+    expect(gale6Wins).toBeGreaterThanOrEqual(2);
+    expect(sanctum0Wins).toBe(0);
+    expect(sanctum15Wins).toBeGreaterThanOrEqual(2);
+  }, 35_000);
+
+  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs (all 7 Immortals)', () => {
     const data = loadGameData();
     const immortalIds = data.units.filter((u) => u.grade === 'immortal').map((u) => u.id);
-    expect(immortalIds.length).toBe(6);
+    expect(immortalIds.length).toBe(7);
 
     const midRelics: Partial<Record<RelicId, number>> = {
       founding_jade_seal: 3,
@@ -809,9 +860,9 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       immortalSurviveCount,
     });
 
-    // At least 4 of 6 Immortals must participate meaningfully (>= 5% Immortal share each)
-    expect(activeImmortalCount).toBeGreaterThanOrEqual(4);
-    // No single Immortal may monopolize > 35% of total Immortal damage (previously top 3 held 80%!)
+    // At least 5 of 7 Immortals must participate meaningfully (>= 5% Immortal share each)
+    expect(activeImmortalCount).toBeGreaterThanOrEqual(5);
+    // No single Immortal may monopolize > 35% of total Immortal damage
     expect(maxSharePct).toBeLessThanOrEqual(35);
     // Previously never-surviving sword_immortal & asura_emperor must actually appear in runs
     expect(

@@ -814,4 +814,202 @@
   color: #fef9c3;
 }
 
+/* =========================================================
+   v2.0: Daily Martial Quests & Detailed Settlement Battle Report
+   ========================================================= */
+.daily-section-label {
+  color: #fde047 !important;
+}
+
+.daily-quest-card {
+  background: linear-gradient(180deg, #1b3650 0%, #0f1f33 100%) !important;
+}
+
+.daily-quest-card.daily-claimable {
+  background: linear-gradient(180deg, #14532d 0%, #052e16 100%) !important;
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px #4ade80 !important;
+}
+
+.daily-pill {
+  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
+}
+
+.mission-prog-fill.daily {
+  background: linear-gradient(90deg, #38bdf8 0%, #4ade80 100%);
+}
+
+.mission-reward-pill.gold {
+  background: #78350f;
+  color: #fde047;
+}
+
+.mission-reward-pill.key {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.mission-reward-pill.silk {
+  background: #581c87;
+  color: #f3e8ff;
+}
+
+.settlement-report-box {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 14px;
+  background: rgba(10, 18, 28, 0.78);
+  border: 2.5px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+}
+
+.settlement-report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  color: #fde047;
+  text-shadow: var(--outline-1);
+}
+
+.settlement-report-total {
+  font-size: 12px;
+  color: #bae6fd;
+}
+
+.report-faction-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-faction-bar {
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: #0f172a;
+  overflow: hidden;
+  display: flex;
+}
+
+.rf-seg.ortho {
+  background: #0284c7;
+}
+
+.rf-seg.unortho {
+  background: #16a34a;
+}
+
+.rf-seg.demo {
+  background: #e11d48;
+}
+
+.report-faction-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #e2e8f0;
+}
+
+.rf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.rf-dot.ortho {
+  background: #38bdf8;
+}
+
+.rf-dot.unortho {
+  background: #4ade80;
+}
+
+.rf-dot.demo {
+  background: #fb7185;
+}
+
+.report-dps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-dps-row {
+  display: grid;
+  grid-template-columns: 16px 76px 1fr 78px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #f8fafc;
+}
+
+.report-rank {
+  font-family: var(--font-display);
+  color: #fde047;
+  text-align: center;
+}
+
+.report-hero {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+
+.report-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1.5px solid var(--ink);
+  overflow: hidden;
+}
+
+.report-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.report-val {
+  text-align: right;
+  font-size: 11px;
+  color: #cbd5e1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.report-empty {
+  font-size: 11.5px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.report-econ-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.report-econ-chip {
+  padding: 2px 4px;
+  border-radius: 7px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1.5px solid var(--ink);
+  font-size: 10.5px;
+  color: #fef3c7;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+
 

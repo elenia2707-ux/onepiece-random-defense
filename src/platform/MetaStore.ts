@@ -1,5 +1,6 @@
 import {
   CLEAR_TARGET_WAVE,
+  computeRelicSetBonuses,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
   RELIC_MAX_LEVEL,
@@ -26,11 +27,19 @@ import type {
   UnitId,
 } from '../data/types';
 import {
+  type DailyQuestId,
+  type DailyQuestView,
+  getLocalDateKey,
+  pickDailyQuestsForDate,
+} from './DailyQuests';
+import {
   migrateRunSave,
   RUN_SAVE_SCHEMA_VERSION,
   type RunSaveData,
   type SaveMigrationResult,
 } from './SaveMigration';
+
+export type { DailyQuestId, DailyQuestView };
 
 export const RELIC_ORDER: readonly RelicId[] = [
   'golden_vault',
@@ -69,6 +78,7 @@ const VALID_COURT_SKIN_SET: ReadonlySet<string> = new Set<CourtSkinId>([
   'court_crimson_sunset',
   'court_blood_moon',
   'court_golden_palace',
+  'court_snow_sword_pavilion',
 ]);
 
 export interface StorageLike {
@@ -87,6 +97,21 @@ export interface TitleProgress {
   readonly current: number;
   readonly target: number;
 }
+
+export type DailyQuestClaimResult =
+  | {
+      readonly ok: true;
+      readonly questId: DailyQuestId;
+      readonly questName: string;
+      readonly rewardGold: number;
+      readonly rewardKeys: number;
+      readonly rewardSilk: number;
+      readonly unlockedTitleIds?: readonly TitleId[];
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
 
 export interface MetaProfile {
   readonly gold: number;
@@ -112,6 +137,10 @@ export interface MetaProfile {
   readonly ownedSkinCount: number;
   readonly equippedHeroSkins: Readonly<Record<UnitId, string>>;
   readonly equippedCourtSkin: CourtSkinId;
+  readonly dailyDate: string;
+  readonly dailyQuests: readonly DailyQuestView[];
+  readonly claimableDailyCount: number;
+  readonly totalDailyClaimed: number;
   readonly tutorialDone: boolean;
   readonly rev: number;
 }
@@ -125,6 +154,9 @@ export interface SettlementInput {
   readonly trialId?: TrialId | null;
   readonly victory?: boolean;
   readonly elapsedTicks?: number;
+  readonly usedHighFormation?: boolean;
+  readonly craftedImmortal?: boolean;
+  readonly dateKey?: string;
 }
 
 export interface SettlementReward {
@@ -291,6 +323,18 @@ export function computeTitleProgress(profile: MetaProfile, title: TitleDef): Tit
       }
       return { current: Math.min(title.target, owned), target: title.target };
     }
+    case 'relic_sets_active': {
+      const sets = computeRelicSetBonuses(profile.relics);
+      return { current: Math.min(title.target, sets.activeSetCount), target: title.target };
+    }
+    case 'relic_sets_mythic': {
+      const sets = computeRelicSetBonuses(profile.relics);
+      return { current: Math.min(title.target, sets.mythicSetCount), target: title.target };
+    }
+    case 'daily_quests_claimed':
+      return { current: Math.min(title.target, profile.totalDailyClaimed), target: title.target };
+    case 'trial_abyss_clear':
+      return { current: profile.clearedTrials.trial_abyss_sanctum ? 1 : 0, target: 1 };
   }
 }
 
@@ -450,6 +494,8 @@ function createEmptyClearedTrials(): Record<TrialId, boolean> {
     trial_sword_tomb: false,
     trial_crimson_iron: false,
     trial_chaos_trinity: false,
+    trial_gale_blitz: false,
+    trial_abyss_sanctum: false,
   };
 }
 
@@ -459,6 +505,8 @@ function createEmptyTrialRecords(): Record<TrialId, TrialRecord> {
     trial_sword_tomb: { clears: 0, bestWave: 0, bestTicks: null },
     trial_crimson_iron: { clears: 0, bestWave: 0, bestTicks: null },
     trial_chaos_trinity: { clears: 0, bestWave: 0, bestTicks: null },
+    trial_gale_blitz: { clears: 0, bestWave: 0, bestTicks: null },
+    trial_abyss_sanctum: { clears: 0, bestWave: 0, bestTicks: null },
   };
 }
 
@@ -524,26 +572,135 @@ export class MetaStore {
   };
   private readonly equippedHeroSkins: Record<UnitId, string> = {};
   private equippedCourtSkin: CourtSkinId = DEFAULT_COURT_SKIN_ID;
+  private dailyDate = getLocalDateKey();
+  private dailyProgress: Record<string, number> = {};
+  private dailyClaimed: Record<string, boolean> = {};
+  private totalDailyClaimed = 0;
   private tutorialDone = false;
   private rev = 1;
 
   public constructor(customStorage?: StorageLike | null) {
     this.storage = customStorage !== undefined ? customStorage : resolveDefaultStorage();
     this.load();
+    this.ensureDailyDate();
     this.unlockEligibleAchievementSkins();
     this.evaluateTitles(false);
   }
 
-  public getProfile(): MetaProfile {
+  public ensureDailyDate(dateKey: string = getLocalDateKey()): boolean {
+    if (this.dailyDate === dateKey) return false;
+    this.dailyDate = dateKey;
+    this.dailyProgress = {};
+    this.dailyClaimed = {};
+    return true;
+  }
+
+  public buildDailyQuestViews(dateKey: string = getLocalDateKey()): readonly DailyQuestView[] {
+    this.ensureDailyDate(dateKey);
+    const defs = pickDailyQuestsForDate(this.dailyDate);
+    return defs.map((def) => {
+      const progress = Math.min(def.target, Math.max(0, Math.floor(this.dailyProgress[def.id] ?? 0)));
+      return {
+        def,
+        progress,
+        completed: progress >= def.target,
+        claimed: Boolean(this.dailyClaimed[def.id]),
+      };
+    });
+  }
+
+  public claimDailyQuest(
+    questId: DailyQuestId,
+    dateKey: string = getLocalDateKey(),
+  ): DailyQuestClaimResult {
+    this.ensureDailyDate(dateKey);
+    const todayDefs = pickDailyQuestsForDate(this.dailyDate);
+    const def = todayDefs.find((q) => q.id === questId);
+    if (!def) {
+      return { ok: false, reason: '오늘의 일일 강호 과제 목록에 없는 과제입니다.' };
+    }
+    if (this.dailyClaimed[questId]) {
+      return { ok: false, reason: '이미 보상을 수령한 일일 과제입니다.' };
+    }
+    const progress = Math.max(0, Math.floor(this.dailyProgress[questId] ?? 0));
+    if (progress < def.target) {
+      return { ok: false, reason: `과제 목표를 아직 달성하지 못했습니다 (${progress}/${def.target}).` };
+    }
+
+    this.dailyClaimed[questId] = true;
+    this.totalDailyClaimed += 1;
+    this.gold += def.rewardGold;
+    this.keys += def.rewardKeys;
+    this.silk += def.rewardSilk;
+    const titleRes = this.evaluateTitles(true);
+    this.rev++;
+    this.save();
+
+    return {
+      ok: true,
+      questId: def.id,
+      questName: def.name,
+      rewardGold: def.rewardGold,
+      rewardKeys: def.rewardKeys,
+      rewardSilk: def.rewardSilk,
+      unlockedTitleIds: titleRes.unlockedIds,
+    };
+  }
+
+  private advanceDailyQuests(input: SettlementInput, victory: boolean, wave: number): void {
+    this.ensureDailyDate(input.dateKey ?? getLocalDateKey());
+    const todayDefs = pickDailyQuestsForDate(this.dailyDate);
+    const monstersSlain = Math.max(0, Math.floor(input.monstersSlain));
+    const bossesSlain = Math.max(0, Math.floor(input.bossesSlain));
+
+    for (let i = 0; i < todayDefs.length; i++) {
+      const def = todayDefs[i]!;
+      const prev = Math.max(0, Math.floor(this.dailyProgress[def.id] ?? 0));
+      let next = prev;
+      switch (def.id) {
+        case 'dq_play_run':
+          next = prev + 1;
+          break;
+        case 'dq_slay_180':
+          next = prev + monstersSlain;
+          break;
+        case 'dq_boss_3':
+          next = prev + bossesSlain;
+          break;
+        case 'dq_clear_any':
+          if (victory) next = prev + 1;
+          break;
+        case 'dq_trial_clear':
+          if (victory && input.trialId) next = prev + 1;
+          break;
+        case 'dq_endless_35':
+          if (wave >= 35) next = Math.max(prev, 1);
+          break;
+        case 'dq_formation_6':
+          if (input.usedHighFormation) next = Math.max(prev, 1);
+          break;
+        case 'dq_craft_immortal':
+          if (input.craftedImmortal) next = Math.max(prev, 1);
+          break;
+      }
+      this.dailyProgress[def.id] = Math.min(def.target, next);
+    }
+  }
+
+  public getProfile(dateKey: string = getLocalDateKey()): MetaProfile {
     const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
     const ownedSkinCount = Object.values(this.ownedSkins).filter(Boolean).length;
     const clearedTrialCount = Object.values(this.clearedTrials).filter(Boolean).length;
     const unlockedTitleCount = Object.values(this.unlockedTitles).filter(Boolean).length;
+    const dailyQuests = this.buildDailyQuestViews(dateKey);
+    const claimableDailyCount = dailyQuests.filter((q) => q.completed && !q.claimed).length;
     const trialRecordsCopy: Record<TrialId, TrialRecord> = {
       trial_venom_gale: { ...this.trialRecords.trial_venom_gale },
       trial_sword_tomb: { ...this.trialRecords.trial_sword_tomb },
       trial_crimson_iron: { ...this.trialRecords.trial_crimson_iron },
       trial_chaos_trinity: { ...this.trialRecords.trial_chaos_trinity },
+      trial_gale_blitz: { ...this.trialRecords.trial_gale_blitz },
+      trial_abyss_sanctum: { ...this.trialRecords.trial_abyss_sanctum },
     };
     return {
       gold: this.gold,
@@ -569,6 +726,10 @@ export class MetaStore {
       ownedSkinCount,
       equippedHeroSkins: { ...this.equippedHeroSkins },
       equippedCourtSkin: this.equippedCourtSkin,
+      dailyDate: this.dailyDate,
+      dailyQuests,
+      claimableDailyCount,
+      totalDailyClaimed: this.totalDailyClaimed,
       tutorialDone: this.tutorialDone,
       rev: this.rev,
     };
@@ -1196,6 +1357,7 @@ export class MetaStore {
     if (isNewBest) {
       this.bestWave = wave;
     }
+    this.advanceDailyQuests(input, victory, wave);
     const unlockedSkinIds = this.unlockEligibleAchievementSkins();
     const titleRes = this.evaluateTitles(true);
     this.clearActiveRun();
@@ -1269,6 +1431,23 @@ export class MetaStore {
       }
     } else if (wave > this.difficultyBestWave[prevRecord.difficulty]) {
       this.difficultyBestWave[prevRecord.difficulty] = wave;
+    }
+
+    // Advance endless overtime deltas on today's daily quests without double-counting run/clear quests
+    this.ensureDailyDate(finalInput.dateKey ?? getLocalDateKey());
+    const deltaMonsters = Math.max(0, Math.floor(finalInput.monstersSlain) - prevRecord.monstersSlain);
+    const deltaBosses = Math.max(0, Math.floor(finalInput.bossesSlain) - prevRecord.bossesSlain);
+    const todayDefs = pickDailyQuestsForDate(this.dailyDate);
+    for (let i = 0; i < todayDefs.length; i++) {
+      const def = todayDefs[i]!;
+      const prev = Math.max(0, Math.floor(this.dailyProgress[def.id] ?? 0));
+      let next = prev;
+      if (def.id === 'dq_slay_180') next = prev + deltaMonsters;
+      else if (def.id === 'dq_boss_3') next = prev + deltaBosses;
+      else if (def.id === 'dq_endless_35' && wave >= 35) next = Math.max(prev, 1);
+      else if (def.id === 'dq_formation_6' && finalInput.usedHighFormation) next = Math.max(prev, 1);
+      else if (def.id === 'dq_craft_immortal' && finalInput.craftedImmortal) next = Math.max(prev, 1);
+      this.dailyProgress[def.id] = Math.min(def.target, next);
     }
 
     const overtimeUnlocked = this.unlockEligibleAchievementSkins();
@@ -1503,6 +1682,10 @@ export class MetaStore {
       delete this.equippedHeroSkins[k];
     }
     this.equippedCourtSkin = DEFAULT_COURT_SKIN_ID;
+    this.dailyDate = getLocalDateKey();
+    this.dailyProgress = {};
+    this.dailyClaimed = {};
+    this.totalDailyClaimed = 0;
     this.tutorialDone = false;
   }
 
@@ -1661,6 +1844,32 @@ export class MetaStore {
     ) {
       this.equippedCourtSkin = rec.equippedCourtSkin as CourtSkinId;
     }
+    if (typeof rec.dailyDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rec.dailyDate)) {
+      this.dailyDate = rec.dailyDate;
+    }
+    if (typeof rec.dailyProgress === 'object' && rec.dailyProgress !== null) {
+      const dpObj = rec.dailyProgress as Record<string, unknown>;
+      for (const [qid, val] of Object.entries(dpObj)) {
+        if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+          this.dailyProgress[qid] = Math.floor(val);
+        }
+      }
+    }
+    if (typeof rec.dailyClaimed === 'object' && rec.dailyClaimed !== null) {
+      const dcObj = rec.dailyClaimed as Record<string, unknown>;
+      for (const [qid, val] of Object.entries(dcObj)) {
+        if (val === true) {
+          this.dailyClaimed[qid] = true;
+        }
+      }
+    }
+    if (
+      typeof rec.totalDailyClaimed === 'number' &&
+      Number.isFinite(rec.totalDailyClaimed) &&
+      rec.totalDailyClaimed >= 0
+    ) {
+      this.totalDailyClaimed = Math.floor(rec.totalDailyClaimed);
+    }
     if (typeof rec.tutorialDone === 'boolean') {
       this.tutorialDone = rec.tutorialDone;
     }
@@ -1700,6 +1909,10 @@ export class MetaStore {
       ownedSkins: this.ownedSkins,
       equippedHeroSkins: this.equippedHeroSkins,
       equippedCourtSkin: this.equippedCourtSkin,
+      dailyDate: this.dailyDate,
+      dailyProgress: this.dailyProgress,
+      dailyClaimed: this.dailyClaimed,
+      totalDailyClaimed: this.totalDailyClaimed,
       tutorialDone: this.tutorialDone,
     });
   }

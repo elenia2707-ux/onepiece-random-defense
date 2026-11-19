@@ -392,6 +392,31 @@ export const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> =
     secondary: '#fb7185',
     dualWield: true,
   },
+  ice_palace_empress: {
+    style: 'fan',
+    sect: 'mudang',
+    weaponLabel: '북해 빙련선(부채)',
+    primary: '#38bdf8',
+    secondary: '#e0f2fe',
+    dualWield: true,
+  },
+  blood_shadow_sovereign: {
+    style: 'dual_sword',
+    sect: 'sapa_blade',
+    weaponLabel: '혈영 귀왕쌍도',
+    primary: '#e11d48',
+    secondary: '#fda4af',
+    dualWield: true,
+    heavyBlade: true,
+  },
+  wuji_grandmaster: {
+    style: 'sword',
+    sect: 'mudang',
+    weaponLabel: '태극 무극신검',
+    primary: '#2dd4bf',
+    secondary: '#fde047',
+    heavyBlade: true,
+  },
 };
 
 export function getUnitCombatProfile(unitId: UnitId): UnitCombatProfile {

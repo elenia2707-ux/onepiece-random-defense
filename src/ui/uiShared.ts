@@ -14,6 +14,7 @@ import type { MetaProfile, SkinPullItem } from '../platform/MetaStore';
 import { getUnitCombatProfile } from '../render/weaponProfiles';
 
 export type CodexFilterId = 'all' | FactionId;
+export type CraftFactionFilterId = 'all' | FactionId | 'ready';
 export type WardrobeSubTab = 'hero' | 'court';
 export type RelicFilterId = 'all' | 'economy' | 'combat';
 
@@ -73,7 +74,7 @@ export const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
   hard_clear: '무림 고수 난이도 제 30 장 제패 시 영구 해금',
   hell_clear: '아수라 혈겁 난이도 제 30 장 제패 시 영구 해금',
   abyss_clear: '천마강림(무극) 난이도 제 30 장 제패 시 영구 해금',
-  all_trials_clear: '사대 비경 시련 4종 전부 제패 시 영구 해금',
+  all_trials_clear: '6대 무림 비경 시련 전부 제패 시 영구 해금',
   wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
   wave_55: '무한 혈투 제 55 장 돌파 시 영구 해금',
 };
@@ -132,6 +133,18 @@ export function renderBoonIconSvg(kind: BoonIconKind): string {
       return `${S}<rect x="6" y="4" width="20" height="24" rx="3" fill="#fef3c7" stroke="${INK}" stroke-width="2.6"/><circle cx="16" cy="14" r="5" fill="#fb7185" stroke="${INK}" stroke-width="2.2"/><path d="M13 14h6M16 11v6" stroke="#fffbeb" stroke-width="2" stroke-linecap="round"/><path d="M10 23h12" stroke="#b91c1c" stroke-width="2.6" stroke-linecap="round"/></svg>`;
     case 'trinity':
       return `${S}<polygon points="16,3 28,25 4,25" fill="#fde047" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="16" cy="11" r="3.2" fill="#38bdf8" stroke="${INK}" stroke-width="1.8"/><circle cx="11" cy="21" r="3.2" fill="#4ade80" stroke="${INK}" stroke-width="1.8"/><circle cx="21" cy="21" r="3.2" fill="#f43f5e" stroke="${INK}" stroke-width="1.8"/></svg>`;
+    case 'reaper':
+      return `${S}<path d="M7 26L23 6c3 2.5 4 7 2 11-3-3-7-4-11-3l-7 12z" fill="#e11d48" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><circle cx="20" cy="11" r="3" fill="#fde047" stroke="${INK}" stroke-width="1.8"/><path d="M5 24l6 3" stroke="#fda4af" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+    case 'chain_thunder':
+      return `${S}<polygon points="18,3 8,16 15,16 11,29 24,14 17,14" fill="#fde047" stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"/><circle cx="7" cy="9" r="3" fill="#38bdf8" stroke="${INK}" stroke-width="1.8"/><circle cx="25" cy="24" r="3" fill="#38bdf8" stroke="${INK}" stroke-width="1.8"/></svg>`;
+    case 'frost':
+      return `${S}<polygon points="16,3 22,10 29,16 22,22 16,29 10,22 3,16 10,10" fill="#7dd3fc" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M16 5v22M5 16h22M8.5 8.5l15 15M23.5 8.5l-15 15" stroke="#f0f9ff" stroke-width="2" stroke-linecap="round"/></svg>`;
+    case 'echo':
+      return `${S}<circle cx="12" cy="16" r="8" fill="#a855f7" stroke="${INK}" stroke-width="2.4"/><path d="M18 9a9 9 0 0 1 0 14M22 6a13 13 0 0 1 0 20" fill="none" stroke="#fde047" stroke-width="2.6" stroke-linecap="round"/><circle cx="12" cy="16" r="3" fill="#f3e8ff"/></svg>`;
+    case 'resonance':
+      return `${S}<polygon points="16,3 28,16 16,29 4,16" fill="#2dd4bf" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="16" cy="16" r="6" fill="#fde047" stroke="${INK}" stroke-width="2"/><circle cx="16" cy="16" r="2.2" fill="#e11d48"/></svg>`;
+    case 'bench':
+      return `${S}<rect x="4" y="14" width="24" height="12" rx="3" fill="#10b981" stroke="${INK}" stroke-width="2.5"/><path d="M9 14V8l7-4 7 4v6" fill="#fde047" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><path d="M16 17v6M13 20h6" stroke="#fffbeb" stroke-width="2.4" stroke-linecap="round"/></svg>`;
   }
 }
 

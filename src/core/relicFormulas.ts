@@ -368,3 +368,187 @@ export function formatRelicStatSummary(id: RelicId, lv: number): string {
     }
   }
 }
+
+export type RelicSetId =
+  | 'set_merchant_tycoon'
+  | 'set_elixir_fortune'
+  | 'set_martial_god'
+  | 'set_demon_slayer';
+
+export interface RelicSetDef {
+  readonly id: RelicSetId;
+  readonly name: string;
+  readonly badge: string;
+  readonly color: string;
+  readonly members: readonly [RelicId, RelicId, RelicId, RelicId];
+  readonly tier1Desc: string;
+  readonly tier2Desc: string;
+  readonly tier3Desc: string;
+}
+
+export interface RelicSetStatus {
+  readonly def: RelicSetDef;
+  readonly ownedCount: number;
+  readonly minLevel: number;
+  readonly tier: 0 | 1 | 2 | 3;
+}
+
+export interface RelicSetBonuses {
+  readonly activeSetCount: number;
+  readonly mythicSetCount: number;
+  readonly interestPct: number;
+  readonly interestCap: number;
+  readonly killCoinPct: number;
+  readonly summonDiscount: number;
+  readonly gambleBonusPct: number;
+  readonly upgradeDiscountPct: number;
+  readonly startLuck: number;
+  readonly sellCoinPct: number;
+  readonly speedPct: number;
+  readonly atkBps: number;
+  readonly skillDamagePct: number;
+  readonly critMultBonus: number;
+  readonly bossDamagePct: number;
+  readonly armorShred: number;
+  readonly rangeBonus: number;
+  readonly ccPct: number;
+}
+
+export const RELIC_SETS: readonly RelicSetDef[] = [
+  {
+    id: 'set_merchant_tycoon',
+    name: '거상재벌 세트',
+    badge: '재물공명',
+    color: '#f59e0b',
+    members: ['golden_vault', 'founding_jade_seal', 'merchant_abacus', 'bandit_dagger'],
+    tier1Desc: '이자 +2%p · 한도 +80',
+    tier2Desc: '이자 +4%p · 한도 +200 · 처치은자 +12%',
+    tier3Desc: '이자 +6%p · 한도 +400 · 처치은자 +25% · 소환 -1',
+  },
+  {
+    id: 'set_elixir_fortune',
+    name: '기연단전 세트',
+    badge: '단전공명',
+    color: '#10b981',
+    members: ['immortal_furnace', 'heavenly_scroll_chest', 'jade_training_manual', 'phoenix_luck_pouch'],
+    tier1Desc: '영약 +4%p · 수련비 -5%',
+    tier2Desc: '영약 +8%p · 수련비 -10% · 초기영단 +1',
+    tier3Desc: '영약 +12%p · 수련비 -15% · 초기영단 +2 · 방출 +20%',
+  },
+  {
+    id: 'set_martial_god',
+    name: '절세무신 세트',
+    badge: '무신공명',
+    color: '#ef4444',
+    members: ['wind_swift_boots', 'crimson_crit_blade', 'celestial_skill_jade', 'eight_trigram_mirror'],
+    tier1Desc: '공속 +6% · 최종공 +6%',
+    tier2Desc: '공속 +12% · 최종공 +14% · 절기 +12%',
+    tier3Desc: '공속 +18% · 최종공 +24% · 절기 +22% · 치명 +0.25x',
+  },
+  {
+    id: 'set_demon_slayer',
+    name: '천마토벌 세트',
+    badge: '토벌공명',
+    color: '#a855f7',
+    members: ['million_sword_seal', 'armor_break_gauntlet', 'demon_slayer_banner', 'dragon_range_mirror'],
+    tier1Desc: '보스피해 +10% · 파갑 +6',
+    tier2Desc: '보스피해 +22% · 파갑 +14 · 사거리 +15',
+    tier3Desc: '보스피해 +38% · 파갑 +24 · 사거리 +30 · 제어 +18%',
+  },
+];
+
+export function computeRelicSetStatuses(
+  relics: Readonly<Partial<Record<RelicId, number>>>,
+): readonly RelicSetStatus[] {
+  return RELIC_SETS.map((def) => {
+    let ownedCount = 0;
+    let minLevel = RELIC_MAX_LEVEL;
+    for (let i = 0; i < def.members.length; i++) {
+      const lv = Math.max(0, Math.floor(relics[def.members[i]!] ?? 0));
+      if (lv > 0) ownedCount++;
+      if (lv < minLevel) minLevel = lv;
+    }
+    const tier: 0 | 1 | 2 | 3 =
+      ownedCount < 4 ? 0 : minLevel >= RELIC_MAX_LEVEL ? 3 : minLevel >= RELIC_STANDARD_CAP ? 2 : 1;
+    return { def, ownedCount, minLevel, tier };
+  });
+}
+
+export function computeRelicSetBonuses(
+  relics: Readonly<Partial<Record<RelicId, number>>>,
+): RelicSetBonuses {
+  const statuses = computeRelicSetStatuses(relics);
+  let activeSetCount = 0;
+  let mythicSetCount = 0;
+  let interestPct = 0;
+  let interestCap = 0;
+  let killCoinPct = 0;
+  let summonDiscount = 0;
+  let gambleBonusPct = 0;
+  let upgradeDiscountPct = 0;
+  let startLuck = 0;
+  let sellCoinPct = 0;
+  let speedPct = 0;
+  let atkBps = 0;
+  let skillDamagePct = 0;
+  let critMultBonus = 0;
+  let bossDamagePct = 0;
+  let armorShred = 0;
+  let rangeBonus = 0;
+  let ccPct = 0;
+
+  for (let i = 0; i < statuses.length; i++) {
+    const st = statuses[i]!;
+    if (st.tier <= 0) continue;
+    activeSetCount++;
+    if (st.tier >= 3) mythicSetCount++;
+
+    switch (st.def.id) {
+      case 'set_merchant_tycoon':
+        interestPct += st.tier === 3 ? 6 : st.tier === 2 ? 4 : 2;
+        interestCap += st.tier === 3 ? 400 : st.tier === 2 ? 200 : 80;
+        killCoinPct += st.tier === 3 ? 25 : st.tier === 2 ? 12 : 0;
+        summonDiscount += st.tier === 3 ? 1 : 0;
+        break;
+      case 'set_elixir_fortune':
+        gambleBonusPct += st.tier === 3 ? 12 : st.tier === 2 ? 8 : 4;
+        upgradeDiscountPct += st.tier === 3 ? 15 : st.tier === 2 ? 10 : 5;
+        startLuck += st.tier === 3 ? 2 : st.tier === 2 ? 1 : 0;
+        sellCoinPct += st.tier === 3 ? 20 : 0;
+        break;
+      case 'set_martial_god':
+        speedPct += st.tier === 3 ? 18 : st.tier === 2 ? 12 : 6;
+        atkBps += st.tier === 3 ? 2400 : st.tier === 2 ? 1400 : 600;
+        skillDamagePct += st.tier === 3 ? 22 : st.tier === 2 ? 12 : 0;
+        critMultBonus += st.tier === 3 ? 0.25 : 0;
+        break;
+      case 'set_demon_slayer':
+        bossDamagePct += st.tier === 3 ? 38 : st.tier === 2 ? 22 : 10;
+        armorShred += st.tier === 3 ? 24 : st.tier === 2 ? 14 : 6;
+        rangeBonus += st.tier === 3 ? 30 : st.tier === 2 ? 15 : 0;
+        ccPct += st.tier === 3 ? 18 : 0;
+        break;
+    }
+  }
+
+  return {
+    activeSetCount,
+    mythicSetCount,
+    interestPct,
+    interestCap,
+    killCoinPct,
+    summonDiscount,
+    gambleBonusPct,
+    upgradeDiscountPct,
+    startLuck,
+    sellCoinPct,
+    speedPct,
+    atkBps,
+    skillDamagePct,
+    critMultBonus,
+    bossDamagePct,
+    armorShred,
+    rangeBonus,
+    ccPct,
+  };
+}

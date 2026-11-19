@@ -164,7 +164,7 @@
       "rarity": "achievement",
       "unlockCond": "all_trials_clear",
       "silkCost": 0,
-      "desc": "[업적 한정] 4대 비경 시련을 모두 정복한 절세 기인의 천상 비선예복",
+      "desc": "[업적 한정] 6대 비경 시련을 모두 정복한 절세 기인의 천상 비선예복",
       "robeHue": 176,
       "satMult": 1.32,
       "lumOffset": 0.06,
@@ -201,6 +201,34 @@
       "primaryColor": "#38bdf8",
       "secondaryColor": "#fef08a",
       "crestKind": "halo"
+    },
+    {
+      "id": "skin_wuji_cosmic_jade",
+      "unitId": "wuji_grandmaster",
+      "name": "태허옥선 태극무극선",
+      "rarity": "mythic",
+      "silkCost": 150,
+      "desc": "태허의 은하 옥빛 도포와 순금 팔괘륜이 공명하는 무극 선인의 성의",
+      "robeHue": 172,
+      "satMult": 1.32,
+      "lumOffset": 0.05,
+      "primaryColor": "#14b8a6",
+      "secondaryColor": "#fef08a",
+      "crestKind": "halo"
+    },
+    {
+      "id": "skin_ice_empress_crimson_frost",
+      "unitId": "ice_palace_empress",
+      "name": "홍빙여제 북해빙궁주",
+      "rarity": "legendary",
+      "silkCost": 90,
+      "desc": "설원 위 붉은 홍매빙정을 두른 북해 여제의 겨울 연회 예복",
+      "robeHue": 334,
+      "satMult": 1.28,
+      "lumOffset": 0.05,
+      "primaryColor": "#f43f5e",
+      "secondaryColor": "#e0f2fe",
+      "crestKind": "crown"
     }
   ],
   "courtSkins": [
@@ -252,6 +280,18 @@
       "lanternColor": "#fef08a",
       "petalPrimary": "#fde047",
       "petalSecondary": "#38bdf8"
+    },
+    {
+      "id": "court_snow_sword_pavilion",
+      "name": "설산검각 · 빙설무림",
+      "rarity": "mythic",
+      "silkCost": 130,
+      "desc": "만년설과 빙옥 등불 아래 눈꽃이 흩날리는 북해 설산검각 신화 비무대",
+      "tintColor": "#0284c7",
+      "tintAlpha": 0.17,
+      "lanternColor": "#7dd3fc",
+      "petalPrimary": "#f0f9ff",
+      "petalSecondary": "#7dd3fc"
     }
   ]
 }

@@ -77,12 +77,15 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'tx_poison_dragon',
   'tx_demon_heir',
   'tx_nether_queen',
+  'tx_ice_empress',
+  'tx_blood_sovereign',
   'im_cheonma',
   'im_sword_immortal',
   'im_asura_emperor',
   'im_venom_lord',
   'im_thunder_emperor',
   'im_hell_flame',
+  'im_wuji_grandmaster',
 ]);
 
 const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
@@ -131,6 +134,8 @@ const VALID_TRIAL_IDS: ReadonlySet<string> = new Set<TrialId>([
   'trial_sword_tomb',
   'trial_crimson_iron',
   'trial_chaos_trinity',
+  'trial_gale_blitz',
+  'trial_abyss_sanctum',
 ]);
 
 const VALID_MISSION_CONDITIONS: ReadonlySet<string> = new Set<MissionConditionKind>([
@@ -142,6 +147,8 @@ const VALID_MISSION_CONDITIONS: ReadonlySet<string> = new Set<MissionConditionKi
   'gamble_wins',
   'held_coin',
   'total_upgrades',
+  'monsters_slain',
+  'total_boons',
 ]);
 
 const VALID_SKIN_RARITIES: ReadonlySet<string> = new Set<SkinRarity>([
@@ -172,6 +179,10 @@ const VALID_TITLE_CONDITIONS: ReadonlySet<string> = new Set<TitleConditionKind>(
   'discovered_units',
   'max_relic_level',
   'owned_relics',
+  'relic_sets_active',
+  'relic_sets_mythic',
+  'daily_quests_claimed',
+  'trial_abyss_clear',
 ]);
 
 const VALID_SKIN_CRESTS: ReadonlySet<string> = new Set<SkinCrestKind>([
@@ -186,6 +197,7 @@ const VALID_COURT_IDS: ReadonlySet<string> = new Set<CourtSkinId>([
   'court_crimson_sunset',
   'court_blood_moon',
   'court_golden_palace',
+  'court_snow_sword_pavilion',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -728,6 +740,11 @@ export function validateTrials(input: unknown): TrialConfig[] {
         r.trinityAtkBonusPct,
         `trials[${i}].trinityAtkBonusPct`,
       ),
+      globalSpeedMult:
+        r.globalSpeedMult === undefined
+          ? 1
+          : assertPositiveNumber(r.globalSpeedMult, `trials[${i}].globalSpeedMult`),
+      ccMult: r.ccMult === undefined ? 1 : assertPositiveNumber(r.ccMult, `trials[${i}].ccMult`),
       rewardMult: assertPositiveNumber(r.rewardMult, `trials[${i}].rewardMult`),
       firstClearGold: Math.floor(
         assertNonNegativeNumber(r.firstClearGold, `trials[${i}].firstClearGold`),
@@ -1073,6 +1090,12 @@ const VALID_BOON_IDS: ReadonlySet<string> = new Set<BoonId>([
   'b_heavenly_reinforce',
   'b_bounty_hunter',
   'b_trinity_harmony',
+  'b_reaper_seal',
+  'b_chain_thunder',
+  'b_frost_shatter',
+  'b_piercing_echo',
+  'b_relic_resonance',
+  'b_bench_support',
 ]);
 
 const VALID_BOON_RARITIES: ReadonlySet<string> = new Set<BoonRarity>(['rare', 'epic', 'mythic']);
@@ -1089,6 +1112,12 @@ const VALID_BOON_ICONS: ReadonlySet<string> = new Set<BoonIconKind>([
   'reinforce',
   'bounty',
   'trinity',
+  'reaper',
+  'chain_thunder',
+  'frost',
+  'echo',
+  'resonance',
+  'bench',
 ]);
 
 function validateBoons(rawList: unknown): BoonDef[] {

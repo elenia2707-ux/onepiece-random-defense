@@ -166,7 +166,8 @@ export function computeMonsterArmor(
     (isBounty ? 14 : 0) +
     mutantArmor +
     trialArmor;
-  const armorCap = difficulty === 'abyss' ? 220 : 180;
+  const armorCap =
+    difficulty === 'abyss' || trialId === 'trial_abyss_sanctum' ? 220 : 180;
   return Math.min(armorCap, Math.round(base));
 }
 
@@ -177,6 +178,9 @@ export function resolveTargetBossName(
   waveDef: WaveDef,
 ): string | undefined {
   if (!waveDef.isBoss) return waveDef.bossName;
+  if (waveNum >= 35 && waveNum % 5 === 0) {
+    return `【무한이중권능】 ${waveDef.bossName ?? '아수라 혈마존'}`;
+  }
   if (waveNum === clearTargetWave) {
     return trialId
       ? `비경수호신 · ${waveDef.bossName ?? '아수라 혈마존'}`
@@ -583,9 +587,37 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
 
     // Active Wave Boss Patterns (excludes bounty outlaws)
     if (m.isBoss && !m.isBounty) {
-      // 1) 55% HP threshold phase trigger
+      // 1) 55% HP threshold phase trigger (+ Endless 35/40/45/50+ Dual-Authority surge!)
       if (!m.phaseTriggered && m.hp <= Math.round(m.maxHp * 0.55)) {
         m.phaseTriggered = true;
+        const isEndlessDual = waveNumber >= 35 && waveNumber % 5 === 0;
+        if (isEndlessDual) {
+          const dualShield = Math.max(120, Math.round(m.maxHp * 0.1));
+          m.shieldHp = Math.max(m.shieldHp, dualShield);
+          m.shieldMaxHp = Math.max(m.shieldMaxHp, dualShield);
+          m.shieldExpireTick = Math.max(m.shieldExpireTick, ctx.currentTick + 150);
+          m.hasteUntilTick = Math.max(m.hasteUntilTick, ctx.currentTick + 75);
+          const dualTiles = pickHazardTiles(ctx, 2);
+          for (let c = 0; c < dualTiles.length; c++) {
+            ctx.tileHazards.push({
+              fieldIndex: dualTiles[c]!,
+              startTick: ctx.currentTick,
+              activateTick: ctx.currentTick + HAZARD_WARNING_TICKS,
+              expireTick: ctx.currentTick + HAZARD_WARNING_TICKS + HAZARD_SEAL_TICKS,
+            });
+          }
+          ctx.markPriorityDirty();
+          ctx.events.emit('boss:skill', {
+            entityId: m.entityId,
+            bossKind: m.kind,
+            skillKind: 'patriarch_telegraph',
+            skillName: '【무한이중권능】 독갑 + 혈옥주박 동시 개방!',
+            x: m.currX,
+            y: m.currY,
+            tileIndices: dualTiles,
+            tick: ctx.currentTick,
+          });
+        }
         if (m.kind === 'white_tiger') {
           m.hasteUntilTick = ctx.currentTick + 90;
           m.slowUntilTick = 0;

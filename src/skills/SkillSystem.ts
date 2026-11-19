@@ -1,5 +1,6 @@
 import type { EventBus } from '../core/EventBus';
 import {
+  computeRelicSetBonuses,
   getAbacusKillCoinPct,
   getArmorGauntletShred,
   getBanditPilferCoin,
@@ -134,7 +135,8 @@ export function computeUnitEffectiveAtk(
   harmonyStacks: number,
   demonicBoonStacks: number,
   trialId: TrialId | null,
-  trigramAtkBps = 0,
+  extraFinalBps = 0,
+  extraTraitPct = 0,
 ): { readonly baseAtk: number; readonly bonusAtk: number } {
   const def = data.unitsById.get(unitId);
   if (!def) return { baseAtk: 0, bonusAtk: 0 };
@@ -153,13 +155,13 @@ export function computeUnitEffectiveAtk(
     synPct += 25;
   }
 
-  let boonPct = harmonyStacks * 22;
+  let boonPct = harmonyStacks * 22 + Math.max(0, extraTraitPct);
   if (def.faction === 'demonic') {
     boonPct += demonicBoonStacks * 35;
   }
 
   const traitPct = upPct + synPct + boonPct + Math.max(0, tileBuffAtkPct);
-  const finalBps = wealthBps + Math.max(0, trigramAtkBps);
+  const finalBps = wealthBps + Math.max(0, extraFinalBps);
   if (traitPct <= 0 && finalBps <= 0) {
     return { baseAtk: def.atk, bonusAtk: 0 };
   }
@@ -212,6 +214,7 @@ export interface CombatSystemContext {
 export function stepCombat(ctx: CombatSystemContext): void {
   const synergy = computeFieldSynergy(ctx.units, ctx.data.unitsById);
   const swiftStacks = ctx.getBoonStacks('b_swift_formation');
+  const setBonus = computeRelicSetBonuses(ctx.relicLv);
   const trigramAuraPct = getTrigramMirrorAuraPct(ctx.relicLv.eight_trigram_mirror ?? 0);
   const tileBuffs = computeFieldTileBuffs(
     ctx.board,
@@ -227,8 +230,24 @@ export function stepCombat(ctx: CombatSystemContext): void {
   const orthodoxBoonStacks = ctx.getBoonStacks('b_orthodox_zenith');
   const demonicBoonStacks = ctx.getBoonStacks('b_demonic_overdrive');
   const crusherStacks = ctx.getBoonStacks('b_armor_crusher');
-  const rangeMirrorBonus = getRangeMirrorRangeBonus(ctx.relicLv.dragon_range_mirror ?? 0);
-  const rangeMirrorCcPct = getRangeMirrorCcPct(ctx.relicLv.dragon_range_mirror ?? 0);
+  const resonanceStacks = ctx.getBoonStacks('b_relic_resonance');
+  const piercingEchoStacks = ctx.getBoonStacks('b_piercing_echo');
+  const chainThunderStacks = ctx.getBoonStacks('b_chain_thunder');
+
+  let ownedRelicCount = 0;
+  if (resonanceStacks > 0) {
+    for (let k = 0; k < ctx.data.relics.length; k++) {
+      if ((ctx.relicLv[ctx.data.relics[k]!.id] ?? 0) > 0) {
+        ownedRelicCount++;
+      }
+    }
+  }
+  const resonanceSpeedPct = resonanceStacks > 0 ? ownedRelicCount * 1.5 : 0;
+
+  const rangeMirrorBonus =
+    getRangeMirrorRangeBonus(ctx.relicLv.dragon_range_mirror ?? 0) + setBonus.rangeBonus;
+  const rangeMirrorCcPct =
+    getRangeMirrorCcPct(ctx.relicLv.dragon_range_mirror ?? 0) + setBonus.ccPct;
 
   if (ctx.monsters.length > 0) {
     for (let i = 0; i < ctx.units.length; i++) {
@@ -272,8 +291,14 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
       if (bestTarget !== null) {
         const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
-        const swiftBootsPct = getSwiftBootsSpeedPct(ctx.relicLv.wind_swift_boots ?? 0);
+        const swiftBootsPct =
+          getSwiftBootsSpeedPct(ctx.relicLv.wind_swift_boots ?? 0) +
+          setBonus.speedPct +
+          resonanceSpeedPct;
         let speedMult = (synergy.trinityActive ? 1.1 : 1.0) * (1 + swiftBootsPct / 100);
+        if (trialCfg && trialCfg.globalSpeedMult !== 1) {
+          speedMult *= trialCfg.globalSpeedMult;
+        }
         if (swiftStacks > 0) {
           speedMult *= 1 + 0.16 * swiftStacks;
         }
@@ -316,10 +341,14 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
         const critBladeLv = ctx.relicLv.crimson_crit_blade ?? 0;
         let critChance = Math.min(0.95, def.critChance + getCritBladeChanceBps(critBladeLv) / 10000);
-        let critMult = def.critMult + getCritBladeMultBonus(critBladeLv);
-        const skillJadePct = getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0);
+        let critMult = def.critMult + getCritBladeMultBonus(critBladeLv) + setBonus.critMultBonus;
+        const skillJadePct =
+          getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) + setBonus.skillDamagePct;
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
-        let ccMult = (1 + 0.35 * acupointStacks) * (1 + rangeMirrorCcPct / 100);
+        let ccMult =
+          (1 + 0.35 * acupointStacks) *
+          (1 + rangeMirrorCcPct / 100) *
+          (trialCfg ? trialCfg.ccMult : 1);
 
         if (def.faction === 'orthodox') {
           if (synergy.orthodoxTier === 2) {
@@ -364,13 +393,14 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
         const trialShred =
           def.faction === 'unorthodox' && trialCfg ? trialCfg.unorthodoxBonusShred : 0;
-        const relicShred = getArmorGauntletShred(ctx.relicLv.armor_break_gauntlet ?? 0);
+        const relicShred =
+          getArmorGauntletShred(ctx.relicLv.armor_break_gauntlet ?? 0) + setBonus.armorShred;
         const unitBaseShred = def.armorShred + crusherStacks * 6 + trialShred + relicShred;
+        const echoBonusShred =
+          isSkill && piercingEchoStacks > 0 ? (piercingEchoStacks >= 2 ? 34 : 18) : 0;
         const projectileShred =
-          unitBaseShred > 0
-            ? isSkill
-              ? Math.round(unitBaseShred * 1.5)
-              : unitBaseShred
+          unitBaseShred > 0 || echoBonusShred > 0
+            ? (isSkill ? Math.round(unitBaseShred * 1.5) : unitBaseShred) + echoBonusShred
             : 0;
 
         ctx.projectiles.push({
@@ -471,10 +501,34 @@ export function stepCombat(ctx: CombatSystemContext): void {
           const m = victims[v]!;
           const dealt =
             m.entityId === p.targetEntityId ? p.damage : Math.max(1, Math.round(p.damage * 0.75));
-          applyHitToMonster(ctx, m, dealt, p, synergy);
+          applyHitToMonster(ctx, m, dealt, p, synergy, setBonus);
         }
       } else if (target) {
-        applyHitToMonster(ctx, target, p.damage, p, synergy);
+        applyHitToMonster(ctx, target, p.damage, p, synergy, setBonus);
+      }
+
+      // Boon: 구천연쇄뢰 (b_chain_thunder) — deterministic chain lightning arcs on skill impact
+      if (p.isSkill && chainThunderStacks > 0 && ctx.monsters.length > 0) {
+        const maxChainTargets = chainThunderStacks >= 2 ? 5 : 3;
+        const chainRatio = chainThunderStacks >= 2 ? 0.48 : 0.28;
+        const chainRangeSq = 185 * 185;
+        const chainDmg = Math.max(1, Math.round(p.damage * chainRatio));
+        const chainCandidates = ctx.monsters
+          .filter((m) => {
+            if (m.entityId === p.targetEntityId) return false;
+            const dx = m.currX - impactX;
+            const dy = m.currY - impactY;
+            return dx * dx + dy * dy <= chainRangeSq;
+          })
+          .sort((a, b) =>
+            b.currDistance !== a.currDistance
+              ? b.currDistance - a.currDistance
+              : a.entityId - b.entityId,
+          )
+          .slice(0, maxChainTargets);
+        for (let c = 0; c < chainCandidates.length; c++) {
+          applyHitToMonster(ctx, chainCandidates[c]!, chainDmg, p, synergy, setBonus);
+        }
       }
 
       ctx.projectiles.splice(i, 1);
@@ -488,6 +542,7 @@ function applyHitToMonster(
   rawDamage: number,
   p: ProjectileEntity,
   synergy: FactionSynergySnapshot,
+  setBonus: ReturnType<typeof computeRelicSetBonuses>,
 ): void {
   const idx = ctx.monsters.indexOf(m);
   if (idx === -1) return;
@@ -499,8 +554,10 @@ function applyHitToMonster(
   const prevNetArmor = m.armor - prevShredBeforeHit;
 
   if (p.armorShred > 0) {
-    m.armorShred = Math.min(180, prevShredBeforeHit + p.armorShred);
-    m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + 120);
+    const echoStacks = ctx.getBoonStacks('b_piercing_echo');
+    const shredDur = echoStacks > 0 ? 180 : 120;
+    m.armorShred = Math.min(200, prevShredBeforeHit + p.armorShred);
+    m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + shredDur);
   }
 
   const activeShred = ctx.currentTick < m.shredExpireTick ? m.armorShred : 0;
@@ -513,13 +570,32 @@ function applyHitToMonster(
   if (m.isBoss && hunterStacks > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + 0.28 * hunterStacks));
   }
-  const slayerBannerPct = getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0);
+  const slayerBannerPct =
+    getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0) + setBonus.bossDamagePct;
   if (m.isBoss && slayerBannerPct > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + slayerBannerPct / 100));
   }
 
-  // Apply unit-specific PassiveTraitDef multipliers (Immortal & Transcendent specialization!)
+  // Boon: 빙쇄파열공 (b_frost_shatter) — bonus damage vs stunned or slowed foes
+  const frostStacks = ctx.getBoonStacks('b_frost_shatter');
+  if (
+    frostStacks > 0 &&
+    (ctx.currentTick < m.stunUntilTick || ctx.currentTick < m.slowUntilTick)
+  ) {
+    const frostPct = frostStacks >= 2 ? 60 : 32;
+    effectiveRaw = Math.round(effectiveRaw * (1 + frostPct / 100));
+  }
+
+  // Boon: 사신추명결 (b_reaper_seal) — boss execute bonus (<35% HP)
+  const reaperStacks = ctx.getBoonStacks('b_reaper_seal');
   let executeProc = false;
+  if (reaperStacks > 0 && m.isBoss && m.hp <= Math.round(m.maxHp * 0.35)) {
+    const reaperBossPct = reaperStacks >= 2 ? 55 : 30;
+    effectiveRaw = Math.round(effectiveRaw * (1 + reaperBossPct / 100));
+    executeProc = true;
+  }
+
+  // Apply unit-specific PassiveTraitDef multipliers (Immortal & Transcendent specialization!)
   let bossProc = false;
   let corrodeProc = false;
   if (passive) {
@@ -580,7 +656,7 @@ function applyHitToMonster(
       m.hp -= overflow;
       m.lastHitTick = ctx.currentTick;
       m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + 45);
-      m.armorShred = Math.min(180, activeShred + 25);
+      m.armorShred = Math.min(200, activeShred + 25);
       m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + 150);
       justShattered = true;
       ctx.recordDamage(p.unitId, damage);
@@ -600,9 +676,23 @@ function applyHitToMonster(
     ctx.recordDamage(p.unitId, damage);
   }
 
+  // Boon: 사신추명결 (b_reaper_seal) — instant execute for non-boss mobs below 12% / 18% HP
+  if (reaperStacks > 0 && !m.isBoss && m.hp > 0) {
+    const thresh = reaperStacks >= 2 ? 0.18 : 0.12;
+    if (m.hp <= Math.round(m.maxHp * thresh)) {
+      ctx.recordDamage(p.unitId, m.hp);
+      m.hp = 0;
+      executeProc = true;
+    }
+  }
+
   if (p.stunTicks > 0) {
     const bossFactor =
-      ctx.difficulty === 'abyss' ? 0.25 : ctx.difficulty === 'hell' ? 0.35 : 0.45;
+      ctx.difficulty === 'abyss' || ctx.trialId === 'trial_abyss_sanctum'
+        ? 0.25
+        : ctx.difficulty === 'hell'
+          ? 0.35
+          : 0.45;
     const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * bossFactor)) : p.stunTicks;
     m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + stunDur);
   }
@@ -635,7 +725,8 @@ function applyHitToMonster(
         ctx.addCoin(2, true);
       }
     }
-    const abacusCoinPct = getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0);
+    const abacusCoinPct =
+      getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0) + setBonus.killCoinPct;
     const bountyBannerCoinPct = m.isBounty
       ? getSlayerBannerBountyCoinPct(ctx.relicLv.demon_slayer_banner ?? 0)
       : 0;
@@ -662,8 +753,11 @@ function applyHitToMonster(
       } else {
         ctx.onMonsterSlain(true, false);
         ctx.tileHazards.length = 0;
+        const endlessBonusLuck = ctx.waveNumber >= 35 && ctx.waveNumber % 5 === 0 ? 2 : 0;
         const rewardLuck =
-          2 + getScrollChestBossLuckBonus(ctx.relicLv.heavenly_scroll_chest ?? 0);
+          2 +
+          getScrollChestBossLuckBonus(ctx.relicLv.heavenly_scroll_chest ?? 0) +
+          endlessBonusLuck;
         ctx.addLuckStone(rewardLuck);
 
         const waveDef = resolveWaveDef(ctx.data.waves, ctx.waveNumber);
@@ -712,7 +806,7 @@ function applyHitToMonster(
     isSkill: p.isSkill,
     armorBroken,
     justShattered,
-    passiveProc,
+    passiveProc: executeProc ? 'execute' : passiveProc,
     tick: ctx.currentTick,
   });
 }

@@ -24,6 +24,8 @@ import type {
 import type { DragDiscardView } from '../input/DragController';
 import {
   type BackupImportResult,
+  type DailyQuestClaimResult,
+  type DailyQuestId,
   type MetaProfile,
   RELIC_CHEST_GOLD_COST,
   type RelicBatchDrawResult,
@@ -34,6 +36,7 @@ import {
   type SkinCraftResult,
   type SkinGachaResult,
 } from '../platform/MetaStore';
+import type { SoundVolumeLevel } from '../platform/SoundSynthesizer';
 import type { SpriteCache } from '../render/SpriteCache';
 import { getUnitCombatProfile } from '../render/weaponProfiles';
 import { buildHudShellMarkup } from './hudTemplate';
@@ -55,6 +58,7 @@ import {
 import { TutorialOverlay } from './TutorialOverlay';
 import {
   type CodexFilterId,
+  type CraftFactionFilterId,
   escapeHtml,
   FACTION_META,
   getEquippedSkinDef,
@@ -76,7 +80,10 @@ export interface UIControlHandlers {
   onCycleSpeed(): void;
   onTogglePause(): void;
   isSoundMuted(): boolean;
+  getSoundVolume(): SoundVolumeLevel;
   onToggleMute(): boolean;
+  onCycleSoundVolume(): SoundVolumeLevel;
+  onClaimDailyQuest(questId: DailyQuestId): DailyQuestClaimResult;
   onSelectDifficulty(diff: DifficultyId): boolean;
   onSelectTrial(trialId: TrialId | null): boolean;
   onEnterEndless(): void;
@@ -267,6 +274,9 @@ export class UIManager {
 
   private activeSheet: SheetKind | null = null;
   private craftTab: CraftTabId = 'all';
+  private pinnedRecipeId: string | null = null;
+  private craftFactionFilter: CraftFactionFilterId = 'all';
+  private craftSearchQuery = '';
   private codexFilter: CodexFilterId = 'all';
   private relicFilter: RelicFilterId = 'all';
   private wardrobeSubTab: WardrobeSubTab = 'hero';
@@ -349,6 +359,13 @@ export class UIManager {
     });
   }
 
+  private applyVolumeButtonVisual(vol: SoundVolumeLevel): void {
+    this.muteBtnEl.classList.toggle('muted', vol === 0);
+    this.setText(this.muteBtnEl, vol === 0 ? '🔇' : vol === 0.5 ? '🔉' : '🔊');
+    this.muteBtnEl.title =
+      vol === 0 ? '효과음 음소거 (터치: 100%)' : vol === 0.5 ? '효과음 50% (터치: 음소거)' : '효과음 100% (터치: 50%)';
+  }
+
   public mount(): void {
     const devLowWisp = this.wispTabs[0];
     const devHighWisp = this.wispTabs[this.wispTabs.length - 1];
@@ -377,6 +394,7 @@ export class UIManager {
     this.speedBtnEl = this.mustGet('btn-speed') as HTMLButtonElement;
     this.pauseBtnEl = this.mustGet('btn-pause') as HTMLButtonElement;
     this.muteBtnEl = this.mustGet('btn-mute') as HTMLButtonElement;
+    this.applyVolumeButtonVisual(this.handlers.getSoundVolume());
     this.helpBtnEl = this.mustGet('btn-help') as HTMLButtonElement;
     this.devBtnEl = this.mustGet('btn-dev') as HTMLButtonElement;
     this.devPopoverEl = this.mustGet('dev-popover');
@@ -796,6 +814,60 @@ export class UIManager {
         const group = btn.dataset.group as UpgradeGroupId | undefined;
         if (group) {
           this.handlers.onDispatch({ type: 'upgrade', group });
+        }
+      } else if (action === 'upgrade5') {
+        const group = btn.dataset.group as UpgradeGroupId | undefined;
+        if (group) {
+          this.handlers.onDispatch({ type: 'upgrade', group, count: 5 });
+        }
+      } else if (action === 'pin-recipe') {
+        const recipeId = btn.dataset.recipeId;
+        if (recipeId) {
+          this.pinnedRecipeId = recipeId;
+          this.prevSheetSignature = '';
+          this.prevRecommendSignature = '';
+          const rec = this.recipeGraph.recipesById.get(recipeId);
+          const uName = rec ? (this.data.unitsById.get(rec.output)?.name ?? recipeId) : recipeId;
+          if (this.lastSnapshot) {
+            this.refreshSheet(this.lastSnapshot);
+            this.refreshRecommendBar(this.lastSnapshot);
+          }
+          this.showToast(`📌 [${uName}] 목표 합공으로 고정! (추천바 · 기연 초빙 연동)`);
+        }
+      } else if (action === 'unpin-recipe') {
+        this.pinnedRecipeId = null;
+        this.prevSheetSignature = '';
+        this.prevRecommendSignature = '';
+        if (this.lastSnapshot) {
+          this.refreshSheet(this.lastSnapshot);
+          this.refreshRecommendBar(this.lastSnapshot);
+        }
+        this.showToast('📌 목표 합공 고정을 해제했습니다.');
+      } else if (action === 'craft-filter') {
+        const f = btn.dataset.filter;
+        this.craftFactionFilter =
+          f === 'orthodox' || f === 'unorthodox' || f === 'demonic' || f === 'ready' ? f : 'all';
+        this.prevSheetSignature = '';
+        if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'craft-search-clear') {
+        this.craftSearchQuery = '';
+        this.prevSheetSignature = '';
+        if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'claim-daily') {
+        const questId = btn.dataset.questId as DailyQuestId | undefined;
+        if (questId) {
+          const res = this.handlers.onClaimDailyQuest(questId);
+          if (res.ok) {
+            const parts: string[] = [];
+            if (res.rewardGold > 0) parts.push(`천하주화 +${res.rewardGold}`);
+            if (res.rewardKeys > 0) parts.push(`열쇠 +${res.rewardKeys}`);
+            if (res.rewardSilk > 0) parts.push(`운금비단 +${res.rewardSilk}필`);
+            this.prevSheetSignature = '';
+            if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+            this.showToast(`🎁 일일 과제 [${res.questName}] 보상 수령! (${parts.join(' · ')})`);
+          } else {
+            this.showToast(res.reason, true);
+          }
         }
       } else if (action === 'relic-filter') {
         const f = btn.dataset.filter;
@@ -1256,11 +1328,16 @@ export class UIManager {
     this.bountyBtnEl.classList.toggle('ready', bnt.canCall);
     this.bountyBtnEl.classList.toggle('active-chase', bnt.active);
 
+    const dailyGiftSuffix = meta.claimableDailyCount > 0 ? ` 🎁${meta.claimableDailyCount}` : '';
     this.setText(
       this.missionBtnEl,
-      `📋 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length}`,
+      `📋 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length}${dailyGiftSuffix}`,
     );
     this.missionBtnEl.classList.toggle('active', this.activeSheet === 'mission');
+    this.missionBtnEl.classList.toggle(
+      'draw-ready',
+      meta.claimableDailyCount > 0 && this.activeSheet !== 'mission',
+    );
 
     const totalSkinCount = this.data.heroSkins.length + this.data.courtSkins.length;
     const unownedSkinExists = hasUnownedGachaSkin(this.data, meta);
@@ -1979,18 +2056,21 @@ export class UIManager {
     if (kind === 'relic' && document.activeElement?.id === 'backup-code-input') {
       return;
     }
+    if (kind === 'craft' && document.activeElement?.id === 'craft-search-input') {
+      return;
+    }
 
     const meta = this.handlers.getMetaProfile();
     const totalSlotsUsed = snapshot.fieldOccupied + snapshot.benchOccupied;
     const confirmArmed = this.abandonConfirmUntilMs > performance.now() ? 1 : 0;
     let sig = '';
     if (kind === 'craft') {
-      sig = `craft:${meta.rev}:${this.craftTab}:${snapshot.craft.rev}:${totalSlotsUsed}`;
+      sig = `craft:${meta.rev}:${this.craftTab}:${this.craftFactionFilter}:${this.craftSearchQuery}:${this.pinnedRecipeId ?? ''}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'wisp') {
       const wispCountsSig = Object.entries(snapshot.wisps)
         .map(([k, v]) => `${k}=${v ?? 0}`)
         .join(',');
-      sig = `wisp:${meta.rev}:${this.wispTab}:${wispCountsSig}:${snapshot.craft.rev}:${totalSlotsUsed}`;
+      sig = `wisp:${meta.rev}:${this.wispTab}:${this.pinnedRecipeId ?? ''}:${wispCountsSig}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'gamble') {
       sig = `gamble:${meta.rev}:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
     } else if (kind === 'upgrade') {
@@ -2000,7 +2080,10 @@ export class UIManager {
     } else if (kind === 'codex') {
       sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.craft.rev}`;
     } else if (kind === 'mission') {
-      sig = `mission:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
+      const dailySig = meta.dailyQuests
+        .map((q) => `${q.def.id}=${q.progress}/${q.claimed ? 1 : 0}`)
+        .join(',');
+      sig = `mission:${meta.rev}:${dailySig}:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
     } else {
       sig = `relic:${this.relicFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
     }
@@ -2023,7 +2106,7 @@ export class UIManager {
     } else if (kind === 'codex') {
       this.renderCodexSheet(snapshot, meta);
     } else if (kind === 'mission') {
-      this.renderMissionSheet(snapshot);
+      this.renderMissionSheet(snapshot, meta);
     } else {
       this.renderRelicSheet(snapshot, meta);
     }
@@ -2038,6 +2121,9 @@ export class UIManager {
       meta,
       craftTabs: this.craftTabs,
       activeTab: this.craftTab,
+      pinnedRecipeId: this.pinnedRecipeId,
+      factionFilter: this.craftFactionFilter,
+      searchQuery: this.craftSearchQuery,
     });
     this.setText(this.sheetTitleEl, '합공 · 등선');
     this.setText(this.sheetSubtitleEl, view.subtitle);
@@ -2055,6 +2141,7 @@ export class UIManager {
       meta,
       wispTabs: this.wispTabs,
       activeTab: this.wispTab,
+      pinnedRecipeId: this.pinnedRecipeId,
     });
     this.setText(this.sheetTitleEl, '기연 초빙');
     this.setText(this.sheetSubtitleEl, view.subtitle);
@@ -2175,9 +2262,9 @@ export class UIManager {
     }
   }
 
-  private renderMissionSheet(snapshot: UISnapshot): void {
-    const view = buildMissionSheetView(this.data, snapshot);
-    this.setText(this.sheetTitleEl, '강호 의뢰 · 밀서');
+  private renderMissionSheet(snapshot: UISnapshot, meta: MetaProfile): void {
+    const view = buildMissionSheetView(this.data, snapshot, meta);
+    this.setText(this.sheetTitleEl, '일일 수련 · 강호 의뢰');
     this.setText(this.sheetSubtitleEl, view.subtitle);
     this.sheetTabsEl.style.display = 'none';
     this.sheetTabsEl.innerHTML = '';

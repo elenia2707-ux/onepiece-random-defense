@@ -2,6 +2,9 @@ import type { FactionId } from '../data/types';
 import type { StorageLike } from './MetaStore';
 
 const MUTE_STORAGE_KEY = 'murim_sound_muted_v1';
+const VOLUME_STORAGE_KEY = 'murim_sound_vol_v2';
+
+export type SoundVolumeLevel = 0 | 0.5 | 1;
 
 function resolveDefaultStorage(): StorageLike | null {
   try {
@@ -23,7 +26,7 @@ export class SoundSynthesizer {
   private readonly storage: StorageLike | null;
   private ctx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
-  private muted = false;
+  private volumeLevel: SoundVolumeLevel = 1;
   private unlocked = false;
 
   private lastHitAt = 0;
@@ -34,31 +37,54 @@ export class SoundSynthesizer {
     this.storage = customStorage !== undefined ? customStorage : resolveDefaultStorage();
     if (this.storage) {
       try {
-        this.muted = this.storage.getItem(MUTE_STORAGE_KEY) === '1';
+        const storedVol = this.storage.getItem(VOLUME_STORAGE_KEY);
+        if (storedVol === '0' || storedVol === '0.5' || storedVol === '1') {
+          this.volumeLevel = Number(storedVol) as SoundVolumeLevel;
+        } else if (this.storage.getItem(MUTE_STORAGE_KEY) === '1') {
+          this.volumeLevel = 0;
+        }
       } catch {
-        this.muted = false;
+        this.volumeLevel = 1;
       }
     }
   }
 
   public isMuted(): boolean {
-    return this.muted;
+    return this.volumeLevel === 0;
   }
 
-  public toggleMute(): boolean {
-    this.muted = !this.muted;
-    if (this.storage) {
-      try {
-        this.storage.setItem(MUTE_STORAGE_KEY, this.muted ? '1' : '0');
-      } catch {
-        // Ignore quota errors
-      }
+  public getVolumeLevel(): SoundVolumeLevel {
+    return this.volumeLevel;
+  }
+
+  private persistVolume(): void {
+    if (!this.storage) return;
+    try {
+      this.storage.setItem(VOLUME_STORAGE_KEY, String(this.volumeLevel));
+      this.storage.setItem(MUTE_STORAGE_KEY, this.volumeLevel === 0 ? '1' : '0');
+    } catch {
+      // Ignore quota errors
     }
-    if (!this.muted) {
+  }
+
+  public cycleVolume(): SoundVolumeLevel {
+    this.volumeLevel = this.volumeLevel === 1 ? 0.5 : this.volumeLevel === 0.5 ? 0 : 1;
+    this.persistVolume();
+    if (this.volumeLevel > 0) {
       this.ensureContext();
       this.playUiTap();
     }
-    return this.muted;
+    return this.volumeLevel;
+  }
+
+  public toggleMute(): boolean {
+    this.volumeLevel = this.volumeLevel === 0 ? 1 : 0;
+    this.persistVolume();
+    if (this.volumeLevel > 0) {
+      this.ensureContext();
+      this.playUiTap();
+    }
+    return this.volumeLevel === 0;
   }
 
   public mount(): void {
@@ -84,7 +110,7 @@ export class SoundSynthesizer {
   }
 
   private ensureContext(): AudioContext | null {
-    if (this.muted || typeof window === 'undefined') return null;
+    if (this.volumeLevel <= 0 || typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtor =
         window.AudioContext ??
@@ -126,6 +152,7 @@ export class SoundSynthesizer {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
+    const scaledPeak = Math.max(0.0002, peakGain * this.volumeLevel);
     const t0 = ctx.currentTime + delaySec;
     const t1 = t0 + durationSec;
 
@@ -138,7 +165,7 @@ export class SoundSynthesizer {
     }
 
     gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.linearRampToValueAtTime(peakGain, t0 + Math.min(0.012, durationSec * 0.25));
+    gain.gain.linearRampToValueAtTime(scaledPeak, t0 + Math.min(0.012, durationSec * 0.25));
     gain.gain.exponentialRampToValueAtTime(0.0001, t1);
 
     osc.connect(gain);
@@ -156,6 +183,7 @@ export class SoundSynthesizer {
     const ctx = this.ensureContext();
     if (!ctx || !this.noiseBuffer) return;
 
+    const scaledPeak = Math.max(0.0002, peakGain * this.volumeLevel);
     const t0 = ctx.currentTime + delaySec;
     const t1 = t0 + durationSec;
 
@@ -169,7 +197,7 @@ export class SoundSynthesizer {
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.linearRampToValueAtTime(peakGain, t0 + 0.008);
+    gain.gain.linearRampToValueAtTime(scaledPeak, t0 + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, t1);
 
     src.connect(filter);
@@ -204,7 +232,7 @@ export class SoundSynthesizer {
       | 'staff_gourd'
       | 'sorcery_qi',
   ): void {
-    if (this.muted) return;
+    if (this.volumeLevel <= 0) return;
     const now = typeof performance !== 'undefined' ? performance.now() : 0;
     if (isSkill) {
       if (now - this.lastSkillAt < 95) return;
@@ -350,6 +378,45 @@ export class SoundSynthesizer {
     const chime = [523.25, 659.25, 783.99, 987.77, 1174.66];
     for (let i = 0; i < chime.length; i++) {
       this.playTone(chime[i]!, chime[i]! * 1.005, 0.2, 'sine', 0.075, i * 0.05);
+    }
+  }
+
+  public playCutinFanfare(isImmortal: boolean): void {
+    // Grand ascending Wuxia martial gong + pentatonic flourish for Transcendent/Immortal descent
+    this.playTone(isImmortal ? 146.83 : 196, isImmortal ? 110 : 146.83, 0.36, 'sawtooth', 0.085, 0);
+    this.playNoiseSwish(isImmortal ? 2200 : 1850, 0.12, 0.065, 0.02);
+    const notes = isImmortal
+      ? [587.33, 659.25, 880, 1174.66, 1318.5]
+      : [523.25, 659.25, 783.99, 1046.5];
+    for (let i = 0; i < notes.length; i++) {
+      this.playTone(notes[i]!, notes[i]! * 1.012, 0.22, 'triangle', 0.085, 0.04 + i * 0.055);
+    }
+  }
+
+  public playRelicTranscend(): void {
+    // Radiant jade-gold harmonic bell chord for Lv.11~15 relic transcendence
+    const chord = [523.25, 783.99, 1046.5, 1567.98];
+    for (let i = 0; i < chord.length; i++) {
+      this.playTone(chord[i]!, chord[i]! * 1.008, 0.34, 'sine', 0.075, i * 0.045);
+    }
+    this.playTone(261.63, 523.25, 0.28, 'triangle', 0.065, 0);
+  }
+
+  public playBossPhaseDrum(): void {
+    // Triple heavy war drum roll + resonant dark bronze strike for Boss phase / dual-authority surge
+    this.playTone(120, 62, 0.14, 'sine', 0.1, 0);
+    this.playTone(126, 60, 0.14, 'sine', 0.1, 0.11);
+    this.playTone(138, 54, 0.28, 'sawtooth', 0.095, 0.22);
+    this.playNoiseSwish(520, 0.16, 0.075, 0.22);
+  }
+
+  public playBatchChestCascade(count: number): void {
+    // Cascading treasure-chest jade chimes scaled by batch pull count
+    const steps = Math.max(2, Math.min(8, Math.floor(count)));
+    const scale = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5];
+    for (let i = 0; i < steps; i++) {
+      const freq = scale[i % scale.length]!;
+      this.playTone(freq, freq * 1.04, 0.13, 'triangle', 0.072, i * 0.048);
     }
   }
 }

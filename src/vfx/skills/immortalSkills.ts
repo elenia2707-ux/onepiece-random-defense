@@ -14,7 +14,8 @@ export type ImmortalSkillTrack =
   | 'im_asura_emperor'
   | 'im_venom_lord'
   | 'im_thunder_emperor'
-  | 'im_hell_flame';
+  | 'im_hell_flame'
+  | 'im_wuji_grandmaster';
 
 export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
   return (
@@ -23,7 +24,8 @@ export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
     kind === 'im_asura_emperor' ||
     kind === 'im_venom_lord' ||
     kind === 'im_thunder_emperor' ||
-    kind === 'im_hell_flame'
+    kind === 'im_hell_flame' ||
+    kind === 'im_wuji_grandmaster'
   );
 }
 
@@ -210,6 +212,34 @@ export function spawnImmortalSkillVfx(
       api.triggerScreenFlash(c1, 0.1, 0.16, startTick);
       break;
     }
+
+    case 'im_wuji_grandmaster': {
+      // 태극무극진 · 팔괘파천: giant rotating Yin-Yang Taiji ring + 8 Bagua cyan-gold beams + '極'
+      const c1 = skinPrimary ?? '#2dd4bf';
+      const c2 = skinSecondary ?? '#fde047';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'sword',
+        startTick,
+        durationSec: 0.68,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 24,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.4,
+        glowRadius: 114,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 22, 195, 0.42, -16, startTick);
+      api.emitRadialBurst(x, y, c2, 16, 165, 0.4, 8, startTick);
+      api.triggerScreenFlash(c1, 0.09, 0.15, startTick);
+      break;
+    }
   }
 }
 
@@ -243,9 +273,13 @@ export function renderImmortalSkillGround(
   ctx.strokeStyle = inst.color;
   ctx.stroke();
 
-  // Inscribed sacred polygon (6-gon for Thunder/Sword, 8-star for Cheonma/Hellfire)
+  // Inscribed sacred polygon (8-gon for Bagua/Cheonma/Hellfire, 6-gon for Thunder/Sword)
   const sides =
-    inst.kind === 'im_cheonma' || inst.kind === 'im_hell_flame' ? 8 : 6;
+    inst.kind === 'im_cheonma' ||
+    inst.kind === 'im_hell_flame' ||
+    inst.kind === 'im_wuji_grandmaster'
+      ? 8
+      : 6;
   const polyR = radius * 0.72;
   const rot = inst.progress * 1.4;
   ctx.beginPath();
@@ -560,6 +594,75 @@ export function renderImmortalSkillAir(
       }
 
       const seal = rc.sprites.kanjiSeal('炎', inst.color);
+      const sz = 86 * (0.85 + inv * 0.25);
+      ctx.globalAlpha = inv * 0.96;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_wuji_grandmaster': {
+      // Giant rotating Yin-Yang Taiji ring + 8 Bagua cyan-gold radial beams + '極' seal
+      const r = inst.toRadius * (0.44 + easeOutCubic(p) * 0.54);
+      const taijiR = r * 0.44;
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(p * 3.2);
+      ctx.globalAlpha = inv * 0.95;
+
+      // 8 Bagua radial jade-gold qi beams
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI * 2) / 8;
+        const inner = taijiR * 1.05;
+        const outer = r * (i % 2 === 0 ? 1.06 : 0.88);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+        ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 8 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 4.2 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+      }
+
+      // Yin-Yang Taiji disc
+      ctx.beginPath();
+      ctx.arc(0, 0, taijiR, 0, Math.PI * 2);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fill();
+
+      // Dark Yin half + S-curve
+      ctx.beginPath();
+      ctx.arc(0, 0, taijiR, -Math.PI * 0.5, Math.PI * 0.5);
+      ctx.arc(0, taijiR * 0.5, taijiR * 0.5, Math.PI * 0.5, -Math.PI * 0.5, true);
+      ctx.arc(0, -taijiR * 0.5, taijiR * 0.5, Math.PI * 0.5, -Math.PI * 0.5, false);
+      ctx.closePath();
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.fill();
+
+      // Twin opposing eyes
+      ctx.beginPath();
+      ctx.arc(0, -taijiR * 0.5, Math.max(2.5, taijiR * 0.16), 0, Math.PI * 2);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, taijiR * 0.5, Math.max(2.5, taijiR * 0.16), 0, Math.PI * 2);
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.fill();
+
+      // Golden outer Taiji rim
+      ctx.beginPath();
+      ctx.arc(0, 0, taijiR, 0, Math.PI * 2);
+      ctx.lineWidth = 3.6;
+      ctx.strokeStyle = inst.secondaryColor;
+      ctx.stroke();
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('極', inst.color);
       const sz = 86 * (0.85 + inv * 0.25);
       ctx.globalAlpha = inv * 0.96;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);

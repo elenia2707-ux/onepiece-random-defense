@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import atlasRaw from '../public/assets/sprites_atlas.json';
 import type { StampedCommand } from '../src/core/CommandQueue';
 import {
+  computeRelicSetBonuses,
+  computeRelicSetStatuses,
   DIFFICULTY_CONFIGS,
   getUnitSellLuckRefund,
+  RELIC_SETS,
   TITLE_DEFS,
   TRIAL_CONFIGS,
 } from '../src/core/relicFormulas';
@@ -13,8 +16,9 @@ import {
   getWaveMutantKind,
 } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
-import type { BoonId, MonsterKind, PassiveProcKind, TrialId } from '../src/data/types';
+import type { BoonId, MonsterKind, PassiveProcKind, RelicId, TrialId } from '../src/data/types';
 import { DISCARD_DROP_RECT, isPointInDiscardZone } from '../src/input/DragController';
+import { pickDailyQuestsForDate } from '../src/platform/DailyQuests';
 import {
   BACKUP_CODE_PREFIX,
   DEFAULT_COURT_SKIN_ID,
@@ -32,6 +36,7 @@ import {
   getUnitCombatProfile,
   type WeaponMotionStyle,
 } from '../src/render/weaponProfiles';
+import { resolveTargetBossName, resolveWaveDef } from '../src/world/WaveSystem';
 
 describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble (영약 복용) & faction upgrades (내공 수련)', () => {
   it('supports atomic chain synthesis from 삼류 leaves to 화산 장문인 and 3-faction fusion into 현경·신마 절대천마', () => {
@@ -158,11 +163,11 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('packs all 41 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
+  it('packs all 44 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(41);
-    expect(data.heroSkins.length).toBe(14);
-    expect(data.courtSkins.length).toBe(4);
+    expect(data.units.length).toBe(44);
+    expect(data.heroSkins.length).toBe(16);
+    expect(data.courtSkins.length).toBe(5);
 
     const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
     const spriteSet = new Set(
@@ -194,8 +199,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
       expect(atlasFrames[kind], `missing WebP atlas frame: ${kind}`).toBeDefined();
     }
-    expect(spriteSet.size).toBe(47);
-    expect(Object.keys(atlasFrames).length).toBe(47);
+    expect(spriteSet.size).toBe(50);
+    expect(Object.keys(atlasFrames).length).toBe(50);
 
     const webpAtlasFiles = Object.keys(import.meta.glob('../public/assets/*.webp'));
     expect(webpAtlasFiles.some((p) => p.endsWith('/sprites_atlas.webp'))).toBe(true);
@@ -1358,9 +1363,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
 
   it('offers 3-choice Roguelike Boss Boons (강호 기연 3택 1), applies boon mechanics, and preserves 1x vs 3x determinism', () => {
     const data = loadGameData();
-    expect(data.boons.length).toBe(12);
+    expect(data.boons.length).toBe(18);
     const uniqueIcons = new Set(data.boons.map((b) => b.iconKind));
-    expect(uniqueIcons.size).toBe(12);
+    expect(uniqueIcons.size).toBe(18);
 
     const sim = new Simulation(data, 0x42424242);
     spawnCheonmaHelper(sim);
@@ -1451,9 +1456,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 41 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채 & blood_acolyte / nether_blade_queen) and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 44 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(41);
+    expect(data.units.length).toBe(44);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1466,8 +1471,11 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       seenStyles.add(profile.style);
     }
 
-    // All 10 distinct weapon motion archetypes must be represented in the 41-hero roster
+    // All 10 distinct weapon motion archetypes must be represented in the 44-hero roster
     expect(seenStyles.size).toBe(10);
+    expect(getUnitCombatProfile('ice_palace_empress').style).toBe('fan');
+    expect(getUnitCombatProfile('blood_shadow_sovereign').style).toBe('dual_sword');
+    expect(getUnitCombatProfile('wuji_grandmaster').style).toBe('sword');
     expect(getUnitCombatProfile('blood_acolyte').style).toBe('dagger_hidden');
     expect(getUnitCombatProfile('nether_blade_queen').style).toBe('sorcery_qi');
     expect(getUnitCombatProfile('tang_patriarch').style).toBe('fan');
@@ -1969,19 +1977,19 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(rec2.firstClearBonusSilk).toBe(0);
   });
 
-  it('differentiates all 6 현경·신마 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
+  it('differentiates all 7 현경·신마 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
     const data = loadGameData();
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(immortals.length).toBe(6);
+    expect(immortals.length).toBe(7);
 
     // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.0x max/min ATK)
     const atks = immortals.map((u) => u.atk);
     const passiveIds = new Set(immortals.map((u) => u.passiveTrait?.id).filter(Boolean));
-    expect(new Set(atks).size).toBe(6);
-    expect(passiveIds.size).toBe(6);
+    expect(new Set(atks).size).toBe(7);
+    expect(passiveIds.size).toBe(7);
     expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.0);
 
-    // Verify SlotView exposes passiveTrait and sword_immortal's 60% armorPiercePct out-scales un-pierced armor reduction
+    // Verify SlotView exposes passiveTrait and sword_immortal's 70% armorPiercePct out-scales un-pierced armor reduction
     const simPierce = new Simulation(data, 0x12344321, {}, 'hell', 'trial_crimson_iron');
     // Craft sword_immortal onto field (symmetric 3-ingredient route: sword_saint + hwasan_master + plum_elder)
     const craftSub = (sim: Simulation, recipeId: string): void => {
@@ -2110,10 +2118,10 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(importedMeta.isTutorialDone()).toBe(true);
   });
 
-  it('integrates +2 Demonic units, 12 bespoke high-tier VFX tracks, Transcendent passiveTraits, Rare supportAuras, and passiveProc events', () => {
+  it('integrates all 8 Transcendents & 7 Immortals with 15 bespoke high-tier VFX tracks, Transcendent passiveTraits, Rare supportAuras, and passiveProc events', () => {
     const data = loadGameData();
 
-    // 1. +2 Demonic roster additions: blood_acolyte (common leaf) & nether_blade_queen (transcendent)
+    // 1. +2 Demonic & +3 v2.0 roster additions
     const bloodAcolyte = data.unitsById.get('blood_acolyte');
     const netherQueen = data.unitsById.get('nether_blade_queen');
     expect(bloodAcolyte?.grade).toBe('common');
@@ -2124,18 +2132,22 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(netherQueen?.skill?.vfxTrack).toBe('tx_nether_queen');
     expect(netherQueen?.passiveTrait?.id).toBeTruthy();
 
-    // 2. All 6 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 6 Immortals have unique im_* VFX tracks
+    expect(data.unitsById.get('ice_palace_empress')?.skill?.vfxTrack).toBe('tx_ice_empress');
+    expect(data.unitsById.get('blood_shadow_sovereign')?.skill?.vfxTrack).toBe('tx_blood_sovereign');
+    expect(data.unitsById.get('wuji_grandmaster')?.skill?.vfxTrack).toBe('im_wuji_grandmaster');
+
+    // 2. All 8 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 7 Immortals have unique im_* VFX tracks
     const transcendents = data.units.filter((u) => u.grade === 'transcendent');
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(transcendents.length).toBe(6);
-    expect(immortals.length).toBe(6);
+    expect(transcendents.length).toBe(8);
+    expect(immortals.length).toBe(7);
 
     const txTracks = new Set(transcendents.map((u) => u.skill?.vfxTrack));
     const txPassives = new Set(transcendents.map((u) => u.passiveTrait?.id));
     const imTracks = new Set(immortals.map((u) => u.skill?.vfxTrack));
-    expect(txTracks.size).toBe(6);
-    expect(txPassives.size).toBe(6);
-    expect(imTracks.size).toBe(6);
+    expect(txTracks.size).toBe(8);
+    expect(txPassives.size).toBe(8);
+    expect(imTracks.size).toBe(7);
     for (const tr of txTracks) expect(tr?.startsWith('tx_')).toBe(true);
     for (const tr of imTracks) expect(tr?.startsWith('im_')).toBe(true);
 
@@ -2145,7 +2157,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(def?.supportAura, `${uid} must define supportAura`).toBeDefined();
     }
 
-    // 4. Deterministic passiveProc emissions on monster:hit (corrode from thousand_venom_lord, execute from asura_emperor)
+    // 4. Deterministic passiveProc emissions on monster:hit (corrode from thousand_venom_lord)
     const craftHero = (sim: Simulation, recipeId: string): void => {
       const recipe = data.recipes.find((r) => r.id === recipeId)!;
       for (const ing of recipe.ingredients) {
@@ -2180,7 +2192,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     }
     expect(procsSeen.has('corrode')).toBe(true);
 
-    // Verify blood_acolyte ×3 recipe & nether_blade_queen crafting execute cleanly in Simulation
+    // Verify blood_acolyte ×3 recipe executes cleanly in Simulation
     const simDemonic = new Simulation(data, 0x33445566, {}, 'normal', null);
     for (let i = 0; i < 3; i++) {
       simDemonic.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
@@ -2192,7 +2204,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(simDemonic.getUnits().some((u) => u.unitId === 'black_wind')).toBe(true);
   });
 
-  it('tracks MetaStore 12-title progression reward ladder, abyss difficulty, Lv.15 transcendence, equipTitle, trialRecords, achievement skins, and MRD1- backup without double-granting', () => {
+  it('tracks MetaStore 16-title progression reward ladder, abyss difficulty, Lv.15 transcendence, equipTitle, 6 trialRecords, achievement skins, and MRD1- backup without double-granting', () => {
     const data = loadGameData();
     const storeMap = new Map<string, string>();
     const memStorage: StorageLike = {
@@ -2205,7 +2217,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       },
     };
 
-    expect(TITLE_DEFS.length).toBe(12);
+    expect(TITLE_DEFS.length).toBe(16);
     const meta = new MetaStore(memStorage);
     expect(meta.getProfile().unlockedTitleCount).toBe(0);
     expect(meta.getEquippedTitle()).toBeNull();
@@ -2278,17 +2290,19 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(recAbyss.unlockedSkinIds).toContain('skin_thunder_jade_sovereign');
     expect(meta.getProfile().difficultyBestWave.abyss).toBe(55);
 
-    // 4. Clear all 4 Trials + verify trialRecords & skin_sword_immortal_celestial
+    // 4. Clear all 6 Trials + verify trialRecords, title_abyss_sanctum_victor, title_trial_conqueror & skin_sword_immortal_celestial
     const allTrials: readonly TrialId[] = [
       'trial_venom_gale',
       'trial_sword_tomb',
       'trial_crimson_iron',
       'trial_chaos_trinity',
+      'trial_gale_blitz',
+      'trial_abyss_sanctum',
     ];
     for (let i = 0; i < allTrials.length; i++) {
       const tid = allTrials[i]!;
       const rec = meta.settleRun({
-        wave: 15,
+        wave: TRIAL_CONFIGS[tid].targetWave,
         monstersSlain: 200,
         bossesSlain: 3,
         difficulty: 'normal',
@@ -2296,9 +2310,10 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
         victory: true,
         elapsedTicks: 12000 - i * 200,
       });
-      if (i < 3) {
+      if (i < allTrials.length - 1) {
         expect(meta.getProfile().ownedSkins.skin_sword_immortal_celestial).toBeFalsy();
       } else {
+        expect(rec.unlockedTitleIds).toContain('title_abyss_trial_victor');
         expect(rec.unlockedTitleIds).toContain('title_trial_conqueror');
         expect(rec.unlockedSkinIds).toContain('skin_sword_immortal_celestial');
         expect(meta.getProfile().ownedSkins.skin_sword_immortal_celestial).toBe(true);
@@ -2318,7 +2333,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(venomRec.bestWave).toBe(15);
     expect(venomRec.bestTicks).toBe(9500);
 
-    // 5. Discover all 41 units -> title_codex_master; unlock all 12 relics -> title_all_relics_owned;
+    // 5. Discover all 44 units -> title_codex_master; unlock all 16 relics -> title_all_relics_owned + title_relic_set_master;
     //    refine one relic to Lv.10 -> title_relic_grandmaster & Lv.15 -> title_relic_transcendent
     let codexUnlockedTitle = false;
     for (const u of data.units) {
@@ -2330,16 +2345,21 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     }
     expect(codexUnlockedTitle).toBe(true);
 
-    meta.grantDevMeta(15000, 0, 0);
+    meta.grantDevMeta(25000, 0, 0);
     let allRelicsTitle = false;
+    let setMasterTitle = false;
     for (const r of data.relics) {
       const res = meta.upgradeRelic(r);
       expect(res.ok).toBe(true);
       if (res.ok && res.unlockedTitleIds?.includes('title_all_relics_owned')) {
         allRelicsTitle = true;
       }
+      if (res.ok && res.unlockedTitleIds?.includes('title_relic_set_master')) {
+        setMasterTitle = true;
+      }
     }
     expect(allRelicsTitle).toBe(true);
+    expect(setMasterTitle).toBe(true);
 
     const firstRelic = data.relics[0]!;
     expect(firstRelic.maxLevel).toBe(15);
@@ -2358,9 +2378,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(relicLv10Title).toBe(true);
     expect(relicLv15Title).toBe(true);
     expect(meta.getProfile().relics[firstRelic.id]).toBe(15);
-    expect(meta.getProfile().unlockedTitleCount).toBe(12);
+    expect(meta.getProfile().unlockedTitleCount).toBe(14);
 
-    // 6. Reload from storage & MRD1- backup round-trip MUST preserve Lv.15, abyss, and all 12 titles without double-granting
+    // 6. Reload from storage & MRD1- backup round-trip MUST preserve Lv.15, abyss, and all 14 unlocked titles without double-granting
     const goldSnap = meta.getProfile().gold;
     const keysSnap = meta.getProfile().keys;
     const silkSnap = meta.getProfile().silk;
@@ -2370,7 +2390,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(reloaded.getProfile().keys).toBe(keysSnap);
     expect(reloaded.getProfile().silk).toBe(silkSnap);
     expect(reloaded.getProfile().relics[firstRelic.id]).toBe(15);
-    expect(reloaded.getProfile().unlockedTitleCount).toBe(12);
+    expect(reloaded.getProfile().unlockedTitleCount).toBe(14);
     expect(reloaded.getEquippedTitle()).toBe('title_normal_victor');
     expect(reloaded.getProfile().trialRecords.trial_venom_gale.bestTicks).toBe(9500);
 
@@ -2381,7 +2401,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(imported.getProfile().keys).toBe(keysSnap);
     expect(imported.getProfile().silk).toBe(silkSnap);
     expect(imported.getProfile().relics[firstRelic.id]).toBe(15);
-    expect(imported.getProfile().unlockedTitleCount).toBe(12);
+    expect(imported.getProfile().unlockedTitleCount).toBe(14);
     expect(imported.getEquippedTitle()).toBe('title_normal_victor');
     expect(imported.getProfile().trialRecords.trial_venom_gale.clears).toBe(2);
     expect(imported.getProfile().trialRecords.trial_venom_gale.bestTicks).toBe(9500);
@@ -2518,6 +2538,171 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       // golden_vault reaches Lv.15 transcendence cap!
       expect(meta.getProfile().relics.golden_vault).toBe(15);
     }
+  });
+
+  it('activates all 4 Relic Set Synergies (Tier 1/2/3), Daily Martial Quests rotation/claim/backup, upgrade x5, 3 new heroes, Endless 35+ dual-authority boss, and 3-step SoundSynthesizer volume', () => {
+    const data = loadGameData();
+    expect(RELIC_SETS.length).toBe(4);
+    expect(data.missions.length).toBe(16);
+    expect(data.trials.length).toBe(6);
+
+    // 1. 4 Relic Set Synergies Tier 0 -> Tier 1 -> Tier 2 -> Tier 3
+    const allLv1: Partial<Record<RelicId, number>> = {};
+    const allLv10: Partial<Record<RelicId, number>> = {};
+    const allLv15: Partial<Record<RelicId, number>> = {};
+    for (const r of data.relics) {
+      allLv1[r.id] = 1;
+      allLv10[r.id] = 10;
+      allLv15[r.id] = 15;
+    }
+
+    const s0 = computeRelicSetBonuses({});
+    const s1 = computeRelicSetBonuses(allLv1);
+    const s2 = computeRelicSetBonuses(allLv10);
+    const s3 = computeRelicSetBonuses(allLv15);
+    expect(s0.activeSetCount).toBe(0);
+    expect(s1.activeSetCount).toBe(4);
+    expect(s1.mythicSetCount).toBe(0);
+    expect(s2.interestPct).toBeGreaterThan(s1.interestPct);
+    expect(s3.mythicSetCount).toBe(4);
+    expect(s3.summonDiscount).toBe(1);
+    expect(s3.startLuck).toBe(2);
+    expect(s3.atkBps).toBe(2400);
+    expect(s3.bossDamagePct).toBe(38);
+    expect(computeRelicSetStatuses(allLv15).every((st) => st.tier === 3)).toBe(true);
+
+    // Verify Simulation applies Relic Set bonuses & activeRelicSetCount in snapshot
+    const setSim = new Simulation(data, 0x20262026, allLv15, 'normal', null);
+    const setSnap = setSim.buildSnapshot(1, false);
+    expect(setSnap.activeRelicSetCount).toBe(4);
+    expect(setSnap.relicBonus.interestPct).toBeGreaterThan(15);
+
+    // 2. Bulk upgrade x5 command upgrades 5 levels atomically & stops cleanly when out of coin
+    setSim.commands.enqueue({ type: 'grantTestCoin', amount: 3000 });
+    setSim.commands.enqueue({ type: 'upgrade', group: 'orthodox', count: 5 });
+    setSim.tick();
+    expect(setSim.buildSnapshot(1, false).upgradeLv.orthodox).toBe(5);
+
+    // Verify battle report telemetry fields (economyStats & damageMeter.byFaction) exist and accumulate
+    const simHero = new Simulation(data, 0x77778888, {}, 'normal', null);
+    // Craft 3 new v2.0 heroes: ice_palace_empress, blood_shadow_sovereign, wuji_grandmaster
+    const craftUnitRecursive = (sim: Simulation, unitId: string): void => {
+      const uDef = data.unitsById.get(unitId)!;
+      if (uDef.grade === 'common' || uDef.grade === 'uncommon' || uDef.grade === 'rare') {
+        sim.commands.enqueue({ type: 'grantTestResource', wispGrade: uDef.grade });
+        sim.commands.enqueue({ type: 'useWisp', grade: uDef.grade, unitId });
+        sim.tick();
+        return;
+      }
+      const rec = data.recipes.find((r) => r.output === unitId && !r.id.startsWith('r_3x_'))!;
+      for (const ing of rec.ingredients) {
+        for (let k = 0; k < ing.n; k++) {
+          craftUnitRecursive(sim, ing.unit);
+        }
+      }
+      sim.commands.enqueue({ type: 'craft', recipeId: rec.id, chain: false });
+      sim.tick();
+    };
+
+    craftUnitRecursive(simHero, 'ice_palace_empress');
+    craftUnitRecursive(simHero, 'blood_shadow_sovereign');
+    expect(simHero.getUnits().some((u) => u.unitId === 'ice_palace_empress')).toBe(true);
+    expect(simHero.getUnits().some((u) => u.unitId === 'blood_shadow_sovereign')).toBe(true);
+
+    // Now craft wuji_grandmaster using ice_palace_empress + hwasan_master + gaebang_elder
+    const simWuji = new Simulation(data, 0x88889999, {}, 'normal', null);
+    craftUnitRecursive(simWuji, 'wuji_grandmaster');
+    expect(simWuji.getUnits().some((u) => u.unitId === 'wuji_grandmaster')).toBe(true);
+    for (let t = 0; t < 240; t++) simWuji.tick();
+    const wujiSnap = simWuji.buildSnapshot(1, false);
+    expect(wujiSnap.craftedImmortal).toBe(true);
+    expect(wujiSnap.damageMeter.byFaction.orthodox).toBeGreaterThan(0);
+    expect(wujiSnap.economyStats.killCoinTotal).toBeGreaterThan(0);
+
+    // 3. Endless 35+ Dual-Authority Boss titles
+    const w35 = resolveWaveDef(data.waves, 35);
+    expect(w35.isBoss).toBe(true);
+    expect(resolveTargetBossName(null, 30, 35, w35)).toContain('무한이중권능');
+    expect(resolveTargetBossName(null, 30, 40, resolveWaveDef(data.waves, 40))).toContain(
+      '무한이중권능',
+    );
+    expect(resolveTargetBossName(null, 30, 30, resolveWaveDef(data.waves, 30))).not.toContain(
+      '무한이중권능',
+    );
+
+    // 4. Daily Martial Quests: deterministic date rotation, progress tracking, 1-click claim, no double-claim, backup round-trip
+    const qDay1a = pickDailyQuestsForDate('2026-11-19');
+    const qDay1b = pickDailyQuestsForDate('2026-11-19');
+    const qDay2 = pickDailyQuestsForDate('2026-11-20');
+    expect(qDay1a.length).toBe(3);
+    expect(qDay1a.map((q) => q.id)).toEqual(qDay1b.map((q) => q.id));
+    expect(new Set(qDay1a.map((q) => q.id)).size).toBe(3);
+    expect(qDay2.length).toBe(3);
+
+    const storeMap = new Map<string, string>();
+    const memStorage: StorageLike = {
+      getItem: (k) => storeMap.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k) => {
+        storeMap.delete(k);
+      },
+    };
+    const meta = new MetaStore(memStorage);
+    meta.settleRun({
+      wave: 36,
+      monstersSlain: 450,
+      bossesSlain: 7,
+      difficulty: 'normal',
+      trialId: 'trial_venom_gale',
+      victory: true,
+      usedHighFormation: true,
+      craftedImmortal: true,
+      dateKey: '2026-11-19',
+    });
+
+    const profDay1 = meta.getProfile('2026-11-19');
+    expect(profDay1.claimableDailyCount).toBe(3);
+    const firstQ = profDay1.dailyQuests[0]!.def;
+    const goldBefore = profDay1.gold;
+    const claimRes = meta.claimDailyQuest(firstQ.id, '2026-11-19');
+    expect(claimRes.ok).toBe(true);
+    expect(meta.getProfile('2026-11-19').gold).toBeGreaterThanOrEqual(goldBefore + firstQ.rewardGold);
+    expect(meta.getProfile('2026-11-19').totalDailyClaimed).toBe(1);
+    // Double claim rejected
+    expect(meta.claimDailyQuest(firstQ.id, '2026-11-19').ok).toBe(false);
+
+    // Backup round-trip preserves daily progress, claimed state, and totalDailyClaimed
+    const code = meta.exportBackupCode();
+    const restored = new MetaStore(null);
+    expect(restored.importBackupCode(code).ok).toBe(true);
+    expect(restored.getProfile('2026-11-19').totalDailyClaimed).toBe(1);
+    expect(restored.getProfile('2026-11-19').dailyQuests[0]!.claimed).toBe(true);
+
+    // Date rollover resets daily progress cleanly while keeping lifetime totalDailyClaimed
+    const nextDayProf = restored.getProfile('2026-11-20');
+    expect(nextDayProf.dailyDate).toBe('2026-11-20');
+    expect(nextDayProf.claimableDailyCount).toBe(0);
+    expect(nextDayProf.totalDailyClaimed).toBe(1);
+
+    // 5. SoundSynthesizer 3-step volume cycle (1 -> 0.5 -> 0 -> 1) & persistence
+    const sndMap = new Map<string, string>();
+    const sndStorage: StorageLike = {
+      getItem: (k) => sndMap.get(k) ?? null,
+      setItem: (k, v) => {
+        sndMap.set(k, v);
+      },
+    };
+    const snd1 = new SoundSynthesizer(sndStorage);
+    expect(snd1.getVolumeLevel()).toBe(1);
+    expect(snd1.cycleVolume()).toBe(0.5);
+    expect(snd1.isMuted()).toBe(false);
+    const sndReloaded = new SoundSynthesizer(sndStorage);
+    expect(sndReloaded.getVolumeLevel()).toBe(0.5);
+    expect(sndReloaded.cycleVolume()).toBe(0);
+    expect(sndReloaded.isMuted()).toBe(true);
+    expect(sndReloaded.cycleVolume()).toBe(1);
   });
 });
 

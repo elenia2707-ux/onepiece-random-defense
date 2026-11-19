@@ -49,6 +49,8 @@ const TRIAL_ACCENT: Readonly<Record<TrialId, string>> = {
   trial_sword_tomb: '#0369a1',
   trial_crimson_iron: '#b91c1c',
   trial_chaos_trinity: '#7e22ce',
+  trial_gale_blitz: '#0284c7',
+  trial_abyss_sanctum: '#581c87',
 };
 
 export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult {

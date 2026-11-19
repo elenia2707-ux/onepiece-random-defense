@@ -1,4 +1,7 @@
-import { getTrainingManualCostDiscountPct } from '../../core/relicFormulas';
+import {
+  computeRelicSetBonuses,
+  getTrainingManualCostDiscountPct,
+} from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
 import type { RecipeGraph } from '../../craft/RecipeGraph';
 import type { GameDataBundle, GradeId, RecipeDef, UnitId, UpgradeGroupId } from '../../data/types';
@@ -7,6 +10,7 @@ import type { SpriteCache } from '../../render/SpriteCache';
 import {
   BOON_RARITY_META,
   buildUnitRoleBadgesHtml,
+  type CraftFactionFilterId,
   escapeHtml,
   FACTION_META,
   getEquippedSkinDef,
@@ -43,6 +47,36 @@ export function collectUnlockedCounts(snapshot: UISnapshot): Map<UnitId, number>
   return counts;
 }
 
+/**
+ * Recursively collects all direct and descendant ingredient UnitIds needed for a pinned recipe.
+ */
+function collectPinnedIngredientSet(
+  recipeGraph: RecipeGraph,
+  pinnedRecipeId: string | null,
+): ReadonlySet<UnitId> {
+  const needed = new Set<UnitId>();
+  if (!pinnedRecipeId) return needed;
+  const root = recipeGraph.recipesById.get(pinnedRecipeId);
+  if (!root) return needed;
+
+  const visitedUnits = new Set<UnitId>();
+  const stack: UnitId[] = root.ingredients.map((i) => i.unit);
+  while (stack.length > 0) {
+    const uid = stack.pop()!;
+    needed.add(uid);
+    if (visitedUnits.has(uid)) continue;
+    visitedUnits.add(uid);
+    const subRecipes = recipeGraph.byOutput.get(uid) ?? [];
+    for (let i = 0; i < subRecipes.length; i++) {
+      const sr = subRecipes[i]!;
+      for (let j = 0; j < sr.ingredients.length; j++) {
+        stack.push(sr.ingredients[j]!.unit);
+      }
+    }
+  }
+  return needed;
+}
+
 export function buildRecipeCardHtml(
   data: GameDataBundle,
   sprites: SpriteCache,
@@ -50,6 +84,7 @@ export function buildRecipeCardHtml(
   snapshot: UISnapshot,
   unlocked: ReadonlyMap<UnitId, number>,
   meta: MetaProfile,
+  pinnedRecipeId: string | null = null,
 ): string {
   const outUnit = data.unitsById.get(recipe.output);
   if (!outUnit) return '';
@@ -59,8 +94,10 @@ export function buildRecipeCardHtml(
   const fMeta = FACTION_META[outUnit.faction];
   const st = snapshot.craft.recipes[recipe.id];
   const lamp = st?.lamp ?? 'none';
+  const isPinned = pinnedRecipeId === recipe.id;
   const cardStateClass =
-    lamp === 'ready' ? ' card-ready' : lamp === 'chainReady' ? ' card-chain' : '';
+    (lamp === 'ready' ? ' card-ready' : lamp === 'chainReady' ? ' card-chain' : '') +
+    (isPinned ? ' card-pinned' : '');
 
   const portraitUrl = sprites.unitPortraitUrl(
     outUnit,
@@ -105,6 +142,8 @@ export function buildRecipeCardHtml(
     ctaHtml = `<button type="button" class="card-cta-btn cta-disabled" disabled><span>${st?.have ?? 0}/${st?.need ?? fallbackNeed}</span></button>`;
   }
 
+  const pinBtnHtml = `<button type="button" class="recipe-pin-btn${isPinned ? ' active' : ''} interactive" data-sheet-action="${isPinned ? 'unpin-recipe' : 'pin-recipe'}" data-recipe-id="${recipe.id}" title="${isPinned ? '목표 고정 해제' : '이 협객을 목표 합공으로 고정'}">${isPinned ? '📌 해제' : '📌 고정'}</button>`;
+
   return `
       <div class="sheet-card${cardStateClass}">
         <div class="card-left">
@@ -121,7 +160,10 @@ export function buildRecipeCardHtml(
             <div class="ing-list">${ingChips}</div>
           </div>
         </div>
-        ${ctaHtml}
+        <div class="recipe-cta-col">
+          ${ctaHtml}
+          ${pinBtnHtml}
+        </div>
       </div>
     `;
 }
@@ -134,8 +176,22 @@ export function buildCraftSheetView(params: {
   readonly meta: MetaProfile;
   readonly craftTabs: readonly { readonly id: 'all' | GradeId; readonly label: string }[];
   readonly activeTab: 'all' | GradeId;
+  readonly pinnedRecipeId: string | null;
+  readonly factionFilter: CraftFactionFilterId;
+  readonly searchQuery: string;
 }): SheetViewResult {
-  const { data, recipeGraph, sprites, snapshot, meta, craftTabs, activeTab } = params;
+  const {
+    data,
+    recipeGraph,
+    sprites,
+    snapshot,
+    meta,
+    craftTabs,
+    activeTab,
+    pinnedRecipeId,
+    factionFilter,
+    searchQuery,
+  } = params;
   const subtitle = `총 ${data.recipes.length}식 합공보 · 즉시 합공 ${snapshot.craft.readyCount} · 연쇄 등선 ${snapshot.craft.chainReadyCount}`;
 
   const tabsHtml = craftTabs
@@ -154,6 +210,27 @@ export function buildCraftSheetView(params: {
     .join('');
 
   const unlocked = collectUnlockedCounts(snapshot);
+  const qNorm = searchQuery.trim().toLowerCase();
+
+  const matchesFilter = (r: RecipeDef): boolean => {
+    const outUnit = data.unitsById.get(r.output);
+    if (!outUnit) return false;
+    const st = snapshot.craft.recipes[r.id];
+    if (factionFilter === 'ready') {
+      if (!st || (st.lamp !== 'ready' && st.lamp !== 'chainReady')) return false;
+    } else if (factionFilter !== 'all' && outUnit.faction !== factionFilter) {
+      return false;
+    }
+    if (qNorm.length > 0) {
+      const inName = outUnit.name.toLowerCase().includes(qNorm);
+      const inSkill = outUnit.skill.name.toLowerCase().includes(qNorm);
+      const inIng = r.ingredients.some((ing) =>
+        (data.unitsById.get(ing.unit)?.name ?? '').toLowerCase().includes(qNorm),
+      );
+      if (!inName && !inSkill && !inIng) return false;
+    }
+    return true;
+  };
 
   const allRecipes: RecipeDef[] = [];
   for (let i = 0; i < recipeGraph.topo.length; i++) {
@@ -161,7 +238,44 @@ export function buildCraftSheetView(params: {
     if (r) allRecipes.push(r);
   }
 
-  const readyList = allRecipes
+  const toolbarHtml = `
+    <div class="craft-filter-toolbar">
+      <div class="craft-filter-pills">
+        <button type="button" class="codex-filter-btn${factionFilter === 'all' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="all">전체</button>
+        <button type="button" class="codex-filter-btn${factionFilter === 'orthodox' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="orthodox">정파</button>
+        <button type="button" class="codex-filter-btn${factionFilter === 'unorthodox' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="unorthodox">사파</button>
+        <button type="button" class="codex-filter-btn${factionFilter === 'demonic' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="demonic">마교</button>
+        <button type="button" class="codex-filter-btn${factionFilter === 'ready' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="ready">⚡가능만</button>
+      </div>
+      <div class="craft-search-wrap">
+        <input
+          id="craft-search-input"
+          type="text"
+          class="craft-search-input interactive"
+          value="${escapeHtml(searchQuery)}"
+          placeholder="협객·재료·절기 검색..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        ${searchQuery.length > 0 ? '<button type="button" class="craft-search-clear interactive" data-sheet-action="craft-search-clear" title="검색어 지우기">✕</button>' : ''}
+      </div>
+    </div>
+  `;
+
+  const parts: string[] = [toolbarHtml];
+
+  // Always float pinned target recipe at the top
+  const pinnedRec = pinnedRecipeId ? recipeGraph.recipesById.get(pinnedRecipeId) : undefined;
+  if (pinnedRec) {
+    parts.push('<div class="sheet-section-label pinned-label">📌 추적 중인 목표 합공 (추천바 · 기연 초빙 연동)</div>');
+    parts.push(
+      buildRecipeCardHtml(data, sprites, pinnedRec, snapshot, unlocked, meta, pinnedRecipeId),
+    );
+  }
+
+  const filteredAll = allRecipes.filter((r) => r.id !== pinnedRecipeId && matchesFilter(r));
+
+  const readyList = filteredAll
     .filter((r) => {
       const st = snapshot.craft.recipes[r.id];
       return st && (st.lamp === 'ready' || st.lamp === 'chainReady');
@@ -174,7 +288,7 @@ export function buildCraftSheetView(params: {
 
   const readyIds = new Set(readyList.map((r) => r.id));
 
-  const restRecipes = allRecipes.filter((r) => {
+  const restRecipes = filteredAll.filter((r) => {
     const outUnit = data.unitsById.get(r.output);
     if (!outUnit) return false;
     if (activeTab === 'all') {
@@ -183,23 +297,31 @@ export function buildCraftSheetView(params: {
     return outUnit.grade === activeTab;
   });
 
-  const parts: string[] = [];
-
   if (readyList.length > 0 && activeTab === 'all') {
     parts.push('<div class="sheet-section-label">⚡ 지금 합공 · 등선 가능</div>');
     for (let i = 0; i < readyList.length; i++) {
-      parts.push(buildRecipeCardHtml(data, sprites, readyList[i]!, snapshot, unlocked, meta));
+      parts.push(
+        buildRecipeCardHtml(data, sprites, readyList[i]!, snapshot, unlocked, meta, pinnedRecipeId),
+      );
     }
   }
 
   const sectionTitle =
     activeTab === 'all'
-      ? `전체 무림 합공보 (${data.recipes.length}식 — 정통 · ×3 동문합일 · 별파식 · 비전)`
+      ? `전체 무림 합공보 (${filteredAll.length}식 표시 / 총 ${data.recipes.length}식)`
       : `${craftTabs.find((t) => t.id === activeTab)?.label ?? ''} 경지 합공보 (${restRecipes.length}식)`;
   parts.push(`<div class="sheet-section-label">${escapeHtml(sectionTitle)}</div>`);
 
-  for (let i = 0; i < restRecipes.length; i++) {
-    parts.push(buildRecipeCardHtml(data, sprites, restRecipes[i]!, snapshot, unlocked, meta));
+  if (restRecipes.length === 0 && readyList.length === 0) {
+    parts.push(
+      '<div class="boon-owned-empty">조건에 맞는 합공식이 없습니다. 필터나 검색어를 초기화해 보세요.</div>',
+    );
+  } else {
+    for (let i = 0; i < restRecipes.length; i++) {
+      parts.push(
+        buildRecipeCardHtml(data, sprites, restRecipes[i]!, snapshot, unlocked, meta, pinnedRecipeId),
+      );
+    }
   }
 
   return { subtitle, tabsHtml, bodyHtml: parts.join('') };
@@ -213,10 +335,16 @@ export function buildWispSheetView(params: {
   readonly meta: MetaProfile;
   readonly wispTabs: readonly { readonly id: GradeId; readonly label: string }[];
   readonly activeTab: GradeId;
+  readonly pinnedRecipeId: string | null;
 }): SheetViewResult {
-  const { data, recipeGraph, sprites, snapshot, meta, wispTabs, activeTab } = params;
+  const { data, recipeGraph, sprites, snapshot, meta, wispTabs, activeTab, pinnedRecipeId } = params;
   const totalWisps = Object.values(snapshot.wisps).reduce((s, n) => s + (n ?? 0), 0);
-  const subtitle = `비급 초빙권 ${totalWisps}장`;
+  const pinnedOutUnit = pinnedRecipeId
+    ? data.unitsById.get(recipeGraph.recipesById.get(pinnedRecipeId)?.output ?? '')
+    : undefined;
+  const subtitle = pinnedOutUnit
+    ? `비급 초빙권 ${totalWisps}장 · 📌 목표 [${pinnedOutUnit.name}] 재료 강조 중`
+    : `비급 초빙권 ${totalWisps}장`;
 
   const tabsHtml = wispTabs
     .map((tab) => {
@@ -230,6 +358,7 @@ export function buildWispSheetView(params: {
   const gradeCount = snapshot.wisps[activeTab] ?? 0;
   const hasFreeSlot = snapshot.fieldOccupied + snapshot.benchOccupied < 30;
   const unlocked = collectUnlockedCounts(snapshot);
+  const pinnedNeedSet = collectPinnedIngredientSet(recipeGraph, pinnedRecipeId);
 
   const pool = data.wispPools[activeTab] ?? [];
   const hints = snapshot.wispHints[activeTab];
@@ -241,7 +370,13 @@ export function buildWispSheetView(params: {
     }
   }
 
-  const orderedUnitIds: UnitId[] = hints ? hints.map((h) => h.unitId) : [...pool];
+  const baseOrder: UnitId[] = hints ? hints.map((h) => h.unitId) : [...pool];
+  // Prioritize pinned target ingredients first while preserving existing hint order
+  const orderedUnitIds: UnitId[] = [...baseOrder].sort((a, b) => {
+    const pinA = pinnedNeedSet.has(a) ? 1 : 0;
+    const pinB = pinnedNeedSet.has(b) ? 1 : 0;
+    return pinB - pinA;
+  });
 
   const cardsHtml = orderedUnitIds
     .map((uid) => {
@@ -253,11 +388,15 @@ export function buildWispSheetView(params: {
       const portrait = sprites.unitPortraitUrl(u, g, getEquippedSkinDef(data, u.id, meta));
       const owned = unlocked.get(uid) ?? 0;
       const hint = hintMap.get(uid);
+      const isPinnedNeed = pinnedNeedSet.has(uid);
       const roleBadges = buildUnitRoleBadgesHtml(u);
 
       let hintBadge = `<span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>`;
       let recommendClass = '';
-      if (hint?.completes) {
+      if (isPinnedNeed) {
+        hintBadge = `<span class="hint-pill pinned">📌 목표 재료</span>`;
+        recommendClass = ' wisp-recommend wisp-pinned';
+      } else if (hint?.completes) {
         const completedOut = recipeGraph.recipesById.get(hint.completes)?.output;
         const outName = completedOut
           ? (data.unitsById.get(completedOut)?.name ?? '상위 고수')
@@ -407,22 +546,44 @@ export function buildUpgradeSheetView(params: {
   const manualDiscountPct = getTrainingManualCostDiscountPct(
     snapshot.relics.jade_training_manual ?? 0,
   );
-  const totalDiscountPct = Math.min(60, harmonyStacks * 25 + manualDiscountPct);
+  const setDiscountPct = computeRelicSetBonuses(snapshot.relics).upgradeDiscountPct;
+  const totalDiscountPct = Math.min(60, harmonyStacks * 25 + manualDiscountPct + setDiscountPct);
   const discountNote = totalDiscountPct > 0 ? ` · 수련비 -${totalDiscountPct}%` : '';
   const subtitle = `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 정파 내공 / 사파 외공 / 마교 마공${discountNote}`;
+
+  const calcStepCost = (baseCost: number, costStep: number, level: number): number => {
+    const raw = baseCost + level * costStep;
+    return totalDiscountPct > 0
+      ? Math.max(1, Math.round((raw * (100 - totalDiscountPct)) / 100))
+      : raw;
+  };
 
   const cards = data.upgrades
     .map((up) => {
       const lv = snapshot.upgradeLv[up.id] ?? 0;
       const isMax = lv >= up.maxLevel;
-      const rawCost = up.baseCost + lv * up.costStep;
-      const cost =
-        totalDiscountPct > 0
-          ? Math.max(1, Math.round((rawCost * (100 - totalDiscountPct)) / 100))
-          : rawCost;
+      const cost = calcStepCost(up.baseCost, up.costStep, lv);
       const icon = up.currency === 'coin' ? ICON.coin : ICON.elixir;
-      const affordable =
-        up.currency === 'coin' ? snapshot.coin >= cost : snapshot.luckStone >= cost;
+      const wallet = up.currency === 'coin' ? snapshot.coin : snapshot.luckStone;
+      const affordable = wallet >= cost;
+
+      // Bulk x5 cost calculation (exact sum for 2..5 affordable levels, or full remaining batch preview)
+      const remLevels = Math.max(0, up.maxLevel - lv);
+      const maxBatch = Math.min(5, remLevels);
+      let affordSteps = 0;
+      let affordSum = 0;
+      let fullBatchSum = 0;
+      for (let s = 0; s < maxBatch; s++) {
+        const sc = calcStepCost(up.baseCost, up.costStep, lv + s);
+        fullBatchSum += sc;
+        if (affordSum + sc <= wallet) {
+          affordSum += sc;
+          affordSteps = s + 1;
+        }
+      }
+      const canBulk = !isMax && affordSteps >= 2;
+      const bulkLabel = canBulk ? `×${affordSteps}` : `×${Math.max(2, maxBatch)}`;
+      const bulkPrice = canBulk ? affordSum : fullBatchSum;
 
       const fMeta = FACTION_META[up.faction];
       const repUnit = data.unitsById.get(UPGRADE_REP_UNIT[up.id]);
@@ -449,16 +610,32 @@ export function buildUpgradeSheetView(params: {
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              class="card-cta-btn ${!isMax && affordable ? 'interactive' : 'cta-disabled'}"
-              data-sheet-action="upgrade"
-              data-group="${up.id}"
-              ${!isMax && affordable ? '' : 'disabled'}
-            >
-              <span>${isMax ? '극의' : '수련'}</span>
-              ${isMax ? '' : `<span class="mini-price">${icon}${cost}</span>`}
-            </button>
+            <div class="upgrade-cta-row">
+              ${
+                !isMax && maxBatch >= 2
+                  ? `<button
+                      type="button"
+                      class="card-cta-btn upgrade-x5-btn ${canBulk ? 'cta-sky interactive' : 'cta-disabled'}"
+                      data-sheet-action="upgrade5"
+                      data-group="${up.id}"
+                      ${canBulk ? '' : 'disabled'}
+                    >
+                      <span>${bulkLabel}</span>
+                      <span class="mini-price">${icon}${bulkPrice}</span>
+                    </button>`
+                  : ''
+              }
+              <button
+                type="button"
+                class="card-cta-btn ${!isMax && affordable ? 'interactive' : 'cta-disabled'}"
+                data-sheet-action="upgrade"
+                data-group="${up.id}"
+                ${!isMax && affordable ? '' : 'disabled'}
+              >
+                <span>${isMax ? '극의' : '수련'}</span>
+                ${isMax ? '' : `<span class="mini-price">${icon}${cost}</span>`}
+              </button>
+            </div>
           </div>
         `;
     })
@@ -506,8 +683,58 @@ export function buildUpgradeSheetView(params: {
   return { subtitle, bodyHtml: cards + boonsHtml };
 }
 
-export function buildMissionSheetView(data: GameDataBundle, snapshot: UISnapshot): SheetViewResult {
-  const subtitle = `달성 ${snapshot.missionsCompletedCount} / ${snapshot.missions.length} · 조건 달성 시 즉시 보상 자동 지급`;
+export function buildMissionSheetView(
+  data: GameDataBundle,
+  snapshot: UISnapshot,
+  meta: MetaProfile,
+): SheetViewResult {
+  const dailyDone = meta.dailyQuests.filter((q) => q.claimed).length;
+  const claimableNote =
+    meta.claimableDailyCount > 0 ? ` · 🎁 일일 보상 ${meta.claimableDailyCount}건 수령 가능!` : '';
+  const subtitle = `출정 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length} · 일일 과제 ${dailyDone}/3${claimableNote}`;
+
+  const dailyCardsHtml = meta.dailyQuests
+    .map((dq) => {
+      const def = dq.def;
+      const pct = Math.min(100, Math.round((dq.progress / Math.max(1, def.target)) * 100));
+      const rewards: string[] = [];
+      if (def.rewardGold > 0) {
+        rewards.push(`<span class="mission-reward-pill gold">${ICON.goldCoin}+${def.rewardGold}</span>`);
+      }
+      if (def.rewardKeys > 0) {
+        rewards.push(`<span class="mission-reward-pill key">${ICON.key}+${def.rewardKeys}</span>`);
+      }
+      if (def.rewardSilk > 0) {
+        rewards.push(`<span class="mission-reward-pill silk">${ICON.silk}+${def.rewardSilk}필</span>`);
+      }
+
+      let rightCta = '';
+      if (dq.claimed) {
+        rightCta = '<span class="mission-stamp done">수령 완료 ✓</span>';
+      } else if (dq.completed) {
+        rightCta = `<button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="claim-daily" data-quest-id="${def.id}"><span>보상 수령</span></button>`;
+      } else {
+        rightCta = `<span class="mission-stamp">${dq.progress.toLocaleString('ko-KR')} / ${def.target.toLocaleString('ko-KR')}</span>`;
+      }
+
+      return `
+        <div class="sheet-card mission-card daily-quest-card${dq.claimed ? ' mission-done' : dq.completed ? ' daily-claimable' : ''}">
+          <div class="mission-main">
+            <div class="card-name-row">
+              <span class="grade-pill daily-pill">일일</span>
+              <span class="card-name">${escapeHtml(def.name)}</span>
+              <div class="mission-rewards">${rewards.join('')}</div>
+            </div>
+            <div class="card-sub">${escapeHtml(def.desc)}</div>
+            <div class="mission-prog-track">
+              <div class="mission-prog-fill daily" style="width:${pct}%"></div>
+            </div>
+          </div>
+          ${rightCta}
+        </div>
+      `;
+    })
+    .join('');
 
   const sorted = [...snapshot.missions].sort((a, b) => {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -516,7 +743,7 @@ export function buildMissionSheetView(data: GameDataBundle, snapshot: UISnapshot
     return ratioB - ratioA;
   });
 
-  const bodyHtml = sorted
+  const runMissionsHtml = sorted
     .map((m) => {
       const pct = Math.min(100, Math.round((m.progress / Math.max(1, m.target)) * 100));
       const rewards: string[] = [];
@@ -556,6 +783,13 @@ export function buildMissionSheetView(data: GameDataBundle, snapshot: UISnapshot
         `;
     })
     .join('');
+
+  const bodyHtml = `
+    <div class="sheet-section-label daily-section-label">📅 일일 강호 수련 과제 (${escapeHtml(meta.dailyDate)} · 영구 재화 지급 · 누적 완료 ${meta.totalDailyClaimed}회)</div>
+    ${dailyCardsHtml}
+    <div class="sheet-section-label">📜 이번 출정 강호 의뢰 (${snapshot.missionsCompletedCount}/${snapshot.missions.length} · 달성 시 즉시 자동 지급)</div>
+    ${runMissionsHtml}
+  `;
 
   return { subtitle, tabsHtml: null, bodyHtml };
 }

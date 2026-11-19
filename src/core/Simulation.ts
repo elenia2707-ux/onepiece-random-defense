@@ -7,6 +7,7 @@ import {
 import { EventBus } from './EventBus';
 import {
   CLEAR_TARGET_WAVE,
+  computeRelicSetBonuses,
   getAbacusSummonDiscount,
   getArmorGauntletShred,
   getFurnaceChanceBonusPct,
@@ -119,6 +120,12 @@ export const BOON_IDS_ORDERED: readonly BoonId[] = [
   'b_heavenly_reinforce',
   'b_bounty_hunter',
   'b_trinity_harmony',
+  'b_reaper_seal',
+  'b_chain_thunder',
+  'b_frost_shatter',
+  'b_piercing_echo',
+  'b_relic_resonance',
+  'b_bench_support',
 ];
 
 export interface SimEventMap {
@@ -429,7 +436,17 @@ export interface UISnapshot {
   readonly damageMeter: {
     readonly totalDamage: number;
     readonly entries: readonly DamageEntrySnapshot[];
+    readonly byFaction: Readonly<Record<FactionId, number>>;
   };
+  readonly economyStats: {
+    readonly totalInterestEarned: number;
+    readonly pilferedCoinTotal: number;
+    readonly killCoinTotal: number;
+    readonly sellCoinTotal: number;
+  };
+  readonly activeRelicSetCount: number;
+  readonly usedHighFormation: boolean;
+  readonly craftedImmortal: boolean;
   readonly monsterCount: number;
   readonly monsterCap: number;
   readonly monstersSlain: number;
@@ -527,6 +544,12 @@ export class Simulation {
     b_heavenly_reinforce: 0,
     b_bounty_hunter: 0,
     b_trinity_harmony: 0,
+    b_reaper_seal: 0,
+    b_chain_thunder: 0,
+    b_frost_shatter: 0,
+    b_piercing_echo: 0,
+    b_relic_resonance: 0,
+    b_bench_support: 0,
   };
   private boonOfferSeq = 0;
   private readonly pendingBoonOffers: BoonOfferSnapshot[] = [];
@@ -534,7 +557,12 @@ export class Simulation {
   private appliedStartLuckBonus = 0;
   private readonly appliedStartWisps: Record<GradeId, number> = {};
   private lastWaveInterest = 0;
+  private totalInterestEarned = 0;
   private pilferedCoinTotal = 0;
+  private killCoinTotal = 0;
+  private sellCoinTotal = 0;
+  private usedHighFormation = false;
+  private craftedImmortal = false;
   private monstersSlain = 0;
   private bossesSlain = 0;
   private bountiesCalled = 0;
@@ -617,13 +645,15 @@ export class Simulation {
       }
     }
 
+    const setBonus = computeRelicSetBonuses(this.relicLv);
     const targetCoinBonus = getJadeSealStartCoin(this.relicLv.founding_jade_seal);
     if (targetCoinBonus > this.appliedStartCoinBonus) {
       this.coin += targetCoinBonus - this.appliedStartCoinBonus;
       this.appliedStartCoinBonus = targetCoinBonus;
     }
 
-    const targetLuckBonus = getLuckPouchStartLuck(this.relicLv.phoenix_luck_pouch);
+    const targetLuckBonus =
+      getLuckPouchStartLuck(this.relicLv.phoenix_luck_pouch) + setBonus.startLuck;
     if (targetLuckBonus > this.appliedStartLuckBonus) {
       this.luckStone += targetLuckBonus - this.appliedStartLuckBonus;
       this.appliedStartLuckBonus = targetLuckBonus;
@@ -720,9 +750,10 @@ export class Simulation {
     if (this.trialId && TRIAL_CONFIGS[this.trialId].disableInterest) {
       return { pct: 0, cap: 0 };
     }
+    const setBonus = computeRelicSetBonuses(this.relicLv);
     const usuryStacks = this.getBoonStacks('b_usury_vault');
     const basePct = getVaultInterestPct(this.relicLv.golden_vault);
-    const pct = basePct + usuryStacks * 3;
+    const pct = basePct + usuryStacks * 3 + setBonus.interestPct;
     if (pct <= 0) {
       return { pct: 0, cap: 0 };
     }
@@ -730,7 +761,7 @@ export class Simulation {
       this.relicLv.golden_vault > 0 ? getVaultInterestCap(this.relicLv.golden_vault) : 120;
     return {
       pct,
-      cap: baseCap + usuryStacks * 60,
+      cap: baseCap + usuryStacks * 60 + setBonus.interestCap,
     };
   }
 
@@ -745,10 +776,12 @@ export class Simulation {
   }
 
   public getEffectiveGambleBonusPct(): number {
+    const setBonus = computeRelicSetBonuses(this.relicLv);
     const trialBonus = this.trialId ? TRIAL_CONFIGS[this.trialId].gambleBonusPct : 0;
     return (
       getFurnaceChanceBonusPct(this.relicLv.immortal_furnace) +
       this.getBoonStacks('b_elixir_jackpot') * 12 +
+      setBonus.gambleBonusPct +
       trialBonus
     );
   }
@@ -756,7 +789,8 @@ export class Simulation {
   public getSummonCost(): number {
     const econ = this.data.board.economy;
     const raw = econ.baseSummonCost + this.summonCount * econ.summonCostStep;
-    const discount = getAbacusSummonDiscount(this.relicLv.merchant_abacus ?? 0);
+    const setBonus = computeRelicSetBonuses(this.relicLv);
+    const discount = getAbacusSummonDiscount(this.relicLv.merchant_abacus ?? 0) + setBonus.summonDiscount;
     return Math.max(10, raw - discount);
   }
 
@@ -765,9 +799,13 @@ export class Simulation {
     if (!def) return 999;
     const lv = this.upgradeLv[groupId] ?? 0;
     const raw = def.baseCost + lv * def.costStep;
+    const setBonus = computeRelicSetBonuses(this.relicLv);
     const harmonyStacks = this.getBoonStacks('b_trinity_harmony');
     const manualDiscountPct = getTrainingManualCostDiscountPct(this.relicLv.jade_training_manual ?? 0);
-    const totalDiscountPct = Math.min(60, harmonyStacks * 25 + manualDiscountPct);
+    const totalDiscountPct = Math.min(
+      65,
+      harmonyStacks * 25 + manualDiscountPct + setBonus.upgradeDiscountPct,
+    );
     if (totalDiscountPct <= 0) return raw;
     return Math.max(1, Math.round((raw * (100 - totalDiscountPct)) / 100));
   }
@@ -816,6 +854,21 @@ export class Simulation {
     precomputedSynergy?: FactionSynergySnapshot,
     tileBuffAtkPct = 0,
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
+    const setBonus = computeRelicSetBonuses(this.relicLv);
+    let extraTraitPct = 0;
+    if (this.getBoonStacks('b_relic_resonance') > 0) {
+      let ownedRelics = 0;
+      for (let i = 0; i < RELIC_IDS_ORDERED.length; i++) {
+        if ((this.relicLv[RELIC_IDS_ORDERED[i]!] ?? 0) > 0) ownedRelics++;
+      }
+      extraTraitPct += ownedRelics * 3;
+    }
+    const benchBoonStacks = this.getBoonStacks('b_bench_support');
+    if (benchBoonStacks > 0) {
+      const benchCount = this.board.bench.countOccupied();
+      extraTraitPct += Math.round(benchCount * (benchBoonStacks >= 2 ? 4.5 : 2.5));
+    }
+
     return computeUnitEffectiveAtk(
       this.data,
       unitId,
@@ -826,12 +879,15 @@ export class Simulation {
       this.getBoonStacks('b_trinity_harmony'),
       this.getBoonStacks('b_demonic_overdrive'),
       this.trialId,
-      getTrigramMirrorAtkBps(this.relicLv.eight_trigram_mirror ?? 0),
+      getTrigramMirrorAtkBps(this.relicLv.eight_trigram_mirror ?? 0) + setBonus.atkBps,
+      extraTraitPct,
     );
   }
 
   public getUnitSellCoin(baseSellCoin: number): number {
-    const sellPct = getLuckPouchSellCoinPct(this.relicLv.phoenix_luck_pouch ?? 0);
+    const setBonus = computeRelicSetBonuses(this.relicLv);
+    const sellPct =
+      getLuckPouchSellCoinPct(this.relicLv.phoenix_luck_pouch ?? 0) + setBonus.sellCoinPct;
     if (sellPct <= 0) return baseSellCoin;
     return Math.round((baseSellCoin * (100 + sellPct)) / 100);
   }
@@ -956,6 +1012,9 @@ export class Simulation {
       },
       setLastWaveInterest: (v) => {
         this.lastWaveInterest = v;
+        if (v > 0) {
+          this.totalInterestEarned += v;
+        }
       },
       getEffectiveInterestConfig: () => this.getEffectiveInterestConfig(),
       getWaveClearCoinBonusPct: () =>
@@ -1002,9 +1061,13 @@ export class Simulation {
       },
       addCoin: (delta, isPilfer = false) => {
         this.coin += delta;
-        if (isPilfer && delta > 0) {
-          this.pilferedCoinTotal += delta;
-          this.priorityDirty = true;
+        if (delta > 0) {
+          if (isPilfer) {
+            this.pilferedCoinTotal += delta;
+            this.priorityDirty = true;
+          } else {
+            this.killCoinTotal += delta;
+          }
         }
       },
       addLuckStone: (delta) => {
@@ -1214,33 +1277,52 @@ export class Simulation {
           this.reject('upgrade', '존재하지 않는 내공 심법입니다.');
           return;
         }
-        const curLv = this.upgradeLv[cmd.group] ?? 0;
-        if (curLv >= upDef.maxLevel) {
-          this.reject('upgrade', '이미 내공 극의(최대 단계)에 도달했습니다.');
-          return;
-        }
-        const cost = this.getUpgradeCost(cmd.group);
-        if (upDef.currency === 'coin') {
-          if (this.coin < cost) {
-            this.reject('upgrade', `은자가 부족합니다 (${cost} 필요)`);
-            return;
+        const reqCount = Math.max(1, Math.min(10, Math.floor(cmd.count ?? 1)));
+        let applied = 0;
+        let finalLv = this.upgradeLv[cmd.group] ?? 0;
+
+        for (let step = 0; step < reqCount; step++) {
+          const curLv = this.upgradeLv[cmd.group] ?? 0;
+          if (curLv >= upDef.maxLevel) {
+            if (applied === 0) {
+              this.reject('upgrade', '이미 내공 극의(최대 단계)에 도달했습니다.');
+              return;
+            }
+            break;
           }
-          this.coin -= cost;
-        } else {
-          if (this.luckStone < cost) {
-            this.reject('upgrade', `영단이 부족합니다 (${cost}개 필요)`);
-            return;
+          const cost = this.getUpgradeCost(cmd.group);
+          if (upDef.currency === 'coin') {
+            if (this.coin < cost) {
+              if (applied === 0) {
+                this.reject('upgrade', `은자가 부족합니다 (${cost} 필요)`);
+                return;
+              }
+              break;
+            }
+            this.coin -= cost;
+          } else {
+            if (this.luckStone < cost) {
+              if (applied === 0) {
+                this.reject('upgrade', `영단이 부족합니다 (${cost}개 필요)`);
+                return;
+              }
+              break;
+            }
+            this.luckStone -= cost;
           }
-          this.luckStone -= cost;
+          finalLv = curLv + 1;
+          this.upgradeLv[cmd.group] = finalLv;
+          applied++;
         }
-        const nextLv = curLv + 1;
-        this.upgradeLv[cmd.group] = nextLv;
-        this.events.emit('upgrade:done', {
-          group: cmd.group,
-          level: nextLv,
-          tick: this.currentTick,
-        });
-        this.priorityDirty = true;
+
+        if (applied > 0) {
+          this.events.emit('upgrade:done', {
+            group: cmd.group,
+            level: finalLv,
+            tick: this.currentTick,
+          });
+          this.priorityDirty = true;
+        }
         return;
       }
 
@@ -1379,6 +1461,7 @@ export class Simulation {
 
         this.removeUnitInternal(cmd.uid);
         this.coin += coinEarned;
+        this.sellCoinTotal += coinEarned;
         if (luckEarned > 0) {
           this.luckStone += luckEarned;
         }
@@ -1420,6 +1503,7 @@ export class Simulation {
           this.removeUnitInternal(uid);
         }
         this.coin += coinEarned;
+        this.sellCoinTotal += coinEarned;
         this.priorityDirty = true;
         this.events.emit('units:bulk_sold', {
           count: toSellUids.length,
@@ -1457,6 +1541,9 @@ export class Simulation {
         }
         const outUnit = this.unitsByUid.get(res.outputUid);
         if (outUnit) {
+          if (this.data.gradesById.get(outUnit.grade)?.fx === 'rainbow') {
+            this.craftedImmortal = true;
+          }
           this.events.emit('craft:done', {
             outputUid: outUnit.uid,
             outputUnitId: outUnit.unitId,
@@ -1685,12 +1772,29 @@ export class Simulation {
           (this.upgradeLv.unorthodox ?? 0) +
           (this.upgradeLv.demonic ?? 0)
         );
+      case 'monsters_slain':
+        return this.monstersSlain;
+      case 'total_boons': {
+        let sum = 0;
+        for (let i = 0; i < BOON_IDS_ORDERED.length; i++) {
+          sum += this.activeBoons[BOON_IDS_ORDERED[i]!] ?? 0;
+        }
+        return sum;
+      }
     }
   }
 
   private evaluateMissions(): void {
-    if (this.completedMissions.size >= this.data.missions.length) return;
     const synergy = this.computeFieldSynergy();
+    if (
+      synergy.orthodoxTier >= 2 ||
+      synergy.unorthodoxTier >= 2 ||
+      synergy.demonicTier >= 2 ||
+      synergy.trinityActive
+    ) {
+      this.usedHighFormation = true;
+    }
+    if (this.completedMissions.size >= this.data.missions.length) return;
 
     for (let i = 0; i < this.data.missions.length; i++) {
       const mDef = this.data.missions[i]!;
@@ -1981,6 +2085,16 @@ export class Simulation {
         };
       });
 
+    const dmgByFaction: Record<FactionId, number> = { orthodox: 0, unorthodox: 0, demonic: 0 };
+    for (const [unitId, dmg] of this.damageByUnit.entries()) {
+      if (dmg <= 0) continue;
+      const fac = this.data.unitsById.get(unitId)?.faction;
+      if (fac) {
+        dmgByFaction[fac] += dmg;
+      }
+    }
+
+    const setBonus = computeRelicSetBonuses(this.relicLv);
     const { pct: effInterestPct, cap: effInterestCap } = this.getEffectiveInterestConfig();
     const relicBonus: RelicBonusSnapshot = {
       interestPct: effInterestPct,
@@ -2000,11 +2114,13 @@ export class Simulation {
     const patternHint = activeBoss
       ? activeBoss.isBounty
         ? '현상수배 도주 주의'
-        : activeBoss.kind === 'white_tiger'
-          ? '권능: 호포 경직 · 광풍질주'
-          : activeBoss.kind === 'black_serpent'
-            ? '권능: 현무 독갑 (파갑 1.8x 특효)'
-            : '권능: 혈옥주박 타일봉인 (스왑 회피!)'
+        : this.waveNumber >= 35 && this.waveNumber % 5 === 0
+          ? '무한 이중권능: 독갑 + 혈옥주박 + 광풍!'
+          : activeBoss.kind === 'white_tiger'
+            ? '권능: 호포 경직 · 광풍질주'
+            : activeBoss.kind === 'black_serpent'
+              ? '권능: 현무 독갑 (파갑 1.8x 특효)'
+              : '권능: 혈옥주박 타일봉인 (스왑 회피!)'
       : '';
 
     return {
@@ -2056,7 +2172,17 @@ export class Simulation {
       damageMeter: {
         totalDamage: this.totalDamageDealt,
         entries: dmgEntries,
+        byFaction: dmgByFaction,
       },
+      economyStats: {
+        totalInterestEarned: this.totalInterestEarned,
+        pilferedCoinTotal: this.pilferedCoinTotal,
+        killCoinTotal: this.killCoinTotal,
+        sellCoinTotal: this.sellCoinTotal,
+      },
+      activeRelicSetCount: setBonus.activeSetCount,
+      usedHighFormation: this.usedHighFormation,
+      craftedImmortal: this.craftedImmortal,
       monsterCount: this.monsters.length,
       monsterCap: this.data.board.path.monsterCap,
       monstersSlain: this.monstersSlain,
@@ -2103,8 +2229,11 @@ export class Simulation {
         : 0;
     const gradeDef = this.data.gradesById.get(u.grade);
     const refundSpec = getUnitSellLuckRefund(gradeDef);
-    const rangeMirrorBonus = getRangeMirrorRangeBonus(this.relicLv.dragon_range_mirror ?? 0);
-    const relicShred = getArmorGauntletShred(this.relicLv.armor_break_gauntlet ?? 0);
+    const setBonus = computeRelicSetBonuses(this.relicLv);
+    const rangeMirrorBonus =
+      getRangeMirrorRangeBonus(this.relicLv.dragon_range_mirror ?? 0) + setBonus.rangeBonus;
+    const relicShred =
+      getArmorGauntletShred(this.relicLv.armor_break_gauntlet ?? 0) + setBonus.armorShred;
     return {
       uid: u.uid,
       unitId: u.unitId,

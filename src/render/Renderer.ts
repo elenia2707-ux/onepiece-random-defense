@@ -14,10 +14,10 @@ import { getUnitCombatProfile, type UnitCombatProfile } from './weaponProfiles';
 /**
  * Crisp nearest-neighbor sprite sizes (~110% of tile width) and foot offsets from slot center.
  */
-const FIELD_SPRITE = 96;
-const BENCH_SPRITE = 104;
-const FIELD_FOOT = 40;
-const BENCH_FOOT = 34;
+const FIELD_SPRITE = 106;
+const BENCH_SPRITE = 114;
+const FIELD_FOOT = 42;
+const BENCH_FOOT = 35;
 const MOB_SPRITE = 76;
 const BOSS_SPRITE = 118;
 
@@ -491,16 +491,18 @@ export class Renderer {
     if (totemPreviewFieldIdx !== null) {
       const neighbors = sim.getOrthogonalFieldNeighbors(totemPreviewFieldIdx);
       if (neighbors.length > 0) {
+        const originPos = sim.board.getSlotCenter({ area: 'field', index: totemPreviewFieldIdx });
         this.buckets[RenderLayer.GroundFx]!.push({
           layer: RenderLayer.GroundFx,
           sortY: 195,
           render: (ctx) => {
             const pulse = 0.72 + Math.sin(simTimeSec * 6.5) * 0.28;
             for (let k = 0; k < neighbors.length; k++) {
-              const nRect = expandedSlotRect(sim.board, { area: 'field', index: neighbors[k]! });
+              const nIdx = neighbors[k]!;
+              const nRect = expandedSlotRect(sim.board, { area: 'field', index: nIdx });
               ctx.beginPath();
               ctx.roundRect(nRect.x + 1, nRect.y + 1, nRect.w - 2, nRect.h - 2, 10);
-              ctx.fillStyle = `rgba(16, 185, 129, ${(0.2 * pulse).toFixed(3)})`;
+              ctx.fillStyle = `rgba(16, 185, 129, ${(0.22 * pulse).toFixed(3)})`;
               ctx.fill();
               ctx.lineWidth = 4;
               ctx.strokeStyle = PIXEL_OUTLINE;
@@ -508,7 +510,77 @@ export class Renderer {
               ctx.lineWidth = 2.2;
               ctx.strokeStyle = '#34d399';
               ctx.stroke();
+
+              // Animated outgoing qi conduit preview
+              const nPos = sim.board.getSlotCenter({ area: 'field', index: nIdx });
+              ctx.save();
+              ctx.setLineDash([6, 5]);
+              ctx.lineDashOffset = -simTimeSec * 28;
+              ctx.beginPath();
+              ctx.moveTo(originPos.x, originPos.y + 16);
+              ctx.lineTo(nPos.x, nPos.y + 16);
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2.2;
+              ctx.strokeStyle = '#6ee7b7';
+              ctx.stroke();
+              ctx.restore();
             }
+          },
+        });
+      }
+    }
+
+    // 2b. Incoming totem-aura preview when dragging ANY hero over a field tile adjacent to a supportAura totem
+    if (interaction.draggingFromSlot && interaction.hoverTargetSlot?.area === 'field') {
+      const hoverIdx = interaction.hoverTargetSlot.index;
+      const fromSlot = interaction.draggingFromSlot;
+      const neighbors = sim.getOrthogonalFieldNeighbors(hoverIdx);
+      const sourceTotemIndices: number[] = [];
+      for (let k = 0; k < neighbors.length; k++) {
+        const nIdx = neighbors[k]!;
+        if (fromSlot.area === 'field' && fromSlot.index === nIdx) continue;
+        const nUid = sim.board.field.getUidAt(nIdx);
+        if (nUid === null) continue;
+        const nUnit = sim.getUnitByUid(nUid);
+        const nDef = nUnit ? sim.data.unitsById.get(nUnit.unitId) : undefined;
+        if (nDef?.supportAura) {
+          sourceTotemIndices.push(nIdx);
+        }
+      }
+      if (sourceTotemIndices.length > 0) {
+        const targetPos = sim.board.getSlotCenter({ area: 'field', index: hoverIdx });
+        const targetRect = expandedSlotRect(sim.board, { area: 'field', index: hoverIdx });
+        this.buckets[RenderLayer.GroundFx]!.push({
+          layer: RenderLayer.GroundFx,
+          sortY: 196,
+          render: (ctx) => {
+            const pulse = 0.72 + Math.sin(simTimeSec * 7.5) * 0.28;
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(targetRect.x - 1, targetRect.y - 1, targetRect.w + 2, targetRect.h + 2, 11);
+            ctx.fillStyle = `rgba(250, 204, 21, ${(0.2 * pulse).toFixed(3)})`;
+            ctx.fill();
+            ctx.lineWidth = 3.2;
+            ctx.strokeStyle = '#facc15';
+            ctx.stroke();
+
+            for (let k = 0; k < sourceTotemIndices.length; k++) {
+              const sPos = sim.board.getSlotCenter({ area: 'field', index: sourceTotemIndices[k]! });
+              ctx.setLineDash([6, 5]);
+              ctx.lineDashOffset = -simTimeSec * 30;
+              ctx.beginPath();
+              ctx.moveTo(sPos.x, sPos.y + 16);
+              ctx.lineTo(targetPos.x, targetPos.y + 16);
+              ctx.lineWidth = 4.4;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2.4;
+              ctx.strokeStyle = '#fde047';
+              ctx.stroke();
+            }
+            ctx.restore();
           },
         });
       }
@@ -1238,7 +1310,7 @@ export class Renderer {
 
       // 7. Drag Ghost (crisp nearest-neighbor)
       if (isDraggedOrigin) {
-        const ghostSize = 98;
+        const ghostSize = 108;
         const gx = Math.round(interaction.dragLogicalX);
         const gy = Math.round(interaction.dragLogicalY + ghostSize * 0.3);
         this.buckets[RenderLayer.WorldUI]!.push({

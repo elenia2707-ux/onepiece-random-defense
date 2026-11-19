@@ -16,7 +16,7 @@ export type GameCommand =
   | { readonly type: 'craft'; readonly recipeId: RecipeId; readonly chain: boolean }
   | { readonly type: 'useWisp'; readonly grade: GradeId; readonly unitId: UnitId }
   | { readonly type: 'gamble'; readonly tier: GradeId }
-  | { readonly type: 'upgrade'; readonly group: UpgradeGroupId }
+  | { readonly type: 'upgrade'; readonly group: UpgradeGroupId; readonly count?: number }
   | { readonly type: 'callBounty' }
   | { readonly type: 'autoArrange' }
   | { readonly type: 'enterEndless' }

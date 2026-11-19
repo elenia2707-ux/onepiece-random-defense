@@ -18,12 +18,15 @@ export type VfxTrackKind =
   | 'tx_poison_dragon'
   | 'tx_demon_heir'
   | 'tx_nether_queen'
+  | 'tx_ice_empress'
+  | 'tx_blood_sovereign'
   | 'im_cheonma'
   | 'im_sword_immortal'
   | 'im_asura_emperor'
   | 'im_venom_lord'
   | 'im_thunder_emperor'
-  | 'im_hell_flame';
+  | 'im_hell_flame'
+  | 'im_wuji_grandmaster';
 
 export type PassiveProcKind = 'execute' | 'pierce' | 'boss' | 'corrode';
 
@@ -283,7 +286,9 @@ export type TrialId =
   | 'trial_venom_gale'
   | 'trial_sword_tomb'
   | 'trial_crimson_iron'
-  | 'trial_chaos_trinity';
+  | 'trial_chaos_trinity'
+  | 'trial_gale_blitz'
+  | 'trial_abyss_sanctum';
 
 export interface TrialConfig {
   readonly id: TrialId;
@@ -305,6 +310,8 @@ export interface TrialConfig {
   readonly demonicSkillRatioMult: number;
   readonly gambleBonusPct: number;
   readonly trinityAtkBonusPct: number;
+  readonly globalSpeedMult: number;
+  readonly ccMult: number;
   readonly rewardMult: number;
   readonly firstClearGold: number;
   readonly firstClearKeys: number;
@@ -321,7 +328,9 @@ export type MissionConditionKind =
   | 'bounties_slain'
   | 'gamble_wins'
   | 'held_coin'
-  | 'total_upgrades';
+  | 'total_upgrades'
+  | 'monsters_slain'
+  | 'total_boons';
 
 export interface MissionDef {
   readonly id: string;
@@ -349,7 +358,8 @@ export type CourtSkinId =
   | 'court_bamboo_dawn'
   | 'court_crimson_sunset'
   | 'court_blood_moon'
-  | 'court_golden_palace';
+  | 'court_golden_palace'
+  | 'court_snow_sword_pavilion';
 
 export interface HeroSkinDef {
   readonly id: string;
@@ -393,7 +403,11 @@ export type TitleConditionKind =
   | 'best_wave'
   | 'discovered_units'
   | 'max_relic_level'
-  | 'owned_relics';
+  | 'owned_relics'
+  | 'relic_sets_active'
+  | 'relic_sets_mythic'
+  | 'daily_quests_claimed'
+  | 'trial_abyss_clear';
 
 export interface TitleDef {
   readonly id: TitleId;
@@ -420,7 +434,13 @@ export type BoonId =
   | 'b_elixir_jackpot'
   | 'b_heavenly_reinforce'
   | 'b_bounty_hunter'
-  | 'b_trinity_harmony';
+  | 'b_trinity_harmony'
+  | 'b_reaper_seal'
+  | 'b_chain_thunder'
+  | 'b_frost_shatter'
+  | 'b_piercing_echo'
+  | 'b_relic_resonance'
+  | 'b_bench_support';
 
 export type BoonRarity = 'rare' | 'epic' | 'mythic';
 export type BoonIconKind =
@@ -435,7 +455,13 @@ export type BoonIconKind =
   | 'furnace'
   | 'reinforce'
   | 'bounty'
-  | 'trinity';
+  | 'trinity'
+  | 'reaper'
+  | 'chain_thunder'
+  | 'frost'
+  | 'echo'
+  | 'resonance'
+  | 'bench';
 
 export interface BoonDef {
   readonly id: BoonId;

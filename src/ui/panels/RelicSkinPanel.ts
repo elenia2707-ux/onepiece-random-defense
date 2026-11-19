@@ -1,4 +1,5 @@
 import {
+  computeRelicSetStatuses,
   DIFFICULTY_CONFIGS,
   formatRelicStatSummary,
   getAbacusSummonDiscount,
@@ -422,6 +423,77 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     </div>
   `;
 
+  const setStatuses = computeRelicSetStatuses(meta.relics);
+  const activeSetsCount = setStatuses.filter((s) => s.tier >= 1).length;
+  const setCardsHtml = setStatuses
+    .map((st) => {
+      const def = st.def;
+      const tierBadge =
+        st.tier === 3
+          ? '태극신화 Lv.15 ★'
+          : st.tier === 2
+            ? '절정공명 Lv.10+'
+            : st.tier === 1
+              ? '세트해금 4/4'
+              : `수집 ${st.ownedCount}/4`;
+      const tierCls =
+        st.tier === 3
+          ? ' set-t3'
+          : st.tier === 2
+            ? ' set-t2'
+            : st.tier === 1
+              ? ' set-t1'
+              : ' set-t0';
+      const activeDesc =
+        st.tier === 3
+          ? def.tier3Desc
+          : st.tier === 2
+            ? def.tier2Desc
+            : st.tier === 1
+              ? def.tier1Desc
+              : `4종 해금 시: ${def.tier1Desc}`;
+      const nextHint =
+        st.tier === 1
+          ? `다음(전원 Lv.10): ${def.tier2Desc}`
+          : st.tier === 2
+            ? `극의(전원 Lv.15): ${def.tier3Desc}`
+            : st.tier === 3
+              ? '최고 단계 공명 발동 중!'
+              : '';
+      const membersHtml = def.members
+        .map((rid) => {
+          const lv = meta.relics[rid] ?? 0;
+          const rDef = data.relicsById.get(rid);
+          const cls = lv >= 15 ? ' m-t3' : lv >= 10 ? ' m-t2' : lv > 0 ? ' m-t1' : ' m-t0';
+          return `<span class="relic-set-member${cls}" title="${escapeHtml(rDef?.name ?? rid)} Lv.${lv}"><img src="${sprites.relicPortraitUrl(rid, lv)}" alt="" /><b>${lv > 0 ? lv : '·'}</b></span>`;
+        })
+        .join('');
+
+      return `
+        <div class="relic-set-card${tierCls}">
+          <div class="relic-set-top">
+            <span class="relic-set-badge" style="background:${def.color}">${escapeHtml(def.badge)}</span>
+            <span class="relic-set-name">${escapeHtml(def.name)}</span>
+            <span class="relic-set-tier">${tierBadge}</span>
+          </div>
+          <div class="relic-set-members">${membersHtml}</div>
+          <div class="relic-set-desc">${escapeHtml(activeDesc)}</div>
+          ${nextHint ? `<div class="relic-set-next">${escapeHtml(nextHint)}</div>` : ''}
+        </div>
+      `;
+    })
+    .join('');
+
+  const relicSetSectionHtml = `
+    <div class="relic-set-section">
+      <div class="relic-set-head">
+        <span>☯ 4대 신물 세트 공명 (${activeSetsCount}/4 발동)</span>
+        <span class="relic-set-hint">4종 해금 · 전원 Lv.10 · 전원 Lv.15 단계별 누적</span>
+      </div>
+      <div class="relic-set-grid">${setCardsHtml}</div>
+    </div>
+  `;
+
   const bodyHtml = `
     <div class="relic-gacha-panel">
       <div class="relic-wallet-row">
@@ -478,6 +550,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       </div>
       ${noticeHtml}
     </div>
+    ${relicSetSectionHtml}
     ${filterBarHtml}
     ${cardsHtml}
     ${settleFooterHtml}

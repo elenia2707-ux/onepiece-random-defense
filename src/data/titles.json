@@ -49,15 +49,15 @@
   },
   {
     "id": "title_trial_conqueror",
-    "name": "사대비경 제패자",
+    "name": "육대비경 제패자",
     "badge": "비경제패",
     "color": "#c084fc",
-    "desc": "만독·검총·철혈·삼재 4대 비경 시련을 모두 정복한 절세 기인",
+    "desc": "만독·검총·철혈·삼재·광풍·무극 6대 비경 시련을 모두 정복한 절세 기인",
     "condition": "all_trials_clear",
     "target": 1,
-    "rewardGold": 500,
-    "rewardKeys": 3,
-    "rewardSilk": 80
+    "rewardGold": 600,
+    "rewardKeys": 4,
+    "rewardSilk": 100
   },
   {
     "id": "title_endless_40",
@@ -76,12 +76,12 @@
     "name": "천하 명숙록 완성자",
     "badge": "명숙완성",
     "color": "#fde047",
-    "desc": "강호의 모든 협객 41인을 도감에 등재한 무림 백과",
+    "desc": "강호의 모든 협객 44인을 도감에 등재한 무림 백과",
     "condition": "discovered_units",
-    "target": 41,
-    "rewardGold": 400,
+    "target": 44,
+    "rewardGold": 450,
     "rewardKeys": 3,
-    "rewardSilk": 60
+    "rewardSilk": 65
   },
   {
     "id": "title_relic_grandmaster",
@@ -142,5 +142,53 @@
     "rewardGold": 750,
     "rewardKeys": 5,
     "rewardSilk": 120
+  },
+  {
+    "id": "title_relic_set_master",
+    "name": "사대신물 공명자",
+    "badge": "세트공명",
+    "color": "#14b8a6",
+    "desc": "거상·기연·무신·천마 4대 신물 세트를 모두 1단계 이상 공명시킨 비보 대가",
+    "condition": "relic_sets_active",
+    "target": 4,
+    "rewardGold": 400,
+    "rewardKeys": 3,
+    "rewardSilk": 60
+  },
+  {
+    "id": "title_relic_set_mythic",
+    "name": "신물세트 초월지존",
+    "badge": "초월공명",
+    "color": "#d946ef",
+    "desc": "4대 신물 세트 중 2개 이상을 Lv.15 초월(3단계) 공명까지 완성한 무림 지존",
+    "condition": "relic_sets_mythic",
+    "target": 2,
+    "rewardGold": 800,
+    "rewardKeys": 5,
+    "rewardSilk": 120
+  },
+  {
+    "id": "title_daily_devotee",
+    "name": "강호 일일수련가",
+    "badge": "일일수련",
+    "color": "#38bdf8",
+    "desc": "일일 강호 수련 과제 보상을 누적 3회 이상 수령한 성실한 무림인",
+    "condition": "daily_quests_claimed",
+    "target": 3,
+    "rewardGold": 250,
+    "rewardKeys": 2,
+    "rewardSilk": 40
+  },
+  {
+    "id": "title_abyss_trial_victor",
+    "name": "무극비경 정복자",
+    "badge": "무극비경",
+    "color": "#818cf8",
+    "desc": "최상위 무극비경 · 천마시련 제30장을 제패한 전설의 비경 패주",
+    "condition": "trial_abyss_clear",
+    "target": 1,
+    "rewardGold": 900,
+    "rewardKeys": 6,
+    "rewardSilk": 150
   }
 ]

@@ -14,7 +14,9 @@ export type TranscendentSkillTrack =
   | 'tx_mad_demon'
   | 'tx_poison_dragon'
   | 'tx_demon_heir'
-  | 'tx_nether_queen';
+  | 'tx_nether_queen'
+  | 'tx_ice_empress'
+  | 'tx_blood_sovereign';
 
 export function isTranscendentSkillTrack(kind: string): kind is TranscendentSkillTrack {
   return (
@@ -23,7 +25,9 @@ export function isTranscendentSkillTrack(kind: string): kind is TranscendentSkil
     kind === 'tx_mad_demon' ||
     kind === 'tx_poison_dragon' ||
     kind === 'tx_demon_heir' ||
-    kind === 'tx_nether_queen'
+    kind === 'tx_nether_queen' ||
+    kind === 'tx_ice_empress' ||
+    kind === 'tx_blood_sovereign'
   );
 }
 
@@ -197,6 +201,58 @@ export function spawnTranscendentSkillVfx(
       });
       api.emitRadialBurst(x, y, c1, 16, 148, 0.42, -55, startTick);
       api.emitRadialBurst(x, y, c2, 12, 118, 0.4, -70, startTick);
+      break;
+    }
+
+    case 'tx_ice_empress': {
+      // 북해만년빙결: 6-petal frost lotus crystal bloom + glacial mist shards
+      const c1 = skinPrimary ?? '#38bdf8';
+      const c2 = skinSecondary ?? '#e0f2fe';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'fan',
+        startTick,
+        durationSec: 0.6,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 18,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 5.4,
+        glowRadius: 94,
+        gradeRank,
+      });
+      api.emitRadialBurst(x, y, c1, 18, 162, 0.4, 24, startTick);
+      api.emitRadialBurst(x, y, c2, 14, 132, 0.42, 10, startTick);
+      break;
+    }
+
+    case 'tx_blood_sovereign': {
+      // 혈영천참 · 귀왕강림: massive X-shaped crimson phantom cross-slash + blood shadow bursts
+      const c1 = skinPrimary ?? '#e11d48';
+      const c2 = skinSecondary ?? '#fda4af';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'dual_sword',
+        startTick,
+        durationSec: 0.56,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 20,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 5.8,
+        glowRadius: 92,
+        gradeRank,
+      });
+      api.emitRadialBurst(x, y, c1, 20, 195, 0.38, 0, startTick);
+      api.emitRadialBurst(x, y, PIXEL_OUTLINE, 10, 150, 0.36, 0, startTick);
       break;
     }
   }
@@ -469,6 +525,88 @@ export function renderTranscendentSkillAir(
       ctx.restore();
 
       const seal = rc.sprites.kanjiSeal('魂', inst.color);
+      const sz = 74 * (0.85 + inv * 0.22);
+      ctx.globalAlpha = inv * 0.95;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'tx_ice_empress': {
+      // 6-petal glacial crystal lotus + radiating ice spears + '氷' seal
+      const r = inst.toRadius * (0.4 + easeOutCubic(p) * 0.58);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(-p * 1.4);
+      ctx.globalAlpha = inv * 0.96;
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI * 2) / 6;
+        ctx.save();
+        ctx.rotate(a);
+        // Sharp diamond frost crystal petal
+        ctx.beginPath();
+        ctx.moveTo(r * 0.14, 0);
+        ctx.lineTo(r * 0.54, -r * 0.16);
+        ctx.lineTo(r * 0.96, 0);
+        ctx.lineTo(r * 0.54, r * 0.16);
+        ctx.closePath();
+        ctx.fillStyle = hexWithAlpha(i % 2 === 0 ? inst.color : inst.secondaryColor, 0.58);
+        ctx.fill();
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+
+        // Crisp glacial midrib glint
+        ctx.beginPath();
+        ctx.moveTo(r * 0.22, 0);
+        ctx.lineTo(r * 0.88, 0);
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('氷', inst.color);
+      const sz = 74 * (0.85 + inv * 0.22);
+      ctx.globalAlpha = inv * 0.95;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'tx_blood_sovereign': {
+      // Colossal X-shaped crimson phantom cross-slash + obsidian shadow edges + '血' seal
+      const r = inst.toRadius * (0.5 + easeOutCubic(p) * 0.52);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.98;
+      for (const ang of [0.72, -0.72]) {
+        ctx.save();
+        ctx.rotate(ang);
+        const drawSlash = (w: number, col: string): void => {
+          ctx.beginPath();
+          ctx.moveTo(-r * 1.12, -10 * inv);
+          ctx.quadraticCurveTo(0, 14 * inv, r * 1.12, -6 * inv);
+          ctx.lineCap = 'round';
+          ctx.lineWidth = w * inv;
+          ctx.strokeStyle = col;
+          ctx.stroke();
+        };
+        drawSlash(13, PIXEL_OUTLINE);
+        drawSlash(7.4, inst.color);
+        drawSlash(2.8, inst.secondaryColor);
+        ctx.restore();
+      }
+      // Central blood-moon eclipse burst
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(4, 24 * (1 - p * 0.5)), 0, Math.PI * 2);
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.fill();
+      ctx.lineWidth = 3.2 * inv;
+      ctx.strokeStyle = inst.color;
+      ctx.stroke();
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('血', inst.color);
       const sz = 74 * (0.85 + inv * 0.22);
       ctx.globalAlpha = inv * 0.95;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);

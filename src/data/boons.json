@@ -106,5 +106,59 @@
     "maxStacks": 1,
     "iconKind": "trinity",
     "desc": "전 문파 내공 수련 비용 25% 할인 · 모든 협객 공격력 +22% 및 사거리 +25 증가"
+  },
+  {
+    "id": "b_reaper_seal",
+    "name": "사신추명결",
+    "tag": "처형 · 즉사",
+    "rarity": "mythic",
+    "maxStacks": 2,
+    "iconKind": "reaper",
+    "desc": "체력 12%(2중 18%) 이하 일반 마물 즉시 처형 · 체력 35% 이하 보스 대상 최종 피해 +30%(+55%) 증폭"
+  },
+  {
+    "id": "b_chain_thunder",
+    "name": "구천연쇄뢰",
+    "tag": "연쇄 · 전격",
+    "rarity": "epic",
+    "maxStacks": 2,
+    "iconKind": "chain_thunder",
+    "desc": "절기(스킬) 적중 시 주변 최대 3명(2중 5명)에게 절기 피해의 28%(48%) 연쇄 전격을 전파"
+  },
+  {
+    "id": "b_frost_shatter",
+    "name": "빙쇄파열공",
+    "tag": "빙결 · 추뎀",
+    "rarity": "epic",
+    "maxStacks": 2,
+    "iconKind": "frost",
+    "desc": "기절 또는 둔화 상태인 마물·보스 대상 최종 피해 +32%(2중 +60%) 증폭"
+  },
+  {
+    "id": "b_piercing_echo",
+    "name": "파갑연환진",
+    "tag": "파갑 · 지속",
+    "rarity": "rare",
+    "maxStacks": 2,
+    "iconKind": "echo",
+    "desc": "절기 발동 시 적 호신강기 추가 18(2중 34) 파쇄 및 파갑 지속시간 +50% 연장"
+  },
+  {
+    "id": "b_relic_resonance",
+    "name": "신물공명진",
+    "tag": "신물 · 공명",
+    "rarity": "mythic",
+    "maxStacks": 1,
+    "iconKind": "resonance",
+    "desc": "보유 중인 활성 무림 신물 1종당 전 협객 공격력 +3% · 공격속도 +1.5% 영구 증폭 (최대 16종 +48%/+24%)"
+  },
+  {
+    "id": "b_bench_support",
+    "name": "후방호위진",
+    "tag": "대기석 · 고무",
+    "rarity": "rare",
+    "maxStacks": 2,
+    "iconKind": "bench",
+    "desc": "문파 대기석에 대기 중인 협객 1인당 비무대 전 협객 공격력 +2.5%(2중 +4.5%) 증폭"
   }
 ]

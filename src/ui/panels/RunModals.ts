@@ -173,6 +173,63 @@ export function buildSettlementLootHtml(
   const displayGoldGain = rec.goldEarned + rec.titleBonusGold;
   const displayKeysGain = rec.keysEarned + rec.titleBonusKeys;
 
+  // Detailed Settlement Battle Report (TOP 5 DPS · Faction Damage Share · Economy Breakdown)
+  const dm = snapshot.damageMeter;
+  const top5 = dm.entries.slice(0, 5);
+  const top5RowsHtml =
+    top5.length > 0
+      ? top5
+          .map((entry, idx) => {
+            const fColor = FACTION_META[entry.faction].color;
+            return `
+              <div class="report-dps-row">
+                <span class="report-rank">${idx + 1}</span>
+                <span class="report-hero">${escapeHtml(entry.name)}</span>
+                <div class="report-bar-track">
+                  <div class="report-bar-fill" style="width:${Math.max(4, entry.sharePct).toFixed(1)}%;background:${fColor}"></div>
+                </div>
+                <span class="report-val">${formatCompactNumber(entry.damage)} (${entry.sharePct.toFixed(0)}%)</span>
+              </div>
+            `;
+          })
+          .join('')
+      : '<div class="report-empty">전투 피해 기록 없음</div>';
+
+  const fac = dm.byFaction;
+  const facTotal = Math.max(1, fac.orthodox + fac.unorthodox + fac.demonic);
+  const orthoPct = Math.round((fac.orthodox / facTotal) * 100);
+  const unorthoPct = Math.round((fac.unorthodox / facTotal) * 100);
+  const demoPct = Math.max(0, 100 - orthoPct - unorthoPct);
+
+  const econ = snapshot.economyStats;
+  const battleReportHtml = `
+    <div class="settlement-report-box">
+      <div class="settlement-report-head">
+        <span>📊 출정 전투 리포트</span>
+        <span class="settlement-report-total">총 피해 ${formatCompactNumber(dm.totalDamage)}</span>
+      </div>
+      <div class="report-faction-wrap">
+        <div class="report-faction-bar" aria-label="문파별 피해 비중">
+          ${orthoPct > 0 ? `<div class="rf-seg ortho" style="width:${orthoPct}%"></div>` : ''}
+          ${unorthoPct > 0 ? `<div class="rf-seg unortho" style="width:${unorthoPct}%"></div>` : ''}
+          ${demoPct > 0 ? `<div class="rf-seg demo" style="width:${demoPct}%"></div>` : ''}
+        </div>
+        <div class="report-faction-legend">
+          <span><i class="rf-dot ortho"></i>정파 ${orthoPct}%</span>
+          <span><i class="rf-dot unortho"></i>사파 ${unorthoPct}%</span>
+          <span><i class="rf-dot demo"></i>마교 ${demoPct}%</span>
+        </div>
+      </div>
+      <div class="report-dps-list">${top5RowsHtml}</div>
+      <div class="report-econ-row">
+        <span class="report-econ-chip">🏦 이자 +${formatCompactNumber(econ.totalInterestEarned)}</span>
+        <span class="report-econ-chip">🗡 강탈 +${formatCompactNumber(econ.pilferedCoinTotal)}</span>
+        <span class="report-econ-chip">⚔ 처치 +${formatCompactNumber(econ.killCoinTotal)}</span>
+        <span class="report-econ-chip">♻ 방출 +${formatCompactNumber(econ.sellCoinTotal)}</span>
+      </div>
+    </div>
+  `;
+
   return `
         <div class="settlement-loot-title">출정 정산 영구 보상${multBadge}</div>
         ${firstClearBanner}
@@ -195,5 +252,6 @@ export function buildSettlementLootHtml(
           </div>
           ${silkLootHtml}
         </div>
+        ${battleReportHtml}
       `;
 }

@@ -650,6 +650,76 @@
       { "unit": "blood_blade", "n": 1 }
     ],
     "priority": 516
+  },
+  {
+    "id": "r_ice_palace_empress",
+    "output": "ice_palace_empress",
+    "ingredients": [
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 },
+      { "unit": "plum_elder", "n": 1 }
+    ],
+    "priority": 532
+  },
+  {
+    "id": "r_alt_ice_palace_empress",
+    "output": "ice_palace_empress",
+    "ingredients": [
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "shaolin_monk", "n": 1 }
+    ],
+    "priority": 514
+  },
+  {
+    "id": "r_blood_shadow_sovereign",
+    "output": "blood_shadow_sovereign",
+    "ingredients": [
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 }
+    ],
+    "priority": 534
+  },
+  {
+    "id": "r_alt_blood_shadow_sovereign",
+    "output": "blood_shadow_sovereign",
+    "ingredients": [
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "blood_blade", "n": 1 },
+      { "unit": "poison_healer", "n": 1 }
+    ],
+    "priority": 515
+  },
+  {
+    "id": "r_wuji_grandmaster",
+    "output": "wuji_grandmaster",
+    "ingredients": [
+      { "unit": "ice_palace_empress", "n": 1 },
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 }
+    ],
+    "priority": 602
+  },
+  {
+    "id": "r_alt_wuji_grandmaster",
+    "output": "wuji_grandmaster",
+    "ingredients": [
+      { "unit": "blood_shadow_sovereign", "n": 1 },
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "plum_elder", "n": 1 }
+    ],
+    "priority": 596
+  },
+  {
+    "id": "r_alt_asura_shadow",
+    "output": "asura_emperor",
+    "ingredients": [
+      { "unit": "blood_shadow_sovereign", "n": 1 },
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "tang_elder", "n": 1 }
+    ],
+    "priority": 589
   }
 ]
 

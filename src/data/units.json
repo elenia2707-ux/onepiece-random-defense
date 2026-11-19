@@ -1216,6 +1216,115 @@
       "slowSec": 3.2,
       "vfxTrack": "im_hell_flame"
     }
+  },
+  {
+    "id": "ice_palace_empress",
+    "name": "북해빙궁주",
+    "title": "만년한빙 북해여제",
+    "faction": "orthodox",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1160,
+    "range": 305,
+    "attackIntervalSec": 0.43,
+    "critChance": 0.36,
+    "critMult": 2.45,
+    "sellCoin": 520,
+    "armorShred": 28,
+    "supportAura": {
+      "name": "북해빙옥진",
+      "atkPct": 22,
+      "speedPct": 18
+    },
+    "passiveTrait": {
+      "id": "ice_empress_shatter",
+      "name": "만년빙옥",
+      "desc": "광역 한빙 기절·극감속(64%) 제어 · 파갑된 적 대상 피해 +32% 및 최상위 북해빙옥진 지원",
+      "shreddedDamagePct": 32
+    },
+    "skill": {
+      "name": "만년한빙 · 빙화천강",
+      "desc": "3타마다 6엽 만년빙화가 개화해 295% 광역 빙결 피해 및 1.15초 기절·64% 극감속",
+      "everyN": 3,
+      "atkRatio": 2.95,
+      "splashRadius": 175,
+      "stunSec": 1.15,
+      "slowPct": 0.64,
+      "slowSec": 3.2,
+      "vfxTrack": "tx_ice_empress"
+    }
+  },
+  {
+    "id": "blood_shadow_sovereign",
+    "name": "혈영귀왕",
+    "title": "적혈암영 사파귀왕",
+    "faction": "unorthodox",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1190,
+    "range": 295,
+    "attackIntervalSec": 0.35,
+    "critChance": 0.44,
+    "critMult": 2.6,
+    "sellCoin": 520,
+    "armorShred": 42,
+    "passiveTrait": {
+      "id": "blood_shadow_reap",
+      "name": "혈영암살",
+      "desc": "체력 50% 이하 적 처형 피해 +35% · 보스 피해 +18% 및 고속 쌍단검 파갑 42",
+      "executeBelowHpPct": 0.5,
+      "executeDamagePct": 35,
+      "bossDamagePct": 18
+    },
+    "skill": {
+      "name": "혈영십자참 · 귀왕강림",
+      "desc": "3타마다 핏빛 환영 십자참격이 작렬해 285% 광역 처형 피해 및 파갑 연쇄",
+      "everyN": 3,
+      "atkRatio": 2.85,
+      "splashRadius": 152,
+      "stunSec": 0.65,
+      "slowPct": 0.42,
+      "slowSec": 2.4,
+      "vfxTrack": "tx_blood_sovereign"
+    }
+  },
+  {
+    "id": "wuji_grandmaster",
+    "name": "태극무극선",
+    "title": "삼교귀원 태극대종사",
+    "faction": "orthodox",
+    "grade": "immortal",
+    "leaf": false,
+    "atk": 2980,
+    "range": 350,
+    "attackIntervalSec": 0.4,
+    "critChance": 0.5,
+    "critMult": 3.05,
+    "sellCoin": 1400,
+    "armorShred": 46,
+    "supportAura": {
+      "name": "무극태극진",
+      "atkPct": 28,
+      "speedPct": 24
+    },
+    "passiveTrait": {
+      "id": "wuji_balance",
+      "name": "태극무극",
+      "desc": "적 호신강기 45% 관통 · 보스 피해 +28% · 최강 무극태극진(공+28%·속+24%) 아군 고무",
+      "armorPiercePct": 0.45,
+      "bossDamagePct": 28
+    },
+    "skill": {
+      "name": "태극무극 · 팔괘천선검",
+      "desc": "3타마다 거대 태극음양진과 팔괘선기가 작렬해 385% 광역 피해 및 1.2초 기절·58% 둔화",
+      "everyN": 3,
+      "atkRatio": 3.85,
+      "splashRadius": 215,
+      "stunSec": 1.2,
+      "slowPct": 0.58,
+      "slowSec": 3.2,
+      "vfxTrack": "im_wuji_grandmaster"
+    }
   }
 ]
 

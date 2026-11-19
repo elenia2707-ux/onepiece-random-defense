@@ -133,7 +133,22 @@ export class Game {
         );
       },
       isSoundMuted: () => this.sound.isMuted(),
+      getSoundVolume: () => this.sound.getVolumeLevel(),
       onToggleMute: () => this.sound.toggleMute(),
+      onCycleSoundVolume: () => this.sound.cycleVolume(),
+      onClaimDailyQuest: (questId) => {
+        const res = this.meta.claimDailyQuest(questId);
+        if (res.ok) {
+          this.sound.playCoinReward();
+          this.announceUnlockedTitles(res.unlockedTitleIds);
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
       onSelectDifficulty: (diff) => {
         if (this.meta.setSelectedDifficulty(diff)) {
           this.suppressAutoSave = true;
@@ -195,7 +210,11 @@ export class Game {
       onDrawRelic: (payWith) => {
         const res = this.meta.drawRelic(data.relics, payWith);
         if (res.ok) {
-          this.sound.playCraft(res.isNew ? 4 : 3);
+          if (res.newLevel > 10) {
+            this.sound.playRelicTranscend();
+          } else {
+            this.sound.playCraft(res.isNew ? 4 : 3);
+          }
           this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
           this.announceUnlockedTitles(res.unlockedTitleIds);
         }
@@ -209,8 +228,12 @@ export class Game {
       onDrawRelicBatch: (maxCount, payWith) => {
         const res = this.meta.drawRelicBatch(data.relics, maxCount, payWith);
         if (res.ok) {
-          const hasNewOrMax = res.items.some((x) => x.isNew || x.newLevel >= 15);
-          this.sound.playCraft(hasNewOrMax ? 5 : 4);
+          const hasTranscend = res.items.some((x) => x.newLevel > 10);
+          if (hasTranscend) {
+            this.sound.playRelicTranscend();
+          } else {
+            this.sound.playBatchChestCascade(res.items.length);
+          }
           this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
           this.announceUnlockedTitles(res.unlockedTitleIds);
         }
@@ -228,7 +251,11 @@ export class Game {
         }
         const res = this.meta.upgradeRelic(def);
         if (res.ok) {
-          this.sound.playCoinReward();
+          if (res.newLevel > 10) {
+            this.sound.playRelicTranscend();
+          } else {
+            this.sound.playCoinReward();
+          }
           this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
           this.announceUnlockedTitles(res.unlockedTitleIds);
         }
@@ -359,6 +386,8 @@ export class Game {
             trialId: snap.trialId,
             victory: snap.victoryAchieved,
             elapsedTicks: this.sim.tickCount,
+            usedHighFormation: snap.usedHighFormation,
+            craftedImmortal: snap.craftedImmortal,
           });
           if (this.settlementRecord.unlockedSkinIds.length > prevUnlockLen) {
             this.syncCosmetics(true);
@@ -466,6 +495,8 @@ export class Game {
         trialId: snap.trialId,
         victory: snap.victoryAchieved,
         elapsedTicks: this.sim.tickCount,
+        usedHighFormation: snap.usedHighFormation,
+        craftedImmortal: snap.craftedImmortal,
       });
       if (this.settlementRecord.unlockedSkinIds.length > 0) {
         this.syncCosmetics(true);
@@ -528,12 +559,12 @@ export class Game {
       const rank = gradeDef?.rank ?? 2;
       const unitName = unitDef?.name ?? ev.outputUnitId;
 
-      this.sound.playCraft(rank);
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
       this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 합공 등선!`);
 
       if (gradeDef?.isCutInTier && unitDef && !this.seenCutInUnits.has(unitDef.id)) {
         this.seenCutInUnits.add(unitDef.id);
+        this.sound.playCutinFanfare(rank >= 6);
         this.vfx.showAscensionCutIn(
           this.sprites.unitToken(unitDef, gradeDef, skin),
           this.sprites.cutInBanner(
@@ -547,13 +578,16 @@ export class Game {
           color,
           performance.now(),
         );
-      } else if (gradeDef?.showSkillCallout) {
-        this.vfx.showCraftCelebrationBanner(
-          gradeDef.name,
-          unitName,
-          color,
-          performance.now(),
-        );
+      } else {
+        this.sound.playCraft(rank);
+        if (gradeDef?.showSkillCallout) {
+          this.vfx.showCraftCelebrationBanner(
+            gradeDef.name,
+            unitName,
+            color,
+            performance.now(),
+          );
+        }
       }
     });
 
@@ -669,8 +703,13 @@ export class Game {
         this.sound.playCoinReward();
         this.ui.showToast('💥 만년현무 독갑 분쇄! 보스 기절 및 호신강기 대파쇄!');
       } else if (ev.skillKind === 'patriarch_telegraph') {
-        this.sound.playHazardWarn();
-        this.ui.showToast('🚨 혈옥주박진 예고! 붉은 마법진 위의 협객을 옆 칸으로 옮기세요!');
+        if (ev.skillName.includes('이중권능')) {
+          this.sound.playBossPhaseDrum();
+          this.ui.showToast('🔥 【무한이중권능】 광폭화 + 2칸 주박진 예고! 협객을 즉시 이동하세요!');
+        } else {
+          this.sound.playHazardWarn();
+          this.ui.showToast('🚨 혈옥주박진 예고! 붉은 마법진 위의 협객을 옆 칸으로 옮기세요!');
+        }
       } else if (ev.skillKind === 'patriarch_seal') {
         this.sound.playHazardWarn();
       } else if (ev.skillKind === 'serpent_shell') {
@@ -680,7 +719,7 @@ export class Game {
         this.sound.playHazardWarn();
         this.ui.showToast('🐯 백호 호포진! 주변 협객 일시 경직!');
       } else if (ev.skillKind === 'tiger_sprint' || ev.skillKind === 'patriarch_summon') {
-        this.sound.playBossHorn();
+        this.sound.playBossPhaseDrum();
       }
     });
 
@@ -759,7 +798,6 @@ export class Game {
     });
 
     this.sim.events.on('gamble:result', (ev) => {
-      this.sound.playGamble(ev.success, ev.refundedLuck);
       const gradeDef = this.sim.data.gradesById.get(ev.tier);
       const gName = gradeDef?.name ?? ev.tier;
       if (ev.success && ev.unitId) {
@@ -773,6 +811,7 @@ export class Game {
         }
         if (gradeDef?.isCutInTier && unitDef && !this.seenCutInUnits.has(unitDef.id)) {
           this.seenCutInUnits.add(unitDef.id);
+          this.sound.playCutinFanfare(rank >= 6);
           this.vfx.showAscensionCutIn(
             this.sprites.unitToken(unitDef, gradeDef, skin),
             this.sprites.cutInBanner(
@@ -786,14 +825,20 @@ export class Game {
             color,
             performance.now(),
           );
-        } else if (gradeDef?.showSkillCallout) {
-          this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
+        } else {
+          this.sound.playGamble(ev.success, ev.refundedLuck);
+          if (gradeDef?.showSkillCallout) {
+            this.vfx.showCraftCelebrationBanner(gName, uName, color, performance.now());
+          }
         }
         this.ui.showToast(`✨ [${gName}] 환골탈태 대성공! ${uName} 합류!`);
-      } else if (ev.refundedLuck) {
-        this.ui.showToast(`🔥 [${gName}] 주화입마! 만년단로가 영단 1개를 환급했습니다!`);
       } else {
-        this.ui.showToast(`🩸 [${gName}] 주화입마... 내상이 깊어집니다`, true);
+        this.sound.playGamble(ev.success, ev.refundedLuck);
+        if (ev.refundedLuck) {
+          this.ui.showToast(`🔥 [${gName}] 주화입마! 만년단로가 영단 1개를 환급했습니다!`);
+        } else {
+          this.ui.showToast(`🩸 [${gName}] 주화입마... 내상이 깊어집니다`, true);
+        }
       }
     });
 
@@ -811,7 +856,7 @@ export class Game {
         const u = owned[i]!;
         const uDef = this.sim.data.unitsById.get(u.unitId);
         if (uDef && uDef.faction === ev.group) {
-          const footOff = u.slot.area === 'field' ? 40 : 34;
+          const footOff = u.slot.area === 'field' ? 42 : 35;
           this.vfx.spawnUpgradeResonanceFx(
             u.currX,
             u.currY + footOff,
