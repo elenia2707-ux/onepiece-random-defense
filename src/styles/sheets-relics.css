@@ -1385,6 +1385,23 @@
   flex-wrap: wrap;
 }
 
+.craft-all-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #f59e0b 100%);
+  color: #1c1917;
+  font-family: var(--font-display);
+  font-size: 13px;
+  box-shadow: 0 2px 0 var(--ink);
+  white-space: nowrap;
+}
+
+.craft-all-btn:active {
+  transform: translateY(1px);
+}
+
 .craft-search-wrap {
   position: relative;
   display: inline-flex;

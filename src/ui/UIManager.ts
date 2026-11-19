@@ -287,7 +287,10 @@ export class UIManager {
     readonly name: string;
     readonly label: string;
   }[];
+  private readonly devEnabled: boolean;
   private devOpen = false;
+  private lastBossPreWarnWave = 0;
+  private recTagEl!: HTMLElement;
   private gameOverDismissed = false;
   private victoryDismissed = false;
   private lastAnimatedGambleSeq = 0;
@@ -315,6 +318,10 @@ export class UIManager {
     this.recipeGraph = recipeGraph;
     this.sprites = sprites;
     this.handlers = handlers;
+    const devParam =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('dev') === '1';
+    this.devEnabled = Boolean(import.meta.env.DEV) || devParam;
 
     this.tutorial = new TutorialOverlay({
       data,
@@ -377,6 +384,7 @@ export class UIManager {
       mutedInit: this.handlers.isSoundMuted(),
       totalSkins: this.data.heroSkins.length + this.data.courtSkins.length,
       totalUnits: this.data.units.length,
+      devEnabled: this.devEnabled,
       devWispTabs,
     });
 
@@ -463,6 +471,7 @@ export class UIManager {
     this.sheetBodyEl = this.mustGet('sheet-body');
 
     this.recommendBarEl = this.mustGet('recommend-bar');
+    this.recTagEl = this.mustGet('rec-tag');
     this.recImgEl = this.mustGet('rec-img') as HTMLImageElement;
     this.recGradeEl = this.mustGet('rec-grade');
     this.recNameEl = this.mustGet('rec-name');
@@ -621,6 +630,7 @@ export class UIManager {
     });
 
     this.devBtnEl.addEventListener('click', () => {
+      if (!this.devEnabled) return;
       this.devOpen = !this.devOpen;
       this.devBtnEl.classList.toggle('active', this.devOpen);
       this.devPopoverEl.classList.toggle('open', this.devOpen);
@@ -630,6 +640,7 @@ export class UIManager {
     });
 
     this.devPopoverEl.addEventListener('click', (ev) => {
+      if (!this.devEnabled) return;
       const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-dev-action]');
       if (!btn) return;
       const act = btn.dataset.devAction;
@@ -799,6 +810,8 @@ export class UIManager {
         if (recipeId) {
           this.handlers.onDispatch({ type: 'craft', recipeId, chain });
         }
+      } else if (action === 'craft-all') {
+        this.handlers.onDispatch({ type: 'craftAll' });
       } else if (action === 'wisp') {
         const grade = btn.dataset.grade;
         const unitId = btn.dataset.unitId;
@@ -1238,6 +1251,32 @@ export class UIManager {
       this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${waveRight}`);
     }
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
+    if (
+      !snapshot.isBossWave &&
+      !snapshot.gameOver &&
+      !snapshot.victoryHold &&
+      (snapshot.wave + 1) % 5 === 0 &&
+      snapshot.waveTicksLeft > 0 &&
+      snapshot.waveTicksLeft <= 300 &&
+      this.lastBossPreWarnWave !== snapshot.wave
+    ) {
+      this.lastBossPreWarnWave = snapshot.wave;
+      const nextBossWaveStr = String(snapshot.wave + 1).padStart(2, '0');
+      const hints: string[] = [];
+      const craftReadyNow = snapshot.craft.readyCount + snapshot.craft.chainReadyCount;
+      if (craftReadyNow > 0) hints.push(`⚔ 합공 ${craftReadyNow}`);
+      const wispTotalNow = Object.values(snapshot.wisps).reduce((s, n) => s + (n ?? 0), 0);
+      if (wispTotalNow > 0) hints.push(`📜 기연 ${wispTotalNow}`);
+      if (snapshot.luckStone >= 2) hints.push(`🧪 영약 ${snapshot.luckStone}`);
+      const minUpCost = this.data.upgrades.reduce((minC, u) => {
+        const lv = snapshot.upgradeLv[u.id] ?? 0;
+        if (lv >= u.maxLevel) return minC;
+        return Math.min(minC, u.baseCost + lv * u.costStep);
+      }, Infinity);
+      if (snapshot.coin >= minUpCost) hints.push('🔥 내공 수련 가능');
+      const hintSuffix = hints.length > 0 ? ` · 미사용: ${hints.join(' · ')}` : '';
+      this.showToast(`⚠️ 10초 뒤 제${nextBossWaveStr}장 영물 보스 강림!${hintSuffix}`);
+    }
     this.setText(
       this.devSimMetaEl,
       `30Hz · Tick ${snapshot.tick} · ${trialCfg ? trialCfg.badge : diffCfg.badge}`,
@@ -1686,6 +1725,27 @@ export class UIManager {
   }
 
   private pickRecommendedRecipe(snapshot: UISnapshot): RecipeDef | null {
+    if (this.pinnedRecipeId) {
+      const pinned = this.recipeGraph.recipesById.get(this.pinnedRecipeId);
+      if (pinned && snapshot.craft.recipes[pinned.id]) {
+        return pinned;
+      }
+    }
+
+    let maxOwnedRank = 1;
+    for (let i = 0; i < snapshot.field.length; i++) {
+      const s = snapshot.field[i];
+      if (!s) continue;
+      const r = this.data.gradesById.get(s.grade)?.rank ?? 1;
+      if (r > maxOwnedRank) maxOwnedRank = r;
+    }
+    for (let i = 0; i < snapshot.bench.length; i++) {
+      const s = snapshot.bench[i];
+      if (!s) continue;
+      const r = this.data.gradesById.get(s.grade)?.rank ?? 1;
+      if (r > maxOwnedRank) maxOwnedRank = r;
+    }
+
     let best: RecipeDef | null = null;
     let bestScore = -Infinity;
     for (let i = 0; i < this.recipeGraph.topo.length; i++) {
@@ -1695,10 +1755,20 @@ export class UIManager {
       if (!st) continue;
       const rank =
         this.data.gradesById.get(this.data.unitsById.get(r.output)?.grade ?? '')?.rank ?? 0;
+      const isTriple = r.ingredients.length === 1 && r.ingredients[0]!.n >= 3;
       let score: number;
-      if (st.lamp === 'ready') score = 3000 + rank * 10;
-      else if (st.lamp === 'chainReady') score = 2000 + rank * 10;
-      else score = (st.need > 0 ? st.have / st.need : 0) * 1000 + rank;
+      if (st.lamp === 'ready') {
+        score = 3000 + rank * 15 + (isTriple ? -3 : 3);
+      } else if (st.lamp === 'chainReady') {
+        score = 2000 + rank * 15 + (isTriple ? -3 : 3);
+      } else if (st.have > 0) {
+        const ratio = st.need > 0 ? st.have / st.need : 0;
+        const reachBonus = rank <= maxOwnedRank + 2 ? 40 : -30;
+        score = ratio * 1000 + reachBonus + rank * 4 + (isTriple ? -6 : 6);
+      } else {
+        // Empty/fresh board: suggest an approachable Rank 2 (이류) starter recipe instead of Rank 6 Immortal 0/3
+        score = 200 - rank * 25 + (isTriple ? -10 : 10);
+      }
       if (score > bestScore) {
         bestScore = score;
         best = r;
@@ -1720,7 +1790,8 @@ export class UIManager {
     const meta = this.handlers.getMetaProfile();
     const rec = this.pickRecommendedRecipe(snapshot);
     const st = rec ? snapshot.craft.recipes[rec.id] : undefined;
-    const sig = `${meta.rev}:${rec?.id ?? 'none'}:${st?.lamp ?? ''}:${st?.have ?? 0}:${snapshot.craft.rev}:${snapshot.fieldOccupied + snapshot.benchOccupied}`;
+    const isPinned = Boolean(rec && this.pinnedRecipeId === rec.id);
+    const sig = `${meta.rev}:${rec?.id ?? 'none'}:${isPinned ? 1 : 0}:${st?.lamp ?? ''}:${st?.have ?? 0}:${snapshot.craft.rev}:${snapshot.fieldOccupied + snapshot.benchOccupied}`;
     if (sig === this.prevRecommendSignature) return;
     this.prevRecommendSignature = sig;
 
@@ -1734,6 +1805,7 @@ export class UIManager {
 
     this.recRecipeId = rec.id;
     this.recommendBarEl.classList.add('visible');
+    this.setText(this.recTagEl, isPinned ? '📌 목표 합공' : '등선 추천');
     this.recImgEl.src = this.sprites.unitPortraitUrl(
       outUnit,
       outGrade,

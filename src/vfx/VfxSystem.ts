@@ -756,7 +756,7 @@ export class VfxSystem {
     const outDx = x - 360;
     const outDy = y - 404;
     const outLen = Math.hypot(outDx, outDy) || 1;
-    const dmgX = Math.max(36, Math.min(LOGICAL_WIDTH - 36, x + (outDx / outLen) * 14));
+    const dmgX = Math.max(56, Math.min(LOGICAL_WIDTH - 56, x + (outDx / outLen) * 14));
     const dmgY = Math.max(88, y - 24 + (outDy < -80 ? -6 : 0));
 
     this.spawnOrMergeDamageText(
@@ -1664,7 +1664,6 @@ export class VfxSystem {
       }
       const p = elapsed / life;
       const rawDrawX = item.x + item.offsetX + item.driftVx * elapsed;
-      const drawX = Math.max(34, Math.min(LOGICAL_WIDTH - 34, rawDrawX));
       const riseDist = item.isCrit || hasPassive ? 46 : item.isShred || item.isSkill ? 36 : 28;
       const riseY = item.y - easeOutCubic(p) * riseDist;
       const fade = p < 0.72 ? 1 : 1 - (p - 0.72) / 0.28;
@@ -1691,6 +1690,8 @@ export class VfxSystem {
 
       const formatted = formatDamageValue(item.value);
       const label = item.isCrit || item.isShred || hasPassive ? `${formatted}!` : formatted;
+      const safeMarginX = Math.max(48, Math.ceil(label.length * 14 * scale) + 10);
+      const drawX = Math.max(safeMarginX, Math.min(LOGICAL_WIDTH - safeMarginX, rawDrawX));
       const style = item.isCrit
         ? 'crit'
         : item.isShred

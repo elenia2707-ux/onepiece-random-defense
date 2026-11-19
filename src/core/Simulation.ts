@@ -208,6 +208,12 @@ export interface SimEventMap {
     readonly pos: Vec2;
     readonly tick: number;
   };
+  'craft:batch': {
+    readonly count: number;
+    readonly topUnitId: UnitId;
+    readonly topGrade: GradeId;
+    readonly tick: number;
+  };
   'gamble:result': {
     readonly seq: number;
     readonly tier: GradeId;
@@ -476,6 +482,7 @@ export class Simulation {
   public readonly data: GameDataBundle;
   public readonly difficulty: DifficultyId;
   public readonly trialId: TrialId | null;
+  public readonly rookieMode: boolean;
   public readonly events = new EventBus<SimEventMap>();
   public readonly commands = new CommandQueue();
   public readonly board: Board;
@@ -592,10 +599,12 @@ export class Simulation {
     initialRelics?: Readonly<Partial<Record<RelicId, number>>>,
     difficulty: DifficultyId = 'normal',
     trialId: TrialId | null = null,
+    rookieMode = false,
   ) {
     this.data = data;
     this.difficulty = difficulty;
     this.trialId = trialId;
+    this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
     this.rng = new Rng(seed);
     this.board = new Board(data.board);
     this.path = new LoopPath(data.board.path.waypoints);
@@ -686,6 +695,10 @@ export class Simulation {
 
   public get isGameOver(): boolean {
     return this.gameOver;
+  }
+
+  public get isVictoryHold(): boolean {
+    return this.victoryHold;
   }
 
   public getUnits(): readonly UnitEntity[] {
@@ -972,11 +985,30 @@ export class Simulation {
     this.currentTick++;
   }
 
+  /** Executes queued player commands (e.g. during tutorial pause) without advancing waves or monsters. */
+  public flushCommandsWhilePaused(): void {
+    const liveBatch = this.commands.drainForTick(this.currentTick);
+    if (liveBatch.length === 0) return;
+    for (let i = 0; i < liveBatch.length; i++) {
+      this.applyCommand(liveBatch[i]!.command);
+    }
+    const deltaUnits = this.inventoryIndex.consumeDelta();
+    if (deltaUnits.length > 0) {
+      this.craftIndex.applyDelta(deltaUnits, this.inventoryIndex);
+      this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+      this.priorityDirty = true;
+    }
+    if (!this.gameOver) {
+      this.evaluateMissions();
+    }
+  }
+
   private createWaveSystemContext(): WaveSystemContext {
     return {
       data: this.data,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      rookieMode: this.rookieMode,
       clearTargetWave: this.clearTargetWave,
       board: this.board,
       path: this.path,
@@ -1549,6 +1581,92 @@ export class Simulation {
             outputUnitId: outUnit.unitId,
             grade: outUnit.grade,
             pos: { x: outUnit.currX, y: outUnit.currY },
+            tick: this.currentTick,
+          });
+        }
+        this.priorityDirty = true;
+        return;
+      }
+
+      case 'craftAll': {
+        let craftedCount = 0;
+        let topRank = -1;
+        let topUnitId: UnitId | null = null;
+        let topGrade: GradeId = 'common';
+
+        for (let iter = 0; iter < 12; iter++) {
+          const deltaNow = this.inventoryIndex.consumeDelta();
+          if (deltaNow.length > 0) {
+            this.craftIndex.applyDelta(deltaNow, this.inventoryIndex);
+          }
+          const cSnap = this.craftIndex.getView();
+          if (cSnap.readyCount + cSnap.chainReadyCount === 0) break;
+
+          let bestRecipeId: string | null = null;
+          let bestScore = -Infinity;
+          let bestChain = false;
+
+          for (let i = 0; i < this.recipeGraph.topo.length; i++) {
+            const rid = this.recipeGraph.topo[i]!;
+            const r = this.recipeGraph.recipesById.get(rid);
+            const st = cSnap.recipes[rid];
+            if (!r || !st || (st.lamp !== 'ready' && st.lamp !== 'chainReady')) continue;
+            const outDef = this.data.unitsById.get(r.output);
+            const outRank = outDef ? (this.data.gradesById.get(outDef.grade)?.rank ?? 0) : 0;
+            const isTriple = r.ingredients.length === 1 && r.ingredients[0]!.n >= 3;
+            const lampBonus = st.lamp === 'ready' ? 20 : 0;
+            const canonBonus = isTriple ? -15 : 15;
+            const score = outRank * 100 + lampBonus + canonBonus - r.priority * 0.001;
+            if (score > bestScore) {
+              bestScore = score;
+              bestRecipeId = rid;
+              bestChain = st.lamp === 'chainReady';
+            }
+          }
+
+          if (!bestRecipeId) break;
+
+          const res = this.craftSystem.execute(bestRecipeId, bestChain, this.inventoryIndex, {
+            removeUnitByUid: (uid) => this.removeUnitInternal(uid),
+            spawnCraftedUnit: (unitId, preferredFieldIndex) => {
+              const slot = this.board.findPlacementSlot(preferredFieldIndex);
+              if (!slot) return null;
+              return this.createUnit(unitId, slot, 'craft');
+            },
+          });
+
+          if (!res.ok) break;
+          const outUnit = this.unitsByUid.get(res.outputUid);
+          if (outUnit) {
+            craftedCount++;
+            const outRank = this.data.gradesById.get(outUnit.grade)?.rank ?? 0;
+            if (outRank >= topRank) {
+              topRank = outRank;
+              topUnitId = outUnit.unitId;
+              topGrade = outUnit.grade;
+            }
+            if (this.data.gradesById.get(outUnit.grade)?.fx === 'rainbow') {
+              this.craftedImmortal = true;
+            }
+            this.events.emit('craft:done', {
+              outputUid: outUnit.uid,
+              outputUnitId: outUnit.unitId,
+              grade: outUnit.grade,
+              pos: { x: outUnit.currX, y: outUnit.currY },
+              tick: this.currentTick,
+            });
+          }
+        }
+
+        if (craftedCount === 0) {
+          this.reject('craftAll', '지금 즉시 합공할 수 있는 조합식이 없습니다.');
+          return;
+        }
+        if (topUnitId) {
+          this.events.emit('craft:batch', {
+            count: craftedCount,
+            topUnitId,
+            topGrade,
             tick: this.currentTick,
           });
         }

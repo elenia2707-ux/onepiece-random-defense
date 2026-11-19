@@ -36,7 +36,7 @@ import {
   getUnitCombatProfile,
   type WeaponMotionStyle,
 } from '../src/render/weaponProfiles';
-import { resolveTargetBossName, resolveWaveDef } from '../src/world/WaveSystem';
+import { computeWaveHpScale, resolveTargetBossName, resolveWaveDef } from '../src/world/WaveSystem';
 
 describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble (영약 복용) & faction upgrades (내공 수련)', () => {
   it('supports atomic chain synthesis from 삼류 leaves to 화산 장문인 and 3-faction fusion into 현경·신마 절대천마', () => {
@@ -2703,6 +2703,60 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(sndReloaded.cycleVolume()).toBe(0);
     expect(sndReloaded.isMuted()).toBe(true);
     expect(sndReloaded.cycleVolume()).toBe(1);
+  });
+
+  it('v2.1 polish & balance: craftAll batch synthesis, tutorial paused command flush, rookie Wave 5 timer +25%, Lv.40 upgrade cap, and Endless 41+ ramp', () => {
+    const data = loadGameData();
+
+    // 1. Paused command flush (tutorial auto-pause): summoning works live without advancing tickCount or wave timer
+    const simPaused = new Simulation(data, 0x21210001, {}, 'normal', null, true);
+    expect(simPaused.rookieMode).toBe(true);
+    const snapBefore = simPaused.buildSnapshot(1, true);
+    simPaused.commands.enqueue({ type: 'summon' });
+    simPaused.flushCommandsWhilePaused();
+    const snapAfter = simPaused.buildSnapshot(1, true);
+    expect(simPaused.tickCount).toBe(0);
+    expect(snapAfter.waveTicksLeft).toBe(snapBefore.waveTicksLeft);
+    expect(snapAfter.fieldOccupied + snapAfter.benchOccupied).toBe(1);
+
+    // 2. craftAll one-tap batch synthesis: grant 6 copies of a common unit -> crafts multiple higher-tier heroes in 1 command
+    const simBatch = new Simulation(data, 0x21210002, {}, 'normal', null);
+    let batchCount = 0;
+    simBatch.events.on('craft:batch', (ev) => {
+      batchCount = ev.count;
+    });
+    for (let i = 0; i < 6; i++) {
+      simBatch.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      simBatch.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'shaolin_novice' });
+    }
+    simBatch.tick();
+    simBatch.commands.enqueue({ type: 'craftAll' });
+    simBatch.tick();
+    expect(batchCount).toBeGreaterThanOrEqual(2);
+    expect(
+      simBatch
+        .getUnits()
+        .some((u) => (data.gradesById.get(u.grade)?.rank ?? 1) >= 2),
+    ).toBe(true);
+
+    // 3. Upgrade Lv.40 late-game silver sink
+    for (const up of data.upgrades) {
+      expect(up.maxLevel).toBe(40);
+    }
+
+    // 4. Rookie mode (+25% Wave 5 boss timer) vs Standard mode
+    const simStd = new Simulation(data, 0x21210003, {}, 'normal', null, false);
+    const simRookie = new Simulation(data, 0x21210003, {}, 'normal', null, true);
+    expect(simStd.rookieMode).toBe(false);
+    expect(simRookie.rookieMode).toBe(true);
+    // Verify non-normal / trial never enables rookieMode
+    expect(new Simulation(data, 1, {}, 'hard', null, true).rookieMode).toBe(false);
+    expect(new Simulation(data, 1, {}, 'normal', 'trial_venom_gale', true).rookieMode).toBe(false);
+
+    // 5. Endless 41+ sharper HP ramp (> 1.34^5 = 4.3x over 5 waves from 40 to 45)
+    const hp40 = computeWaveHpScale(data, 'normal', null, 40, false);
+    const hp45 = computeWaveHpScale(data, 'normal', null, 45, false);
+    expect(hp45 / hp40).toBeGreaterThan(4.0);
   });
 });
 

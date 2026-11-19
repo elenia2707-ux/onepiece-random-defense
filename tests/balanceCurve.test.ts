@@ -745,6 +745,29 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       dragon_range_mirror: 15,
       eight_trigram_mirror: 15,
     };
+    const full16Lv10: Partial<Record<RelicId, number>> = {
+      golden_vault: 10,
+      million_sword_seal: 10,
+      bandit_dagger: 10,
+      immortal_furnace: 10,
+      founding_jade_seal: 10,
+      heavenly_scroll_chest: 10,
+      wind_swift_boots: 10,
+      crimson_crit_blade: 10,
+      armor_break_gauntlet: 10,
+      celestial_skill_jade: 10,
+      demon_slayer_banner: 10,
+      merchant_abacus: 10,
+      jade_training_manual: 10,
+      phoenix_luck_pouch: 10,
+      dragon_range_mirror: 10,
+      eight_trigram_mirror: 10,
+    };
+    const abyss10 = BENCHMARK_SEEDS.slice(0, 4).map((s) =>
+      runSmartBot(data, s, 'abyss', full16Lv10),
+    );
+    const abyss10Wins = abyss10.filter((r) => r.victory).length;
+
     const abyss15 = BENCHMARK_SEEDS.slice(0, 5).map((s) =>
       runSmartBot(data, s, 'abyss', full16Lv15),
     );
@@ -753,10 +776,12 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
 
     console.info('[BalanceAudit][Abyss]', {
       abyss0Relic: `${abyss0Wins}/5 (waves: [${abyss0.map((r) => r.finalWave).join(',')}])`,
+      abyss16xLv10: `${abyss10Wins}/4 (waves: [${abyss10.map((r) => r.finalWave).join(',')}])`,
       abyss16xLv15: `${abyss15Wins}/5 (avgWave ${abyss15AvgWave.toFixed(1)}, waves: [${abyss15.map((r) => r.finalWave).join(',')}])`,
     });
 
     expect(abyss0Wins).toBe(0);
+    expect(abyss10Wins).toBeLessThanOrEqual(3);
     expect(abyss15Wins).toBeGreaterThanOrEqual(2);
 
     // Also verify v2.0 new trials: trial_gale_blitz (Lv.6 unlockable) & trial_abyss_sanctum (apex Lv.15 gate)

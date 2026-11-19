@@ -47,6 +47,7 @@ export class Game {
   private suppressAutoSave = false;
   private autoRestoredWave: number | null = null;
   private discardedSaveReason: string | null = null;
+  private tutorialPaused = false;
 
   public constructor() {
     const data = loadGameData();
@@ -59,12 +60,17 @@ export class Game {
     this.meta = new MetaStore();
     this.sound = new SoundSynthesizer();
     const runSeed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 0x20261118;
+    const selDiff = this.meta.getSelectedDifficulty();
+    const selTrial = this.meta.getSelectedTrialId();
+    const rookieMode =
+      this.meta.getProfile().totalRuns < 3 && selDiff === 'normal' && selTrial === null;
     this.sim = new Simulation(
       data,
       runSeed,
       this.meta.getRelicLevels(),
-      this.meta.getSelectedDifficulty(),
-      this.meta.getSelectedTrialId(),
+      selDiff,
+      selTrial,
+      rookieMode,
     );
 
     // Attempt seamless auto-resume of unfinished expedition with schema migration (v1 -> v2)
@@ -114,17 +120,33 @@ export class Game {
     this.ui = new UIManager(data, this.sim.recipeGraph, this.sprites, {
       onDispatch: (cmd) => this.dispatchCommand(cmd),
       isTutorialDone: () => this.meta.isTutorialDone(),
-      onSetTutorialDone: (done) => this.meta.setTutorialDone(done),
+      onSetTutorialDone: (done) => {
+        this.meta.setTutorialDone(done);
+        if (done && this.tutorialPaused) {
+          this.tutorialPaused = false;
+          this.loop.setPaused(false);
+          this.ui.sync(
+            this.sim.buildSnapshot(this.loop.getSpeed(), false),
+            performance.now(),
+            true,
+          );
+          if (this.sim.rookieMode) {
+            this.ui.showToast('🛡 초출강호 보호 적용 (첫 3회 출정: 5·10장 영물 제한시간 +25%)');
+          }
+        }
+      },
       onCycleSpeed: () => {
         this.sound.playUiTap();
         const next = this.loop.cycleSpeed();
         if (this.loop.isPaused()) {
+          this.tutorialPaused = false;
           this.loop.setPaused(false);
         }
         this.ui.sync(this.sim.buildSnapshot(next, false), performance.now(), true);
       },
       onTogglePause: () => {
         this.sound.playUiTap();
+        this.tutorialPaused = false;
         const paused = this.loop.togglePaused();
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), paused),
@@ -438,6 +460,19 @@ export class Game {
   private dispatchCommand(cmd: GameCommand): void {
     this.sim.commands.enqueue(cmd);
     this.runSaveDirty = true;
+    if (
+      this.tutorialPaused &&
+      this.loop.isPaused() &&
+      !this.sim.isGameOver &&
+      !this.sim.isVictoryHold
+    ) {
+      this.sim.flushCommandsWhilePaused();
+      this.ui.sync(
+        this.sim.buildSnapshot(this.loop.getSpeed(), true),
+        performance.now(),
+        true,
+      );
+    }
   }
 
   private flushActiveRunSave(): void {
@@ -868,6 +903,14 @@ export class Game {
       }
       this.ui.showToast(`🔥 ${upDef?.name ?? ev.group} Lv.${ev.level} 수련 완료!`);
     });
+
+    this.sim.events.on('craft:batch', (ev) => {
+      const topUnit = this.sim.data.unitsById.get(ev.topUnitId);
+      const topGrade = this.sim.data.gradesById.get(ev.topGrade);
+      this.ui.showToast(
+        `⚡ 일괄 합공 완료! ${ev.count}명 등선 (최고: ${topGrade?.name ?? ''} ${topUnit?.name ?? ev.topUnitId})`,
+      );
+    });
   }
 
   public start(): void {
@@ -883,6 +926,9 @@ export class Game {
       if (checkSnap.pendingBoonOffer) {
         this.loop.setPaused(true);
       }
+    } else if (!this.meta.isTutorialDone()) {
+      this.loop.setPaused(true);
+      this.tutorialPaused = true;
     }
 
     const initialSnap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
@@ -892,6 +938,8 @@ export class Game {
     } else if (this.autoRestoredWave !== null) {
       const wStr = String(this.autoRestoredWave).padStart(2, '0');
       this.ui.showToast(`💾 이전 출정(제 ${wStr}장) 자동 이어하기 완료!`);
+    } else if (!this.tutorialPaused && this.sim.rookieMode) {
+      this.ui.showToast('🛡 초출강호 보호 적용 (첫 3회 출정: 5·10장 영물 제한시간 +25%)');
     }
     this.loop.start();
   }

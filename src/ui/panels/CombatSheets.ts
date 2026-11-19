@@ -238,6 +238,12 @@ export function buildCraftSheetView(params: {
     if (r) allRecipes.push(r);
   }
 
+  const totalCraftableNow = snapshot.craft.readyCount + snapshot.craft.chainReadyCount;
+  const craftAllBtnHtml =
+    totalCraftableNow > 0
+      ? `<button type="button" class="craft-all-btn interactive" data-sheet-action="craft-all" title="현재 재료로 가능한 상위 합공을 한 번에 모두 실행">⚡ 전부 합공 (${totalCraftableNow})</button>`
+      : '';
+
   const toolbarHtml = `
     <div class="craft-filter-toolbar">
       <div class="craft-filter-pills">
@@ -247,6 +253,7 @@ export function buildCraftSheetView(params: {
         <button type="button" class="codex-filter-btn${factionFilter === 'demonic' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="demonic">마교</button>
         <button type="button" class="codex-filter-btn${factionFilter === 'ready' ? ' active' : ''} interactive" data-sheet-action="craft-filter" data-filter="ready">⚡가능만</button>
       </div>
+      ${craftAllBtnHtml}
       <div class="craft-search-wrap">
         <input
           id="craft-search-input"

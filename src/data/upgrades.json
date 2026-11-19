@@ -8,7 +8,7 @@
     "baseCost": 30,
     "costStep": 20,
     "atkBonusPctPerLv": 22,
-    "maxLevel": 25
+    "maxLevel": 40
   },
   {
     "id": "unorthodox",
@@ -19,7 +19,7 @@
     "baseCost": 30,
     "costStep": 20,
     "atkBonusPctPerLv": 22,
-    "maxLevel": 25
+    "maxLevel": 40
   },
   {
     "id": "demonic",
@@ -30,6 +30,6 @@
     "baseCost": 30,
     "costStep": 20,
     "atkBonusPctPerLv": 22,
-    "maxLevel": 25
+    "maxLevel": 40
   }
 ]

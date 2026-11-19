@@ -5,11 +5,12 @@ export interface HudShellTemplateInput {
   readonly mutedInit: boolean;
   readonly totalSkins: number;
   readonly totalUnits: number;
+  readonly devEnabled: boolean;
   readonly devWispTabs: readonly { readonly id: GradeId; readonly name: string }[];
 }
 
 export function buildHudShellMarkup(input: HudShellTemplateInput): string {
-  const { mutedInit, totalSkins, totalUnits, devWispTabs } = input;
+  const { mutedInit, totalSkins, totalUnits, devEnabled, devWispTabs } = input;
   const devWispBtnsHtml = devWispTabs
     .map(
       (t) =>
@@ -43,7 +44,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           <button id="btn-pause" type="button" class="hud-btn interactive" aria-label="일시정지">⏸</button>
           <button id="btn-mute" type="button" class="hud-btn mute-btn interactive${mutedInit ? ' muted' : ''}" aria-label="효과음 전환">${mutedInit ? '🔇' : '🔊'}</button>
           <button id="btn-help" type="button" class="hud-btn help-btn interactive" title="강호 입문 교범 보기" aria-label="강호 입문 교범">?</button>
-          <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴">DEV</button>
+          <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴"${devEnabled ? '' : ' hidden style="display:none"'}>DEV</button>
         </div>
       </header>
 
@@ -85,7 +86,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
         <div id="dps-list" class="dps-list"></div>
       </aside>
 
-      <aside id="dev-popover" class="dev-popover interactive" aria-label="개발자 도구">
+      <aside id="dev-popover" class="dev-popover interactive" aria-label="개발자 도구"${devEnabled ? '' : ' hidden style="display:none"'}>
         <div id="dev-sim-meta" class="dev-popover-meta">30Hz · Tick 0</div>
         <div class="dev-popover-grid">
           <button type="button" class="dev-chip-btn interactive" data-dev-action="coin">+500 은자</button>
@@ -113,7 +114,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
       </div>
 
       <section id="recommend-bar" class="recommend-bar interactive" aria-label="추천 합공식">
-        <span class="recommend-tag">등선 추천</span>
+        <span id="rec-tag" class="recommend-tag">등선 추천</span>
         <div class="unit-portrait-box rec-portrait"><img id="rec-img" alt="" /></div>
         <div class="rec-meta">
           <div class="unit-title-row">

@@ -107,10 +107,10 @@
   {
     "id": "m_bounty_3",
     "name": "천하 현상금 사냥꾼",
-    "desc": "강호 현상수배범을 누적 3회 토벌",
+    "desc": "강호 현상수배범을 누적 4회 토벌",
     "condition": "bounties_slain",
-    "target": 3,
-    "rewardCoin": 260,
+    "target": 4,
+    "rewardCoin": 300,
     "rewardLuck": 4
   },
   {
@@ -126,29 +126,29 @@
   {
     "id": "m_slay_350",
     "name": "백전노장 무림객",
-    "desc": "이번 출정에서 침입 마물 누적 480기 처치",
+    "desc": "이번 출정에서 침입 마물 누적 560기 처치",
     "condition": "monsters_slain",
-    "target": 480,
-    "rewardCoin": 200,
+    "target": 560,
+    "rewardCoin": 220,
     "rewardLuck": 3
   },
   {
     "id": "m_upgrade_15",
     "name": "삼파 극의 수련",
-    "desc": "정·사·마 내공 수련 단계 합계 Lv.15 달성",
+    "desc": "정·사·마 내공 수련 단계 합계 Lv.22 달성",
     "condition": "total_upgrades",
-    "target": 15,
-    "rewardCoin": 300,
+    "target": 22,
+    "rewardCoin": 320,
     "rewardLuck": 0,
     "rewardWispGrade": "rare"
   },
   {
     "id": "m_boon_3",
     "name": "천기 비급 계승자",
-    "desc": "강호 기연 비급 누적 3중첩 전수 달성",
+    "desc": "강호 기연 비급 누적 4중첩 전수 달성",
     "condition": "total_boons",
-    "target": 3,
-    "rewardCoin": 250,
+    "target": 4,
+    "rewardCoin": 280,
     "rewardLuck": 4
   }
 ]

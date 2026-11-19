@@ -1295,30 +1295,30 @@
     "faction": "orthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 2980,
+    "atk": 3580,
     "range": 350,
     "attackIntervalSec": 0.4,
-    "critChance": 0.5,
-    "critMult": 3.05,
+    "critChance": 0.56,
+    "critMult": 3.35,
     "sellCoin": 1400,
-    "armorShred": 46,
+    "armorShred": 50,
     "supportAura": {
       "name": "무극태극진",
-      "atkPct": 28,
-      "speedPct": 24
+      "atkPct": 32,
+      "speedPct": 26
     },
     "passiveTrait": {
       "id": "wuji_balance",
       "name": "태극무극",
-      "desc": "적 호신강기 45% 관통 · 보스 피해 +28% · 최강 무극태극진(공+28%·속+24%) 아군 고무",
-      "armorPiercePct": 0.45,
-      "bossDamagePct": 28
+      "desc": "적 호신강기 48% 관통 · 보스 피해 +32% · 최강 무극태극진(공+32%·속+26%) 아군 고무",
+      "armorPiercePct": 0.48,
+      "bossDamagePct": 32
     },
     "skill": {
       "name": "태극무극 · 팔괘천선검",
-      "desc": "3타마다 거대 태극음양진과 팔괘선기가 작렬해 385% 광역 피해 및 1.2초 기절·58% 둔화",
+      "desc": "3타마다 거대 태극음양진과 팔괘선기가 작렬해 445% 광역 피해 및 1.2초 기절·58% 둔화",
       "everyN": 3,
-      "atkRatio": 3.85,
+      "atkRatio": 4.45,
       "splashRadius": 215,
       "stunSec": 1.2,
       "slowPct": 0.58,

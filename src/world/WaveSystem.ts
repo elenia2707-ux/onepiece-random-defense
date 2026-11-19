@@ -136,9 +136,11 @@ export function computeWaveHpScale(
   if (waveNum <= data.waves.length) {
     return baseMult * rampMult * bossMult;
   }
-  // Endless Bloodbath (> Wave 30): exponential compounding atop the full endgame ramp
+  // Endless Bloodbath (> Wave 30): crisp 1.20x/wave through Wave 40, then sharper 1.34x/wave surge
   const endlessStep = waveNum - data.waves.length;
-  return baseMult * effLateRamp * bossMult * Math.pow(1.18, endlessStep);
+  const phase1 = Math.min(10, endlessStep);
+  const phase2 = Math.max(0, endlessStep - 10);
+  return baseMult * effLateRamp * bossMult * Math.pow(1.2, phase1) * Math.pow(1.34, phase2);
 }
 
 export function computeMonsterArmor(
@@ -193,6 +195,7 @@ export interface WaveSystemContext {
   readonly data: GameDataBundle;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly rookieMode?: boolean;
   readonly clearTargetWave: number;
   readonly board: Board;
   readonly path: LoopPath;
@@ -447,7 +450,9 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     const nextWaveNum = waveNumber + 1;
     ctx.setWaveNumber(nextWaveNum);
     const nextWaveDef = resolveWaveDef(ctx.data.waves, nextWaveNum);
-    ctx.setWaveTicksLeft(nextWaveDef.durationTicks);
+    const rookieBossBonus =
+      ctx.rookieMode && nextWaveDef.isBoss && nextWaveNum <= 10 ? 1.25 : 1;
+    ctx.setWaveTicksLeft(Math.round(nextWaveDef.durationTicks * rookieBossBonus));
     ctx.setSpawnedInWave(0);
     ctx.setNextSpawnTick(ctx.currentTick + 15);
     const waveClearBonusPct = ctx.getWaveClearCoinBonusPct();
