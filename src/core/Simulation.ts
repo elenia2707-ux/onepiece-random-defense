@@ -183,6 +183,8 @@ export interface SimEventMap {
   'monster:hit': {
     readonly entityId: number;
     readonly unitId: UnitId;
+    readonly fromX: number;
+    readonly fromY: number;
     readonly x: number;
     readonly y: number;
     readonly damage: number;
@@ -2660,6 +2662,8 @@ export class Simulation {
     this.events.emit('monster:hit', {
       entityId: m.entityId,
       unitId: p.unitId,
+      fromX: p.fromX,
+      fromY: p.fromY,
       x: hitX,
       y: hitY,
       damage,

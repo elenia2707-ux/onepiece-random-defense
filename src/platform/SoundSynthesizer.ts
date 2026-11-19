@@ -188,7 +188,22 @@ export class SoundSynthesizer {
     this.playTone(783.99, 1046.5, 0.11, 'sine', 0.07, 0.045);
   }
 
-  public playHit(faction: FactionId, isCrit: boolean, isSkill: boolean): void {
+  public playHit(
+    faction: FactionId,
+    isCrit: boolean,
+    isSkill: boolean,
+    weaponStyle?:
+      | 'sword'
+      | 'dual_sword'
+      | 'flying_sword'
+      | 'saber'
+      | 'spear_staff'
+      | 'palm_fist'
+      | 'fan'
+      | 'dagger_hidden'
+      | 'staff_gourd'
+      | 'sorcery_qi',
+  ): void {
     if (this.muted) return;
     const now = typeof performance !== 'undefined' ? performance.now() : 0;
     if (isSkill) {
@@ -199,18 +214,75 @@ export class SoundSynthesizer {
       this.lastHitAt = now;
     }
 
-    if (faction === 'orthodox') {
-      // Crisp sword slash / monk fist strike
-      this.playNoiseSwish(isSkill ? 2400 : 1900, isSkill ? 0.09 : 0.055, isSkill ? 0.075 : 0.045);
-      this.playTone(isSkill ? 920 : 720, 310, isSkill ? 0.095 : 0.06, 'triangle', 0.055);
-    } else if (faction === 'unorthodox') {
-      // Dart / saber whip snap
-      this.playNoiseSwish(3100, 0.05, 0.05);
-      this.playTone(1120, 420, 0.065, 'sawtooth', 0.038);
-    } else {
-      // Deep demonic qi burst
-      this.playTone(isSkill ? 210 : 175, 68, isSkill ? 0.13 : 0.08, 'sawtooth', 0.06);
-      this.playNoiseSwish(950, 0.075, 0.05);
+    switch (weaponStyle) {
+      case 'fan': {
+        // Snappy silk-iron folding fan snap ('착-!') + airy wind/needle hiss
+        this.playNoiseSwish(isSkill ? 3600 : 3200, isSkill ? 0.085 : 0.05, isSkill ? 0.07 : 0.048);
+        this.playTone(isSkill ? 1280 : 1040, 480, 0.055, 'triangle', 0.045);
+        break;
+      }
+      case 'saber': {
+        // Heavy curved blade cleave ('콰직!')
+        this.playNoiseSwish(1350, isSkill ? 0.095 : 0.065, isSkill ? 0.072 : 0.05);
+        this.playTone(isSkill ? 340 : 280, 95, isSkill ? 0.11 : 0.075, 'sawtooth', 0.055);
+        break;
+      }
+      case 'palm_fist': {
+        // Deep martial drum-fist impact ('쿵!')
+        this.playTone(isSkill ? 230 : 185, 58, isSkill ? 0.11 : 0.075, 'sine', 0.075);
+        this.playNoiseSwish(900, 0.05, 0.042);
+        break;
+      }
+      case 'spear_staff': {
+        // Polearm shaft whip + crisp thrust crack
+        this.playNoiseSwish(1650, 0.06, 0.048);
+        this.playTone(isSkill ? 620 : 510, 190, 0.07, 'triangle', 0.055);
+        break;
+      }
+      case 'dagger_hidden': {
+        // High-velocity throwing blade zip ('슈슉!')
+        this.playNoiseSwish(3800, 0.042, 0.045);
+        this.playTone(1420, 620, 0.05, 'sawtooth', 0.035);
+        break;
+      }
+      case 'staff_gourd': {
+        // Bubbling venom splash hiss ('치이익!')
+        this.playNoiseSwish(2650, isSkill ? 0.095 : 0.065, 0.05);
+        this.playTone(540, 780, 0.07, 'sine', 0.038);
+        break;
+      }
+      case 'sorcery_qi': {
+        // Resonant dark-flame burst
+        this.playTone(isSkill ? 195 : 165, 64, isSkill ? 0.13 : 0.085, 'sawtooth', 0.058);
+        this.playNoiseSwish(1050, 0.075, 0.048);
+        break;
+      }
+      case 'dual_sword':
+      case 'flying_sword': {
+        // Double metallic blade ring
+        this.playNoiseSwish(2500, 0.055, 0.046);
+        this.playTone(860, 380, 0.055, 'triangle', 0.048);
+        this.playTone(1140, 520, 0.05, 'triangle', 0.038, 0.024);
+        break;
+      }
+      case 'sword':
+      default: {
+        if (faction === 'orthodox') {
+          this.playNoiseSwish(
+            isSkill ? 2450 : 2050,
+            isSkill ? 0.085 : 0.055,
+            isSkill ? 0.072 : 0.045,
+          );
+          this.playTone(isSkill ? 960 : 780, 330, isSkill ? 0.09 : 0.06, 'triangle', 0.052);
+        } else if (faction === 'unorthodox') {
+          this.playNoiseSwish(2900, 0.052, 0.048);
+          this.playTone(980, 390, 0.065, 'sawtooth', 0.038);
+        } else {
+          this.playTone(isSkill ? 240 : 195, 72, isSkill ? 0.12 : 0.08, 'sawtooth', 0.058);
+          this.playNoiseSwish(1150, 0.07, 0.048);
+        }
+        break;
+      }
     }
 
     if (isCrit) {

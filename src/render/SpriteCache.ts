@@ -312,7 +312,7 @@ export class SpriteCache {
     const existing = this.cache.get(key);
     if (existing) return existing;
 
-    const c = this.createOffscreen(312, 62);
+    const c = this.createOffscreen(284, 52);
     const spec: SkillCalloutSpec = { label: concise, faction };
     this.paintSkillCallout(c, spec);
     this.cache.set(key, c);
@@ -327,73 +327,73 @@ export class SpriteCache {
     ctx.save();
 
     const text = `「${spec.label}」`;
-    ctx.font = `bold 29px ${BODY_FONT}`;
-    const measuredW = Math.min(268, Math.max(124, Math.ceil(ctx.measureText(text).width) + 34));
+    ctx.font = `bold 25px ${BODY_FONT}`;
+    const measuredW = Math.min(252, Math.max(116, Math.ceil(ctx.measureText(text).width) + 28));
     const pillX = Math.round((c.width - measuredW) * 0.5);
-    const pillY = 9;
-    const pillH = 42;
+    const pillY = 8;
+    const pillH = 34;
 
-    // 3D ink drop shadow
+    // Subtle 3D ink drop shadow
     ctx.beginPath();
-    ctx.roundRect(pillX, pillY + 5, measuredW, pillH, 12);
-    ctx.fillStyle = PIXEL_OUTLINE;
+    ctx.roundRect(pillX, pillY + 4, measuredW, pillH, 10);
+    ctx.fillStyle = 'rgba(26, 18, 36, 0.72)';
     ctx.fill();
 
-    // Faction lacquer scroll body
+    // Sleek semi-translucent faction lacquer scroll body
     ctx.beginPath();
-    ctx.roundRect(pillX, pillY, measuredW, pillH, 12);
+    ctx.roundRect(pillX, pillY, measuredW, pillH, 10);
     const bg = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
     let rimColor = '#fde047';
     let textTop = '#ffffff';
     let textBot = '#bae6fd';
     if (spec.faction === 'orthodox') {
-      bg.addColorStop(0, '#075985');
-      bg.addColorStop(1, '#082f49');
+      bg.addColorStop(0, 'rgba(7, 89, 133, 0.88)');
+      bg.addColorStop(1, 'rgba(8, 47, 73, 0.9)');
       rimColor = '#fde047';
       textTop = '#fffbeb';
       textBot = '#7dd3fc';
     } else if (spec.faction === 'unorthodox') {
-      bg.addColorStop(0, '#166534');
-      bg.addColorStop(1, '#052e16');
+      bg.addColorStop(0, 'rgba(22, 101, 52, 0.88)');
+      bg.addColorStop(1, 'rgba(5, 46, 22, 0.9)');
       rimColor = '#4ade80';
       textTop = '#fefce8';
       textBot = '#86efac';
     } else {
-      bg.addColorStop(0, '#881337');
-      bg.addColorStop(1, '#2a0410');
+      bg.addColorStop(0, 'rgba(136, 19, 55, 0.88)');
+      bg.addColorStop(1, 'rgba(42, 4, 16, 0.9)');
       rimColor = '#fb7185';
       textTop = '#fff1f2';
       textBot = '#fda4af';
     }
     ctx.fillStyle = bg;
     ctx.fill();
-    ctx.lineWidth = 4.5;
+    ctx.lineWidth = 3.8;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.roundRect(pillX + 3, pillY + 3, measuredW - 6, pillH - 6, 9);
-    ctx.lineWidth = 2;
+    ctx.roundRect(pillX + 2.5, pillY + 2.5, measuredW - 5, pillH - 5, 8);
+    ctx.lineWidth = 1.6;
     ctx.strokeStyle = rimColor;
     ctx.stroke();
 
     // Traditional scroll gold end-spindles on left & right
-    for (const rx of [pillX - 4, pillX + measuredW - 3]) {
+    for (const rx of [pillX - 3, pillX + measuredW - 3]) {
       ctx.fillStyle = PIXEL_OUTLINE;
-      ctx.fillRect(rx - 1.5, pillY + 4, 10, pillH - 8);
+      ctx.fillRect(rx - 1.5, pillY + 3, 9, pillH - 6);
       ctx.fillStyle = rimColor;
-      ctx.fillRect(rx, pillY + 6, 7, pillH - 12);
+      ctx.fillRect(rx, pillY + 5, 6, pillH - 10);
     }
 
     // Crisp ink-outlined martial skill name
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 7.5;
+    ctx.lineWidth = 7;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.strokeText(text, c.width * 0.5, pillY + pillH * 0.5 + 1);
 
-    const tg = ctx.createLinearGradient(0, pillY + 6, 0, pillY + pillH - 6);
+    const tg = ctx.createLinearGradient(0, pillY + 5, 0, pillY + pillH - 5);
     tg.addColorStop(0, textTop);
     tg.addColorStop(1, textBot);
     ctx.fillStyle = tg;
@@ -1019,8 +1019,8 @@ export class SpriteCache {
 
   public ensureGlyphAtlas(): HTMLCanvasElement {
     if (this.glyphCanvas) return this.glyphCanvas;
-    const cellW = 46;
-    const cellH = 60;
+    const cellW = 50;
+    const cellH = 64;
     this.glyphRowHeight = cellH;
     const c = this.createOffscreen(GLYPH_CHARS.length * cellW, cellH * 4);
     this.paintGlyphAtlas(c);
@@ -1031,10 +1031,10 @@ export class SpriteCache {
   private paintGlyphAtlas(c: HTMLCanvasElement): void {
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    const cellW = 46;
+    const cellW = 50;
     const cellH = this.glyphRowHeight;
     ctx.clearRect(0, 0, c.width, c.height);
-    ctx.font = `40px ${DISPLAY_FONT}`;
+    ctx.font = `bold 44px ${DISPLAY_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -1043,54 +1043,53 @@ export class SpriteCache {
       const ch = GLYPH_CHARS[i]!;
       const cx = i * cellW + cellW * 0.5;
 
-      // Row 0: Normal attack — crisp ivory-white with heavy dark ink outline & subtle bottom drop
+      // Row 0: Normal attack — crisp ivory-white with heavy dark ink outline & 3D bottom extrusion
       const cy0 = cellH * 0.5;
-      ctx.fillStyle = PIXEL_OUTLINE;
-      ctx.lineWidth = 10;
+      ctx.lineWidth = 12;
       ctx.strokeStyle = PIXEL_OUTLINE;
-      ctx.strokeText(ch, cx, cy0 + 2);
+      ctx.strokeText(ch, cx, cy0 + 2.5);
       ctx.strokeText(ch, cx, cy0);
-      const normGrad = ctx.createLinearGradient(cx, cy0 - 18, cx, cy0 + 18);
+      const normGrad = ctx.createLinearGradient(cx, cy0 - 20, cx, cy0 + 20);
       normGrad.addColorStop(0, '#ffffff');
-      normGrad.addColorStop(0.65, '#f8fafc');
+      normGrad.addColorStop(0.68, '#f8fafc');
       normGrad.addColorStop(1, '#cbd5e1');
       ctx.fillStyle = normGrad;
       ctx.fillText(ch, cx, cy0);
 
       // Row 1: Martial skill hit (non-crit) — radiant celadon-azure qi gradient
       const cy1 = cellH * 1.5;
-      ctx.lineWidth = 11;
+      ctx.lineWidth = 12.5;
       ctx.strokeStyle = PIXEL_OUTLINE;
-      ctx.strokeText(ch, cx, cy1 + 2);
+      ctx.strokeText(ch, cx, cy1 + 2.5);
       ctx.strokeText(ch, cx, cy1);
-      const skillGrad = ctx.createLinearGradient(cx, cy1 - 18, cx, cy1 + 18);
-      skillGrad.addColorStop(0, '#f0fdfa');
-      skillGrad.addColorStop(0.48, '#67e8f9');
+      const skillGrad = ctx.createLinearGradient(cx, cy1 - 20, cx, cy1 + 20);
+      skillGrad.addColorStop(0, '#ffffff');
+      skillGrad.addColorStop(0.45, '#67e8f9');
       skillGrad.addColorStop(1, '#0284c7');
       ctx.fillStyle = skillGrad;
       ctx.fillText(ch, cx, cy1);
 
       // Row 2: Critical strike (회심일격!) — blazing imperial gold-to-vermilion gradient
       const cy2 = cellH * 2.5;
-      ctx.lineWidth = 12;
+      ctx.lineWidth = 13.5;
       ctx.strokeStyle = PIXEL_OUTLINE;
-      ctx.strokeText(ch, cx, cy2 + 2.5);
+      ctx.strokeText(ch, cx, cy2 + 3);
       ctx.strokeText(ch, cx, cy2);
-      const critGrad = ctx.createLinearGradient(cx, cy2 - 19, cx, cy2 + 19);
+      const critGrad = ctx.createLinearGradient(cx, cy2 - 21, cx, cy2 + 21);
       critGrad.addColorStop(0, '#fffbeb');
       critGrad.addColorStop(0.38, '#fde047');
-      critGrad.addColorStop(0.75, '#f97316');
+      critGrad.addColorStop(0.76, '#f97316');
       critGrad.addColorStop(1, '#dc2626');
       ctx.fillStyle = critGrad;
       ctx.fillText(ch, cx, cy2);
 
       // Row 3: Armor-broken amplified strike (파갑·강기격파!) — radiant amethyst-magenta-to-crimson gradient
       const cy3 = cellH * 3.5;
-      ctx.lineWidth = 12;
+      ctx.lineWidth = 13.5;
       ctx.strokeStyle = PIXEL_OUTLINE;
-      ctx.strokeText(ch, cx, cy3 + 2.5);
+      ctx.strokeText(ch, cx, cy3 + 3);
       ctx.strokeText(ch, cx, cy3);
-      const shredGrad = ctx.createLinearGradient(cx, cy3 - 19, cx, cy3 + 19);
+      const shredGrad = ctx.createLinearGradient(cx, cy3 - 21, cx, cy3 + 21);
       shredGrad.addColorStop(0, '#fdf4ff');
       shredGrad.addColorStop(0.4, '#e879f9');
       shredGrad.addColorStop(0.78, '#f43f5e');
@@ -1104,7 +1103,7 @@ export class SpriteCache {
         sy: 0,
         sw: cellW,
         sh: cellH,
-        advance: Math.max(14, Math.ceil(measured) + 2),
+        advance: Math.max(15, Math.ceil(measured) + 2),
       });
     }
   }

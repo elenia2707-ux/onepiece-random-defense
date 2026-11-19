@@ -45,6 +45,7 @@ import {
   type SkinPullItem,
 } from '../platform/MetaStore';
 import type { SpriteCache } from '../render/SpriteCache';
+import { getUnitCombatProfile } from '../render/weaponProfiles';
 
 export interface UIControlHandlers {
   onDispatch(cmd: GameCommand): void;
@@ -291,6 +292,14 @@ export class UIManager {
   private prevRecommendSignature = '';
 
   private toastLayerEl!: HTMLElement;
+  private activeToast: {
+    el: HTMLDivElement;
+    message: string;
+    isReject: boolean;
+    repeatCount: number;
+    hideTimerId: number;
+    removeTimerId: number | null;
+  } | null = null;
   private boonPeekPillEl!: HTMLButtonElement;
   private boonModalEl!: HTMLElement;
   private boonTitleEl!: HTMLElement;
@@ -1232,7 +1241,6 @@ export class UIManager {
     this.bossHudBarEl.classList.toggle('bounty-mode', Boolean(snapshot.boss?.isBounty));
     this.tacticalStripEl.classList.toggle('boss-active', hasBoss);
     this.dpsPanelEl.classList.toggle('boss-active', hasBoss);
-    this.toastLayerEl.classList.toggle('boss-active', hasBoss);
 
     if (snapshot.boss) {
       if (this.prevBossPortraitKind !== snapshot.boss.kind) {
@@ -1551,8 +1559,14 @@ export class UIManager {
     return false;
   }
 
-  private buildUnitRoleBadgesHtml(u: UnitDef): string {
+  private buildUnitRoleBadgesHtml(u: UnitDef, includeWeapon = false): string {
     const chips: string[] = [];
+    if (includeWeapon) {
+      const wp = getUnitCombatProfile(u.id);
+      chips.push(
+        `<span class="role-chip weapon" title="전용 병장기 및 공격 모션: ${escapeHtml(wp.weaponLabel)}">🗡${escapeHtml(wp.weaponLabel)}</span>`,
+      );
+    }
     if (u.supportAura) {
       const spdPart = u.supportAura.speedPct > 0 ? `·속+${u.supportAura.speedPct}%` : '';
       chips.push(
@@ -1855,21 +1869,72 @@ export class UIManager {
   }
 
   public showToast(message: string, isReject = false): void {
+    const durationMs = isReject ? 1200 : 1680;
+    const cur = this.activeToast;
+
+    if (cur) {
+      window.clearTimeout(cur.hideTimerId);
+      if (cur.removeTimerId !== null) {
+        window.clearTimeout(cur.removeTimerId);
+        cur.removeTimerId = null;
+      }
+
+      if (cur.message === message) {
+        cur.repeatCount = Math.min(99, cur.repeatCount + 1);
+      } else {
+        cur.message = message;
+        cur.repeatCount = 1;
+      }
+      cur.isReject = isReject;
+      cur.el.className = `toast-item show toast-bump${isReject ? ' reject' : ''}`;
+      cur.el.textContent = cur.repeatCount >= 2 ? `${message} ×${cur.repeatCount}` : message;
+
+      // Re-trigger bump animation cleanly without reflow thrashing
+      window.setTimeout(() => {
+        cur.el.classList.remove('toast-bump');
+      }, 150);
+
+      cur.hideTimerId = window.setTimeout(() => {
+        cur.el.classList.remove('show');
+        cur.removeTimerId = window.setTimeout(() => {
+          cur.el.remove();
+          if (this.activeToast === cur) {
+            this.activeToast = null;
+          }
+        }, 160);
+      }, durationMs);
+      return;
+    }
+
     const item = document.createElement('div');
     item.className = isReject ? 'toast-item reject' : 'toast-item';
     item.textContent = message;
-    this.toastLayerEl.appendChild(item);
+    this.toastLayerEl.replaceChildren(item);
 
     window.requestAnimationFrame(() => {
       item.classList.add('show');
     });
 
-    window.setTimeout(() => {
+    const record: NonNullable<UIManager['activeToast']> = {
+      el: item,
+      message,
+      isReject,
+      repeatCount: 1,
+      hideTimerId: 0,
+      removeTimerId: null,
+    };
+
+    record.hideTimerId = window.setTimeout(() => {
       item.classList.remove('show');
-      window.setTimeout(() => {
+      record.removeTimerId = window.setTimeout(() => {
         item.remove();
-      }, 180);
-    }, 1750);
+        if (this.activeToast === record) {
+          this.activeToast = null;
+        }
+      }, 160);
+    }, durationMs);
+
+    this.activeToast = record;
   }
 
   private getSelectedSlotView(snapshot: UISnapshot | null): SlotView | null {
@@ -1906,6 +1971,7 @@ export class UIManager {
     if (!unitDef || !gradeDef) return;
 
     const fMeta = FACTION_META[slotView.faction];
+    const weaponProfile = getUnitCombatProfile(slotView.unitId);
 
     this.unitSelectBarEl.classList.add('visible');
     this.unitPortraitImgEl.src = this.sprites.unitPortraitUrl(
@@ -1935,7 +2001,7 @@ export class UIManager {
       );
     }
     this.unitStatEl.textContent = statParts.join(' · ');
-    this.unitStatEl.title = slotView.skillName;
+    this.unitStatEl.title = `${weaponProfile.weaponLabel} · ${slotView.skillName}`;
 
     const upperRecipes = this.recipeGraph.byIngredient.get(slotView.unitId) ?? [];
     this.unitShortcutsEl.innerHTML = '';
@@ -1952,6 +2018,11 @@ export class UIManager {
       warnChip.textContent = '🚨 주박 예고! 다른 칸으로 드래그 회피';
       this.unitShortcutsEl.appendChild(warnChip);
     }
+
+    const weaponChip = document.createElement('span');
+    weaponChip.className = 'shortcut-chip weapon-chip';
+    weaponChip.textContent = `🗡 ${weaponProfile.weaponLabel}`;
+    this.unitShortcutsEl.appendChild(weaponChip);
 
     if (slotView.supportAura) {
       const auraChip = document.createElement('span');
@@ -2179,7 +2250,7 @@ export class UIManager {
       outGrade,
       this.getEquippedSkinDef(outUnit.id, meta),
     );
-    const roleBadges = this.buildUnitRoleBadgesHtml(outUnit);
+    const roleBadges = this.buildUnitRoleBadgesHtml(outUnit, true);
 
     const ingChips = recipe.ingredients
       .map((ing) => {
@@ -3222,7 +3293,7 @@ export class UIManager {
         const discovered = Boolean(meta.discoveredUnits[u.id]);
         const discReward = getCodexDiscoveryReward(g.rank);
         const portrait = this.sprites.unitPortraitUrl(u, g, this.getEquippedSkinDef(u.id, meta));
-        const roleBadges = this.buildUnitRoleBadgesHtml(u);
+        const roleBadges = this.buildUnitRoleBadgesHtml(u, true);
 
         const lowerRec = this.recipeGraph.byOutput.get(u.id)?.[0];
         let lowerLine = '획득처: 초출강호(일반 소환) · 기연 초빙';

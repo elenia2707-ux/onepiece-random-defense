@@ -638,17 +638,17 @@ button {
 
 .auto-arrange-btn {
   position: absolute;
-  left: 224px;
-  top: 716px;
-  height: 30px;
-  padding: 0 11px;
+  left: 222px;
+  top: 715px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
-  box-shadow: 0 2.5px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+  background: linear-gradient(180deg, #1f7a6f 0%, #0d3d37 100%);
+  box-shadow: 0 2.5px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.38);
   color: #ffffff;
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 14.5px;
   text-shadow: var(--outline-1);
   display: inline-flex;
   align-items: center;
@@ -673,7 +673,7 @@ button {
    ========================================================= */
 .synergy-bar {
   position: absolute;
-  right: 36px;
+  right: 34px;
   top: 715px;
   height: 32px;
   display: inline-flex;
@@ -683,18 +683,18 @@ button {
 }
 
 .syn-pill {
-  height: 30px;
-  padding: 0 7px;
+  height: 31px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: linear-gradient(180deg, #332742 0%, #1e1629 100%);
-  box-shadow: 0 2.5px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, #2d223b 0%, #171122 100%);
+  box-shadow: 0 2.5px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.2);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-family: var(--font-ui);
-  font-size: 13.5px;
-  color: rgba(241, 245, 249, 0.72);
+  gap: 3.5px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: rgba(248, 250, 252, 0.92);
   text-shadow: var(--outline-1);
   cursor: pointer;
   transition: transform 90ms ease, filter 120ms ease;
@@ -707,11 +707,11 @@ button {
 .syn-pill b {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 12.5px;
-  padding: 0.5px 5px;
+  font-size: 13px;
+  padding: 0.5px 5.5px;
   border-radius: 999px;
-  background: rgba(15, 10, 22, 0.72);
-  color: #cbd5e1;
+  background: rgba(12, 8, 20, 0.85);
+  color: #f1f5f9;
   text-shadow: none;
   font-variant-numeric: tabular-nums;
 }
@@ -1161,8 +1161,8 @@ button {
 }
 
 .slot-occupancy {
-  font-size: 15px;
-  color: #fef3c7;
+  font-size: 16px;
+  color: #fef08a;
   text-shadow: var(--outline-1);
   font-variant-numeric: tabular-nums;
 }
@@ -1286,19 +1286,19 @@ button {
 .action-cost {
   position: relative;
   z-index: 1;
-  height: 26px;
-  min-width: 72%;
+  height: 27px;
+  min-width: 74%;
   padding: 0 9px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: rgba(26, 18, 36, 0.85);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  background: rgba(18, 12, 28, 0.92);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.14);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 15px;
   color: #ffffff;
   text-shadow: none;
   font-variant-numeric: tabular-nums;
@@ -1805,46 +1805,56 @@ button {
   background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
 }
 
-/* Toast Layer */
+/* Toast Layer — Dedicated safe stone-bridge band (y: 668..704), zero overlap with 6x3 field or bench */
 .toast-layer {
   position: absolute;
-  left: 50px;
-  right: 50px;
-  top: 138px;
+  left: 28px;
+  right: 28px;
+  top: 668px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   pointer-events: none;
   z-index: 50;
-  transition: top 180ms ease;
-}
-
-.toast-layer.boss-active {
-  top: 220px;
 }
 
 .toast-item {
-  padding: 9px 20px;
+  height: 36px;
+  max-width: 652px;
+  padding: 0 18px;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-1) 100%);
-  border: 3px solid var(--ink);
-  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 var(--panel-hi);
+  background: linear-gradient(180deg, rgba(22, 82, 75, 0.96) 0%, rgba(9, 31, 29, 0.98) 100%);
+  border: 2.8px solid var(--ink);
+  box-shadow: 0 3.5px 0 var(--ink), 0 0 0 1.5px rgba(250, 204, 21, 0.52),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.25);
   color: #ffffff;
   text-shadow: var(--outline-1);
-  font-size: 17px;
+  font-size: 16.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   opacity: 0;
-  transform: translate3d(0, -10px, 0);
-  transition: opacity 150ms ease, transform 150ms ease;
+  transform: translate3d(0, 6px, 0) scale(0.96);
+  transition: opacity 130ms ease, transform 130ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .toast-item.show {
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.toast-item.toast-bump {
+  transform: translate3d(0, -2px, 0) scale(1.045);
 }
 
 .toast-item.reject {
-  background: linear-gradient(180deg, #fb7185 0%, #9f1239 100%);
+  background: linear-gradient(180deg, rgba(225, 29, 72, 0.96) 0%, rgba(127, 29, 29, 0.98) 100%);
+  box-shadow: 0 3.5px 0 var(--ink), 0 0 0 1.5px rgba(254, 205, 211, 0.65),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.3);
 }
 
 /* Game Over / Victory Settlement Banner */
@@ -2408,10 +2418,10 @@ button {
    ========================================================= */
 .tactical-strip {
   position: absolute;
-  left: 14px;
-  right: 14px;
+  left: 12px;
+  right: 12px;
   top: 102px;
-  height: 30px;
+  height: 31px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2422,19 +2432,19 @@ button {
 }
 
 .tactical-strip.boss-active {
-  top: 186px;
+  top: 170px;
 }
 
 .tac-pill {
-  height: 30px;
-  padding: 0 9px;
+  height: 31px;
+  padding: 0 9.5px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
-  background: linear-gradient(180deg, rgba(20, 77, 71, 0.94) 0%, rgba(8, 35, 32, 0.96) 100%);
-  box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.2);
-  color: #f8fafc;
+  background: linear-gradient(180deg, rgba(16, 62, 57, 0.96) 0%, rgba(7, 28, 26, 0.98) 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.24);
+  color: #ffffff;
   font-family: var(--font-body);
-  font-size: 12.5px;
+  font-size: 13.5px;
   text-shadow: var(--outline-1);
   display: inline-flex;
   align-items: center;
@@ -2875,6 +2885,11 @@ button {
   white-space: nowrap;
 }
 
+.role-chip.weapon {
+  background: linear-gradient(180deg, #334155 0%, #0f172a 100%);
+  color: #e0f2fe;
+}
+
 .role-chip.totem {
   background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
   color: #fffbeb;
@@ -2883,6 +2898,12 @@ button {
 .role-chip.shred {
   background: linear-gradient(180deg, #8b5cf6 0%, #5b21b6 100%);
   color: #f5f3ff;
+}
+
+.shortcut-chip.weapon-chip {
+  background: linear-gradient(180deg, #334155 0%, #111827 100%);
+  border-color: var(--ink);
+  color: #bae6fd;
 }
 
 .shortcut-chip.aura-chip {
@@ -3236,9 +3257,9 @@ button {
 .boon-peek-pill {
   position: absolute;
   left: 50%;
-  top: 224px;
+  top: 666px;
   transform: translateX(-50%);
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 18px;
   border-radius: 999px;
   border: 3px solid var(--ink);

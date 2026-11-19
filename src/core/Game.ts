@@ -12,6 +12,7 @@ import { BackgroundPainter } from '../render/BackgroundPainter';
 import { CanvasStack } from '../render/CanvasStack';
 import { Renderer } from '../render/Renderer';
 import { SpriteCache } from '../render/SpriteCache';
+import { getUnitCombatProfile } from '../render/weaponProfiles';
 import { UIManager } from '../ui/UIManager';
 import { VfxSystem } from '../vfx/VfxSystem';
 
@@ -386,6 +387,7 @@ export class Game {
 
     this.sim.events.on('skill:impact', (ev) => {
       const skin = this.equippedHeroSkinsMap.get(ev.unitId);
+      const profile = getUnitCombatProfile(ev.unitId);
       this.vfx.spawnSkillTrack(
         ev.vfxTrack,
         ev.fromX,
@@ -393,39 +395,53 @@ export class Game {
         ev.x,
         ev.y,
         ev.radius,
-        skin?.primaryColor ?? ev.color,
+        skin?.primaryColor ?? profile.primary,
         ev.gradeRank,
         ev.tick,
-        skin?.primaryColor,
-        skin?.secondaryColor,
+        skin?.primaryColor ?? profile.primary,
+        skin?.secondaryColor ?? profile.secondary,
+        profile.style,
       );
-      const uDef = this.sim.data.unitsById.get(ev.unitId);
-      this.vfx.spawnSkillCallout(
-        ev.fromX,
-        ev.fromY - 56,
-        ev.skillName,
-        uDef?.faction ?? 'orthodox',
-        ev.gradeRank,
-        ev.tick,
-      );
+      // Only show floating scroll plaques for 절정+ (gradeRank >= 4) masters so field units are never cluttered!
+      if (ev.gradeRank >= 4) {
+        const uDef = this.sim.data.unitsById.get(ev.unitId);
+        this.vfx.spawnSkillCallout(
+          ev.fromX,
+          ev.fromY - 68,
+          ev.skillName,
+          uDef?.faction ?? 'orthodox',
+          ev.gradeRank,
+          ev.tick,
+        );
+      }
     });
 
     this.sim.events.on('monster:hit', (ev) => {
       const uDef = this.sim.data.unitsById.get(ev.unitId);
       const skin = this.equippedHeroSkinsMap.get(ev.unitId);
-      this.sound.playHit(uDef?.faction ?? 'orthodox', ev.isCrit || ev.justShattered, ev.isSkill);
+      const profile = getUnitCombatProfile(ev.unitId);
+      this.sound.playHit(
+        uDef?.faction ?? 'orthodox',
+        ev.isCrit || ev.justShattered,
+        ev.isSkill,
+        profile.style,
+      );
       this.vfx.spawnHitFx(
         ev.entityId,
         ev.x,
         ev.y,
         ev.damage,
-        skin?.primaryColor ?? ev.color,
+        skin?.primaryColor ?? profile.primary,
         ev.slain,
         ev.isCrit,
         ev.tick,
         ev.isSkill,
         ev.armorBroken,
         ev.justShattered,
+        profile.style,
+        ev.fromX,
+        ev.fromY,
+        skin?.secondaryColor ?? profile.secondary,
       );
     });
 

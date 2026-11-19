@@ -789,19 +789,21 @@ export function paintUnitChibi(
     }
 
     case 'tang_patriarch': {
-      // Tang Lord: ornate purple-gold mask & crest + floating emerald needle wheel (만천화우)
+      // Tang Lord: royal jade-violet robes + unfolded Sichuan Tang poison fan (만독철선 부채)
       paintCapeLeft(p, ROBE_VIOLET, true);
       paintHead34(p, SKIN_PALE, { glint: '#4ade80', fierce: true });
-      paintFlowingMane(p, HAIR_BLACK, '#a855f7');
-      p.rect(9, 15, 11, 3, '#4c1d95', LAYER_FRONT);
-      p.hline(10, 18, 15, '#eab308', LAYER_FRONT);
+      paintFlowingMane(p, HAIR_BLACK, '#4ade80');
       paintMartialBody34(p, ROBE_VIOLET, ROBE_JADE, '#eab308');
-      // Golden mechanism box + radial green poison needles
-      p.rect(20, 18, 5, 5, '#eab308', LAYER_FRONT);
-      p.rect(21, 19, 3, 3, '#22c55e', LAYER_FRONT);
-      p.line(24, 17, 30, 7, '#4ade80', LAYER_FX, 1);
-      p.line(25, 19, 30, 14, '#86efac', LAYER_FX, 1);
-      p.line(25, 21, 30, 22, '#22c55e', LAYER_FX, 1);
+      // Unfolded gold-and-violet Sichuan Tang poison fan (부채) + floating jade poison orbs
+      p.line(21, 21, 22, 11, '#eab308', LAYER_FRONT, 2);
+      p.line(21, 21, 26, 12, '#d6a86e', LAYER_FRONT, 2);
+      p.line(21, 21, 29, 15, '#c084fc', LAYER_FRONT, 2);
+      p.line(21, 21, 29, 19, '#eab308', LAYER_FRONT, 2);
+      p.set(21, 21, '#4c1d95', LAYER_FRONT);
+      p.set(24, 14, '#4ade80', LAYER_FRONT);
+      p.set(26, 16, '#4ade80', LAYER_FRONT);
+      p.disc(25, 6, 1.8, VENOM_QI, LAYER_FX);
+      p.disc(4, 17, 1.8, VENOM_QI, LAYER_FX);
       break;
     }
 

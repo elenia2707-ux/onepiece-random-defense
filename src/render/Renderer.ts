@@ -9,6 +9,7 @@ import type { CanvasStack } from './CanvasStack';
 import { PIXEL_OUTLINE } from './ChibiPainter';
 import { type IRenderable, RENDER_LAYER_COUNT, RenderLayer } from './RenderLayer';
 import { hexWithAlpha, type SpriteCache } from './SpriteCache';
+import { getUnitCombatProfile, type UnitCombatProfile } from './weaponProfiles';
 
 /**
  * Crisp nearest-neighbor sprite sizes (~110% of tile width) and foot offsets from slot center.
@@ -27,148 +28,6 @@ export interface InteractionOverlayState {
   readonly dragLogicalY: number;
   readonly hoverTargetSlot: SlotRef | null;
 }
-
-type WeaponMotionStyle =
-  | 'sword'
-  | 'saber'
-  | 'spear_staff'
-  | 'palm_fist'
-  | 'dagger_hidden'
-  | 'sorcery_qi';
-
-type SectVisualId =
-  | 'hwasan'
-  | 'mudang'
-  | 'shaolin'
-  | 'namgung'
-  | 'gaebang'
-  | 'tang_poison'
-  | 'sapa_blade'
-  | 'haomun'
-  | 'mad_demon'
-  | 'magyo_sword'
-  | 'magyo_flame'
-  | 'magyo_bone';
-
-interface UnitCombatProfile {
-  readonly style: WeaponMotionStyle;
-  readonly sect: SectVisualId;
-  readonly primary: string;
-  readonly secondary: string;
-  readonly dualWield?: boolean;
-}
-
-const DEFAULT_PROFILE: UnitCombatProfile = {
-  style: 'sword',
-  sect: 'hwasan',
-  primary: '#fb7185',
-  secondary: '#ffe4e6',
-};
-
-/**
- * Bespoke martial weapon & sect visual profile for all 32 units in `units.json`.
- * Drives multi-phase weapon-swing choreography, blade/staff/palm smears, and sect projectiles.
- */
-const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> = {
-  // 구파일방 · 정파 (화산파 매화검)
-  hwasan_novice: { style: 'sword', sect: 'hwasan', primary: '#fb7185', secondary: '#ffe4e6' },
-  plum_swordsman: { style: 'sword', sect: 'hwasan', primary: '#f43f5e', secondary: '#fda4af' },
-  plum_elder: { style: 'sword', sect: 'hwasan', primary: '#e11d48', secondary: '#fbcfe8' },
-  hwasan_master: { style: 'sword', sect: 'hwasan', primary: '#c026d3', secondary: '#f9a8d4' },
-  sword_saint: {
-    style: 'sword',
-    sect: 'hwasan',
-    primary: '#38bdf8',
-    secondary: '#f472b6',
-    dualWield: true,
-  },
-  sword_immortal: {
-    style: 'sword',
-    sect: 'namgung',
-    primary: '#38bdf8',
-    secondary: '#fde047',
-    dualWield: true,
-  },
-
-  // 구파일방 · 정파 (무당파 태극검)
-  mudang_disciple: { style: 'sword', sect: 'mudang', primary: '#06b6d4', secondary: '#e0f2fe' },
-  mudang_master: { style: 'sword', sect: 'mudang', primary: '#0284c7', secondary: '#bae6fd' },
-
-  // 구파일방 · 정파 (소림사 나한권·금강권 정권 지르기)
-  shaolin_novice: { style: 'palm_fist', sect: 'shaolin', primary: '#f59e0b', secondary: '#fef08a' },
-  shaolin_monk: { style: 'palm_fist', sect: 'shaolin', primary: '#fbbf24', secondary: '#fffbeb' },
-
-  // 구파일방 · 정파 (남궁세가 & 무림맹 뇌전패검)
-  namgung_thunder: { style: 'sword', sect: 'namgung', primary: '#0284c7', secondary: '#fde047' },
-  murim_lord: { style: 'sword', sect: 'namgung', primary: '#eab308', secondary: '#7dd3fc' },
-
-  // 구파일방 · 정파 (개방 타구봉 & 청옥쌍도)
-  gaebang_beggar: { style: 'spear_staff', sect: 'gaebang', primary: '#16a34a', secondary: '#bbf7d0' },
-  gaebang_elder: {
-    style: 'dagger_hidden',
-    sect: 'gaebang',
-    primary: '#10b981',
-    secondary: '#fde047',
-    dualWield: true,
-  },
-
-  // 사파 (사천당문 & 독수약왕 암기·맹독)
-  tang_assassin: {
-    style: 'dagger_hidden',
-    sect: 'tang_poison',
-    primary: '#22c55e',
-    secondary: '#a855f7',
-  },
-  poison_healer: {
-    style: 'dagger_hidden',
-    sect: 'tang_poison',
-    primary: '#4ade80',
-    secondary: '#c084fc',
-  },
-  tang_patriarch: {
-    style: 'dagger_hidden',
-    sect: 'tang_poison',
-    primary: '#16a34a',
-    secondary: '#d8b4fe',
-  },
-
-  // 사파 (녹림·하오문·혈도문·광마 패도 & 혈조)
-  nokrim_bandit: { style: 'saber', sect: 'sapa_blade', primary: '#ea580c', secondary: '#fed7aa' },
-  nokrim_chief: { style: 'saber', sect: 'sapa_blade', primary: '#dc2626', secondary: '#fde047' },
-  haomun_ronin: { style: 'sword', sect: 'haomun', primary: '#64748b', secondary: '#f8fafc' },
-  blood_blade: { style: 'saber', sect: 'sapa_blade', primary: '#e11d48', secondary: '#fecdd3' },
-  blood_demon: { style: 'saber', sect: 'sapa_blade', primary: '#be123c', secondary: '#fda4af' },
-  mad_demon: { style: 'palm_fist', sect: 'mad_demon', primary: '#e11d48', secondary: '#fde047' },
-  asura_emperor: {
-    style: 'saber',
-    sect: 'sapa_blade',
-    primary: '#e11d48',
-    secondary: '#4ade80',
-    dualWield: true,
-  },
-
-  // 천마신교 · 마교 (흑살도·백골창·흑풍쌍검·마염·천마검)
-  cult_initiate: { style: 'saber', sect: 'magyo_sword', primary: '#be123c', secondary: '#fda4af' },
-  bone_fiend: { style: 'spear_staff', sect: 'magyo_bone', primary: '#a855f7', secondary: '#f43f5e' },
-  black_wind: {
-    style: 'sword',
-    sect: 'magyo_sword',
-    primary: '#e11d48',
-    secondary: '#cbd5e1',
-    dualWield: true,
-  },
-  cult_protector: { style: 'palm_fist', sect: 'magyo_flame', primary: '#db2777', secondary: '#a855f7' },
-  cult_elder: { style: 'sorcery_qi', sect: 'magyo_flame', primary: '#dc2626', secondary: '#c084fc' },
-  sword_demon: {
-    style: 'sword',
-    sect: 'magyo_sword',
-    primary: '#9f1239',
-    secondary: '#f43f5e',
-    dualWield: true,
-  },
-  flame_demon: { style: 'sorcery_qi', sect: 'magyo_flame', primary: '#ea580c', secondary: '#a855f7' },
-  cheonma: { style: 'sword', sect: 'magyo_sword', primary: '#e11d48', secondary: '#fde047' },
-};
 
 /** Exact lantern coordinates on `public/bg/murim_arena_bg.png` (720x1280). */
 const TEMPLE_LANTERNS: readonly { readonly x: number; readonly y: number; readonly r: number }[] = [
@@ -1060,7 +919,7 @@ export class Renderer {
       if (!def || !grade) continue;
 
       const equippedSkin = this.equippedHeroSkins.get(u.unitId) ?? null;
-      const baseProfile = UNIT_COMBAT_PROFILES[u.unitId] ?? DEFAULT_PROFILE;
+      const baseProfile = getUnitCombatProfile(u.unitId);
       const profile: UnitCombatProfile = equippedSkin
         ? {
             ...baseProfile,
@@ -1097,8 +956,8 @@ export class Renderer {
       const spriteSize = Math.round((isField ? FIELD_SPRITE : BENCH_SPRITE) * popScale);
       const breath = isSealed ? 0 : Math.sin(simTimeSec * 3.4 + u.uid * 0.87);
 
-      // Multi-phase smooth martial weapon swing choreography (NO rigid shoulder-checking!)
-      const atkDurSec = Math.min(0.34, Math.max(0.24, def.attackIntervalTicks * TICK_DT * 0.74));
+      // Multi-phase smooth martial weapon swing choreography tailored to all 10 weapons
+      const atkDurSec = Math.min(0.36, Math.max(0.25, def.attackIntervalTicks * TICK_DT * 0.76));
       const atkElapsedSec = (currentTick + alpha - u.lastAttackTick) * TICK_DT;
       const isAttacking = isField && !isSealed && atkElapsedSec >= 0 && atkElapsedSec < atkDurSec;
       const atkP = isAttacking ? atkElapsedSec / atkDurSec : 0;
@@ -1115,66 +974,110 @@ export class Renderer {
       if (isAttacking) {
         const style = profile.style;
         const isFist = style === 'palm_fist';
-        const windUpTilt = isFist ? -0.04 : style === 'sorcery_qi' ? -0.08 : -0.18;
+        const isHover = style === 'sorcery_qi' || style === 'flying_sword';
+        const windUpTilt =
+          isFist || style === 'flying_sword'
+            ? -0.04
+            : style === 'sorcery_qi'
+              ? -0.07
+              : style === 'fan'
+                ? -0.11
+                : style === 'saber'
+                  ? -0.22
+                  : -0.16;
         const peakTilt =
           style === 'saber'
-            ? 0.3
-            : style === 'sword'
-              ? comboSide > 0
-                ? 0.25
-                : 0.18
-              : style === 'spear_staff'
-                ? 0.09
-                : isFist
-                  ? 0.03 // Upright horse-stance spine (마보충권) — zero headbutt!
-                  : style === 'dagger_hidden'
-                    ? 0.16
-                    : 0.06;
+            ? 0.31
+            : style === 'dual_sword'
+              ? 0.24
+              : style === 'sword'
+                ? comboSide > 0
+                  ? 0.24
+                  : 0.17
+                : style === 'fan'
+                  ? 0.15
+                  : style === 'staff_gourd'
+                    ? 0.14
+                    : style === 'spear_staff'
+                      ? 0.1
+                      : isFist
+                        ? 0.03 // Upright horse-stance spine (마보충권)
+                        : style === 'flying_sword'
+                          ? 0.05 // Regal Sword-Immortal finger command
+                          : style === 'dagger_hidden'
+                            ? 0.17
+                            : 0.06;
+
+        const windUpBack =
+          style === 'spear_staff'
+            ? -4.0
+            : isFist
+              ? -2.2
+              : style === 'flying_sword'
+                ? -1.4
+                : style === 'fan'
+                  ? -2.2
+                  : -3.2;
+        const thrustForward =
+          style === 'spear_staff'
+            ? 8.4
+            : style === 'dual_sword'
+              ? 8.2
+              : isFist
+                ? 6.0
+                : style === 'flying_sword'
+                  ? 3.2
+                  : style === 'fan'
+                    ? 5.6
+                    : 7.6;
 
         let stepDist = 0;
         if (atkP < 0.22) {
-          // Phase 1: Wind-up chamber (sink into horse stance / pull weapon back)
+          // Phase 1: Wind-up chamber (coil weapon / fold fan / chamber fist)
           const t = easeOutQuad(atkP / 0.22);
-          stepDist = (isFist ? -2.2 : -3.2) * t;
+          stepDist = windUpBack * t;
           bodyTilt = windUpTilt * t;
-          animScaleX = 1 + (isFist ? 0.068 : 0.055) * t;
-          animScaleY = 1 - (isFist ? 0.075 : 0.062) * t;
-          hopY = isFist ? 0 : style === 'sorcery_qi' ? 4.5 * t : isSkillStrike ? 2.2 * t : 0;
+          animScaleX = 1 + (isFist ? 0.068 : 0.052) * t;
+          animScaleY = 1 - (isFist ? 0.072 : 0.058) * t;
+          hopY = isFist ? 0 : isHover ? 4.2 * t : isSkillStrike ? 2.0 * t : 0;
         } else if (atkP < 0.5) {
-          // Phase 2: Explosive straight punch thrust / rotational blade cleave
+          // Phase 2: Explosive weapon release (unfold fan / cleave saber / thrust staff / command swords)
           const t = easeOutCubic((atkP - 0.22) / 0.28);
-          stepDist = isFist ? -2.2 + 6.0 * t : -3.2 + 7.8 * t;
+          stepDist = windUpBack + thrustForward * t;
           bodyTilt = windUpTilt + (peakTilt - windUpTilt) * t;
-          const reachX = isFist ? 0.06 : style === 'spear_staff' ? 0.075 : 0.045;
-          animScaleX = (isFist ? 1.068 : 1.055) - 0.03 * t + reachX * t;
+          const reachX =
+            isFist ? 0.06 : style === 'spear_staff' ? 0.078 : style === 'fan' ? 0.055 : 0.045;
+          animScaleX = (isFist ? 1.068 : 1.052) - 0.03 * t + reachX * t;
           animScaleY = isFist
-            ? 0.925 + 0.055 * t
-            : 0.938 + (comboSide < 0 && style === 'sword' ? 0.11 * t : 0.045 * t);
+            ? 0.928 + 0.054 * t
+            : 0.942 + (comboSide < 0 && style === 'sword' ? 0.1 * t : 0.048 * t);
           hopY = isFist
             ? 0
-            : style === 'sorcery_qi'
-              ? 4.5 + 4.5 * t
+            : isHover
+              ? 4.2 + 4.2 * t
               : style === 'dagger_hidden'
                 ? Math.sin(t * Math.PI) * 6.5
-                : (isSkillStrike ? 5.0 : 2.2) * Math.sin(t * Math.PI);
+                : style === 'dual_sword' || style === 'fan'
+                  ? Math.sin(t * Math.PI) * 3.4
+                  : (isSkillStrike ? 4.8 : 2.0) * Math.sin(t * Math.PI);
         } else if (atkP < 0.7) {
           // Phase 3: Martial follow-through hold (잔심)
           const t = (atkP - 0.5) / 0.2;
-          const holdFrom = isFist ? 3.8 : 4.6;
-          stepDist = holdFrom - 1.4 * t;
+          const holdFrom = windUpBack + thrustForward;
+          stepDist = holdFrom * (1 - 0.32 * t);
           bodyTilt = peakTilt * (1 - 0.42 * t);
-          animScaleX = (isFist ? 1.08 : 1.05) * (1 - 0.035 * t);
-          animScaleY = isFist ? 0.98 : 0.99;
-          hopY = style === 'sorcery_qi' ? 9 * (1 - 0.35 * t) : 0;
+          animScaleX = (isFist ? 1.078 : 1.048) * (1 - 0.032 * t);
+          animScaleY = isFist ? 0.982 : 0.99;
+          hopY = isHover ? 8.4 * (1 - 0.35 * t) : 0;
         } else {
           // Phase 4: Smooth recovery ease back into idle breathing stance
           const t = smoothstep((atkP - 0.7) / 0.3);
-          const recFrom = isFist ? 2.4 : 3.2;
+          const recFrom = (windUpBack + thrustForward) * 0.68;
           stepDist = recFrom * (1 - t);
           bodyTilt = peakTilt * 0.58 * (1 - t);
           animScaleX = 1.02 + (1 - breath * 0.018 - 1.02) * t;
           animScaleY = 0.99 + (1 + breath * 0.024 - 0.99) * t;
-          hopY = style === 'sorcery_qi' ? 5.8 * (1 - t) : 0;
+          hopY = isHover ? 5.5 * (1 - t) : 0;
         }
 
         stepX = u.attackDirX * stepDist;
@@ -1254,13 +1157,13 @@ export class Renderer {
         },
       });
 
-      // 4. Weapon Blade / Staff / Palm / Dagger Swing Arc right at the hero!
-      if (isAttacking && atkP >= 0.14 && atkP <= 0.84) {
-        const swingProg = (atkP - 0.14) / 0.7;
+      // 4. Outward-Projected Weapon Motion (in front of weapon hand — never obscures hero's face!)
+      if (isAttacking && atkP >= 0.12 && atkP <= 0.86) {
+        const swingProg = (atkP - 0.12) / 0.74;
         const aimAngle = Math.atan2(u.attackDirY, u.attackDirX);
-        const swingOriginX = drawX + u.attackDirX * 6;
-        const swingOriginY = drawFootY - hopY - spriteSize * 0.42 + u.attackDirY * 4;
-        const rankScale = 0.92 + Math.min(5, grade.rank - 1) * 0.08 + (isSkillStrike ? 0.16 : 0);
+        const swingOriginX = drawX + u.attackDirX * 18;
+        const swingOriginY = drawFootY - hopY - spriteSize * 0.38 + u.attackDirY * 12;
+        const rankScale = 0.92 + Math.min(5, grade.rank - 1) * 0.075 + (isSkillStrike ? 0.15 : 0);
 
         this.buckets[RenderLayer.AirFx]!.push({
           layer: RenderLayer.AirFx,
@@ -1464,8 +1367,18 @@ export class Renderer {
   }
 
   /**
-   * Draws an animated weapon blade/staff/palm/dagger swing smear right around the attacking hero
-   * so every sword, saber, staff, palm, hidden dagger, and demonic spell visibly whips through the air!
+   * Draws an animated cel-shaded weapon motion right in front of the attacking hero's hand
+   * across all 10 Murim weapon archetypes:
+   * - `fan`: 사천당가 만독철선 부채 펼치기 (7-rib royal purple-emerald-gold war fan + poison needle storm)
+   * - `dual_sword`: 쌍검 X자 교차 베기 (crossed twin blades + X clash spark)
+   * - `flying_sword`: 어검술 다중 비검 출격 (sword-command seal + 3~5 levitating spirit swords)
+   * - `sword`: 정통 장검·중검 일섬 (sect-accented Jian / heavy greatsword arc)
+   * - `saber`: 묵직한 패도·대도 참격 (broad curved Dadao cleaver + jagged shock-crescent)
+   * - `spear_staff`: 장창·타구봉·목봉 찌르기 (wooden/bamboo/bone shaft + sonic rings + skill whirl)
+   * - `palm_fist`: 금강권·흑염권 정권 & 광마 혈조 (clenched fist + sonic ring / 3-claw rend)
+   * - `dagger_hidden`: 쌍독비수·암기 투척 (reverse-grip whip arcs + 3 kunai fan)
+   * - `staff_gourd`: 독호리병 기울이기 & 만독연무 분사 (tilting calabash gourd + bubbling venom mist)
+   * - `sorcery_qi`: 해골장 혈마구 & 양수 마염화구 영창 (6-point demonic rune circle + hellfire orbs)
    */
   private renderWeaponSwing(
     ctx: CanvasRenderingContext2D,
@@ -1478,7 +1391,7 @@ export class Renderer {
     isSkill: boolean,
     profile: UnitCombatProfile,
   ): void {
-    const fade = sp < 0.62 ? 1 : 1 - (sp - 0.62) / 0.38;
+    const fade = sp < 0.64 ? 1 : 1 - (sp - 0.64) / 0.36;
     if (fade <= 0.01) return;
 
     const prevAlpha = ctx.globalAlpha;
@@ -1489,76 +1402,411 @@ export class Renderer {
 
     const style = profile.style;
 
-    if (style === 'sword' || style === 'saber') {
-      const isSaber = style === 'saber';
-      const maxArc = isSaber ? 1.38 : 1.22;
-      const radius = (isSaber ? 48 : 44) * rankScale;
-      const sweepT = easeOutCubic(Math.min(1, sp * 1.45));
-      const startA = -maxArc * comboSide;
-      const curA = (startA + maxArc * 2 * sweepT * comboSide);
-      const trailStartA = startA + maxArc * 2 * Math.max(0, sp - 0.38) * 1.15 * comboSide;
+    // Shared crescent helper for sword, dual_sword, and saber
+    const drawBladeCrescent = (
+      a0: number,
+      a1: number,
+      rOuter: number,
+      bellyRatio: number,
+      fillCol: string,
+      edgeCol: string,
+      lineW: number,
+    ): void => {
+      const anti = a1 < a0;
+      ctx.beginPath();
+      ctx.arc(0, 0, rOuter, a0, a1, anti);
+      const midA = (a0 + a1) * 0.5;
+      const innerR = rOuter * bellyRatio;
+      ctx.quadraticCurveTo(
+        Math.cos(midA) * innerR,
+        Math.sin(midA) * innerR,
+        Math.cos(a0) * rOuter,
+        Math.sin(a0) * rOuter,
+      );
+      ctx.closePath();
+      ctx.fillStyle = fillCol;
+      ctx.fill();
+      ctx.lineWidth = lineW;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
 
-      // 1. Tapered crescent blade-qi slash smear
-      const drawCrescent = (
-        a0: number,
-        a1: number,
-        rOuter: number,
-        bellyRatio: number,
-      ): void => {
-        const anti = a1 < a0;
+      ctx.beginPath();
+      ctx.arc(0, 0, rOuter - 2, a0, a1, anti);
+      ctx.lineWidth = Math.max(1.8, lineW - 0.6);
+      ctx.strokeStyle = edgeCol;
+      ctx.stroke();
+    };
+
+    if (style === 'fan') {
+      // === 사천당가 만독철선 부채 펼치기 & 만천화우 독침 탄막 (Sichuan Tang Folding War Fan) ===
+      const openT = easeOutCubic(Math.min(1, sp * 2.05));
+      const sweepT = easeOutQuad(Math.min(1, sp * 1.45));
+      const fanCenterA = (-0.26 + sweepT * 0.52) * comboSide;
+      const halfSpan = (0.16 + openT * 0.98) * (isSkill ? 1.12 : 1);
+      const aStart = fanCenterA - halfSpan;
+      const aEnd = fanCenterA + halfSpan;
+      const fanR = (isSkill ? 39 : 33) * rankScale;
+      const innerR = 6.5 * rankScale;
+
+      // 1. Sweeping emerald-violet poison gale wave ahead of the snapping fan
+      if (sp > 0.08) {
+        const galeR = fanR + (6 + sweepT * 12) * rankScale;
         ctx.beginPath();
-        ctx.arc(0, 0, rOuter, a0, a1, anti);
-        const midA = (a0 + a1) * 0.5;
-        const innerR = rOuter * bellyRatio;
-        ctx.quadraticCurveTo(
-          Math.cos(midA) * innerR,
-          Math.sin(midA) * innerR,
-          Math.cos(a0) * rOuter,
-          Math.sin(a0) * rOuter,
-        );
+        ctx.arc(0, 0, galeR, aStart * 0.92, aEnd * 0.92);
+        ctx.arc(0, 0, galeR - 7 * rankScale, aEnd * 0.92, aStart * 0.92, true);
         ctx.closePath();
-        ctx.fillStyle = profile.primary;
+        ctx.fillStyle = hexWithAlpha(profile.primary, 0.36);
         ctx.fill();
-        ctx.lineWidth = isSaber ? 3.4 : 2.6;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, galeR, aStart * 0.88, aEnd * 0.88);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = isSkill ? '#ffffff' : profile.secondary;
+        ctx.stroke();
+      }
+
+      // 2. Unfolded Oriental War-Fan Canopy (Royal Purple base + Emerald Poison band + Gold Rim)
+      ctx.beginPath();
+      ctx.arc(0, 0, fanR, aStart, aEnd);
+      ctx.arc(0, 0, innerR, aEnd, aStart, true);
+      ctx.closePath();
+      ctx.fillStyle = '#4c1d95';
+      ctx.fill();
+
+      // Middle jade-venom silk band
+      ctx.beginPath();
+      ctx.arc(0, 0, fanR * 0.84, aStart, aEnd);
+      ctx.arc(0, 0, fanR * 0.44, aEnd, aStart, true);
+      ctx.closePath();
+      ctx.fillStyle = profile.primary;
+      ctx.fill();
+
+      // Imperial gold outer silk trim
+      ctx.beginPath();
+      ctx.arc(0, 0, fanR, aStart, aEnd);
+      ctx.arc(0, 0, fanR * 0.84, aEnd, aStart, true);
+      ctx.closePath();
+      ctx.fillStyle = '#facc15';
+      ctx.fill();
+
+      // Crisp cel-shaded outer border of the unfolded fan
+      ctx.beginPath();
+      ctx.arc(0, 0, fanR, aStart, aEnd);
+      ctx.arc(0, 0, innerR, aEnd, aStart, true);
+      ctx.closePath();
+      ctx.lineWidth = 2.6;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+
+      // 3. Seven Radiating Iron-Gold Fan Ribs (7개의 부챗살)
+      const ribCount = 7;
+      ctx.lineCap = 'round';
+      for (let rIdx = 0; rIdx < ribCount; rIdx++) {
+        const ra = aStart + ((aEnd - aStart) * rIdx) / (ribCount - 1);
+        const rx0 = Math.cos(ra) * (innerR * 0.45);
+        const ry0 = Math.sin(ra) * (innerR * 0.45);
+        const rx1 = Math.cos(ra) * (fanR + 1.8);
+        const ry1 = Math.sin(ra) * (fanR + 1.8);
+
+        ctx.beginPath();
+        ctx.moveTo(rx0, ry0);
+        ctx.lineTo(rx1, ry1);
+        ctx.lineWidth = 2.8;
         ctx.strokeStyle = PIXEL_OUTLINE;
         ctx.stroke();
 
-        // Bright gleaming outer cutting edge
         ctx.beginPath();
-        ctx.arc(0, 0, rOuter - 2, a0, a1, anti);
-        ctx.lineWidth = isSaber ? 3 : 2.2;
-        ctx.strokeStyle = isSkill ? '#ffffff' : profile.secondary;
+        ctx.moveTo(rx0, ry0);
+        ctx.lineTo(rx1, ry1);
+        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = rIdx === 0 || rIdx === ribCount - 1 ? '#facc15' : '#fde68a';
         ctx.stroke();
-      };
-
-      drawCrescent(trailStartA, curA, radius, isSaber ? 0.34 : 0.54);
-
-      // Dual-wielding cross-crescent for 흑풍대원 / 검마 / 검성
-      if (profile.dualWield && sp > 0.12) {
-        drawCrescent(-trailStartA * 0.85, -curA * 0.9, radius * 0.84, 0.58);
       }
 
-      // 2. Physical swinging sword / broad-saber blade silhouette at leading edge (sp < 0.72)
-      if (sp < 0.75) {
+      // 4. Brass Fan Pivot Pin & Fluttering Violet-Crimson Tassel
+      ctx.beginPath();
+      ctx.arc(0, 0, 4.2 * rankScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#facc15';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(-1, 2 * comboSide);
+      ctx.quadraticCurveTo(-7 * rankScale, 8 * comboSide, -11 * rankScale, 12 * comboSide);
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = profile.secondary;
+      ctx.stroke();
+
+      // 5. Darting Sichuan Poison Needles (만천화우 독침) firing out from between the fan ribs!
+      if (sp > 0.14) {
+        const needleP = easeOutQuad(Math.min(1, (sp - 0.14) / 0.72));
+        const needleCount = isSkill ? 7 : 5;
+        for (let n = 0; n < needleCount; n++) {
+          const na = aStart * 0.82 + (aEnd - aStart) * 0.82 * (n / (needleCount - 1));
+          const nStart = fanR * 0.88 + needleP * (isSkill ? 24 : 16) * rankScale;
+          const nLen = (isSkill ? 14 : 10.5) * rankScale;
+          const nx0 = Math.cos(na) * nStart;
+          const ny0 = Math.sin(na) * nStart;
+          const nx1 = Math.cos(na) * (nStart + nLen);
+          const ny1 = Math.sin(na) * (nStart + nLen);
+
+          ctx.beginPath();
+          ctx.moveTo(nx0, ny0);
+          ctx.lineTo(nx1, ny1);
+          ctx.lineWidth = 3.8;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.lineWidth = 1.9;
+          ctx.strokeStyle = n % 2 === 0 ? '#ffffff' : profile.primary;
+          ctx.stroke();
+
+          if (isSkill) {
+            ctx.beginPath();
+            ctx.arc(nx1, ny1, 2.2 * rankScale, 0, Math.PI * 2);
+            ctx.fillStyle = profile.secondary;
+            ctx.fill();
+          }
+        }
+      }
+    } else if (style === 'dual_sword') {
+      // === 쌍검·쌍단검 X자 교차 난무 (Twin-Blade X-Cross Scissor Slash) ===
+      const maxArc = 1.18;
+      const radius = 42 * rankScale;
+      const sweep1 = easeOutCubic(Math.min(1, sp * 1.55));
+      const sweep2 = easeOutCubic(Math.min(1, Math.max(0, sp - 0.07) * 1.65));
+
+      const a0A = -maxArc * comboSide;
+      const a1A = a0A + maxArc * 2 * sweep1 * comboSide;
+      const t0A = a0A + maxArc * 2 * Math.max(0, sp - 0.34) * 1.2 * comboSide;
+
+      const a0B = maxArc * 0.92 * comboSide;
+      const a1B = a0B - maxArc * 1.84 * sweep2 * comboSide;
+      const t0B = a0B - maxArc * 1.84 * Math.max(0, sp - 0.38) * 1.2 * comboSide;
+
+      drawBladeCrescent(
+        t0A,
+        a1A,
+        radius,
+        0.56,
+        profile.primary,
+        isSkill ? '#ffffff' : profile.secondary,
+        2.5,
+      );
+      if (sp > 0.07) {
+        drawBladeCrescent(
+          t0B,
+          a1B,
+          radius * 0.9,
+          0.58,
+          profile.secondary,
+          '#ffffff',
+          2.4,
+        );
+      }
+
+      // Twin physical crossed blades at leading edges
+      if (sp < 0.76) {
+        const bladeFill = profile.sect === 'magyo_sword' ? '#1e1b2e' : '#ecfdf5';
+        const drawTwinBlade = (ang: number, len: number): void => {
+          ctx.save();
+          ctx.rotate(ang);
+          ctx.beginPath();
+          ctx.moveTo(6, -2.1);
+          ctx.lineTo(len, -1.3);
+          ctx.lineTo(len + 9, 0);
+          ctx.lineTo(len, 1.3);
+          ctx.lineTo(6, 2.1);
+          ctx.closePath();
+          ctx.fillStyle = bladeFill;
+          ctx.fill();
+          ctx.lineWidth = 2.2;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.restore();
+        };
+        drawTwinBlade(a1A, radius + 2);
+        if (sp > 0.07) {
+          drawTwinBlade(a1B, radius * 0.9 + 2);
+        }
+      }
+
+      // Central X-intersection spark flash
+      if (sp >= 0.18 && sp <= 0.68) {
+        const cx = radius * 0.72;
+        const sr = (isSkill ? 9.5 : 7) * rankScale;
+        ctx.beginPath();
+        ctx.moveTo(cx - sr, -sr);
+        ctx.lineTo(cx + sr, sr);
+        ctx.moveTo(cx - sr, sr);
+        ctx.lineTo(cx + sr, -sr);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 2.1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+      }
+    } else if (style === 'flying_sword') {
+      // === 어검술·만검귀종 다중 비검 출격 (Sword-Immortal Levitating Spirit Sword Array) ===
+      const sealR = 12.5 * rankScale;
+      // 1. Glowing Sword-Command Seal Ring (어검인 원진) at hero's sword-finger
+      ctx.beginPath();
+      ctx.arc(2, 0, sealR, 0, Math.PI * 2);
+      ctx.lineWidth = 3.4;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = 1.9;
+      ctx.strokeStyle = profile.secondary;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(2, 0);
+      ctx.rotate(sp * Math.PI * 1.5);
+      ctx.beginPath();
+      const dr = sealR * 0.65;
+      ctx.moveTo(dr, 0);
+      ctx.lineTo(0, dr);
+      ctx.lineTo(-dr, 0);
+      ctx.lineTo(0, -dr);
+      ctx.closePath();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = profile.primary;
+      ctx.stroke();
+      ctx.restore();
+
+      // 2. Fan of 3 (or 5 on skill) levitating spirit swords surging forward!
+      const count = isSkill ? 5 : 3;
+      const mid = (count - 1) * 0.5;
+      for (let sIdx = 0; sIdx < count; sIdx++) {
+        const offsetIdx = sIdx - mid;
+        const sa = offsetIdx * (isSkill ? 0.2 : 0.24);
+        const stagger = Math.abs(offsetIdx) * 0.08;
+        const launchT = easeOutCubic(Math.min(1, Math.max(0, (sp - stagger) * 1.65)));
+        const dist = (10 + launchT * (isSkill ? 36 : 28)) * rankScale;
+        const bLen = (isSkill ? 20 : 17) * rankScale;
+
+        ctx.save();
+        ctx.rotate(sa);
+        ctx.translate(dist, 0);
+
+        // Trailing azure/gold spirit wake
+        ctx.beginPath();
+        ctx.moveTo(-12 * rankScale, 0);
+        ctx.lineTo(0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4.2;
+        ctx.strokeStyle = hexWithAlpha(profile.primary, 0.55);
+        ctx.stroke();
+
+        // Spirit Jian Crossguard
+        ctx.beginPath();
+        ctx.moveTo(0, -4.6 * rankScale);
+        ctx.lineTo(0, 4.6 * rankScale);
+        ctx.lineWidth = 3.4;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 1.9;
+        ctx.strokeStyle = '#facc15';
+        ctx.stroke();
+
+        // Glowing Spirit Jian Blade
+        ctx.beginPath();
+        ctx.moveTo(0, -2.2 * rankScale);
+        ctx.lineTo(bLen - 5 * rankScale, -1.6 * rankScale);
+        ctx.lineTo(bLen, 0);
+        ctx.lineTo(bLen - 5 * rankScale, 1.6 * rankScale);
+        ctx.lineTo(0, 2.2 * rankScale);
+        ctx.closePath();
+        ctx.fillStyle = sIdx % 2 === 0 ? profile.primary : profile.secondary;
+        ctx.fill();
+        ctx.lineWidth = 2.1;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+
+        // White-hot center fuller line
+        ctx.beginPath();
+        ctx.moveTo(2, 0);
+        ctx.lineTo(bLen - 3, 0);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.restore();
+      }
+    } else if (style === 'sword' || style === 'saber') {
+      // === 정통 장검·중검 (Sword) & 패도·대도·중도끼 (Heavy Saber) ===
+      const isSaber = style === 'saber';
+      const isHeavy = Boolean(profile.heavyBlade) || isSaber;
+      const maxArc = isSaber ? 1.38 : 1.18;
+      const radius = (isSaber ? 46 : isHeavy ? 44 : 40) * rankScale;
+      const sweepT = easeOutCubic(Math.min(1, sp * 1.48));
+      const startA = -maxArc * comboSide;
+      const curA = startA + maxArc * 2 * sweepT * comboSide;
+      const trailStartA = startA + maxArc * 2 * Math.max(0, sp - 0.36) * 1.18 * comboSide;
+
+      drawBladeCrescent(
+        trailStartA,
+        curA,
+        radius,
+        isSaber ? 0.28 : isHeavy ? 0.42 : 0.56,
+        profile.primary,
+        isSkill ? '#ffffff' : profile.secondary,
+        isSaber ? 3.4 : 2.6,
+      );
+
+      // Counter-cleave for dual-saber warlords (녹림왕 패왕쌍대도, 혈해수라왕 적혈만독쌍도)
+      if (profile.dualWield && sp > 0.1) {
+        drawBladeCrescent(
+          -trailStartA * 0.84,
+          -curA * 0.88,
+          radius * 0.84,
+          0.44,
+          profile.secondary,
+          '#ffffff',
+          2.6,
+        );
+      }
+
+      // Physical swinging blade silhouette at leading edge
+      if (sp < 0.76) {
         ctx.save();
         ctx.rotate(curA);
         ctx.beginPath();
         if (isSaber) {
-          // Broad curved Wuxia Dadao / Blood Saber blade
-          ctx.moveTo(8, -2.5 * comboSide);
-          ctx.lineTo(radius + 6, -5.5 * comboSide);
-          ctx.quadraticCurveTo(radius + 11, 2 * comboSide, radius - 2, 5.5 * comboSide);
-          ctx.lineTo(8, 2.5 * comboSide);
-        } else {
-          // Sleek double-edged Wuxia Jian sword blade
-          ctx.moveTo(8, -2.2);
-          ctx.lineTo(radius + 5, -1.4);
+          // Broad curved Wuxia Dadao / Blood Cleaver with notched spine
+          ctx.moveTo(6, -2.6 * comboSide);
+          ctx.lineTo(radius + 4, -6.2 * comboSide);
+          ctx.quadraticCurveTo(radius + 12, 2.2 * comboSide, radius - 2, 6.4 * comboSide);
+          ctx.lineTo(6, 2.8 * comboSide);
+        } else if (isHeavy) {
+          // Imperial / Heavenly Demon Heavy Greatsword (중검·패왕검)
+          ctx.moveTo(6, -3.2);
+          ctx.lineTo(radius + 4, -2.6);
           ctx.lineTo(radius + 11, 0);
-          ctx.lineTo(radius + 5, 1.4);
-          ctx.lineTo(8, 2.2);
+          ctx.lineTo(radius + 4, 2.6);
+          ctx.lineTo(6, 3.2);
+        } else {
+          // Sleek double-edged Wuxia Jian sword
+          ctx.moveTo(6, -2.1);
+          ctx.lineTo(radius + 4, -1.3);
+          ctx.lineTo(radius + 10, 0);
+          ctx.lineTo(radius + 4, 1.3);
+          ctx.lineTo(6, 2.1);
         }
         ctx.closePath();
-        ctx.fillStyle = profile.sect === 'magyo_sword' ? '#1e1b2e' : '#f8fafc';
+        ctx.fillStyle =
+          profile.sect === 'magyo_sword'
+            ? '#1e1b2e'
+            : profile.sect === 'namgung' && isHeavy
+              ? '#fef08a'
+              : '#f8fafc';
         ctx.fill();
         ctx.lineWidth = 2.4;
         ctx.strokeStyle = PIXEL_OUTLINE;
@@ -1566,8 +1814,22 @@ export class Renderer {
         ctx.restore();
       }
 
-      // 3. Sect-signature swing accents along the arc!
-      if (profile.sect === 'hwasan') {
+      // Sect-signature accents along the swing arc
+      if (isSaber) {
+        // Flying forge/blood sparks along heavy saber cleave
+        for (let s = 0; s < 3; s++) {
+          const sa = trailStartA + (curA - trailStartA) * ((s + 1) / 3.4);
+          const sr = radius + (s % 2 === 0 ? 5 : 8);
+          ctx.beginPath();
+          ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr, 2.6, 0, Math.PI * 2);
+          ctx.fillStyle = s === 1 ? '#ffffff' : profile.secondary;
+          ctx.fill();
+          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+        }
+      } else if (profile.sect === 'hwasan') {
+        // Drifting Mount Hua plum blossom petals (매화검수 꽃잎)
         for (let b = 0; b < 3; b++) {
           const pa = trailStartA + (curA - trailStartA) * ((b + 1) / 3.5);
           const pr = radius * (0.82 + b * 0.09);
@@ -1580,78 +1842,137 @@ export class Renderer {
           ctx.stroke();
         }
       } else if (profile.sect === 'namgung' || profile.sect === 'magyo_sword') {
-        // Crackling lightning sparks along sword swing
+        // Crackling thunderbolt sparks along blade arc
         ctx.beginPath();
         for (let s = 0; s <= 4; s++) {
           const la = trailStartA + (curA - trailStartA) * (s / 4);
-          const lr = radius + (s % 2 === 0 ? 4 : -4);
+          const lr = radius + (s % 2 === 0 ? 4.5 : -4);
           const lx = Math.cos(la) * lr;
           const ly = Math.sin(la) * lr;
           if (s === 0) ctx.moveTo(lx, ly);
           else ctx.lineTo(lx, ly);
         }
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.2;
         ctx.strokeStyle = profile.sect === 'namgung' ? '#fde047' : '#f43f5e';
         ctx.stroke();
       } else if (profile.sect === 'mudang') {
-        // Spinning Yin-Yang qi bead at sword tip
+        // Spinning Yin-Yang Taiji pearl at sword tip
         const tx = Math.cos(curA) * radius;
         const ty = Math.sin(curA) * radius;
         ctx.beginPath();
-        ctx.arc(tx, ty, 4.5, 0, Math.PI * 2);
+        ctx.arc(tx, ty, 4.6, 0, Math.PI * 2);
         ctx.fillStyle = '#e0f2fe';
         ctx.fill();
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.6;
         ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+      } else if (profile.sect === 'haomun') {
+        // Quick-draw Iai silver flash chord (발도술 일섬)
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(trailStartA) * radius, Math.sin(trailStartA) * radius);
+        ctx.lineTo(Math.cos(curA) * (radius + 4), Math.sin(curA) * (radius + 4));
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
         ctx.stroke();
       }
     } else if (style === 'spear_staff') {
-      // Piercing forward staff/spear thrust lance + sonic wind ring!
-      const reach = (18 + easeOutCubic(Math.min(1, sp * 1.6)) * 42) * rankScale;
+      // === 장창·타구봉·목봉 찌르기 & 선풍격 (Monk Oak Staff / Beggar Bamboo Staff / Ghost Bone Spear) ===
+      const thrustT = easeOutCubic(Math.min(1, sp * 1.65));
+      const reach = (16 + thrustT * 42) * rankScale;
+      const isBoneSpear = profile.sect === 'magyo_bone';
+      const isBamboo = profile.sect === 'gaebang';
+      const shaftColor = isBoneSpear ? '#e2e8f0' : isBamboo ? '#16a34a' : '#b45309';
+
+      // Optional skill 360° whirl-staff ring (타구봉 선풍 / 소림 회전봉)
+      if (isSkill) {
+        const whirlR = 24 * rankScale;
+        ctx.beginPath();
+        ctx.arc(10, 0, whirlR, sp * 5, sp * 5 + Math.PI * 1.35);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 5.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = profile.secondary;
+        ctx.stroke();
+      }
+
+      // 1. Qi thrust cone envelope
       ctx.beginPath();
-      ctx.moveTo(4, -5.5);
-      ctx.lineTo(reach, 0);
-      ctx.lineTo(4, 5.5);
+      ctx.moveTo(4, -6 * rankScale);
+      ctx.lineTo(reach + 8 * rankScale, 0);
+      ctx.lineTo(4, 6 * rankScale);
       ctx.closePath();
-      ctx.fillStyle = profile.primary;
+      ctx.fillStyle = hexWithAlpha(profile.primary, 0.42);
       ctx.fill();
-      ctx.lineWidth = 2.6;
+
+      // 2. Physical wooden/bamboo/bone polearm shaft
+      ctx.beginPath();
+      ctx.roundRect(-6, -2.8 * rankScale, reach, 5.6 * rankScale, 2.5);
+      ctx.fillStyle = shaftColor;
+      ctx.fill();
+      ctx.lineWidth = 2.4;
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
 
-      ctx.beginPath();
-      ctx.moveTo(8, -2);
-      ctx.lineTo(reach - 4, 0);
-      ctx.lineTo(8, 2);
-      ctx.closePath();
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
+      // 3. Spearhead (for bone_fiend) OR Brass/Jade Staff Cap (for shaolin_novice / gaebang_beggar)
+      if (isBoneSpear) {
+        ctx.beginPath();
+        ctx.moveTo(reach - 6, -5.2 * rankScale);
+        ctx.lineTo(reach + 11 * rankScale, 0);
+        ctx.lineTo(reach - 6, 5.2 * rankScale);
+        ctx.closePath();
+        ctx.fillStyle = profile.secondary;
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.roundRect(reach - 7, -3.6 * rankScale, 9 * rankScale, 7.2 * rankScale, 2.5);
+        ctx.fillStyle = isBamboo ? '#bbf7d0' : '#facc15';
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+      }
 
-      // Sonic thrust ring around shaft
-      const ringX = reach * 0.52;
-      ctx.beginPath();
-      ctx.ellipse(ringX, 0, 5, 13 * rankScale, 0, 0, Math.PI * 2);
-      ctx.lineWidth = 3.2;
-      ctx.strokeStyle = PIXEL_OUTLINE;
-      ctx.stroke();
-      ctx.lineWidth = 1.8;
-      ctx.strokeStyle = profile.secondary;
-      ctx.stroke();
+      // 4. Double sonic shock rings around thrusting shaft
+      for (let r = 0; r < 2; r++) {
+        const ringX = reach * (0.42 + r * 0.28);
+        const ringH = (13 - r * 2.5) * rankScale;
+        ctx.beginPath();
+        ctx.ellipse(ringX, 0, 4.6, ringH, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 1.7;
+        ctx.strokeStyle = r === 0 ? '#ffffff' : profile.secondary;
+        ctx.stroke();
+      }
     } else if (style === 'palm_fist') {
+      // === 금강권·흑염권 정권 지르기 & 광마 혈조 (Vajra Fist / Black-Flame Fist / Berserk Blood Claw) ===
       const punchExt =
         sp < 0.55
           ? easeOutCubic(Math.min(1, sp / 0.36))
           : 1 - smoothstep((sp - 0.55) / 0.45) * 0.35;
-      const fistReach = (10 + punchExt * 36) * rankScale;
+      const fistReach = (8 + punchExt * 34) * rankScale;
 
       if (profile.sect === 'mad_demon') {
-        // Berserker savage fist + triple crimson claw rend (광마혈조)!
         const yMain = comboSide * 3;
-        drawClenchedFist(ctx, fistReach * 0.88, yMain, 0.95 * rankScale, '#fda4af', '#e11d48', '#44403c');
+        drawClenchedFist(
+          ctx,
+          fistReach * 0.85,
+          yMain,
+          0.94 * rankScale,
+          '#fda4af',
+          '#e11d48',
+          '#44403c',
+        );
         for (let k = -1; k <= 1; k++) {
           const yOff = k * 9;
           ctx.beginPath();
-          ctx.moveTo(8, yOff - 4 * comboSide);
+          ctx.moveTo(6, yOff - 4 * comboSide);
           ctx.quadraticCurveTo(fistReach * 0.72, yOff, fistReach + 14, yOff + 5 * comboSide);
           ctx.lineCap = 'round';
           ctx.lineWidth = 5.5;
@@ -1662,141 +1983,264 @@ export class Renderer {
           ctx.stroke();
         }
       } else {
-        // Authentic Straight Fist Punch (소림 나한권·금강권 / 마교 흑염권 정권 지르기)!
         const isShaolin = profile.sect === 'shaolin';
-        const yOff = comboSide * 4;
+        const yOff = comboSide * 3.5;
         const knuckleCol = isShaolin ? '#fde047' : '#fda4af';
         const auraCol = isShaolin ? '#f59e0b' : '#db2777';
         const cuffCol = isShaolin ? '#c2410c' : '#312e81';
 
-        // 1. Tapered punch qi piston cone + 3 crisp speed streaks from shoulder to wrist
         ctx.beginPath();
-        ctx.moveTo(4, yOff - 4.5);
-        ctx.lineTo(Math.max(8, fistReach - 6), yOff - 8.5 * rankScale);
-        ctx.lineTo(Math.max(8, fistReach - 6), yOff + 8.5 * rankScale);
-        ctx.lineTo(4, yOff + 4.5);
+        ctx.moveTo(2, yOff - 4.5);
+        ctx.lineTo(Math.max(7, fistReach - 6), yOff - 8.5 * rankScale);
+        ctx.lineTo(Math.max(7, fistReach - 6), yOff + 8.5 * rankScale);
+        ctx.lineTo(2, yOff + 4.5);
         ctx.closePath();
         ctx.fillStyle = hexWithAlpha(auraCol, 0.36);
         ctx.fill();
 
         ctx.lineCap = 'round';
         for (let s = -1; s <= 1; s++) {
-          const sy = yOff + s * 5.2;
+          const sy = yOff + s * 5;
           ctx.beginPath();
-          ctx.moveTo(4 + Math.abs(s) * 4, sy);
-          ctx.lineTo(Math.max(8, fistReach - 7), sy);
-          ctx.lineWidth = s === 0 ? 3.4 : 2.2;
+          ctx.moveTo(3 + Math.abs(s) * 4, sy);
+          ctx.lineTo(Math.max(7, fistReach - 7), sy);
+          ctx.lineWidth = s === 0 ? 3.2 : 2.1;
           ctx.strokeStyle = s === 0 ? '#ffffff' : profile.secondary;
           ctx.stroke();
         }
 
-        // 2. Sonic compression ring around punching forearm
-        const ringX = fistReach * 0.5;
+        const ringX = fistReach * 0.48;
         ctx.beginPath();
-        ctx.ellipse(ringX, yOff, 4.8, 12.5 * rankScale, 0, 0, Math.PI * 2);
-        ctx.lineWidth = 3.2;
+        ctx.ellipse(ringX, yOff, 4.6, 12 * rankScale, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
         ctx.strokeStyle = PIXEL_OUTLINE;
         ctx.stroke();
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.7;
         ctx.strokeStyle = profile.secondary;
         ctx.stroke();
 
-        // 3. Skill secondary barrage fist (쌍권 연타) on everyN proc
         if (isSkill && sp > 0.08) {
           drawClenchedFist(
             ctx,
-            fistReach * 0.68,
-            -yOff * 1.55,
-            0.88 * rankScale,
+            fistReach * 0.66,
+            -yOff * 1.5,
+            0.86 * rankScale,
             knuckleCol,
             auraCol,
             cuffCol,
           );
         }
 
-        // 4. Primary cel-shaded Clenched Martial Fist (정권 주먹)
         drawClenchedFist(
           ctx,
           fistReach,
           yOff,
-          (isSkill ? 1.18 : 1.02) * rankScale,
+          (isSkill ? 1.15 : 1.0) * rankScale,
           knuckleCol,
           auraCol,
           cuffCol,
         );
 
-        // 5. Front knuckle shockwave arc + 4-point impact spark at full extension
         if (sp >= 0.14 && sp <= 0.72) {
-          const tipX = fistReach + 9 * rankScale;
+          const tipX = fistReach + 8.5 * rankScale;
           ctx.beginPath();
-          ctx.arc(fistReach + 2, yOff, 13 * rankScale, -Math.PI * 0.36, Math.PI * 0.36);
-          ctx.lineWidth = 4.6;
+          ctx.arc(fistReach + 2, yOff, 12.5 * rankScale, -Math.PI * 0.36, Math.PI * 0.36);
+          ctx.lineWidth = 4.4;
           ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
-          ctx.lineWidth = 2.4;
+          ctx.lineWidth = 2.3;
           ctx.strokeStyle = isSkill ? '#ffffff' : profile.secondary;
           ctx.stroke();
 
-          const sparkR = (isSkill ? 9 : 6.5) * rankScale;
+          const sparkR = (isSkill ? 8.5 : 6) * rankScale;
           ctx.beginPath();
           ctx.moveTo(tipX - sparkR, yOff);
           ctx.lineTo(tipX + sparkR, yOff);
           ctx.moveTo(tipX, yOff - sparkR);
           ctx.lineTo(tipX, yOff + sparkR);
-          ctx.lineWidth = 2.2;
+          ctx.lineWidth = 2.1;
           ctx.strokeStyle = '#ffffff';
           ctx.stroke();
         }
       }
     } else if (style === 'dagger_hidden') {
-      // Swift wrist-flick fan arc + triple glinting throwing blades
-      const fanR = 38 * rankScale;
-      const a0 = -0.85 * comboSide;
-      const a1 = a0 + 1.7 * easeOutCubic(Math.min(1, sp * 1.5)) * comboSide;
+      // === 사천당문 쌍독비수·암기 투척 (Twin Poison Daggers + 3-Kunai Fan Volley) ===
+      const whipR = 34 * rankScale;
+      const a0 = -0.88 * comboSide;
+      const a1 = a0 + 1.76 * easeOutCubic(Math.min(1, sp * 1.55)) * comboSide;
       ctx.beginPath();
-      ctx.arc(0, 0, fanR, a0, a1, a1 < a0);
+      ctx.arc(0, 0, whipR, a0, a1, a1 < a0);
       ctx.lineCap = 'round';
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 5.6;
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
-      ctx.lineWidth = 3.2;
+      ctx.lineWidth = 2.8;
       ctx.strokeStyle = profile.primary;
       ctx.stroke();
 
-      for (let d = -1; d <= 1; d++) {
-        const da = d * 0.28;
-        const dStart = 12 + sp * 12;
-        const dEnd = dStart + 14;
+      // Three diamond-bladed throwing kunai fanning outward
+      const kunaiCount = isSkill ? 5 : 3;
+      const kMid = (kunaiCount - 1) * 0.5;
+      for (let d = 0; d < kunaiCount; d++) {
+        const da = (d - kMid) * 0.24;
+        const dDist = (10 + easeOutQuad(Math.min(1, sp * 1.4)) * 20) * rankScale;
+        ctx.save();
+        ctx.rotate(da);
+        ctx.translate(dDist, 0);
+
         ctx.beginPath();
-        ctx.moveTo(Math.cos(da) * dStart, Math.sin(da) * dStart);
-        ctx.lineTo(Math.cos(da) * dEnd, Math.sin(da) * dEnd);
-        ctx.lineWidth = 3.6;
+        ctx.moveTo(-4 * rankScale, 0);
+        ctx.lineTo(2 * rankScale, -3.2 * rankScale);
+        ctx.lineTo(12 * rankScale, 0);
+        ctx.lineTo(2 * rankScale, 3.2 * rankScale);
+        ctx.closePath();
+        ctx.fillStyle = d === Math.round(kMid) ? '#ffffff' : profile.primary;
+        ctx.fill();
+        ctx.lineWidth = 2;
         ctx.strokeStyle = PIXEL_OUTLINE;
         ctx.stroke();
-        ctx.lineWidth = 1.8;
-        ctx.strokeStyle = d === 0 ? '#ffffff' : profile.secondary;
+
+        // Kunai ring pommel
+        ctx.beginPath();
+        ctx.arc(-5.5 * rankScale, 0, 2 * rankScale, 0, Math.PI * 2);
+        ctx.strokeStyle = profile.secondary;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
+
+        ctx.restore();
       }
-    } else {
-      // sorcery_qi: swirling demonic blood/hellfire casting ring
-      const castR = (20 + easeOutCubic(sp) * 14) * rankScale;
+    } else if (style === 'staff_gourd') {
+      // === 독수약왕 독호리병 기울이기 & 만독연무 분사 (Calabash Poison Gourd Uncorking) ===
+      const pourT = easeOutCubic(Math.min(1, sp * 1.55));
+      const mistReach = (18 + pourT * 28) * rankScale;
+
+      // 1. Billowing toxic mist cone uncorking toward the target
       ctx.beginPath();
-      ctx.arc(12, 0, castR, sp * 4, sp * 4 + Math.PI * 1.4);
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 6;
+      ctx.moveTo(8 * rankScale, -3 * rankScale);
+      ctx.lineTo(mistReach, -13 * rankScale);
+      ctx.arc(mistReach, 0, 13 * rankScale, -Math.PI * 0.5, Math.PI * 0.5);
+      ctx.lineTo(8 * rankScale, 3 * rankScale);
+      ctx.closePath();
+      ctx.fillStyle = hexWithAlpha(profile.primary, 0.36);
+      ctx.fill();
+
+      // 2. Tilting Emerald Double-Bulb Calabash Gourd (독호리병) with crimson waist ribbon
+      ctx.save();
+      ctx.translate(2 * rankScale, -2 * rankScale);
+      ctx.rotate(0.32 * pourT);
+
+      // Rear larger gourd bulb
+      ctx.beginPath();
+      ctx.arc(-4.5 * rankScale, 0, 6.8 * rankScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#16a34a';
+      ctx.fill();
+      ctx.lineWidth = 2.4;
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
-      ctx.lineWidth = 3.2;
-      ctx.strokeStyle = profile.primary;
+
+      // Front upper gourd bulb
+      ctx.beginPath();
+      ctx.arc(4 * rankScale, 0, 4.8 * rankScale, 0, Math.PI * 2);
+      ctx.fillStyle = profile.primary;
+      ctx.fill();
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
 
+      // Spout mouth
       ctx.beginPath();
-      ctx.arc(12, 0, castR * 0.55, 0, Math.PI * 2);
-      ctx.fillStyle = profile.secondary;
+      ctx.roundRect(7.5 * rankScale, -2.2 * rankScale, 4 * rankScale, 4.4 * rankScale, 1.4);
+      ctx.fillStyle = '#fde047';
       ctx.fill();
       ctx.lineWidth = 1.8;
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
+
+      // Crimson silk waist cord at gourd constriction
+      ctx.beginPath();
+      ctx.moveTo(0.2 * rankScale, -4.6 * rankScale);
+      ctx.lineTo(0.2 * rankScale, 4.6 * rankScale);
+      ctx.lineWidth = 2.6;
+      ctx.strokeStyle = '#ef4444';
+      ctx.stroke();
+
+      ctx.restore();
+
+      // 3. Bubbling emerald & violet poison globes drifting out of the gourd mouth
+      const bubbleCount = isSkill ? 5 : 3;
+      for (let b = 0; b < bubbleCount; b++) {
+        const bx = (13 + pourT * (10 + b * 6.5)) * rankScale;
+        const by = ((b % 2 === 0 ? -1 : 1) * (2.5 + b * 2.2) * pourT) * rankScale;
+        const br = (isSkill ? 4.4 : 3.5) * rankScale - b * 0.35;
+        ctx.beginPath();
+        ctx.arc(bx, by, Math.max(2, br), 0, Math.PI * 2);
+        ctx.fillStyle = b % 2 === 0 ? profile.primary : profile.secondary;
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+      }
+    } else {
+      // === sorcery_qi: 마교 해골장 혈마구 & 염마 양수 마염화구 (Demonic Rune Circle & Hellfire Orbs) ===
+      const castR = (16 + easeOutCubic(sp) * 12) * rankScale;
+      const orbX = 11 * rankScale;
+
+      // 1. Rotating demonic rune circle + inner triangle/hexagram
+      ctx.beginPath();
+      ctx.arc(orbX, 0, castR, sp * 4.2, sp * 4.2 + Math.PI * 1.55);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 5.4;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = profile.primary;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(orbX, 0);
+      ctx.rotate(-sp * 3.6);
+      for (let tri = 0; tri < 2; tri++) {
+        ctx.beginPath();
+        for (let v = 0; v < 3; v++) {
+          const va = tri * (Math.PI / 3) + (v * Math.PI * 2) / 3;
+          const vx = Math.cos(va) * castR * 0.76;
+          const vy = Math.sin(va) * castR * 0.76;
+          if (v === 0) ctx.moveTo(vx, vy);
+          else ctx.lineTo(vx, vy);
+        }
+        ctx.closePath();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = profile.secondary;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 2. Pulsing obsidian-crimson/hellfire core orb (twin orbiting orbs for flame_demon!)
+      if (profile.dualWield) {
+        for (let side = -1; side <= 1; side += 2) {
+          const oyOff = Math.sin(sp * Math.PI * 2 + side) * 6.5 * rankScale;
+          ctx.beginPath();
+          ctx.arc(orbX + side * 3, oyOff, castR * 0.36, 0, Math.PI * 2);
+          ctx.fillStyle = side > 0 ? profile.primary : profile.secondary;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath();
+        ctx.arc(orbX, 0, castR * 0.46, 0, Math.PI * 2);
+        ctx.fillStyle = profile.secondary;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(orbX, 0, castR * 0.24, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      }
     }
 
     ctx.restore();
@@ -1804,7 +2248,7 @@ export class Renderer {
   }
 
   /**
-   * Sect-distinct flying projectiles so every clan & faction looks unmistakably unique in battle.
+   * Weapon-accurate & sect-distinct flying projectiles for all 32 Murim heroes!
    */
   private collectProjectiles(sim: Simulation, alpha: number, simTimeSec: number): void {
     const projs = sim.getProjectiles();
@@ -1820,229 +2264,412 @@ export class Renderer {
           const y = p.prevY + (p.currY - p.prevY) * alpha;
           const ang = Math.atan2(y - p.fromY, x - p.fromX);
           const skin = this.equippedHeroSkins.get(p.unitId);
-          const baseProfile = UNIT_COMBAT_PROFILES[p.unitId] ?? DEFAULT_PROFILE;
+          const baseProfile = getUnitCombatProfile(p.unitId);
           const cMain = skin ? skin.primaryColor : baseProfile.primary;
           const cSub = skin ? skin.secondaryColor : baseProfile.secondary;
-          const scale = p.isSkill ? 1.38 : p.isCrit ? 1.16 : 1;
+          const scale = p.isSkill ? 1.36 : p.isCrit ? 1.15 : 1;
 
           ctx.save();
           ctx.translate(x, y);
 
-          switch (baseProfile.sect) {
-            case 'hwasan': {
-              // Curved pink-crimson Mount Hua crescent sword-qi + trailing plum petal
+          switch (baseProfile.style) {
+            case 'fan': {
+              // Gliding Unfolded Sichuan Tang Fan Wave + 3 Poison Needles (만독철선 부채독침파)!
               ctx.rotate(ang);
-              const r = 11 * scale;
+              const fr = 11.5 * scale;
               ctx.beginPath();
-              ctx.arc(-2, 0, r, -Math.PI * 0.44, Math.PI * 0.44);
-              ctx.quadraticCurveTo(r * 0.35, 0, Math.cos(-Math.PI * 0.44) * r - 2, Math.sin(-Math.PI * 0.44) * r);
+              ctx.arc(-4 * scale, 0, fr, -0.78, 0.78);
+              ctx.lineTo(-4 * scale, 0);
               ctx.closePath();
-              ctx.fillStyle = skin ? cMain : p.isSkill ? '#f43f5e' : cMain;
+              ctx.fillStyle = '#4c1d95';
+              ctx.fill();
+
+              ctx.beginPath();
+              ctx.arc(-4 * scale, 0, fr, -0.78, 0.78);
+              ctx.arc(-4 * scale, 0, fr * 0.52, 0.78, -0.78, true);
+              ctx.closePath();
+              ctx.fillStyle = cMain;
+              ctx.fill();
+              ctx.lineWidth = 2.2;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+
+              // 5 crisp miniature fan ribs + 3 leading needles
+              for (let rIdx = -2; rIdx <= 2; rIdx++) {
+                const ra = rIdx * 0.36;
+                ctx.beginPath();
+                ctx.moveTo(-4 * scale, 0);
+                ctx.lineTo(-4 * scale + Math.cos(ra) * fr, Math.sin(ra) * fr);
+                ctx.lineWidth = 1.3;
+                ctx.strokeStyle = '#fde047';
+                ctx.stroke();
+
+                if (Math.abs(rIdx) <= 1) {
+                  const n0 = fr + 1.5 * scale;
+                  const n1 = fr + 7.5 * scale;
+                  ctx.beginPath();
+                  ctx.moveTo(-4 * scale + Math.cos(ra) * n0, Math.sin(ra) * n0);
+                  ctx.lineTo(-4 * scale + Math.cos(ra) * n1, Math.sin(ra) * n1);
+                  ctx.lineWidth = 2.4;
+                  ctx.strokeStyle = rIdx === 0 ? '#ffffff' : cSub;
+                  ctx.stroke();
+                }
+              }
+              break;
+            }
+
+            case 'dagger_hidden': {
+              // Point-forward Poison Kunai + trailing shadow blade
+              ctx.rotate(ang);
+              ctx.beginPath();
+              ctx.moveTo(-13 * scale, 0);
+              ctx.lineTo(-2 * scale, 0);
+              ctx.lineCap = 'round';
+              ctx.lineWidth = 4.5 * scale;
+              ctx.strokeStyle = hexWithAlpha(cSub, 0.55);
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.moveTo(-4 * scale, 0);
+              ctx.lineTo(1.5 * scale, -3.6 * scale);
+              ctx.lineTo(11 * scale, 0);
+              ctx.lineTo(1.5 * scale, 3.6 * scale);
+              ctx.closePath();
+              ctx.fillStyle = cMain;
+              ctx.fill();
+              ctx.lineWidth = 2.2;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.arc(-6 * scale, 0, 2.2 * scale, 0, Math.PI * 2);
+              ctx.lineWidth = 1.8;
+              ctx.strokeStyle = cSub;
+              ctx.stroke();
+              break;
+            }
+
+            case 'staff_gourd': {
+              // Bubbling Calabash Venom Globe + trailing toxic droplets
+              ctx.rotate(ang);
+              ctx.beginPath();
+              ctx.arc(-8 * scale, -2.5 * scale, 2.8 * scale, 0, Math.PI * 2);
+              ctx.arc(-12 * scale, 2 * scale, 2 * scale, 0, Math.PI * 2);
+              ctx.fillStyle = cSub;
+              ctx.fill();
+
+              ctx.beginPath();
+              ctx.arc(1 * scale, 0, 6.2 * scale, 0, Math.PI * 2);
+              ctx.fillStyle = cMain;
               ctx.fill();
               ctx.lineWidth = 2.4;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
 
               ctx.beginPath();
-              ctx.arc(-11 * scale, 0, 2.8 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = skin ? cSub : '#fda4af';
+              ctx.arc(-1 * scale, -2 * scale, 2.2 * scale, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
               ctx.fill();
               break;
             }
 
-            case 'mudang': {
-              // Cyan Taiji sword-ray + spinning Yin-Yang orb core
-              ctx.rotate(ang);
-              ctx.beginPath();
-              ctx.moveTo(-16 * scale, 0);
-              ctx.lineTo(7 * scale, 0);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = 7 * scale;
-              ctx.strokeStyle = PIXEL_OUTLINE;
-              ctx.stroke();
-              ctx.lineWidth = 3.8 * scale;
-              ctx.strokeStyle = skin ? cMain : '#38bdf8';
-              ctx.stroke();
-
-              ctx.rotate(simTimeSec * 14 + p.id);
-              ctx.beginPath();
-              ctx.arc(0, 0, 5.2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = skin ? cSub : '#ffffff';
-              ctx.fill();
-              ctx.beginPath();
-              ctx.arc(0, 0, 5.2 * scale, 0, Math.PI);
-              ctx.fillStyle = PIXEL_OUTLINE;
-              ctx.fill();
-              ctx.lineWidth = 1.6;
-              ctx.strokeStyle = skin ? cMain : '#06b6d4';
-              ctx.stroke();
-              break;
-            }
-
-            case 'namgung': {
-              // Crackling imperial azure-gold lightning sword-lance
+            case 'flying_sword': {
+              // Miniature Levitating Spirit Sword (어검 비검) flying point-first!
               ctx.rotate(ang);
               ctx.beginPath();
               ctx.moveTo(-18 * scale, 0);
-              ctx.lineTo(-9 * scale, -4 * scale);
-              ctx.lineTo(-2 * scale, 3.5 * scale);
-              ctx.lineTo(8 * scale, 0);
+              ctx.lineTo(-4 * scale, 0);
               ctx.lineCap = 'round';
-              ctx.lineJoin = 'round';
-              ctx.lineWidth = 7.5 * scale;
+              ctx.lineWidth = 5 * scale;
+              ctx.strokeStyle = hexWithAlpha(cMain, 0.52);
+              ctx.stroke();
+
+              // Gold crossguard + pommel
+              ctx.beginPath();
+              ctx.moveTo(-3 * scale, -4.8 * scale);
+              ctx.lineTo(-3 * scale, 4.8 * scale);
+              ctx.moveTo(-7.5 * scale, 0);
+              ctx.lineTo(-3 * scale, 0);
+              ctx.lineWidth = 3.2;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
-              ctx.lineWidth = 4.2 * scale;
-              ctx.strokeStyle = cMain;
+              ctx.lineWidth = 1.8;
+              ctx.strokeStyle = '#facc15';
               ctx.stroke();
-              ctx.lineWidth = 1.8 * scale;
-              ctx.strokeStyle = skin ? cSub : '#fef08a';
-              ctx.stroke();
-              break;
-            }
 
-            case 'shaolin': {
-              // Flying Golden Arhat / Vajra Qi Fist (황금 나한권강 주먹)!
-              ctx.rotate(ang);
+              // Glowing spirit blade
               ctx.beginPath();
-              ctx.moveTo(-15 * scale, 0);
-              ctx.lineTo(0, 0);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = 8.5 * scale;
-              ctx.strokeStyle = hexWithAlpha(skin ? cMain : '#f59e0b', 0.55);
-              ctx.stroke();
-              drawClenchedFist(
-                ctx,
-                2 * scale,
-                0,
-                0.78 * scale,
-                skin ? cSub : p.isSkill ? '#fef08a' : '#fbbf24',
-                skin ? cMain : '#f59e0b',
-                '#c2410c',
-              );
-              break;
-            }
-
-            case 'gaebang': {
-              // Emerald bamboo-dragon shock crescent
-              ctx.rotate(ang);
-              const r = 9.5 * scale;
-              ctx.beginPath();
-              ctx.arc(-2, 0, r, -Math.PI * 0.42, Math.PI * 0.42);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = 7.2 * scale;
-              ctx.strokeStyle = PIXEL_OUTLINE;
-              ctx.stroke();
-              ctx.lineWidth = 4 * scale;
-              ctx.strokeStyle = skin ? cMain : p.isSkill ? '#4ade80' : cMain;
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.arc(1, 0, 3.2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = skin ? cSub : '#dcfce7';
+              ctx.moveTo(-2.5 * scale, -2.4 * scale);
+              ctx.lineTo(8 * scale, -1.7 * scale);
+              ctx.lineTo(13.5 * scale, 0);
+              ctx.lineTo(8 * scale, 1.7 * scale);
+              ctx.lineTo(-2.5 * scale, 2.4 * scale);
+              ctx.closePath();
+              ctx.fillStyle = p.isSkill ? cSub : cMain;
               ctx.fill();
+              ctx.lineWidth = 2.1;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.moveTo(-1 * scale, 0);
+              ctx.lineTo(10 * scale, 0);
+              ctx.lineWidth = 1.2;
+              ctx.strokeStyle = '#ffffff';
+              ctx.stroke();
               break;
             }
 
-            case 'tang_poison': {
-              // Spinning emerald-violet poisoned throwing dagger (or bubbling venom orb for poison_healer)
-              if (p.unitId === 'poison_healer') {
+            case 'dual_sword': {
+              // Twin Crossed X-Blade Qi Crescents!
+              ctx.rotate(ang);
+              const r = 10 * scale;
+              for (let k = -1; k <= 1; k += 2) {
+                ctx.save();
+                ctx.rotate(k * 0.28);
                 ctx.beginPath();
-                ctx.arc(0, 0, 6 * scale, 0, Math.PI * 2);
-                ctx.fillStyle = skin ? cMain : '#22c55e';
-                ctx.fill();
-                ctx.lineWidth = 2.4;
+                ctx.arc(-2, 0, r, -Math.PI * 0.4, Math.PI * 0.4);
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 6.2 * scale;
                 ctx.strokeStyle = PIXEL_OUTLINE;
                 ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(-2, -2, 2.2 * scale, 0, Math.PI * 2);
-                ctx.fillStyle = skin ? cSub : '#d8b4fe';
-                ctx.fill();
-              } else {
-                ctx.rotate(simTimeSec * 22 + p.id * 1.7);
-                ctx.beginPath();
-                ctx.moveTo(-9 * scale, 0);
-                ctx.lineTo(0, -3.5 * scale);
-                ctx.lineTo(10 * scale, 0);
-                ctx.lineTo(0, 3.5 * scale);
-                ctx.closePath();
-                ctx.fillStyle = skin ? cMain : '#4ade80';
-                ctx.fill();
-                ctx.lineWidth = 2.2;
-                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.lineWidth = 3.2 * scale;
+                ctx.strokeStyle = k < 0 ? cMain : cSub;
                 ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(0, 0, 2 * scale, 0, Math.PI * 2);
-                ctx.fillStyle = skin ? cSub : '#a855f7';
-                ctx.fill();
+                ctx.restore();
               }
               break;
             }
 
-            case 'sapa_blade':
-            case 'haomun':
-            case 'mad_demon': {
-              // Brutal wide crimson-scarlet saber wave (혈도참기)
+            case 'spear_staff': {
+              // Piercing Polearm Lance + Sonic Wind Ring
               ctx.rotate(ang);
-              const r = 11.5 * scale;
               ctx.beginPath();
-              ctx.arc(-3, 0, r, -Math.PI * 0.46, Math.PI * 0.46);
+              ctx.moveTo(-15 * scale, 0);
+              ctx.lineTo(11 * scale, 0);
               ctx.lineCap = 'round';
-              ctx.lineWidth = 7.8 * scale;
+              ctx.lineWidth = 6.6 * scale;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
-              ctx.lineWidth = 4.4 * scale;
-              ctx.strokeStyle = skin ? cMain : baseProfile.sect === 'haomun' ? '#e2e8f0' : '#e11d48';
+              ctx.lineWidth = 3.6 * scale;
+              ctx.strokeStyle = cMain;
               ctx.stroke();
-              ctx.lineWidth = 1.6 * scale;
-              ctx.strokeStyle = skin ? cSub : '#fff1f2';
+
+              ctx.beginPath();
+              ctx.moveTo(4 * scale, -4 * scale);
+              ctx.lineTo(13 * scale, 0);
+              ctx.lineTo(4 * scale, 4 * scale);
+              ctx.closePath();
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+              ctx.lineWidth = 1.8;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.ellipse(-2 * scale, 0, 2.8 * scale, 7.2 * scale, 0, 0, Math.PI * 2);
+              ctx.lineWidth = 1.8;
+              ctx.strokeStyle = cSub;
               ctx.stroke();
               break;
             }
 
-            case 'magyo_bone':
-            case 'magyo_flame': {
-              // Swirling obsidian-scarlet & violet hellfire / ghost-bone projectile
+            case 'palm_fist': {
               ctx.rotate(ang);
-              ctx.beginPath();
-              ctx.moveTo(-14 * scale, 0);
-              ctx.lineTo(4 * scale, 0);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = 7 * scale;
-              ctx.strokeStyle = skin ? cSub : '#9333ea';
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.arc(2 * scale, 0, 6.2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = PIXEL_OUTLINE;
-              ctx.fill();
-              ctx.beginPath();
-              ctx.arc(2 * scale, 0, 4.4 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = skin ? cMain : baseProfile.sect === 'magyo_bone' ? '#c084fc' : '#ef4444';
-              ctx.fill();
-              ctx.beginPath();
-              ctx.arc(3 * scale, -1, 2 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = skin ? cSub : '#fde047';
-              ctx.fill();
+              if (baseProfile.sect === 'mad_demon') {
+                // Triple Crimson Blood-Claw Wave (광마혈조파)
+                for (let k = -1; k <= 1; k++) {
+                  const yOff = k * 4.5 * scale;
+                  ctx.beginPath();
+                  ctx.moveTo(-9 * scale, yOff);
+                  ctx.quadraticCurveTo(0, yOff, 9 * scale, yOff * 0.85);
+                  ctx.lineCap = 'round';
+                  ctx.lineWidth = 4.6 * scale;
+                  ctx.strokeStyle = PIXEL_OUTLINE;
+                  ctx.stroke();
+                  ctx.lineWidth = 2.3 * scale;
+                  ctx.strokeStyle = k === 0 ? cSub : cMain;
+                  ctx.stroke();
+                }
+              } else {
+                // Flying Vajra / Black-Flame Qi Fist (금강권강 · 흑염권강)!
+                const isShaolin = baseProfile.sect === 'shaolin';
+                ctx.beginPath();
+                ctx.moveTo(-14 * scale, 0);
+                ctx.lineTo(0, 0);
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 8 * scale;
+                ctx.strokeStyle = hexWithAlpha(cMain, 0.52);
+                ctx.stroke();
+                drawClenchedFist(
+                  ctx,
+                  2 * scale,
+                  0,
+                  0.76 * scale,
+                  skin ? cSub : isShaolin ? '#fbbf24' : '#fda4af',
+                  cMain,
+                  isShaolin ? '#c2410c' : '#312e81',
+                );
+              }
               break;
             }
 
-            case 'magyo_sword':
-            default: {
-              // Pitch-black & blood-crimson Heavenly Demon crescent slash (천마흑뢰검기)
+            case 'saber': {
+              // Heavy Curved Dadao Saber Cleave Wave (패도참기)!
               ctx.rotate(ang);
               const r = 12 * scale;
               ctx.beginPath();
               ctx.arc(-3, 0, r, -Math.PI * 0.48, Math.PI * 0.48);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = 8.4 * scale;
+              ctx.quadraticCurveTo(
+                r * 0.2,
+                0,
+                Math.cos(-Math.PI * 0.48) * r - 3,
+                Math.sin(-Math.PI * 0.48) * r,
+              );
+              ctx.closePath();
+              ctx.fillStyle = cMain;
+              ctx.fill();
+              ctx.lineWidth = 2.6;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
-              ctx.lineWidth = 4.4 * scale;
-              ctx.strokeStyle = skin ? cMain : '#e11d48';
+
+              ctx.beginPath();
+              ctx.arc(-3, 0, r - 1.8, -Math.PI * 0.44, Math.PI * 0.44);
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = p.isSkill ? '#ffffff' : cSub;
               ctx.stroke();
-              ctx.lineWidth = 1.6 * scale;
-              ctx.strokeStyle = skin ? cSub : p.isSkill ? '#fde047' : '#fda4af';
+              break;
+            }
+
+            case 'sorcery_qi': {
+              // Swirling Obsidian-Crimson & Violet Hellfire / Blood-Sorcery Orb!
+              ctx.rotate(ang);
+              ctx.beginPath();
+              ctx.moveTo(-14 * scale, 0);
+              ctx.lineTo(3 * scale, 0);
+              ctx.lineCap = 'round';
+              ctx.lineWidth = 7 * scale;
+              ctx.strokeStyle = cSub;
               ctx.stroke();
+
+              ctx.beginPath();
+              ctx.arc(2 * scale, 0, 6.4 * scale, 0, Math.PI * 2);
+              ctx.fillStyle = PIXEL_OUTLINE;
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(2 * scale, 0, 4.6 * scale, 0, Math.PI * 2);
+              ctx.fillStyle = cMain;
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(3 * scale, -1, 2 * scale, 0, Math.PI * 2);
+              ctx.fillStyle = '#fde047';
+              ctx.fill();
+              break;
+            }
+
+            case 'sword':
+            default: {
+              if (baseProfile.sect === 'mudang') {
+                // Cyan Taiji sword-ray + spinning Yin-Yang orb core
+                ctx.rotate(ang);
+                ctx.beginPath();
+                ctx.moveTo(-16 * scale, 0);
+                ctx.lineTo(7 * scale, 0);
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 6.8 * scale;
+                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.stroke();
+                ctx.lineWidth = 3.6 * scale;
+                ctx.strokeStyle = skin ? cMain : '#38bdf8';
+                ctx.stroke();
+
+                ctx.rotate(simTimeSec * 14 + p.id);
+                ctx.beginPath();
+                ctx.arc(0, 0, 5 * scale, 0, Math.PI * 2);
+                ctx.fillStyle = skin ? cSub : '#ffffff';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(0, 0, 5 * scale, 0, Math.PI);
+                ctx.fillStyle = PIXEL_OUTLINE;
+                ctx.fill();
+                ctx.lineWidth = 1.6;
+                ctx.strokeStyle = cMain;
+                ctx.stroke();
+              } else if (baseProfile.sect === 'namgung') {
+                // Crackling imperial azure-gold lightning sword-lance
+                ctx.rotate(ang);
+                ctx.beginPath();
+                ctx.moveTo(-18 * scale, 0);
+                ctx.lineTo(-9 * scale, -4 * scale);
+                ctx.lineTo(-2 * scale, 3.5 * scale);
+                ctx.lineTo(9 * scale, 0);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = 7.4 * scale;
+                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.stroke();
+                ctx.lineWidth = 4 * scale;
+                ctx.strokeStyle = cMain;
+                ctx.stroke();
+                ctx.lineWidth = 1.8 * scale;
+                ctx.strokeStyle = skin ? cSub : '#fef08a';
+                ctx.stroke();
+              } else if (baseProfile.sect === 'hwasan') {
+                // Mount Hua crescent sword-qi + trailing plum petal
+                ctx.rotate(ang);
+                const r = 11 * scale;
+                ctx.beginPath();
+                ctx.arc(-2, 0, r, -Math.PI * 0.44, Math.PI * 0.44);
+                ctx.quadraticCurveTo(
+                  r * 0.35,
+                  0,
+                  Math.cos(-Math.PI * 0.44) * r - 2,
+                  Math.sin(-Math.PI * 0.44) * r,
+                );
+                ctx.closePath();
+                ctx.fillStyle = skin ? cMain : p.isSkill ? '#f43f5e' : cMain;
+                ctx.fill();
+                ctx.lineWidth = 2.4;
+                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(-11 * scale, 0, 2.8 * scale, 0, Math.PI * 2);
+                ctx.fillStyle = skin ? cSub : '#fda4af';
+                ctx.fill();
+              } else if (baseProfile.sect === 'haomun') {
+                // Quick-draw silver Iai sword flash
+                ctx.rotate(ang);
+                const r = 11 * scale;
+                ctx.beginPath();
+                ctx.arc(-2, 0, r, -Math.PI * 0.42, Math.PI * 0.42);
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 6.8 * scale;
+                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.stroke();
+                ctx.lineWidth = 3.4 * scale;
+                ctx.strokeStyle = skin ? cMain : '#e2e8f0';
+                ctx.stroke();
+                ctx.lineWidth = 1.5 * scale;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+              } else {
+                // Heavenly Demon black-crimson thunder sword-qi (천마흑뢰검기)
+                ctx.rotate(ang);
+                const r = 12 * scale;
+                ctx.beginPath();
+                ctx.arc(-3, 0, r, -Math.PI * 0.48, Math.PI * 0.48);
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 8.2 * scale;
+                ctx.strokeStyle = PIXEL_OUTLINE;
+                ctx.stroke();
+                ctx.lineWidth = 4.2 * scale;
+                ctx.strokeStyle = cMain;
+                ctx.stroke();
+                ctx.lineWidth = 1.6 * scale;
+                ctx.strokeStyle = p.isSkill ? '#fde047' : cSub;
+                ctx.stroke();
+              }
               break;
             }
           }

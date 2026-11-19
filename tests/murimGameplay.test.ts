@@ -16,6 +16,11 @@ import {
   type StorageLike,
 } from '../src/platform/MetaStore';
 import { SoundSynthesizer } from '../src/platform/SoundSynthesizer';
+import {
+  UNIT_COMBAT_PROFILES,
+  getUnitCombatProfile,
+  type WeaponMotionStyle,
+} from '../src/render/weaponProfiles';
 
 describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble (영약 복용) & faction upgrades (내공 수련)', () => {
   it('supports atomic chain synthesis from 삼류 leaves to 화산 장문인 and 3-faction fusion into 현경·신마 절대천마', () => {
@@ -1407,6 +1412,116 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
 
     expect(det1x.buildSnapshot(1, false).totalBoonStacks).toBeGreaterThanOrEqual(1);
     expect(det3x.hashState()).toBe(det1x.hashState());
+  });
+
+  it('maps all 32 Murim heroes 1:1 across 10 weapon motion archetypes (including 사천당가 만독철선 부채) and emits directional monster:hit origin telemetry deterministically', () => {
+    const data = loadGameData();
+    expect(data.units.length).toBe(32);
+
+    const seenStyles = new Set<WeaponMotionStyle>();
+    for (const unit of data.units) {
+      const explicit = UNIT_COMBAT_PROFILES[unit.id];
+      expect(explicit, `Missing UNIT_COMBAT_PROFILES entry for ${unit.id}`).toBeDefined();
+      const profile = getUnitCombatProfile(unit.id);
+      expect(profile.weaponLabel.trim().length).toBeGreaterThan(0);
+      expect(profile.primary).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(profile.secondary).toMatch(/^#[0-9a-fA-F]{6}$/);
+      seenStyles.add(profile.style);
+    }
+
+    // All 10 distinct weapon motion archetypes must be represented in the 32-hero roster
+    expect(seenStyles.size).toBe(10);
+    expect(getUnitCombatProfile('tang_patriarch').style).toBe('fan');
+    expect(getUnitCombatProfile('tang_patriarch').weaponLabel).toContain('부채');
+    expect(getUnitCombatProfile('tang_assassin').style).toBe('dagger_hidden');
+    expect(getUnitCombatProfile('poison_healer').style).toBe('staff_gourd');
+    expect(getUnitCombatProfile('shaolin_novice').style).toBe('spear_staff');
+    expect(getUnitCombatProfile('gaebang_beggar').style).toBe('spear_staff');
+    expect(getUnitCombatProfile('bone_fiend').style).toBe('spear_staff');
+    expect(getUnitCombatProfile('shaolin_monk').style).toBe('palm_fist');
+    expect(getUnitCombatProfile('cult_protector').style).toBe('palm_fist');
+    expect(getUnitCombatProfile('mad_demon').style).toBe('palm_fist');
+    expect(getUnitCombatProfile('gaebang_elder').style).toBe('dual_sword');
+    expect(getUnitCombatProfile('black_wind').style).toBe('dual_sword');
+    expect(getUnitCombatProfile('sword_demon').style).toBe('dual_sword');
+    expect(getUnitCombatProfile('sword_saint').style).toBe('flying_sword');
+    expect(getUnitCombatProfile('sword_immortal').style).toBe('flying_sword');
+    expect(getUnitCombatProfile('cult_elder').style).toBe('sorcery_qi');
+    expect(getUnitCombatProfile('flame_demon').style).toBe('sorcery_qi');
+
+    // Chain-craft tang_patriarch (사천당가 당문주) onto field[0] and verify monster:hit emits exact tile origin (fromX, fromY)
+    const simA = new Simulation(data, 0x2468ace0);
+    const simB = new Simulation(data, 0x2468ace0);
+    const tangLeaves = simA.recipeGraph.leafCost.get('r_tang_patriarch')!;
+    for (const [unitId, count] of tangLeaves) {
+      for (let i = 0; i < count; i++) {
+        simA.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+        simA.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+        simB.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+        simB.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+      }
+    }
+    simA.tick();
+    simB.tick();
+    simA.commands.enqueue({ type: 'craft', recipeId: 'r_tang_patriarch', chain: true });
+    simB.commands.enqueue({ type: 'craft', recipeId: 'r_tang_patriarch', chain: true });
+    simA.tick();
+    simB.tick();
+
+    const tangSlotIndex = simA
+      .buildSnapshot(1, false)
+      .field.findIndex((s) => s?.unitId === 'tang_patriarch');
+    expect(tangSlotIndex).toBeGreaterThanOrEqual(0);
+    const fGrid = data.board.field;
+    const tangCol = tangSlotIndex % fGrid.cols;
+    const tangRow = Math.floor(tangSlotIndex / fGrid.cols);
+    const expectedTile = {
+      x: fGrid.originX + tangCol * (fGrid.cellW + fGrid.gapX) + fGrid.cellW * 0.5,
+      y: fGrid.originY + tangRow * (fGrid.cellH + fGrid.gapY) + fGrid.cellH * 0.5 - 8,
+    };
+
+    const hits: { unitId: string; fromX: number; fromY: number; x: number; y: number }[] = [];
+    let poisonRainCast = false;
+    simA.events.on('monster:hit', (ev) => {
+      hits.push({
+        unitId: ev.unitId,
+        fromX: ev.fromX,
+        fromY: ev.fromY,
+        x: ev.x,
+        y: ev.y,
+      });
+    });
+    simA.events.on('skill:impact', (ev) => {
+      if (ev.unitId === 'tang_patriarch' && ev.vfxTrack === 'poison_rain') {
+        poisonRainCast = true;
+      }
+    });
+
+    for (let t = 0; t < 240; t++) {
+      simA.tick();
+      simB.tick();
+    }
+
+    expect(hits.length).toBeGreaterThanOrEqual(3);
+    expect(poisonRainCast).toBe(true);
+    for (const h of hits) {
+      expect(h.unitId).toBe('tang_patriarch');
+      expect(Number.isFinite(h.fromX)).toBe(true);
+      expect(Number.isFinite(h.fromY)).toBe(true);
+      expect(h.fromX).toBe(expectedTile.x);
+      expect(h.fromY).toBe(expectedTile.y);
+      expect(Math.hypot(h.x - h.fromX, h.y - h.fromY)).toBeGreaterThan(0);
+    }
+    // Listening to monster:hit telemetry must have zero side-effect on simulation state hash
+    expect(simA.hashState()).toBe(simB.hashState());
+
+    // SoundSynthesizer safely accepts optional weaponStyle across all 10 archetypes when muted/headless
+    const synth = new SoundSynthesizer();
+    for (const style of seenStyles) {
+      expect(() => synth.playHit('orthodox', false, false, style)).not.toThrow();
+      expect(() => synth.playHit('unorthodox', true, true, style)).not.toThrow();
+      expect(() => synth.playHit('demonic', true, false, style)).not.toThrow();
+    }
   });
 });
 
