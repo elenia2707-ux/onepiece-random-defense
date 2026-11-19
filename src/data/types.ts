@@ -240,7 +240,13 @@ export type RelicId =
   | 'bandit_dagger'
   | 'immortal_furnace'
   | 'founding_jade_seal'
-  | 'heavenly_scroll_chest';
+  | 'heavenly_scroll_chest'
+  | 'wind_swift_boots'
+  | 'crimson_crit_blade'
+  | 'armor_break_gauntlet'
+  | 'celestial_skill_jade'
+  | 'demon_slayer_banner'
+  | 'merchant_abacus';
 
 export interface RelicDef {
   readonly id: RelicId;

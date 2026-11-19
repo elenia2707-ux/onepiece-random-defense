@@ -107,6 +107,12 @@ const VALID_RELIC_IDS: ReadonlySet<string> = new Set<RelicId>([
   'immortal_furnace',
   'founding_jade_seal',
   'heavenly_scroll_chest',
+  'wind_swift_boots',
+  'crimson_crit_blade',
+  'armor_break_gauntlet',
+  'celestial_skill_jade',
+  'demon_slayer_banner',
+  'merchant_abacus',
 ]);
 
 const VALID_DIFFICULTY_IDS: ReadonlySet<string> = new Set<DifficultyId>([

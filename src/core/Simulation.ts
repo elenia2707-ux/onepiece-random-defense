@@ -7,6 +7,7 @@ import {
 import { EventBus } from './EventBus';
 import {
   CLEAR_TARGET_WAVE,
+  getAbacusSummonDiscount,
   getFurnaceChanceBonusPct,
   getFurnaceRefundPct,
   getJadeSealStartCoin,
@@ -494,6 +495,12 @@ export class Simulation {
     immortal_furnace: 0,
     founding_jade_seal: 0,
     heavenly_scroll_chest: 0,
+    wind_swift_boots: 0,
+    crimson_crit_blade: 0,
+    armor_break_gauntlet: 0,
+    celestial_skill_jade: 0,
+    demon_slayer_banner: 0,
+    merchant_abacus: 0,
   };
   private readonly activeBoons: Record<BoonId, number> = {
     b_usury_vault: 0,
@@ -729,7 +736,9 @@ export class Simulation {
 
   public getSummonCost(): number {
     const econ = this.data.board.economy;
-    return econ.baseSummonCost + this.summonCount * econ.summonCostStep;
+    const raw = econ.baseSummonCost + this.summonCount * econ.summonCostStep;
+    const discount = getAbacusSummonDiscount(this.relicLv.merchant_abacus ?? 0);
+    return Math.max(10, raw - discount);
   }
 
   public getUpgradeCost(groupId: UpgradeGroupId): number {

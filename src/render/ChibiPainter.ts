@@ -1283,7 +1283,7 @@ export function paintMonsterChibi(
 }
 
 /* ========================================================================== */
-/*  6 Bespoke 32x32 Wuxia Relic Treasure Pixel-Art Icons (무림 6대 신물)      */
+/*  12 Bespoke 32x32 Wuxia Relic Treasure Pixel-Art Icons (무림 12대 신물)    */
 /* ========================================================================== */
 
 export function paintRelicPixelArt(
@@ -1446,6 +1446,146 @@ export function paintRelicPixelArt(
       p.line(11, 9, 15, 9, '#0284c7', LAYER_FX, 1);
       p.line(17, 11, 21, 11, '#e11d48', LAYER_FX, 1);
       p.set(13, 11, '#0284c7', LAYER_FX);
+      break;
+    }
+
+    case 'wind_swift_boots': {
+      // 신행백보화 — Azure-jade winged cloud-stepping martial boot with swirling wind-qi ribbons
+      // Swirling sky-cyan wind-qi currents behind boot
+      p.line(4, 21, 10, 17, '#67e8f9', LAYER_BACK, 2);
+      p.line(3, 16, 9, 12, '#38bdf8', LAYER_BACK, 1);
+      p.line(5, 25, 11, 23, '#a5f3fc', LAYER_BACK, 1);
+      // Boot shaft & sole (deep indigo-azure leather + golden trim)
+      p.rampBox(11, 8, 9, 13, ROBE_AZURE, LAYER_BODY);
+      p.rampBox(11, 20, 16, 6, ['#38bdf8', '#0284c7', '#0369a1', '#0c4a6e'], LAYER_BODY);
+      // Upturned wuxia cloud toe & golden sole rim
+      p.rect(24, 18, 4, 4, '#0284c7', LAYER_BODY);
+      p.hline(11, 26, 25, '#facc15', LAYER_FRONT);
+      p.hline(11, 19, 9, '#fde047', LAYER_FRONT);
+      p.rect(12, 13, 7, 2, '#facc15', LAYER_FRONT);
+      // Radiant white-cyan feathered wind wings sweeping off heel
+      p.line(11, 14, 5, 7, '#e0f2fe', LAYER_FX, 3);
+      p.line(11, 16, 4, 11, '#67e8f9', LAYER_FX, 2);
+      p.line(11, 18, 6, 15, '#ffffff', LAYER_FX, 1);
+      p.set(25, 19, '#e0f2fe', LAYER_FX);
+      break;
+    }
+
+    case 'crimson_crit_blade': {
+      // 혈영회심검 — Razor-thin blood-crimson assassin sword piercing a glowing bullseye acupoint seal
+      // Glowing golden-crimson target acupoint ring backdrop
+      p.disc(16, 16, 9, ['#fda4af', '#e11d48', '#9f1239', '#4c0519'], LAYER_BACK);
+      p.disc(16, 16, 6, ['#1e1b4b', '#1e1b4b', '#0f172a', '#0f172a'], LAYER_BACK);
+      p.disc(16, 16, 2.6, GOLD_QI, LAYER_BACK);
+      // Diagonal razor blood-crimson blade (bottom-left hilt -> top-right tip)
+      p.line(7, 24, 26, 5, '#fb7185', LAYER_FRONT, 3);
+      p.line(8, 23, 27, 4, '#ffffff', LAYER_FX, 1);
+      p.line(10, 23, 25, 8, '#be123c', LAYER_FRONT, 1);
+      // Ornate gold crossguard, obsidian hilt & blood-ruby pommel
+      p.line(6, 19, 13, 26, '#facc15', LAYER_FX, 2);
+      p.line(5, 26, 8, 23, '#334155', LAYER_FRONT, 2);
+      p.disc(4.5, 27, 1.8, ['#fda4af', '#e11d48', '#be123c', '#881337'], LAYER_FX);
+      // Critical cross-spark flash at impact center
+      p.hline(12, 20, 16, '#fef08a', LAYER_FX);
+      p.vline(16, 12, 20, '#fef08a', LAYER_FX);
+      p.set(16, 16, '#ffffff', LAYER_FX);
+      break;
+    }
+
+    case 'armor_break_gauntlet': {
+      // 파갑금강수 — Golden vajra iron-breaker gauntlet shattering a dark steel shield plate
+      // Cracked steel armor plate shard flying off top-right
+      p.rampBox(20, 5, 8, 9, ['#cbd5e1', '#64748b', '#334155', '#0f172a'], LAYER_BACK);
+      p.line(22, 6, 26, 13, '#fef08a', LAYER_FX, 1);
+      // Sturdy bronze-gold forearm cuff
+      p.rampBox(7, 20, 14, 7, ['#fde047', '#d97706', '#92400e', '#451a03'], LAYER_BODY);
+      p.hline(7, 20, 22, '#fef08a', LAYER_FRONT);
+      // Clenched armored golden vajra fist (y=9..20)
+      p.rampBox(6, 10, 16, 10, GOLD_QI, LAYER_HEAD);
+      // Four iron-breaking knuckle spikes + crimson inner-qi gem
+      p.rect(7, 8, 3, 3, '#fef08a', LAYER_FX);
+      p.rect(11, 7, 3, 4, '#ffffff', LAYER_FX);
+      p.rect(15, 7, 3, 4, '#fef08a', LAYER_FX);
+      p.rect(19, 8, 3, 3, '#facc15', LAYER_FX);
+      p.disc(14, 15, 2.5, ROBE_CRIMSON, LAYER_FX);
+      p.set(13, 14, '#ffffff', LAYER_FX);
+      // Shatter impact sparks
+      p.set(24, 16, '#fde047', LAYER_FX);
+      p.set(18, 5, '#ffffff', LAYER_FX);
+      break;
+    }
+
+    case 'celestial_skill_jade': {
+      // 태극절기옥 — Radiant Yin-Yang Taiji jade orb ringed by celestial purple-gold qi arcs
+      // Outer golden-violet celestial halo ring
+      p.disc(15.5, 15.5, 10.6, ['#e9d5ff', '#a855f7', '#7e22ce', '#3b0764'], LAYER_BACK);
+      p.disc(15.5, 15.5, 8.6, GOLD_QI, LAYER_BODY);
+      // Yin-Yang Taiji inner jade sphere (azure-white Yang left/top + crimson-violet Yin right/bottom)
+      p.disc(15.5, 15.5, 6.8, ['#f0fdfa', '#67e8f9', '#0284c7', '#1e3a8a'], LAYER_HEAD);
+      p.rampBox(15, 9, 7, 13, ['#fb7185', '#e11d48', '#9f1239', '#4c0519'], LAYER_HEAD);
+      p.disc(15.5, 12, 3.2, ['#f0fdfa', '#67e8f9', '#38bdf8', '#0284c7'], LAYER_HEAD);
+      p.disc(15.5, 19, 3.2, ['#fb7185', '#e11d48', '#be123c', '#881337'], LAYER_HEAD);
+      // Contrasting Taiji eyes
+      p.disc(15.5, 12, 1.3, ['#be123c', '#be123c', '#881337', '#881337'], LAYER_FX);
+      p.disc(15.5, 19, 1.3, ['#ffffff', '#e0f2fe', '#67e8f9', '#38bdf8'], LAYER_FX);
+      // Orbiting starlight motes
+      p.set(5, 8, '#fef08a', LAYER_FX);
+      p.set(26, 7, '#67e8f9', LAYER_FX);
+      p.set(26, 24, '#f0abfc', LAYER_FX);
+      p.set(5, 24, '#fef08a', LAYER_FX);
+      break;
+    }
+
+    case 'demon_slayer_banner': {
+      // 토벌패왕기 — Imperial vermilion-black war banner topped by a golden dragon spearhead
+      // Ebony spear shaft with gleaming gold spearhead (x=8)
+      p.rect(8, 5, 2, 24, '#92400e', LAYER_BODY);
+      p.rect(8, 3, 2, 5, '#fef08a', LAYER_FX);
+      p.set(8, 2, '#ffffff', LAYER_FX);
+      // Horizontal golden crossbar
+      p.hline(7, 25, 8, '#facc15', LAYER_FRONT);
+      p.set(25, 8, '#fef08a', LAYER_FX);
+      // Flowing crimson-obsidian war banner cloth (x=10..24, y=9..24)
+      p.rampBox(10, 9, 14, 15, ROBE_CRIMSON, LAYER_BODY);
+      p.hline(10, 23, 9, '#facc15', LAYER_FRONT);
+      p.vline(23, 9, 23, '#d97706', LAYER_FRONT);
+      // Swallowtail banner notches & golden tassels at bottom
+      p.rect(10, 24, 4, 3, '#be123c', LAYER_BODY);
+      p.rect(20, 24, 4, 3, '#9f1239', LAYER_BODY);
+      p.set(11, 27, '#facc15', LAYER_FX);
+      p.set(22, 27, '#facc15', LAYER_FX);
+      // Embroidered golden conqueror crest (패왕 인장) in center of banner
+      p.disc(17, 16, 3.8, GOLD_QI, LAYER_FX);
+      p.rect(16, 14, 2, 4, '#881337', LAYER_FX);
+      p.hline(14, 19, 16, '#881337', LAYER_FX);
+      break;
+    }
+
+    case 'merchant_abacus': {
+      // 만상금주판 — Rosewood & imperial gold merchant abacus with gleaming jade & gold counting beads
+      // Outer carved rosewood-and-gold abacus frame (x=4..27, y=7..24)
+      p.rampBox(4, 7, 24, 18, ['#b45309', '#92400e', '#78350f', '#451a03'], LAYER_BODY);
+      p.rect(6, 9, 20, 14, '#1e1b4b', LAYER_BODY);
+      // Golden corner clasps & central divider beam
+      p.rect(4, 7, 3, 3, '#fde047', LAYER_FRONT);
+      p.rect(25, 7, 3, 3, '#fde047', LAYER_FRONT);
+      p.rect(4, 22, 3, 3, '#facc15', LAYER_FRONT);
+      p.rect(25, 22, 3, 3, '#facc15', LAYER_FRONT);
+      p.hline(5, 26, 13, '#facc15', LAYER_FRONT);
+      // Vertical brass rods
+      for (const rx of [9, 13, 18, 22]) {
+        p.vline(rx, 9, 22, '#cbd5e1', LAYER_BODY);
+      }
+      // Upper heaven beads (gold) & lower earth beads (jade + gold)
+      for (const rx of [9, 13, 18, 22]) {
+        p.rect(rx - 1, 10, 3, 2, '#fde047', LAYER_FX);
+        p.rect(rx - 1, 15, 3, 2, '#2dd4bf', LAYER_FX);
+        p.rect(rx - 1, 18, 3, 2, '#facc15', LAYER_FX);
+        p.rect(rx - 1, 20, 3, 2, '#fde047', LAYER_FX);
+      }
+      // Floating gleaming silver coin sparkle on top-right
+      p.disc(25, 6, 2.4, ['#ffffff', '#e2e8f0', '#94a3b8', '#475569'], LAYER_FX);
+      p.set(25, 6, PIXEL_OUTLINE, LAYER_FX);
       break;
     }
   }

@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "hash": "37de5dc074",
   "image": "assets/sprites_atlas.webp",
   "width": 1372,
   "height": 1372,

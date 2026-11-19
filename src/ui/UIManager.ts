@@ -1895,13 +1895,21 @@ export class UIManager {
         `<span class="relic-buff-pill sword"><img class="relic-mini-px" src="${iconUrl}" alt="" />쾌검 +${pctStr}%</span>`,
       );
     }
-    if (pills.length === 0 && activeRelicCount > 0) {
-      const firstActive = this.data.relics.find((d) => (snapshot.relics[d.id] ?? 0) > 0);
-      const iconUrl = firstActive
-        ? this.sprites.relicPortraitUrl(firstActive.id, snapshot.relics[firstActive.id] ?? 1)
+    const shownRelics = (vaultPct > 0 ? 1 : 0) + (swordLv > 0 || swordBps > 0 ? 1 : 0);
+    const otherActiveCount = Math.max(0, activeRelicCount - shownRelics);
+    if (otherActiveCount > 0) {
+      const firstOther = this.data.relics.find(
+        (d) =>
+          (snapshot.relics[d.id] ?? 0) > 0 &&
+          d.id !== 'golden_vault' &&
+          d.id !== 'million_sword_seal',
+      );
+      const iconUrl = firstOther
+        ? this.sprites.relicPortraitUrl(firstOther.id, snapshot.relics[firstOther.id] ?? 1)
         : '';
+      const label = shownRelics > 0 ? `신물 +${otherActiveCount}` : `신물 ${activeRelicCount}종`;
       pills.push(
-        `<span class="relic-buff-pill active-relics">${iconUrl ? `<img class="relic-mini-px" src="${iconUrl}" alt="" />` : ICON.chest}신물 ${activeRelicCount}종 발동</span>`,
+        `<span class="relic-buff-pill active-relics">${iconUrl ? `<img class="relic-mini-px" src="${iconUrl}" alt="" />` : ICON.chest}${label}</span>`,
       );
     }
     if (pills.length === 0) {

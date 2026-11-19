@@ -37,6 +37,12 @@ export const RELIC_ORDER: readonly RelicId[] = [
   'immortal_furnace',
   'founding_jade_seal',
   'heavenly_scroll_chest',
+  'wind_swift_boots',
+  'crimson_crit_blade',
+  'armor_break_gauntlet',
+  'celestial_skill_jade',
+  'demon_slayer_banner',
+  'merchant_abacus',
 ];
 
 export const RELIC_CHEST_GOLD_COST = 100;
@@ -268,6 +274,12 @@ export function createEmptyRelicMap(): Record<RelicId, number> {
     immortal_furnace: 0,
     founding_jade_seal: 0,
     heavenly_scroll_chest: 0,
+    wind_swift_boots: 0,
+    crimson_crit_blade: 0,
+    armor_break_gauntlet: 0,
+    celestial_skill_jade: 0,
+    demon_slayer_banner: 0,
+    merchant_abacus: 0,
   };
 }
 

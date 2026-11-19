@@ -66,6 +66,12 @@ export const RELIC_IDS_ORDERED: readonly RelicId[] = [
   'immortal_furnace',
   'founding_jade_seal',
   'heavenly_scroll_chest',
+  'wind_swift_boots',
+  'crimson_crit_blade',
+  'armor_break_gauntlet',
+  'celestial_skill_jade',
+  'demon_slayer_banner',
+  'merchant_abacus',
 ];
 
 export function getVaultInterestPct(lv: number): number {
@@ -125,6 +131,55 @@ export function getScrollChestBossLuckBonus(lv: number): number {
   return lv >= 6 ? 2 : 1;
 }
 
+/** 신행백보화: global attack speed bonus percentage (+3% per level, max +30%). */
+export function getSwiftBootsSpeedPct(lv: number): number {
+  return lv > 0 ? lv * 3 : 0;
+}
+
+/** 혈영회심검: global crit chance bonus in basis points (150 bps = +1.5% per level, max +15%). */
+export function getCritBladeChanceBps(lv: number): number {
+  return lv > 0 ? lv * 150 : 0;
+}
+
+/** 혈영회심검: global crit damage multiplier bonus (+0.08x per level, max +0.80x). */
+export function getCritBladeMultBonus(lv: number): number {
+  return lv > 0 ? Number((lv * 0.08).toFixed(2)) : 0;
+}
+
+/** 파갑금강수: global flat armor shred bonus (+3 per level, max +30). */
+export function getArmorGauntletShred(lv: number): number {
+  return lv > 0 ? lv * 3 : 0;
+}
+
+/** 태극절기옥: multiplicative martial art skill damage bonus (+4% per level, max +40%). */
+export function getSkillJadeDamagePct(lv: number): number {
+  return lv > 0 ? lv * 4 : 0;
+}
+
+/** 토벌패왕기: bonus damage vs Wave Bosses & Active Bounties (+5% per level, max +50%). */
+export function getSlayerBannerBossPct(lv: number): number {
+  return lv > 0 ? lv * 5 : 0;
+}
+
+/** 토벌패왕기: bonus silver coin reward on Active Bounty kills (+5% per level, max +50%). */
+export function getSlayerBannerBountyCoinPct(lv: number): number {
+  return lv > 0 ? lv * 5 : 0;
+}
+
+/** 만상금주판: flat silver discount on every summon (min summon cost 10). */
+export function getAbacusSummonDiscount(lv: number): number {
+  if (lv <= 0) return 0;
+  if (lv <= 3) return 1;
+  if (lv <= 6) return 2;
+  if (lv <= 9) return 3;
+  return 4;
+}
+
+/** 만상금주판: percentage bonus silver coin from slain monsters (+4% per level, max +40%). */
+export function getAbacusKillCoinPct(lv: number): number {
+  return lv > 0 ? lv * 4 : 0;
+}
+
 export function formatRelicStatSummary(id: RelicId, lv: number): string {
   const effLv = Math.max(1, lv);
   switch (id) {
@@ -153,5 +208,20 @@ export function formatRelicStatSummary(id: RelicId, lv: number): string {
       const wispTxt = wispParts.length > 0 ? wispParts.join('·') : '기연+1';
       return `초기 ${wispTxt} · 영물 토벌 영단 +${getScrollChestBossLuckBonus(effLv)}`;
     }
+    case 'wind_swift_boots':
+      return `모든 출전 협객 공격 속도 +${getSwiftBootsSpeedPct(effLv)}%`;
+    case 'crimson_crit_blade': {
+      const critPct = (getCritBladeChanceBps(effLv) / 100).toFixed(1);
+      const critMult = getCritBladeMultBonus(effLv).toFixed(2);
+      return `전 협객 치명타율 +${critPct}% · 치명타 배율 +${critMult}x`;
+    }
+    case 'armor_break_gauntlet':
+      return `모든 출전 협객 기본 파갑 +${getArmorGauntletShred(effLv)}`;
+    case 'celestial_skill_jade':
+      return `모든 협객 절기(스킬) 최종 피해 +${getSkillJadeDamagePct(effLv)}%`;
+    case 'demon_slayer_banner':
+      return `보스·현상수배 피해 +${getSlayerBannerBossPct(effLv)}% · 현상수배 은자 +${getSlayerBannerBountyCoinPct(effLv)}%`;
+    case 'merchant_abacus':
+      return `소환 비용 -${getAbacusSummonDiscount(effLv)} 은자 할인 · 처치 은자 +${getAbacusKillCoinPct(effLv)}%`;
   }
 }

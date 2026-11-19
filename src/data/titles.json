@@ -85,10 +85,10 @@
   },
   {
     "id": "title_relic_grandmaster",
-    "name": "육대신물 극의자",
+    "name": "십이신물 극의자",
     "badge": "신물극의",
     "color": "#2dd4bf",
-    "desc": "전설 신물 중 하나를 10레벨 극의 경지까지 연마한 대종사",
+    "desc": "무림 12대 신물 중 하나를 10레벨 극의 경지까지 연마한 대종사",
     "condition": "max_relic_level",
     "target": 10,
     "rewardGold": 350,

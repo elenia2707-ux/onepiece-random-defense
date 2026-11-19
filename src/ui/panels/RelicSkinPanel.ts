@@ -1,6 +1,12 @@
 import {
   DIFFICULTY_CONFIGS,
   formatRelicStatSummary,
+  getAbacusSummonDiscount,
+  getArmorGauntletShred,
+  getCritBladeChanceBps,
+  getSkillJadeDamagePct,
+  getSlayerBannerBossPct,
+  getSwiftBootsSpeedPct,
   getVaultInterestCap,
   getVaultInterestPct,
   TRIAL_CONFIGS,
@@ -95,7 +101,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   } else {
     const noticeText = lastRelicNotice
       ? lastRelicNotice.text
-      : '🏺 기보함을 개봉해 복리 이자(금고)·이자 데미지(만금쾌검패) 등 무림 6대 신물을 제련하세요!';
+      : '🏺 기보함을 개봉해 복리 이자·신법 가속·회심·파갑·절기 증폭 등 무림 12대 신물을 제련하세요!';
     const noticeClass = lastRelicNotice ? 'relic-notice-banner win' : 'relic-notice-banner';
     noticeHtml = `<div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>`;
   }
@@ -119,6 +125,18 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
         liveBadgeHtml = `<span class="relic-live-chip">현재 공증 +${curPct}%</span>`;
       } else if (def.id === 'bandit_dagger' && snapshot.relicBonus.pilferedCoinTotal > 0) {
         liveBadgeHtml = `<span class="relic-live-chip">강탈 +${snapshot.relicBonus.pilferedCoinTotal} 은자</span>`;
+      } else if (def.id === 'wind_swift_boots' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">공속 +${getSwiftBootsSpeedPct(lv)}%</span>`;
+      } else if (def.id === 'crimson_crit_blade' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">회심 +${(getCritBladeChanceBps(lv) / 100).toFixed(1)}%</span>`;
+      } else if (def.id === 'armor_break_gauntlet' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">파갑 +${getArmorGauntletShred(lv)}</span>`;
+      } else if (def.id === 'celestial_skill_jade' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">절기 +${getSkillJadeDamagePct(lv)}%</span>`;
+      } else if (def.id === 'demon_slayer_banner' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">보스 +${getSlayerBannerBossPct(lv)}%</span>`;
+      } else if (def.id === 'merchant_abacus' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">소환 -${getAbacusSummonDiscount(lv)} 은자</span>`;
       }
 
       let statLine = '';

@@ -6,6 +6,7 @@ in strict compliance with AGENTS.md §6 & docs/ARCHITECTURE.md §10-4 / §11.
 """
 from collections import deque
 import glob
+import hashlib
 import json
 import math
 import os
@@ -152,8 +153,11 @@ def pack_atlas(src_dir: str, out_webp: str, out_json: str, cell_size: int = 192,
 
     os.makedirs(os.path.dirname(out_webp), exist_ok=True)
     atlas.save(out_webp, 'WEBP', lossless=True, quality=100, method=6)
+    with open(out_webp, 'rb') as wf:
+        webp_hash = hashlib.sha256(wf.read()).hexdigest()[:10]
     meta = {
-        'version': 1,
+        'version': 2,
+        'hash': webp_hash,
         'image': 'assets/sprites_atlas.webp',
         'width': atlas_w,
         'height': atlas_h,
@@ -165,7 +169,7 @@ def pack_atlas(src_dir: str, out_webp: str, out_json: str, cell_size: int = 192,
         f.write('\n')
 
     webp_kb = os.path.getsize(out_webp) / 1024.0
-    print(f'Packed {count} sprites into {out_webp} ({atlas_w}x{atlas_h}, {webp_kb:.1f} KB)')
+    print(f'Packed {count} sprites into {out_webp} ({atlas_w}x{atlas_h}, {webp_kb:.1f} KB, hash={webp_hash})')
 
 
 if __name__ == '__main__':

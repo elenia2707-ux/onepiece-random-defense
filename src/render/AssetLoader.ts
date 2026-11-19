@@ -1,3 +1,5 @@
+import bundledAtlasManifest from '../../public/assets/sprites_atlas.json';
+
 export interface AtlasFrameRect {
   readonly x: number;
   readonly y: number;
@@ -7,6 +9,7 @@ export interface AtlasFrameRect {
 
 export interface SpriteAtlasManifest {
   readonly version: number;
+  readonly hash?: string;
   readonly image: string;
   readonly width: number;
   readonly height: number;
@@ -17,10 +20,13 @@ export interface SpriteAtlasManifest {
 type FrameReadyCallback = (atlasImage: HTMLImageElement, frame: AtlasFrameRect) => void;
 
 /**
- * Loads the single packed WebP sprite atlas (`assets/sprites_atlas.webp` + `assets/sprites_atlas.json`)
- * once and dispatches nearest-neighbor frame rects to `SpriteCache` (AGENTS.md §6).
+ * Loads the single packed WebP sprite atlas (`assets/sprites_atlas.webp`) using the
+ * Vite-bundled manifest (`sprites_atlas.json`) + content hash query string (`?v=<hash>`)
+ * so the JS bundle and WebP image stay 100% atomically synchronized across deployments
+ * without stale-cache fallback placeholders (AGENTS.md §6).
  */
 class SpriteAtlasLoader {
+  private readonly bundled: SpriteAtlasManifest = bundledAtlasManifest as SpriteAtlasManifest;
   private manifest: SpriteAtlasManifest | null = null;
   private atlasImage: HTMLImageElement | null = null;
   private loadingStarted = false;
@@ -29,7 +35,7 @@ class SpriteAtlasLoader {
 
   public requestFrame(id: string, cb: FrameReadyCallback): void {
     if (this.failed) return;
-    if (typeof Image === 'undefined' || typeof fetch === 'undefined') return;
+    if (typeof Image === 'undefined') return;
 
     if (this.manifest && this.atlasImage) {
       const frame = this.manifest.frames[id];
@@ -54,36 +60,28 @@ class SpriteAtlasLoader {
 
   private startLoad(): void {
     const baseUrl = import.meta.env.BASE_URL || '/';
-    const manifestUrl = `${baseUrl}assets/sprites_atlas.json`;
+    const manifest = this.bundled;
+    if (!manifest || typeof manifest.frames !== 'object') {
+      this.failAll();
+      return;
+    }
 
-    fetch(manifestUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<SpriteAtlasManifest>;
-      })
-      .then((manifest) => {
-        if (!manifest || typeof manifest.frames !== 'object') {
-          throw new Error('Invalid sprite atlas manifest');
-        }
-        const img = new Image();
-        img.decoding = 'async';
-        img.onload = () => {
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            this.manifest = manifest;
-            this.atlasImage = img;
-            this.flushPending();
-          } else {
-            this.failAll();
-          }
-        };
-        img.onerror = () => {
-          this.failAll();
-        };
-        img.src = `${baseUrl}${manifest.image}`;
-      })
-      .catch(() => {
+    const cacheTag = manifest.hash ? `?v=${manifest.hash}` : `?v=${manifest.version}`;
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        this.manifest = manifest;
+        this.atlasImage = img;
+        this.flushPending();
+      } else {
         this.failAll();
-      });
+      }
+    };
+    img.onerror = () => {
+      this.failAll();
+    };
+    img.src = `${baseUrl}${manifest.image}${cacheTag}`;
   }
 
   private flushPending(): void {

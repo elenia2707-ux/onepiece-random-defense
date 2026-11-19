@@ -2353,6 +2353,102 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(imported.getProfile().ownedSkins.skin_hell_flame_nirvana).toBe(true);
     expect(imported.getProfile().ownedSkins.skin_sword_immortal_celestial).toBe(true);
   });
+
+  it('supports all 12 Wuxia Relics (6 new combat & tactical relics) with deterministic effects, MetaStore/MRD1 persistence, and cache-busted atlas hash', () => {
+    const data = loadGameData();
+    expect(data.relics.length).toBe(12);
+    expect(typeof (atlasRaw as { hash?: string }).hash).toBe('string');
+    expect(((atlasRaw as { hash?: string }).hash ?? '').length).toBeGreaterThanOrEqual(8);
+
+    // 1. merchant_abacus discounts summon cost (Lv.10 = -4 silver) and increases kill silver
+    const baseSim = new Simulation(data, 0x99887766, {}, 'normal', null);
+    const abacusSim = new Simulation(data, 0x99887766, { merchant_abacus: 10 }, 'normal', null);
+    expect(abacusSim.getSummonCost()).toBe(baseSim.getSummonCost() - 4);
+
+    // 2. wind_swift_boots reduces unit cooldown ticks (faster attack cadence)
+    const slowSim = new Simulation(data, 0x11223344, {}, 'normal', null);
+    const fastSim = new Simulation(data, 0x11223344, { wind_swift_boots: 10 }, 'normal', null);
+    for (const s of [slowSim, fastSim]) {
+      s.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      s.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+      s.tick();
+    }
+    let slowHits = 0;
+    let fastHits = 0;
+    slowSim.events.on('monster:hit', () => {
+      slowHits++;
+    });
+    fastSim.events.on('monster:hit', () => {
+      fastHits++;
+    });
+    for (let t = 0; t < 450; t++) {
+      slowSim.tick();
+      fastSim.tick();
+    }
+    expect(fastHits).toBeGreaterThan(slowHits);
+
+    // 3. armor_break_gauntlet + celestial_skill_jade + crimson_crit_blade + demon_slayer_banner increase damage deterministically
+    const plainSim = new Simulation(data, 0x77665544, {}, 'hell', 'trial_crimson_iron');
+    const combatRelicSim = new Simulation(
+      data,
+      0x77665544,
+      {
+        armor_break_gauntlet: 8,
+        celestial_skill_jade: 8,
+        crimson_crit_blade: 8,
+        demon_slayer_banner: 8,
+      },
+      'hell',
+      'trial_crimson_iron',
+    );
+    for (const s of [plainSim, combatRelicSim]) {
+      s.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+      s.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'plum_elder' });
+      s.tick();
+    }
+    let plainDmg = 0;
+    let relicDmg = 0;
+    plainSim.events.on('monster:hit', (ev) => {
+      plainDmg += ev.damage;
+    });
+    combatRelicSim.events.on('monster:hit', (ev) => {
+      relicDmg += ev.damage;
+    });
+    for (let t = 0; t < 360; t++) {
+      plainSim.tick();
+      combatRelicSim.tick();
+    }
+    expect(relicDmg).toBeGreaterThan(Math.round(plainDmg * 1.25));
+
+    // 4. MetaStore direct unlock & MRD1- backup round-trip preserve all 6 new relics cleanly
+    const meta = new MetaStore(null);
+    meta.settleRun({
+      wave: 30,
+      monstersSlain: 400,
+      bossesSlain: 6,
+      difficulty: 'hell',
+      victory: true,
+    });
+    const newRelicIds = [
+      'wind_swift_boots',
+      'crimson_crit_blade',
+      'armor_break_gauntlet',
+      'celestial_skill_jade',
+      'demon_slayer_banner',
+      'merchant_abacus',
+    ] as const;
+    for (const rid of newRelicIds) {
+      const def = data.relicsById.get(rid)!;
+      const res = meta.upgradeRelic(def);
+      expect(res.ok, `upgradeRelic(${rid}) should succeed`).toBe(true);
+    }
+    const backup = meta.exportBackupCode();
+    const restoredMeta = new MetaStore(null);
+    expect(restoredMeta.importBackupCode(backup).ok).toBe(true);
+    for (const rid of newRelicIds) {
+      expect(restoredMeta.getProfile().relics[rid]).toBe(1);
+    }
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {

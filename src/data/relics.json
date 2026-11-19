@@ -52,5 +52,59 @@
     "maxLevel": 10,
     "baseUpgradeGold": 75,
     "stepUpgradeGold": 45
+  },
+  {
+    "id": "wind_swift_boots",
+    "name": "신행백보화",
+    "tag": "신법 가속",
+    "desc": "허공답보의 비보로 모든 출전 협객의 공격 속도를 영구히 가속합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 65,
+    "stepUpgradeGold": 40
+  },
+  {
+    "id": "crimson_crit_blade",
+    "name": "혈영회심검",
+    "tag": "회심 극의",
+    "desc": "적의 급소를 꿰뚫는 검기로 모든 출전 협객의 치명타율과 치명타 피해를 증폭합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 75,
+    "stepUpgradeGold": 45
+  },
+  {
+    "id": "armor_break_gauntlet",
+    "name": "파갑금강수",
+    "tag": "파갑 관통",
+    "desc": "철갑을 찢는 금강 내공으로 모든 출전 협객에게 기본 파갑 수치를 영구 부여합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 70,
+    "stepUpgradeGold": 45
+  },
+  {
+    "id": "celestial_skill_jade",
+    "name": "태극절기옥",
+    "tag": "절기 증폭",
+    "desc": "음양 진기가 응축된 보옥으로 모든 협객의 절기(스킬) 최종 피해를 증폭합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 80,
+    "stepUpgradeGold": 50
+  },
+  {
+    "id": "demon_slayer_banner",
+    "name": "토벌패왕기",
+    "tag": "보스 특효",
+    "desc": "영물 보스와 현상수배범 대상 최종 피해를 크게 높이고 현상수배 은자 보상을 늘립니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 75,
+    "stepUpgradeGold": 45
+  },
+  {
+    "id": "merchant_abacus",
+    "name": "만상금주판",
+    "tag": "소환 절감",
+    "desc": "초출강호 소환 비용을 영구 할인하고 마물 처치 시 획득하는 은자를 증폭합니다.",
+    "maxLevel": 10,
+    "baseUpgradeGold": 60,
+    "stepUpgradeGold": 40
   }
 ]

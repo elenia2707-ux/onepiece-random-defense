@@ -1,8 +1,16 @@
 import type { EventBus } from '../core/EventBus';
 import {
+  getAbacusKillCoinPct,
+  getArmorGauntletShred,
   getBanditPilferCoin,
   getBanditProcPer1000,
+  getCritBladeChanceBps,
+  getCritBladeMultBonus,
   getScrollChestBossLuckBonus,
+  getSkillJadeDamagePct,
+  getSlayerBannerBossPct,
+  getSlayerBannerBountyCoinPct,
+  getSwiftBootsSpeedPct,
 } from '../core/relicFormulas';
 import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
@@ -254,7 +262,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
       if (bestTarget !== null) {
         const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
-        let speedMult = synergy.trinityActive ? 1.1 : 1.0;
+        const swiftBootsPct = getSwiftBootsSpeedPct(ctx.relicLv.wind_swift_boots ?? 0);
+        let speedMult = (synergy.trinityActive ? 1.1 : 1.0) * (1 + swiftBootsPct / 100);
         if (swiftStacks > 0) {
           speedMult *= 1 + 0.16 * swiftStacks;
         }
@@ -295,9 +304,11 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const effectiveEveryN = Math.max(2, def.skill.everyN - acupointStacks);
         const isSkill = u.attackCount % effectiveEveryN === 0;
 
-        let critChance = def.critChance;
-        let critMult = def.critMult;
-        let skillRatio = def.skill.atkRatio;
+        const critBladeLv = ctx.relicLv.crimson_crit_blade ?? 0;
+        let critChance = Math.min(0.95, def.critChance + getCritBladeChanceBps(critBladeLv) / 10000);
+        let critMult = def.critMult + getCritBladeMultBonus(critBladeLv);
+        const skillJadePct = getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0);
+        let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult = 1 + 0.35 * acupointStacks;
 
         if (def.faction === 'orthodox') {
@@ -343,7 +354,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
         const trialShred =
           def.faction === 'unorthodox' && trialCfg ? trialCfg.unorthodoxBonusShred : 0;
-        const unitBaseShred = def.armorShred + crusherStacks * 6 + trialShred;
+        const relicShred = getArmorGauntletShred(ctx.relicLv.armor_break_gauntlet ?? 0);
+        const unitBaseShred = def.armorShred + crusherStacks * 6 + trialShred + relicShred;
         const projectileShred =
           unitBaseShred > 0
             ? isSkill
@@ -491,6 +503,10 @@ function applyHitToMonster(
   if (m.isBoss && hunterStacks > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + 0.28 * hunterStacks));
   }
+  const slayerBannerPct = getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0);
+  if (m.isBoss && slayerBannerPct > 0) {
+    effectiveRaw = Math.round(effectiveRaw * (1 + slayerBannerPct / 100));
+  }
 
   // Apply unit-specific PassiveTraitDef multipliers (Immortal & Transcendent specialization!)
   let executeProc = false;
@@ -608,7 +624,16 @@ function applyHitToMonster(
         ctx.addCoin(2, true);
       }
     }
-    ctx.addCoin(m.rewardCoin + synPillageBonus, false);
+    const abacusCoinPct = getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0);
+    const bountyBannerCoinPct = m.isBounty
+      ? getSlayerBannerBountyCoinPct(ctx.relicLv.demon_slayer_banner ?? 0)
+      : 0;
+    const totalCoinBonusPct = abacusCoinPct + bountyBannerCoinPct;
+    const scaledRewardCoin =
+      totalCoinBonusPct > 0
+        ? Math.max(m.rewardCoin + 1, Math.round((m.rewardCoin * (100 + totalCoinBonusPct)) / 100))
+        : m.rewardCoin;
+    ctx.addCoin(scaledRewardCoin + synPillageBonus, false);
     ctx.monsters.splice(idx, 1);
 
     if (m.isBoss) {
@@ -619,7 +644,7 @@ function applyHitToMonster(
         ctx.markPriorityDirty();
         ctx.events.emit('bounty:slain', {
           bossName: m.bossName ?? '현상수배범',
-          rewardCoin: m.rewardCoin,
+          rewardCoin: scaledRewardCoin,
           rewardLuck,
           tick: ctx.currentTick,
         });
