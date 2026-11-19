@@ -106,5 +106,41 @@
     "maxLevel": 15,
     "baseUpgradeGold": 60,
     "stepUpgradeGold": 40
+  },
+  {
+    "id": "jade_training_manual",
+    "name": "무림비전 수련서",
+    "tag": "수련 절감",
+    "desc": "정·사·마 문파 내공 수련 비용을 영구 할인하고 매 장(웨이브) 클리어 기본 은자를 증폭합니다.",
+    "maxLevel": 15,
+    "baseUpgradeGold": 65,
+    "stepUpgradeGold": 40
+  },
+  {
+    "id": "phoenix_luck_pouch",
+    "name": "봉황기연낭",
+    "tag": "영단 풍년",
+    "desc": "출정 시 추가 영단을 지참하고 협객 방출(판매) 시 회수하는 은자를 크게 늘립니다.",
+    "maxLevel": 15,
+    "baseUpgradeGold": 60,
+    "stepUpgradeGold": 40
+  },
+  {
+    "id": "dragon_range_mirror",
+    "name": "천리안 영경",
+    "tag": "사거리·제어",
+    "desc": "천 리 밖 적을 꿰뚫는 보경으로 모든 협객의 공격 사거리와 기절·둔화 제어 시간을 증폭합니다.",
+    "maxLevel": 15,
+    "baseUpgradeGold": 70,
+    "stepUpgradeGold": 45
+  },
+  {
+    "id": "eight_trigram_mirror",
+    "name": "팔괘진법경",
+    "tag": "진법 증폭",
+    "desc": "팔괘의 기운으로 모든 협객의 최종 공격력을 높이고 상하좌우 진법 서포터 버프를 증폭합니다.",
+    "maxLevel": 15,
+    "baseUpgradeGold": 80,
+    "stepUpgradeGold": 50
   }
 ]

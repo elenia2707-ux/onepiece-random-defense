@@ -45,6 +45,10 @@ export const RELIC_ORDER: readonly RelicId[] = [
   'celestial_skill_jade',
   'demon_slayer_banner',
   'merchant_abacus',
+  'jade_training_manual',
+  'phoenix_luck_pouch',
+  'dragon_range_mirror',
+  'eight_trigram_mirror',
 ];
 
 export const RELIC_CHEST_GOLD_COST = 100;
@@ -310,6 +314,10 @@ export function createEmptyRelicMap(): Record<RelicId, number> {
     celestial_skill_jade: 0,
     demon_slayer_banner: 0,
     merchant_abacus: 0,
+    jade_training_manual: 0,
+    phoenix_luck_pouch: 0,
+    dragon_range_mirror: 0,
+    eight_trigram_mirror: 0,
   };
 }
 

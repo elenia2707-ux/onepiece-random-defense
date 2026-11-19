@@ -36,6 +36,7 @@ export interface RunSaveData {
   readonly boonOfferSeq: number;
   readonly pendingBoonOffers: readonly BoonOfferSnapshot[];
   readonly appliedStartCoinBonus: number;
+  readonly appliedStartLuckBonus?: number;
   readonly appliedStartWisps: Readonly<Record<GradeId, number>>;
   readonly lastWaveInterest: number;
   readonly pilferedCoinTotal: number;

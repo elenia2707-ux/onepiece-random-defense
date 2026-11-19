@@ -1,0 +1,1194 @@
+/* =========================================================
+   BottomSheet Modal System (합공·등선 / 기연 / 영약 복용 / 내공 수련)
+   ========================================================= */
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 22, 20, 0.65);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 40;
+}
+
+.sheet-backdrop.open {
+  display: flex;
+}
+
+.bottom-sheet {
+  width: 696px;
+  max-height: 860px;
+  margin-bottom: 14px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--jade-2) 0%, var(--jade-1) 100%);
+  border: 4px solid var(--ink);
+  box-shadow: 0 10px 0 var(--ink), inset 0 3px 0 var(--panel-hi);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: sheetSlideUp 160ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+@keyframes sheetSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(44px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sheet-header {
+  position: relative;
+  padding: 14px 16px 14px 20px;
+  background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);
+  border-bottom: 3.5px solid var(--ink);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(250, 204, 21, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-title-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sheet-title {
+  font-family: var(--font-display);
+  font-size: 30px;
+  color: #fffbeb;
+  text-shadow: var(--outline-2);
+  letter-spacing: 0.02em;
+}
+
+.sheet-subtitle {
+  font-size: 16px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+}
+
+.sheet-subtitle:empty {
+  display: none;
+}
+
+.sheet-close-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 22px;
+  text-shadow: var(--outline-1);
+}
+
+.sheet-close-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.sheet-tabs {
+  padding: 10px 14px;
+  background: var(--jade-0);
+  border-bottom: 3px solid var(--ink);
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sheet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.sheet-tab-btn {
+  position: relative;
+  height: 40px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: 2.5px solid var(--ink);
+  background: var(--jade-2);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  color: var(--text-dim);
+  font-size: 16px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sheet-tab-btn.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.sheet-tab-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--coral);
+  border: 2px solid var(--ink);
+}
+
+.sheet-body {
+  padding: 14px 14px 20px;
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 680px;
+}
+
+.sheet-section-label {
+  font-size: 16px;
+  color: var(--gold);
+  text-shadow: var(--outline-1);
+  padding: 2px 4px;
+}
+
+/* Recipe / Wisp / Gamble / Upgrade Cards */
+.sheet-card {
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-card.card-ready {
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--gold), inset 0 3px 0 rgba(255, 255, 255, 0.2);
+}
+
+.sheet-card.card-chain {
+  background: linear-gradient(180deg, #0c4a6e 0%, #082f49 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--sky), inset 0 3px 0 rgba(255, 255, 255, 0.2);
+}
+
+.card-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Bright White-Jade + Red Dancheong portrait box inside sheets! */
+.card-avatar {
+  width: 66px;
+  height: 66px;
+  border-radius: 16px;
+  border: 3px solid var(--ink);
+  background: radial-gradient(circle at 50% 38%, var(--white-jade-hi) 0%, var(--white-jade-lo) 100%);
+  box-shadow: inset 0 0 0 2.5px #b91c1c, inset 0 -3px 0 rgba(26, 18, 36, 0.16);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.card-avatar img {
+  width: 62px;
+  height: 62px;
+  object-fit: contain;
+}
+
+.card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.card-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.card-name {
+  font-size: 20px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.card-sub {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-sub .up-next {
+  font-weight: 400;
+  color: #86efac;
+}
+
+.rate-pct {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: var(--jade-0);
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.ing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ing-chip {
+  height: 30px;
+  padding: 0 8px 0 3px;
+  border-radius: 10px;
+  border: 2px solid var(--ink);
+  background: #f5efe1;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+
+.ing-chip img {
+  width: 26px;
+  height: 26px;
+  margin-top: -4px;
+}
+
+.ing-chip b {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 12px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  color: #ffffff;
+}
+
+.ing-chip.ing-ok {
+  background: #dcfce7;
+  border-color: #15803d;
+}
+
+.ing-chip.ing-ok b {
+  background: var(--emerald);
+}
+
+.ing-chip.ing-miss {
+  background: #f3ead8;
+  color: #574537;
+}
+
+.ing-chip.ing-miss b {
+  background: var(--coral);
+}
+
+.card-cta-btn {
+  position: relative;
+  min-width: 108px;
+  height: 56px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  font-family: var(--font-display);
+  font-size: 19px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.1;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-cta-btn.cta-green {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+}
+
+.card-cta-btn.cta-sky {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+}
+
+.card-cta-btn.cta-disabled {
+  background: #234743;
+  color: #7da6a0;
+  text-shadow: none;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.card-cta-btn:not(.cta-disabled):active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+/* Elixir Gamble Result Banner (환골탈태 / 주화입마) */
+.gamble-result-box {
+  padding: 12px 16px;
+  border-radius: 18px;
+  border: 3px solid var(--ink);
+  background: var(--jade-0);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.08);
+  text-align: center;
+  font-size: 19px;
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
+}
+
+.gamble-result-box.win {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 23px;
+  animation: gamblePop 320ms ease;
+}
+
+.gamble-result-box.lose {
+  background: linear-gradient(180deg, #7f1d1d 0%, #3b0808 100%);
+  color: #fecdd3;
+  animation: gambleShake 300ms ease;
+}
+
+@keyframes gamblePop {
+  0% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes gambleShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-8px);
+  }
+  75% {
+    transform: translateX(8px);
+  }
+}
+
+.wisp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.wisp-card {
+  padding: 9px 10px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wisp-card.wisp-recommend {
+  background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px var(--gold);
+}
+
+.wisp-card .card-avatar {
+  width: 56px;
+  height: 56px;
+}
+
+.wisp-card .card-avatar img {
+  width: 52px;
+  height: 52px;
+}
+
+.wisp-card .card-name {
+  font-size: 17px;
+}
+
+.wisp-card .card-cta-btn {
+  min-width: 76px;
+  height: 50px;
+  padding: 0 8px;
+  font-size: 16px;
+}
+
+.hint-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  font-size: 12px;
+}
+
+.hint-pill.sub {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+}
+
+/* Toast Layer — Dedicated safe stone-bridge band (y: 668..704), zero overlap with 6x3 field or bench */
+.toast-layer {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: 668px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.toast-item {
+  height: 36px;
+  max-width: 652px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(22, 82, 75, 0.96) 0%, rgba(9, 31, 29, 0.98) 100%);
+  border: 2.8px solid var(--ink);
+  box-shadow: 0 3.5px 0 var(--ink), 0 0 0 1.5px rgba(250, 204, 21, 0.52),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  font-size: 16.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translate3d(0, 6px, 0) scale(0.96);
+  transition: opacity 130ms ease, transform 130ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.toast-item.show {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.toast-item.toast-bump {
+  transform: translate3d(0, -2px, 0) scale(1.045);
+}
+
+.toast-item.reject {
+  background: linear-gradient(180deg, rgba(225, 29, 72, 0.96) 0%, rgba(127, 29, 29, 0.98) 100%);
+  box-shadow: 0 3.5px 0 var(--ink), 0 0 0 1.5px rgba(254, 205, 211, 0.65),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Game Over / Victory Settlement Banner */
+.gameover-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 22, 20, 0.78);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+
+.gameover-modal.open {
+  display: flex;
+}
+
+.gameover-card {
+  width: 588px;
+  padding: 26px 24px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-1) 100%);
+  border: 4px solid var(--ink);
+  box-shadow: 0 10px 0 var(--ink), inset 0 3px 0 var(--panel-hi);
+  color: #ffffff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.gameover-card.victory-theme {
+  background: linear-gradient(180deg, #991b1b 0%, #581010 55%, #2b090e 100%);
+  box-shadow: 0 10px 0 var(--ink), 0 0 0 3px #facc15, inset 0 3px 0 rgba(255, 255, 255, 0.28);
+}
+
+.gameover-title {
+  font-family: var(--font-display);
+  font-size: 35px;
+  color: var(--gold);
+  text-shadow: var(--outline-2);
+}
+
+.gameover-sub {
+  font-size: 18px;
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
+}
+
+.gameover-loot {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(10, 35, 31, 0.88) 0%, rgba(5, 22, 19, 0.94) 100%);
+  border: 3px solid var(--ink);
+  box-shadow: inset 0 2px 0 rgba(250, 204, 21, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gameover-loot:empty {
+  display: none;
+}
+
+.settlement-loot-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--gold);
+  text-shadow: var(--outline-1);
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.settlement-mult-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  color: #ffffff;
+  font-size: 12.5px;
+}
+
+.first-clear-banner {
+  padding: 7px 12px;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-shadow: var(--outline-1);
+}
+
+.settlement-loot-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
+  gap: 10px;
+}
+
+.settlement-loot-item {
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1b655d 0%, #11443e 100%);
+  border: 2.5px solid var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.settlement-loot-item .ico {
+  font-size: 32px;
+}
+
+.settlement-loot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.settlement-loot-gain {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+}
+
+.settlement-loot-total {
+  font-size: 13px;
+  color: #ccfbf1;
+}
+
+.gameover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.card-cta-btn.cta-crimson {
+  background: linear-gradient(180deg, #fb7185 0%, #e11d48 48%, #881337 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 1.5px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* =========================================================
+   Wuxia Relic (무림 신물 · 기보고) & Live Buff UI
+   ========================================================= */
+.hud-btn.relic-btn {
+  min-width: 68px;
+  gap: 3px;
+  padding: 0 8px;
+  background: linear-gradient(180deg, #f59e0b 0%, #9a3412 100%);
+  font-size: 16px;
+}
+
+.hud-btn.relic-btn .ico {
+  font-size: 19px;
+}
+
+.hud-mini-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fb7185 0%, #e11d48 100%);
+  border: 2.5px solid var(--ink);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1;
+  text-shadow: var(--outline-1);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.hud-mini-badge.visible {
+  display: inline-flex;
+}
+
+.dev-span-2 {
+  grid-column: span 2;
+  background: linear-gradient(180deg, #b45309 0%, #78350f 100%) !important;
+}
+
+.relic-buff-strip {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.relic-buff-pill {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+}
+
+.relic-buff-pill .ico {
+  font-size: 16px;
+}
+
+.relic-mini-px {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  margin-left: -2px;
+}
+
+.relic-buff-pill.vault {
+  background: linear-gradient(180deg, #facc15 0%, #b45309 100%);
+}
+
+.relic-buff-pill.sword {
+  background: linear-gradient(180deg, #fb7185 0%, #9f1239 100%);
+}
+
+.relic-buff-pill.active-relics {
+  background: linear-gradient(180deg, #38bdf8 0%, #0369a1 100%);
+}
+
+.relic-buff-pill.key-ready {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+  animation: chipGlow 0.8s ease-in-out infinite alternate;
+}
+
+.relic-buff-pill.subtle {
+  background: rgba(21, 82, 75, 0.85);
+  color: #ccfbf1;
+}
+
+.relic-gacha-panel {
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #581c0c 0%, #321007 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(253, 224, 71, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.relic-wallet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.relic-wallet-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.relic-wallet-pill {
+  height: 30px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  background: rgba(18, 10, 8, 0.65);
+  border: 2px solid var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
+}
+
+.relic-wallet-pill .ico {
+  font-size: 20px;
+}
+
+.relic-wallet-pill b {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: #fde047;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.relic-wallet-pill.key b {
+  color: #86efac;
+}
+
+.relic-draw-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.relic-notice-banner {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(15, 10, 8, 0.55);
+  border: 2px solid var(--ink);
+  color: #fde68a;
+  font-size: 15px;
+  text-align: center;
+  text-shadow: var(--outline-1);
+}
+
+.relic-notice-banner.win {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 18px;
+  animation: gamblePop 300ms ease;
+}
+
+.relic-pull-showcase {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #422006 0%, #78350f 55%, #1c1917 100%);
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px rgba(250, 204, 21, 0.65);
+  animation: gamblePop 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.relic-pull-showcase.tier-master {
+  background: linear-gradient(135deg, #451a03 0%, #b45309 50%, #291509 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.relic-pull-showcase.tier-mythic {
+  background: linear-gradient(135deg, #450a0a 0%, #991b1b 50%, #422006 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.relic-pull-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  border: 2.5px solid var(--ink);
+  background: radial-gradient(circle at 50% 42%, #fef08a 0%, #92400e 65%, #271206 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 3px;
+}
+
+.relic-pull-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.relic-pull-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.relic-pull-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.relic-pull-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+}
+
+.relic-pull-title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  line-height: 1.15;
+}
+
+.relic-pull-stat {
+  font-size: 13px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.relic-card.relic-owned {
+  background: linear-gradient(180deg, #1f6e64 0%, #124841 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 1.5px rgba(250, 204, 21, 0.45);
+}
+
+.relic-card.relic-master {
+  background: linear-gradient(180deg, #275e56 0%, #163e39 55%, #3b210c 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px rgba(253, 224, 71, 0.78);
+}
+
+.relic-card.relic-mythic {
+  background: linear-gradient(180deg, #6b1d28 0%, #3b121c 58%, #3a2007 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2.5px #fde047;
+}
+
+.relic-card.relic-locked {
+  opacity: 0.94;
+}
+
+.card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 42%, #fef08a 0%, #92400e 66%, #291306 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  overflow: hidden;
+}
+
+.relic-card.relic-locked .card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 45%, #64748b 0%, #1e293b 70%, #0f172a 100%);
+}
+
+.relic-card.relic-transcend {
+  border-color: #3b0764;
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 1.5px rgba(192, 132, 252, 0.7);
+}
+
+.relic-card.relic-transcend .card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 42%, #f5d0fe 0%, #7c3aed 65%, #2e1065 100%);
+}
+
+.relic-card.relic-mythic .card-avatar.relic-avatar {
+  background: radial-gradient(circle at 50% 42%, #fef9c3 0%, #c026d3 58%, #3b0764 100%);
+}
+
+.relic-pull-showcase.tier-transcend {
+  background: linear-gradient(135deg, #2e1065 0%, #6d28d9 52%, #1e1b4b 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #d8b4fe;
+}
+
+.relic-draw-btns.relic-draw-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.relic-draw-btns.relic-draw-grid .card-cta-btn {
+  min-width: 82px;
+  padding: 5px 8px;
+}
+
+.card-cta-btn.cta-violet {
+  background: linear-gradient(180deg, #c084fc 0%, #7e22ce 100%);
+  color: #ffffff;
+}
+
+.relic-filter-row {
+  margin: 0 0 2px;
+}
+
+.relic-batch-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 55%, #1c1917 100%);
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px rgba(216, 180, 254, 0.65);
+  animation: gamblePop 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.relic-batch-head {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+}
+
+.relic-batch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.relic-batch-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 2px solid var(--ink);
+}
+
+.relic-batch-chip.batch-new {
+  border-color: #fde047;
+  background: rgba(120, 53, 15, 0.78);
+}
+
+.relic-batch-chip.batch-transcend {
+  border-color: #c084fc;
+  background: rgba(76, 29, 149, 0.8);
+}
+
+.relic-batch-chip.batch-mythic {
+  border-color: #f0abfc;
+  background: linear-gradient(135deg, rgba(112, 26, 117, 0.9), rgba(153, 27, 27, 0.85));
+}
+
+.relic-batch-chip img {
+  width: 30px;
+  height: 30px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.relic-batch-chip-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.relic-batch-chip-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.relic-batch-chip-lv {
+  font-size: 11px;
+  color: #fde047;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-avatar.relic-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.relic-lore {
+  color: #cbd5e1;
+}
+
+.relic-max-note {
+  color: #e879f9;
+  font-family: var(--font-display);
+}
+
+.relic-lv-track {
+  display: grid;
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+  gap: 2.5px;
+  margin-top: 5px;
+  max-width: 264px;
+}
+
+.relic-lv-pip {
+  height: 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.relic-lv-pip.over-empty {
+  background: rgba(88, 28, 135, 0.45);
+  border-color: rgba(192, 132, 252, 0.55);
+}
+
+.relic-lv-pip.on {
+  background: linear-gradient(180deg, #4ade80 0%, #16a34a 100%);
+}
+
+.relic-lv-pip.high {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+}
+
+.relic-lv-pip.trans {
+  background: linear-gradient(180deg, #e879f9 0%, #9333ea 100%);
+}
+
+.relic-lv-pip.max {
+  background: linear-gradient(180deg, #fef08a 0%, #e879f9 55%, #7e22ce 100%);
+}
+
+.relic-tag-pill {
+  background: #0f766e;
+}
+
+.relic-live-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  color: #ffffff;
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.settlement-preview-bar {
+  padding: 11px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #134e4a 0%, #092c29 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settlement-preview-bar.victory-bar {
+  background: linear-gradient(180deg, #7f1d1d 0%, #450a0a 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px #facc15;
+}
+
+.settlement-preview-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settlement-preview-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+}
+
+.settlement-preview-sub {
+  font-size: 14px;
+  color: #ccfbf1;
+  text-shadow: var(--outline-1);
+}
+

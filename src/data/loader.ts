@@ -113,6 +113,10 @@ const VALID_RELIC_IDS: ReadonlySet<string> = new Set<RelicId>([
   'celestial_skill_jade',
   'demon_slayer_banner',
   'merchant_abacus',
+  'jade_training_manual',
+  'phoenix_luck_pouch',
+  'dragon_range_mirror',
+  'eight_trigram_mirror',
 ]);
 
 const VALID_DIFFICULTY_IDS: ReadonlySet<string> = new Set<DifficultyId>([

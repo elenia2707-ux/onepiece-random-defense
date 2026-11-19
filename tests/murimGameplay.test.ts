@@ -2393,9 +2393,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(imported.getProfile().ownedSkins.skin_thunder_jade_sovereign).toBe(true);
   });
 
-  it('supports all 12 Wuxia Relics up to Lv.15 Transcendence, bulk 10x drawRelicBatch, and cache-busted atlas hash', () => {
+  it('supports all 16 Wuxia Relics up to Lv.15 Transcendence, bulk 10x drawRelicBatch, and cache-busted atlas hash', () => {
     const data = loadGameData();
-    expect(data.relics.length).toBe(12);
+    expect(data.relics.length).toBe(16);
     expect(typeof (atlasRaw as { hash?: string }).hash).toBe('string');
     expect(((atlasRaw as { hash?: string }).hash ?? '').length).toBeGreaterThanOrEqual(8);
 
@@ -2412,6 +2412,36 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(scrollSnap.wisps.common).toBeGreaterThanOrEqual(3); // 1 starter + 2 from Lv.8+
     expect(scrollSnap.wisps.uncommon).toBe(2); // Lv.12 bonus
     expect(scrollSnap.wisps.rare).toBe(1); // Lv.15 transcendence milestone!
+
+    // 1c. jade_training_manual discounts upgrade cost & phoenix_luck_pouch grants starter luck + sell bonus
+    const econ4Sim = new Simulation(
+      data,
+      0x33445566,
+      { jade_training_manual: 15, phoenix_luck_pouch: 15 },
+      'normal',
+      null,
+    );
+    expect(econ4Sim.getUpgradeCost('orthodox')).toBeLessThan(baseSim.getUpgradeCost('orthodox'));
+    expect(econ4Sim.buildSnapshot(1, false).luckStone).toBe(
+      baseSim.buildSnapshot(1, false).luckStone + 4,
+    );
+    expect(econ4Sim.getUnitSellCoin(100)).toBe(165); // +65% at Lv.15
+
+    // 1d. dragon_range_mirror extends unit range & eight_trigram_mirror boosts global ATK & tile aura
+    const mirrorSim = new Simulation(
+      data,
+      0x44556677,
+      { dragon_range_mirror: 15, eight_trigram_mirror: 15 },
+      'normal',
+      null,
+    );
+    mirrorSim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    mirrorSim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    mirrorSim.tick();
+    const hwasanDef = data.unitsById.get('hwasan_novice')!;
+    const mirrorSlot = mirrorSim.buildSnapshot(1, false).field.find((s) => s !== null)!;
+    expect(mirrorSlot.range).toBe(hwasanDef.range + 55); // +55 range at Lv.15
+    expect(mirrorSlot.baseAtk + mirrorSlot.bonusAtk).toBeGreaterThan(hwasanDef.atk);
 
     // 2. wind_swift_boots reduces unit cooldown ticks (faster attack cadence)
     const slowSim = new Simulation(data, 0x11223344, {}, 'normal', null);

@@ -6,11 +6,14 @@ import {
   getBanditProcPer1000,
   getCritBladeChanceBps,
   getCritBladeMultBonus,
+  getRangeMirrorCcPct,
+  getRangeMirrorRangeBonus,
   getScrollChestBossLuckBonus,
   getSkillJadeDamagePct,
   getSlayerBannerBossPct,
   getSlayerBannerBountyCoinPct,
   getSwiftBootsSpeedPct,
+  getTrigramMirrorAuraPct,
 } from '../core/relicFormulas';
 import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
@@ -81,14 +84,15 @@ export function computeFieldTileBuffs(
   unitsByUid: ReadonlyMap<number, UnitEntity>,
   unitsById: ReadonlyMap<UnitId, UnitDef>,
   swiftStacks: number,
+  trigramAuraPct = 0,
 ): readonly TileAuraBuff[] {
   const cap = board.field.capacity;
   const cols = board.config.field.cols;
   const rows = board.config.field.rows;
   const out: TileAuraBuff[] = new Array<TileAuraBuff>(cap);
-  const auraMult = 1 + 0.5 * swiftStacks;
-  const atkCap = 65 + 25 * swiftStacks;
-  const speedCap = 45 + 20 * swiftStacks;
+  const auraMult = 1 + 0.5 * swiftStacks + trigramAuraPct / 100;
+  const atkCap = Math.round((65 + 25 * swiftStacks) * (1 + trigramAuraPct / 200));
+  const speedCap = Math.round((45 + 20 * swiftStacks) * (1 + trigramAuraPct / 200));
 
   for (let idx = 0; idx < cap; idx++) {
     const col = idx % cols;
@@ -130,6 +134,7 @@ export function computeUnitEffectiveAtk(
   harmonyStacks: number,
   demonicBoonStacks: number,
   trialId: TrialId | null,
+  trigramAtkBps = 0,
 ): { readonly baseAtk: number; readonly bonusAtk: number } {
   const def = data.unitsById.get(unitId);
   if (!def) return { baseAtk: 0, bonusAtk: 0 };
@@ -154,15 +159,16 @@ export function computeUnitEffectiveAtk(
   }
 
   const traitPct = upPct + synPct + boonPct + Math.max(0, tileBuffAtkPct);
-  if (traitPct <= 0 && wealthBps <= 0) {
+  const finalBps = wealthBps + Math.max(0, trigramAtkBps);
+  if (traitPct <= 0 && finalBps <= 0) {
     return { baseAtk: def.atk, bonusAtk: 0 };
   }
-  if (wealthBps <= 0) {
+  if (finalBps <= 0) {
     const bonusAtk = Math.round((def.atk * traitPct) / 100);
     return { baseAtk: def.atk, bonusAtk };
   }
   const effectiveTotal = Math.round(
-    (def.atk * (100 + traitPct) * (10000 + wealthBps)) / 1_000_000,
+    (def.atk * (100 + traitPct) * (10000 + finalBps)) / 1_000_000,
   );
   return { baseAtk: def.atk, bonusAtk: Math.max(0, effectiveTotal - def.atk) };
 }
@@ -206,11 +212,13 @@ export interface CombatSystemContext {
 export function stepCombat(ctx: CombatSystemContext): void {
   const synergy = computeFieldSynergy(ctx.units, ctx.data.unitsById);
   const swiftStacks = ctx.getBoonStacks('b_swift_formation');
+  const trigramAuraPct = getTrigramMirrorAuraPct(ctx.relicLv.eight_trigram_mirror ?? 0);
   const tileBuffs = computeFieldTileBuffs(
     ctx.board,
     ctx.unitsByUid,
     ctx.data.unitsById,
     swiftStacks,
+    trigramAuraPct,
   );
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
   const harmonyStacks = ctx.getBoonStacks('b_trinity_harmony');
@@ -219,6 +227,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
   const orthodoxBoonStacks = ctx.getBoonStacks('b_orthodox_zenith');
   const demonicBoonStacks = ctx.getBoonStacks('b_demonic_overdrive');
   const crusherStacks = ctx.getBoonStacks('b_armor_crusher');
+  const rangeMirrorBonus = getRangeMirrorRangeBonus(ctx.relicLv.dragon_range_mirror ?? 0);
+  const rangeMirrorCcPct = getRangeMirrorCcPct(ctx.relicLv.dragon_range_mirror ?? 0);
 
   if (ctx.monsters.length > 0) {
     for (let i = 0; i < ctx.units.length; i++) {
@@ -239,7 +249,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
       const def = ctx.data.unitsById.get(u.unitId);
       if (!def) continue;
 
-      const effectiveRange = def.range + harmonyStacks * 25;
+      const effectiveRange = def.range + harmonyStacks * 25 + rangeMirrorBonus;
       const rangeSq = effectiveRange * effectiveRange;
       let bestTarget: MonsterEntity | null = null;
 
@@ -309,7 +319,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
         let critMult = def.critMult + getCritBladeMultBonus(critBladeLv);
         const skillJadePct = getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0);
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
-        let ccMult = 1 + 0.35 * acupointStacks;
+        let ccMult = (1 + 0.35 * acupointStacks) * (1 + rangeMirrorCcPct / 100);
 
         if (def.faction === 'orthodox') {
           if (synergy.orthodoxTier === 2) {

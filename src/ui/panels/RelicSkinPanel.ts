@@ -4,9 +4,13 @@ import {
   getAbacusSummonDiscount,
   getArmorGauntletShred,
   getCritBladeChanceBps,
+  getLuckPouchSellCoinPct,
+  getRangeMirrorRangeBonus,
   getSkillJadeDamagePct,
   getSlayerBannerBossPct,
   getSwiftBootsSpeedPct,
+  getTrainingManualCostDiscountPct,
+  getTrigramMirrorAtkBps,
   getVaultInterestCap,
   getVaultInterestPct,
   RELIC_CATEGORY_MAP,
@@ -154,7 +158,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   } else {
     const noticeText = lastRelicNotice
       ? lastRelicNotice.text
-      : '🏺 기보함을 개봉해 무림 12대 신물을 해금하고 Lv.15 초월 신화 경지까지 제련하세요!';
+      : '🏺 기보함을 개봉해 무림 16대 신물을 해금하고 Lv.15 초월 신화 경지까지 제련하세요!';
     const noticeClass = lastRelicNotice ? 'relic-notice-banner win' : 'relic-notice-banner';
     noticeHtml = `<div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>`;
   }
@@ -206,6 +210,14 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
         liveBadgeHtml = `<span class="relic-live-chip">보스 +${getSlayerBannerBossPct(lv)}%</span>`;
       } else if (def.id === 'merchant_abacus' && isOwned) {
         liveBadgeHtml = `<span class="relic-live-chip">소환 -${getAbacusSummonDiscount(lv)} 은자</span>`;
+      } else if (def.id === 'jade_training_manual' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">수련 -${getTrainingManualCostDiscountPct(lv)}%</span>`;
+      } else if (def.id === 'phoenix_luck_pouch' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">방출 +${getLuckPouchSellCoinPct(lv)}%</span>`;
+      } else if (def.id === 'dragon_range_mirror' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">사거리 +${getRangeMirrorRangeBonus(lv)}</span>`;
+      } else if (def.id === 'eight_trigram_mirror' && isOwned) {
+        liveBadgeHtml = `<span class="relic-live-chip">공증 +${(getTrigramMirrorAtkBps(lv) / 100).toFixed(1)}%</span>`;
       }
 
       let statLine = '';

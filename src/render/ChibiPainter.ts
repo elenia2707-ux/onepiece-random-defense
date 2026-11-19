@@ -1598,6 +1598,95 @@ export function paintRelicPixelArt(
       p.set(25, 6, PIXEL_OUTLINE, LAYER_FX);
       break;
     }
+
+    case 'jade_training_manual': {
+      // 무림비전 수련서 — Emerald-jade stitched martial manual with golden spine clasps & qi aura
+      // Back pages depth
+      p.rect(8, 6, 17, 20, '#fef3c7', LAYER_BODY);
+      p.rect(24, 7, 2, 19, '#d97706', LAYER_BODY);
+      // Front emerald jade silk cover (x=6..23, y=5..25)
+      p.rampBox(6, 5, 18, 21, ['#34d399', '#10b981', '#047857', '#064e3b'], LAYER_BODY);
+      // Traditional 4-stitch golden binding cord on left spine
+      p.vline(9, 6, 24, '#064e3b', LAYER_FRONT);
+      for (const sy of [8, 12, 17, 21]) {
+        p.hline(6, 9, sy, '#fde047', LAYER_FRONT);
+      }
+      // Ivory title slip on right cover with crimson brush mark
+      p.rect(14, 8, 6, 13, '#fef9c3', LAYER_FRONT);
+      p.rect(16, 10, 2, 3, '#b91c1c', LAYER_FX);
+      p.rect(16, 14, 2, 2, '#065f46', LAYER_FX);
+      p.rect(16, 17, 2, 2, '#065f46', LAYER_FX);
+      // Rising jade qi sparkles
+      p.set(25, 5, '#6ee7b7', LAYER_FX);
+      p.set(5, 25, '#fde047', LAYER_FX);
+      break;
+    }
+
+    case 'phoenix_luck_pouch': {
+      // 봉황기연낭 — Imperial crimson brocade fortune pouch with golden drawstring & phoenix plume
+      // Gathered top ruffle (y=6..9)
+      p.rampBox(12, 6, 8, 4, ROBE_CRIMSON, LAYER_BODY);
+      // Golden braided drawstring & side tassels
+      p.hline(11, 20, 10, '#fde047', LAYER_FRONT);
+      p.line(11, 10, 8, 15, '#facc15', LAYER_FRONT, 1);
+      p.line(20, 10, 23, 15, '#facc15', LAYER_FRONT, 1);
+      p.set(8, 16, '#fb923c', LAYER_FX);
+      p.set(23, 16, '#fb923c', LAYER_FX);
+      // Plump crimson silk pouch body (y=11..25)
+      p.disc(15.5, 18.5, 7.6, ROBE_CRIMSON, LAYER_BODY);
+      // Golden phoenix emblem stitched on belly
+      p.disc(15.5, 18.5, 3.6, GOLD_QI, LAYER_FX);
+      p.set(15, 17, '#be123c', LAYER_FX);
+      p.set(16, 18, '#be123c', LAYER_FX);
+      p.hline(14, 17, 20, '#9a3412', LAYER_FX);
+      // Radiant luck-stone orb floating above pouch mouth
+      p.disc(15.5, 4.5, 2.3, ['#ffffff', '#a5f3fc', '#38bdf8', '#0284c7'], LAYER_FX);
+      break;
+    }
+
+    case 'dragon_range_mirror': {
+      // 천리안 영경 — Ancient bronze-and-azure celestial clairvoyance mirror with dragon rim
+      // Carved ornate bronze handle at bottom
+      p.rect(14, 21, 4, 7, '#b45309', LAYER_BODY);
+      p.hline(13, 18, 22, '#fde047', LAYER_FRONT);
+      p.hline(13, 18, 27, '#facc15', LAYER_FRONT);
+      // Outer gilded dragon bronze rim
+      p.disc(15.5, 13.5, 8.6, GOLD_QI, LAYER_BODY);
+      // Deep celestial sapphire mirror face
+      p.disc(15.5, 13.5, 6.2, ['#e0f2fe', '#38bdf8', '#0284c7', '#1e3a8a'], LAYER_FRONT);
+      // Sightline reticle / clairvoyance eye gleam inside lens
+      p.hline(11, 20, 13, '#bae6fd', LAYER_FX);
+      p.vline(15, 9, 18, '#bae6fd', LAYER_FX);
+      p.disc(15.5, 13.5, 2.1, ['#ffffff', '#fef08a', '#38bdf8', '#0369a1'], LAYER_FX);
+      // Four cardinal bronze dragon lugs
+      p.rect(14, 4, 3, 2, '#fde047', LAYER_FX);
+      p.rect(6, 12, 2, 3, '#facc15', LAYER_FX);
+      p.rect(23, 12, 2, 3, '#facc15', LAYER_FX);
+      break;
+    }
+
+    case 'eight_trigram_mirror': {
+      // 팔괘진법경 — Octagonal imperial Bagua formation mirror with gleaming yin-yang core
+      // Outer obsidian-gold octagonal frame
+      p.disc(15.5, 15.5, 10.6, ['#fde047', '#eab308', '#a16207', '#422006'], LAYER_BODY);
+      p.disc(15.5, 15.5, 8.4, ['#312e81', '#1e1b4b', '#17153b', '#0f0d24'], LAYER_BODY);
+      // Eight golden trigram dashes around the octagonal ring
+      p.hline(13, 18, 8, '#fde047', LAYER_FRONT);
+      p.hline(13, 18, 23, '#fde047', LAYER_FRONT);
+      p.vline(8, 13, 18, '#fde047', LAYER_FRONT);
+      p.vline(23, 13, 18, '#fde047', LAYER_FRONT);
+      p.rect(10, 10, 2, 2, '#facc15', LAYER_FRONT);
+      p.rect(20, 10, 2, 2, '#facc15', LAYER_FRONT);
+      p.rect(10, 20, 2, 2, '#facc15', LAYER_FRONT);
+      p.rect(20, 20, 2, 2, '#facc15', LAYER_FRONT);
+      // Central Yin-Yang core (crimson/gold yang vs cyan/indigo yin)
+      p.disc(15.5, 15.5, 4.6, ['#ffffff', '#fef08a', '#f59e0b', '#b45309'], LAYER_FX);
+      p.rect(15, 16, 4, 4, '#0f172a', LAYER_FX);
+      p.rect(16, 11, 3, 5, '#0f172a', LAYER_FX);
+      p.set(14, 13, '#0f172a', LAYER_FX);
+      p.set(17, 17, '#fef08a', LAYER_FX);
+      break;
+    }
   }
 
   // Level 5+ auspicious spirit sparkles

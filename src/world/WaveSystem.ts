@@ -212,6 +212,7 @@ export interface WaveSystemContext {
   addLuckStone(delta: number): void;
   setLastWaveInterest(v: number): void;
   getEffectiveInterestConfig(): { readonly pct: number; readonly cap: number };
+  getWaveClearCoinBonusPct(): number;
   hasFieldHazard(fieldIndex: number): boolean;
   markGameOver(reason: GameOverReason): void;
   markPriorityDirty(): void;
@@ -445,7 +446,10 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     ctx.setWaveTicksLeft(nextWaveDef.durationTicks);
     ctx.setSpawnedInWave(0);
     ctx.setNextSpawnTick(ctx.currentTick + 15);
-    const updatedCoin = curCoin + 20 + interestCoin;
+    const waveClearBonusPct = ctx.getWaveClearCoinBonusPct();
+    const baseClearCoin =
+      waveClearBonusPct > 0 ? Math.round(20 * (1 + waveClearBonusPct / 100)) : 20;
+    const updatedCoin = curCoin + baseClearCoin + interestCoin;
     ctx.setCoin(updatedCoin);
     ctx.addLuckStone(1);
     ctx.markPriorityDirty();

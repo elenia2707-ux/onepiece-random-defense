@@ -1,0 +1,600 @@
+/* =========================================================
+   운빨무림전 : 구파일방 vs 사파 vs 마교 — Oriental Casual UI Theme
+   Celadon-Jade & Vermilion Dancheong panels · White-Jade portrait frames
+   Fonts: 'Black Han Sans' (numbers / titles) + 'Jua' (body)
+   ========================================================= */
+:root {
+  --ink: #1a1224;
+  --jade-0: #082320;
+  --jade-1: #0d3632;
+  --jade-2: #144d47;
+  --jade-3: #1b655d;
+  --dancheong-red: #b91c1c;
+  --dancheong-deep: #7f1d1d;
+  --white-jade-hi: #fffdf7;
+  --white-jade-lo: #e6dbc4;
+  --panel-hi: rgba(255, 255, 255, 0.18);
+  --text-light: #fffdf9;
+  --text-dim: #cbe5df;
+  --gold: #facc15;
+  --gold-deep: #b45309;
+  --emerald: #22c55e;
+  --emerald-deep: #15803d;
+  --sky: #38bdf8;
+  --sky-deep: #0284c7;
+  --violet: #a855f7;
+  --violet-deep: #6b21a8;
+  --coral: #f43f5e;
+  --coral-deep: #9f1239;
+  --orange: #f97316;
+  --orange-deep: #c2410c;
+  --scale: 1;
+  --font-display: 'Black Han Sans', 'Jua', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', sans-serif;
+  --font-body: 'Jua', 'Black Han Sans', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', sans-serif;
+  --outline-2: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink),
+    1.5px 1.5px 0 var(--ink), -1.5px 1.5px 0 var(--ink), 1.5px -1.5px 0 var(--ink),
+    -1.5px -1.5px 0 var(--ink), 0 3.5px 0 var(--ink);
+  --outline-1: 0 1.5px 0 var(--ink), 1.5px 0 0 var(--ink), -1.5px 0 0 var(--ink),
+    0 -1.5px 0 var(--ink), 0 2.5px 0 var(--ink);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-synthesis: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #07221f;
+  color: var(--text-light);
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  font-weight: 400;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 32%, #1d7066 0%, #0e3f3a 58%, #07221f 100%);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#game-root {
+  position: relative;
+  width: calc(720px * var(--scale));
+  height: calc(1280px * var(--scale));
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 20px 56px rgba(10, 8, 18, 0.65);
+}
+
+#shake-layer {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+#game-root canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+}
+
+#bg-canvas,
+#overlay-canvas {
+  pointer-events: none;
+}
+
+#world-canvas {
+  touch-action: none;
+  cursor: grab;
+}
+
+#world-canvas:active {
+  cursor: grabbing;
+}
+
+#ui-root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 720px;
+  height: 1280px;
+  transform: scale(var(--scale));
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+#ui-root .interactive {
+  pointer-events: auto;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+/* Inline SVG icons */
+.ico {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* Pixel-art portraits stay razor sharp */
+.unit-portrait-box img,
+.card-avatar img,
+.ing-chip img,
+.rec-ing img,
+.boss-hud-avatar img,
+.dps-avatar img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* =========================================================
+   Top HUD (y: 12..96) — Oriental Dancheong & Jade Lacquer
+   ========================================================= */
+.hud-bar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 12px;
+  height: 84px;
+  padding: 10px 10px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, var(--jade-3) 0%, var(--jade-2) 55%, var(--jade-1) 100%);
+  border: 3.5px solid var(--ink);
+  box-shadow: 0 6px 0 var(--ink), inset 0 2.5px 0 var(--panel-hi), inset 0 -2px 0 rgba(250, 204, 21, 0.28);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.wave-box {
+  min-width: 136px;
+  height: 60px;
+  padding: 4px 10px;
+  border-radius: 15px;
+  background: linear-gradient(180deg, #991b1b 0%, #581010 100%);
+  border: 3px solid var(--ink);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), 0 0 0 1.5px rgba(250, 204, 21, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  transition: transform 80ms ease;
+}
+
+.wave-box:active {
+  transform: translateY(2px);
+}
+
+.wave-box.endless-mode {
+  background: linear-gradient(180deg, #7e22ce 0%, #4c0519 100%);
+  box-shadow: 0 0 0 2px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.28);
+}
+
+.wave-box.boss-mode {
+  background: linear-gradient(180deg, #e11d48 0%, #881337 100%);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2.5px var(--gold), inset 0 2px 0 rgba(255, 255, 255, 0.32);
+  animation: bossPulse 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes bossPulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.04);
+  }
+}
+
+.wave-badge {
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+  text-shadow: var(--outline-1);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.wave-timer {
+  font-family: var(--font-display);
+  font-size: 25px;
+  color: #ffffff;
+  line-height: 1.05;
+  text-shadow: var(--outline-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.monster-gauge {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.monster-gauge-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.monster-gauge-title {
+  font-size: 16px;
+  color: #fef3c7;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monster-gauge-count {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: #ffffff;
+  text-shadow: var(--outline-2);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.monster-gauge-track {
+  position: relative;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--jade-0);
+  border: 3px solid var(--ink);
+  overflow: hidden;
+  box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.45), 0 2px 0 rgba(255, 255, 255, 0.12);
+}
+
+.monster-gauge-fill {
+  position: relative;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e 0%, #facc15 62%, #ef4444 100%);
+  transition: width 120ms linear;
+}
+
+.monster-gauge-fill::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 2px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.monster-gauge.danger .monster-gauge-count {
+  color: #fda4af;
+  animation: dangerPulse 0.55s ease-in-out infinite alternate;
+}
+
+@keyframes dangerPulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hud-btn {
+  position: relative;
+  min-width: 46px;
+  height: 52px;
+  padding: 0 8px;
+  border-radius: 14px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 18px;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.hud-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.hud-btn.active {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+}
+
+.hud-btn.mute-btn {
+  min-width: 44px;
+  padding: 0 6px;
+  font-size: 19px;
+}
+
+.hud-btn.mute-btn.muted {
+  background: linear-gradient(180deg, #475569 0%, #1e293b 100%);
+  color: #cbd5e1;
+}
+
+.hud-btn.dev-btn {
+  min-width: 38px;
+  height: 30px;
+  padding: 0 5px;
+  border-radius: 9px;
+  border-width: 2px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  background: rgba(8, 35, 32, 0.72);
+  box-shadow: 0 2px 0 var(--ink);
+  color: #99f6e4;
+  text-shadow: none;
+  align-self: flex-start;
+}
+
+.hud-btn.dev-btn.active {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  color: #ffffff;
+}
+
+/* Hidden DEV Popover */
+.dev-popover {
+  position: absolute;
+  right: 18px;
+  top: 104px;
+  width: 248px;
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--jade-1);
+  border: 3px solid var(--ink);
+  box-shadow: 0 6px 0 var(--ink), inset 0 2px 0 var(--panel-hi);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 30;
+}
+
+.dev-popover.open {
+  display: flex;
+}
+
+.dev-popover-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-popover-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.dev-chip-btn {
+  height: 38px;
+  border-radius: 10px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.dev-chip-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+/* =========================================================
+   Dedicated Boss HP Banner (y: 100..144) — Crimson-Gold Plaque
+   ========================================================= */
+.boss-hud-bar {
+  position: absolute;
+  left: 44px;
+  right: 44px;
+  top: 100px;
+  height: 46px;
+  padding: 4px 12px 4px 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #991b1b 0%, #5c0d16 58%, #35060c 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 1.5px rgba(250, 204, 21, 0.72),
+    inset 0 2px 0 rgba(255, 255, 255, 0.24);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0;
+  transform: translate3d(0, -10px, 0) scale(0.96);
+  transition: opacity 180ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.boss-hud-bar.visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.boss-hud-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, var(--white-jade-hi) 0%, var(--white-jade-lo) 100%);
+  border: 2.5px solid var(--ink);
+  box-shadow: 0 0 0 1.5px var(--gold), inset 0 1.5px 0 rgba(255, 255, 255, 0.7);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.boss-hud-avatar img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.boss-hud-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.boss-hud-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1;
+}
+
+.boss-hud-tag {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  border: 1.8px solid var(--ink);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.boss-hud-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: #fffbeb;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boss-hud-hp {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: #fde047;
+  text-shadow: var(--outline-1);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.boss-hud-track {
+  position: relative;
+  height: 13px;
+  border-radius: 999px;
+  background: #1f050a;
+  border: 2.5px solid var(--ink);
+  overflow: hidden;
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.6);
+}
+
+.boss-hud-trail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fef9c3 0%, #facc15 100%);
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.boss-hud-fill {
+  position: relative;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fb7185 0%, #ef4444 45%, #dc2626 100%);
+  transition: width 85ms linear;
+}
+
+.boss-hud-fill::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 1.5px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.boss-hud-bar.bounty-mode {
+  background: linear-gradient(180deg, #b45309 0%, #7c2d12 58%, #3f1305 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 2px #fde047, inset 0 2px 0 rgba(255, 255, 255, 0.28);
+}
+
+.boss-hud-bar.bounty-mode .boss-hud-tag {
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+}
+
+.boss-hud-bar.bounty-mode .boss-hud-fill {
+  background: linear-gradient(90deg, #fde047 0%, #f97316 52%, #ea580c 100%);
+}
+

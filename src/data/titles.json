@@ -85,10 +85,10 @@
   },
   {
     "id": "title_relic_grandmaster",
-    "name": "십이신물 극의자",
+    "name": "무림신물 극의자",
     "badge": "신물극의",
     "color": "#2dd4bf",
-    "desc": "무림 12대 신물 중 하나를 10레벨 극의 경지까지 연마한 대종사",
+    "desc": "무림 16대 신물 중 하나를 10레벨 극의 경지까지 연마한 대종사",
     "condition": "max_relic_level",
     "target": 10,
     "rewardGold": 350,
@@ -97,15 +97,15 @@
   },
   {
     "id": "title_all_relics_owned",
-    "name": "십이신물 수집가",
+    "name": "십육신물 수집가",
     "badge": "신물수집",
     "color": "#fbbf24",
-    "desc": "무림 12대 신물을 빠짐없이 모두 해금한 천하 보물감정사",
+    "desc": "무림 16대 신물을 빠짐없이 모두 해금한 천하 보물감정사",
     "condition": "owned_relics",
-    "target": 12,
-    "rewardGold": 300,
-    "rewardKeys": 2,
-    "rewardSilk": 40
+    "target": 16,
+    "rewardGold": 350,
+    "rewardKeys": 3,
+    "rewardSilk": 50
   },
   {
     "id": "title_relic_transcendent",

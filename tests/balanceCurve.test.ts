@@ -709,13 +709,13 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
     }
   }, 30_000);
 
-  it('gates apex 천마강림 (abyss) difficulty for transcended Lv.11-15 12-relic builds while remaining impossible at 0 relics', () => {
+  it('gates apex 천마강림 (abyss) difficulty for transcended Lv.11-15 16-relic builds while remaining impossible at 0 relics', () => {
     const data = loadGameData();
 
     const abyss0 = BENCHMARK_SEEDS.slice(0, 5).map((s) => runSmartBot(data, s, 'abyss', {}));
     const abyss0Wins = abyss0.filter((r) => r.victory).length;
 
-    const full12Lv15: Partial<Record<RelicId, number>> = {
+    const full16Lv15: Partial<Record<RelicId, number>> = {
       golden_vault: 15,
       million_sword_seal: 15,
       bandit_dagger: 15,
@@ -728,16 +728,20 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       celestial_skill_jade: 15,
       demon_slayer_banner: 15,
       merchant_abacus: 15,
+      jade_training_manual: 15,
+      phoenix_luck_pouch: 15,
+      dragon_range_mirror: 15,
+      eight_trigram_mirror: 15,
     };
     const abyss15 = BENCHMARK_SEEDS.slice(0, 5).map((s) =>
-      runSmartBot(data, s, 'abyss', full12Lv15),
+      runSmartBot(data, s, 'abyss', full16Lv15),
     );
     const abyss15Wins = abyss15.filter((r) => r.victory).length;
     const abyss15AvgWave = abyss15.reduce((a, r) => a + r.finalWave, 0) / abyss15.length;
 
     console.info('[BalanceAudit][Abyss]', {
       abyss0Relic: `${abyss0Wins}/5 (waves: [${abyss0.map((r) => r.finalWave).join(',')}])`,
-      abyss12xLv15: `${abyss15Wins}/5 (avgWave ${abyss15AvgWave.toFixed(1)}, waves: [${abyss15.map((r) => r.finalWave).join(',')}])`,
+      abyss16xLv15: `${abyss15Wins}/5 (avgWave ${abyss15AvgWave.toFixed(1)}, waves: [${abyss15.map((r) => r.finalWave).join(',')}])`,
     });
 
     expect(abyss0Wins).toBe(0);

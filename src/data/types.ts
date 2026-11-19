@@ -246,7 +246,11 @@ export type RelicId =
   | 'armor_break_gauntlet'
   | 'celestial_skill_jade'
   | 'demon_slayer_banner'
-  | 'merchant_abacus';
+  | 'merchant_abacus'
+  | 'jade_training_manual'
+  | 'phoenix_luck_pouch'
+  | 'dragon_range_mirror'
+  | 'eight_trigram_mirror';
 
 export interface RelicDef {
   readonly id: RelicId;

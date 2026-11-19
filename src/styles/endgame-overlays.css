@@ -1,0 +1,817 @@
+/* =========================================================
+   #1 Boss Signature Patterns, Shield Gauge, Mutant Wave & Tile Seal Chips
+   ========================================================= */
+.wave-box.mutant-mode {
+  background: linear-gradient(180deg, #6d28d9 0%, #3b0764 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 2px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.wave-box.mutant-mode .wave-badge {
+  color: #fef08a;
+}
+
+.boss-hud-bar {
+  height: auto;
+  min-height: 46px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 22px;
+}
+
+.boss-hud-shield-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #042f2e;
+  border: 2px solid var(--ink);
+  overflow: hidden;
+  display: none;
+}
+
+.boss-hud-shield-track.visible {
+  display: block;
+}
+
+.boss-hud-shield-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5eead4 0%, #14b8a6 55%, #06b6d4 100%);
+  transition: width 90ms linear;
+}
+
+.boss-hud-hint {
+  display: none;
+  font-size: 11.5px;
+  line-height: 1.2;
+  color: #fde68a;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boss-hud-hint.visible {
+  display: block;
+}
+
+.shortcut-chip.hazard-chip {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+.shortcut-chip.hazard-chip.warn {
+  background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+  border-color: var(--ink);
+  color: #fffbeb;
+  animation: chipGlow 0.55s ease-in-out infinite alternate;
+}
+
+.shortcut-chip.hazard-chip.sealed {
+  background: linear-gradient(180deg, #e11d48 0%, #881337 100%);
+  border-color: var(--ink);
+  color: #ffe4e6;
+  animation: chipGlow 0.65s ease-in-out infinite alternate;
+}
+
+/* =========================================================
+   #2 Roguelike Boss Boons (강호 기연 3택 1 · 비급 전수)
+   ========================================================= */
+.relic-buff-pill.boon-active {
+  background: linear-gradient(180deg, #9333ea 0%, #581c87 100%);
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.38), 0 0 0 1px rgba(250, 204, 21, 0.55);
+}
+
+.boon-peek-pill {
+  position: absolute;
+  left: 50%;
+  top: 666px;
+  transform: translateX(-50%);
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 55%, #92400e 100%);
+  box-shadow: 0 5px 0 var(--ink), 0 0 0 2px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.55);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 16px;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 65;
+  animation: boonPeekFloat 0.9s ease-in-out infinite alternate;
+}
+
+.boon-peek-pill.visible {
+  display: inline-flex;
+}
+
+@keyframes boonPeekFloat {
+  from {
+    transform: translate(-50%, 0);
+  }
+  to {
+    transform: translate(-50%, -4px);
+  }
+}
+
+.boon-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  background: rgba(12, 8, 20, 0.82);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.boon-modal.open {
+  display: flex;
+}
+
+.boon-shell {
+  width: 100%;
+  max-width: 652px;
+  padding: 18px 16px 16px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, #1b4d47 0%, #0d2b29 52%, #1a1026 100%);
+  border: 3.5px solid var(--ink);
+  box-shadow: 0 8px 0 var(--ink), 0 0 0 2px #facc15, inset 0 2px 0 rgba(255, 255, 255, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: gamblePop 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.boon-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.boon-kicker {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fde047 0%, #b45309 100%);
+  border: 2px solid var(--ink);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  text-shadow: var(--outline-1);
+}
+
+.boon-title {
+  font-family: var(--font-display);
+  font-size: 27px;
+  color: #fef08a;
+  text-shadow: var(--outline-2);
+  line-height: 1.15;
+}
+
+.boon-subtitle {
+  font-size: 14px;
+  color: #ccfbf1;
+  text-shadow: var(--outline-1);
+}
+
+.boon-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.boon-card {
+  width: 100%;
+  min-height: 108px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #164e63 0%, #0f2942 100%);
+  box-shadow: 0 5px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: #ffffff;
+  transition: transform 90ms ease, box-shadow 90ms ease;
+}
+
+.boon-card:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.boon-card.rarity-rare {
+  background: linear-gradient(135deg, #0c4a6e 0%, #155e75 55%, #082f49 100%);
+  box-shadow: 0 5px 0 var(--ink), inset 0 0 0 1.5px rgba(125, 211, 252, 0.65);
+}
+
+.boon-card.rarity-epic {
+  background: linear-gradient(135deg, #581c87 0%, #6b21a8 52%, #2e1065 100%);
+  box-shadow: 0 5px 0 var(--ink), inset 0 0 0 2px rgba(233, 213, 255, 0.78);
+}
+
+.boon-card.rarity-mythic {
+  background: linear-gradient(135deg, #881337 0%, #991b1b 48%, #451a03 100%);
+  box-shadow: 0 5px 0 var(--ink), 0 0 0 1.5px #fde047, inset 0 0 0 2px #fde047;
+}
+
+.boon-card-left {
+  flex-shrink: 0;
+}
+
+.boon-icon-frame {
+  width: 66px;
+  height: 66px;
+  border-radius: 16px;
+  border: 2.8px solid var(--ink);
+  background: radial-gradient(circle at 50% 38%, #fef9c3 0%, #0284c7 68%, #082f49 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.boon-icon-frame.rarity-epic {
+  background: radial-gradient(circle at 50% 38%, #f5d0fe 0%, #9333ea 66%, #3b0764 100%);
+}
+
+.boon-icon-frame.rarity-mythic {
+  background: radial-gradient(circle at 50% 38%, #fef08a 0%, #e11d48 64%, #4c0519 100%);
+}
+
+.boon-icon-frame.compact {
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+}
+
+.boon-svg {
+  width: 46px;
+  height: 46px;
+}
+
+.boon-icon-frame.compact .boon-svg {
+  width: 36px;
+  height: 36px;
+}
+
+.boon-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.boon-card-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.boon-rarity-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.boon-tag-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  background: rgba(15, 23, 42, 0.72);
+  font-size: 11.5px;
+  color: #fde68a;
+  text-shadow: var(--outline-1);
+}
+
+.boon-stack-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.boon-stack-pill.is-new {
+  background: linear-gradient(180deg, #4ade80 0%, #15803d 100%);
+}
+
+.boon-stack-pill.is-up {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+}
+
+.boon-card-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  line-height: 1.15;
+}
+
+.boon-card-desc {
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: #f8fafc;
+  text-shadow: var(--outline-1);
+  word-break: keep-all;
+}
+
+.boon-card-cta {
+  flex-shrink: 0;
+  min-width: 68px;
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #ea580c 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 17px;
+  text-shadow: var(--outline-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boon-footer {
+  display: flex;
+  justify-content: center;
+}
+
+.boon-peek-btn {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.2);
+  color: #e2e8f0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  text-shadow: var(--outline-1);
+}
+
+.boon-peek-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.boon-owned-header {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(88, 28, 135, 0.85) 0%, rgba(19, 78, 74, 0.85) 100%);
+  border: 2px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+}
+
+.boon-owned-empty {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(8, 35, 32, 0.65);
+  border: 2px dashed rgba(250, 204, 21, 0.45);
+  font-size: 13.5px;
+  color: #ccfbf1;
+  text-align: center;
+  text-shadow: var(--outline-1);
+}
+
+.boon-owned-empty b {
+  color: #fde047;
+}
+
+.sheet-card.boon-owned-card.rarity-epic {
+  background: linear-gradient(180deg, #4c1d95 0%, #2e1065 100%);
+}
+
+.sheet-card.boon-owned-card.rarity-mythic {
+  background: linear-gradient(180deg, #7f1d1d 0%, #450a0a 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 1.5px #fde047;
+}
+
+/* =========================================================
+   Update v4: Secret Realm Trials, Craft Route Pills & Backup Panel
+   ========================================================= */
+.wave-box.trial-mode {
+  background: linear-gradient(180deg, #6d28d9 0%, #3b0764 100%);
+  box-shadow: 0 0 0 2px #c084fc, inset 0 2px 0 rgba(255, 255, 255, 0.28);
+}
+
+.mini-3d-btn.sell-btn {
+  min-width: 78px;
+  white-space: nowrap;
+}
+
+.mini-3d-btn.sell-btn .mini-price {
+  font-size: 12.5px;
+  gap: 2px;
+}
+
+.mini-3d-btn.sell-btn .mini-price .ico {
+  font-size: 13.5px;
+}
+
+.route-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.route-pill.canon {
+  background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+  color: #e2e8f0;
+}
+
+.route-pill.triple {
+  background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+  color: #fef9c3;
+}
+
+.route-pill.alt {
+  background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
+  color: #e0f2fe;
+}
+
+.route-pill.immortal {
+  background: linear-gradient(180deg, #e879f9 0%, #9333ea 55%, #581c87 100%);
+  box-shadow: 0 0 0 1.2px #fde047;
+  color: #fef08a;
+}
+
+.trial-card {
+  background: linear-gradient(180deg, #2e1065 0%, #1e1b4b 100%);
+}
+
+.trial-card.trial-active {
+  background: linear-gradient(180deg, #581c87 0%, #311042 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 2px #fde047, inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.trial-rule-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1.5px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  background: rgba(15, 23, 42, 0.78);
+  color: #fde68a;
+  font-size: 11.5px;
+  text-shadow: var(--outline-1);
+}
+
+.backup-save-panel {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #0f3d38 0%, #072320 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(94, 234, 212, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.backup-save-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.backup-code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-code-input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 13px;
+  border: 2.5px solid var(--ink);
+  background: rgba(6, 18, 17, 0.92);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
+  color: #fef08a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13.5px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.backup-code-input::placeholder {
+  color: rgba(204, 251, 241, 0.55);
+  font-family: var(--font-body);
+}
+
+.backup-code-input:focus {
+  border-color: #fde047;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.45), inset 0 2px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* =========================================================
+   Update v5: Onboarding Tutorial Coach (y: 594..706) & Immortal Passive Traits
+   ========================================================= */
+.hud-btn.help-btn {
+  min-width: 38px;
+  padding: 0 6px;
+  background: linear-gradient(180deg, #38bdf8 0%, #0369a1 100%);
+  color: #fffbeb;
+  font-family: var(--font-display);
+  font-size: 19px;
+}
+
+.role-chip.passive {
+  background: linear-gradient(180deg, #9333ea 0%, #581c87 100%);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px #fde047;
+  color: #fef08a;
+}
+
+.shortcut-chip.passive-chip {
+  background: linear-gradient(180deg, #6b21a8 0%, #3b0764 100%);
+  color: #fef08a;
+  border-color: var(--ink);
+  box-shadow: 0 2px 0 var(--ink), inset 0 1px 0 rgba(254, 240, 138, 0.45);
+  text-shadow: var(--outline-1);
+}
+
+.codex-guide-banner {
+  padding: 11px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #0f3d38 0%, #072320 100%);
+  border: 2.8px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 1.5px 0 rgba(125, 211, 252, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Strictly positioned at y = 594..706: below 6x3 field (y=222..586) & above 6x2 bench (y=752..930) */
+.tutorial-coach {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 594px;
+  min-height: 108px;
+  padding: 9px 14px 10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(15, 61, 56, 0.97) 0%, rgba(8, 30, 28, 0.98) 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 5px 0 var(--ink), 0 0 0 2px #fde047, inset 0 2px 0 rgba(255, 255, 255, 0.25);
+  color: #fffdf9;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  z-index: 30;
+}
+
+.tutorial-coach.visible {
+  display: flex;
+  animation: barPopIn 140ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+.tutorial-coach-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.tutorial-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  color: #fef08a;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tutorial-skip-btn {
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: rgba(15, 23, 42, 0.85);
+  color: #cbd5e1;
+  font-size: 12px;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.tutorial-coach-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tutorial-body {
+  margin: 0;
+  flex: 1;
+  font-size: 13.5px;
+  line-height: 1.32;
+  color: #f0fdfa;
+  text-shadow: var(--outline-1);
+  word-break: keep-all;
+}
+
+.tutorial-next-btn {
+  min-width: 78px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 13px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #ea580c 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  text-shadow: var(--outline-1);
+  flex-shrink: 0;
+}
+
+.tutorial-next-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.tutorial-focus-ring {
+  outline: 3px solid #fde047 !important;
+  outline-offset: 2px;
+  animation: tutorialRingPulse 0.8s ease-in-out infinite alternate !important;
+}
+
+@keyframes tutorialRingPulse {
+  from {
+    outline-color: #fde047;
+  }
+  to {
+    outline-color: #fb7185;
+  }
+}
+
+/* =========================================================
+   Update v6: Murim Title Reward Ladder & Trial Records
+   ========================================================= */
+.diff-best-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  background: rgba(15, 23, 42, 0.8);
+  color: #bae6fd;
+  font-size: 11.5px;
+  text-shadow: var(--outline-1);
+}
+
+.trial-record-line {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #fde68a;
+  text-shadow: var(--outline-1);
+}
+
+.title-ladder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.title-card {
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #173a37 0%, #0d2624 100%);
+  border: 3px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  opacity: 0.9;
+}
+
+.title-card.unlocked {
+  background: linear-gradient(180deg, #1b5c55 0%, #103b37 100%);
+  opacity: 1;
+}
+
+.title-card.equipped {
+  background: linear-gradient(180deg, #713f12 0%, #422006 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 0 0 2px #fde047;
+}
+
+.title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.title-reward-pill {
+  padding: 1.5px 8px;
+  border-radius: 999px;
+  border: 1.8px solid var(--ink);
+  background: rgba(15, 23, 42, 0.72);
+  color: #fef08a;
+  font-size: 11.5px;
+  text-shadow: var(--outline-1);
+}
+
+.title-reward-pill.claimed {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.title-prog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-prog-track {
+  flex: 1;
+  height: 9px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: rgba(6, 18, 17, 0.85);
+  overflow: hidden;
+}
+
+.title-prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 160ms ease-out;
+}
+
+.title-prog-txt {
+  font-size: 11.5px;
+  color: #e2e8f0;
+  text-shadow: var(--outline-1);
+  min-width: 34px;
+  text-align: right;
+}
+
+.relic-buff-pill.hud-title-pill {
+  color: #ffffff;
+  border-color: var(--ink);
+  box-shadow: 0 2px 0 var(--ink), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: var(--outline-1);
+  font-weight: 700;
+}
+
+.first-clear-banner.title-unlock-banner {
+  background: linear-gradient(180deg, #92400e 0%, #451a03 100%);
+  border-color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink), inset 0 0 0 1.5px #fde047;
+  color: #fef9c3;
+}
+
+

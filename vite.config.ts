@@ -7,6 +7,44 @@ export default defineConfig({
     target: 'es2020',
     assetsInlineLimit: 0,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, '/');
+          if (
+            normalized.includes('/src/data/') ||
+            normalized.includes('/public/assets/sprites_atlas.json')
+          ) {
+            return 'game-data';
+          }
+          if (normalized.includes('/src/render/')) {
+            return 'render-engine';
+          }
+          if (normalized.includes('/src/vfx/')) {
+            return 'vfx-engine';
+          }
+          if (
+            normalized.includes('/src/ui/panels/') ||
+            normalized.includes('/src/ui/hudTemplate') ||
+            normalized.includes('/src/ui/TutorialOverlay') ||
+            normalized.includes('/src/ui/uiShared')
+          ) {
+            return 'ui-panels';
+          }
+          if (
+            normalized.includes('/src/core/Simulation') ||
+            normalized.includes('/src/core/relicFormulas') ||
+            normalized.includes('/src/skills/') ||
+            normalized.includes('/src/world/') ||
+            normalized.includes('/src/craft/') ||
+            normalized.includes('/src/platform/')
+          ) {
+            return 'sim-core';
+          }
+          return undefined;
+        },
+      },
+    },
   },
   plugins: [
     VitePWA({

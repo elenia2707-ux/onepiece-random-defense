@@ -71,12 +71,16 @@ export const RELIC_CATEGORY_MAP: Readonly<Record<RelicId, RelicCategoryId>> = {
   bandit_dagger: 'economy',
   immortal_furnace: 'economy',
   merchant_abacus: 'economy',
+  jade_training_manual: 'economy',
+  phoenix_luck_pouch: 'economy',
   million_sword_seal: 'combat',
   wind_swift_boots: 'combat',
   crimson_crit_blade: 'combat',
   armor_break_gauntlet: 'combat',
   celestial_skill_jade: 'combat',
   demon_slayer_banner: 'combat',
+  dragon_range_mirror: 'combat',
+  eight_trigram_mirror: 'combat',
 };
 
 export const RELIC_IDS_ORDERED: readonly RelicId[] = [
@@ -92,6 +96,10 @@ export const RELIC_IDS_ORDERED: readonly RelicId[] = [
   'celestial_skill_jade',
   'demon_slayer_banner',
   'merchant_abacus',
+  'jade_training_manual',
+  'phoenix_luck_pouch',
+  'dragon_range_mirror',
+  'eight_trigram_mirror',
 ];
 
 function splitRelicTier(lv: number): { readonly base: number; readonly over: number } {
@@ -245,6 +253,64 @@ export function getAbacusKillCoinPct(lv: number): number {
   return base * 4 + over * 2;
 }
 
+/** 무림비전 수련서: faction upgrade cost discount (-3%/lv to Lv.10 = -30%, -2%/lv Lv.11..15 = -40%). */
+export function getTrainingManualCostDiscountPct(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 3 + over * 2;
+}
+
+/** 무림비전 수련서: wave-clear base silver coin bonus (+3%/lv to Lv.10 = +30%, +2%/lv Lv.11..15 = +40%). */
+export function getTrainingManualWaveCoinPct(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 3 + over * 2;
+}
+
+/** 봉황기연낭: bonus starter luck stones at run start (+1..+4 across Lv.1..15). */
+export function getLuckPouchStartLuck(lv: number): number {
+  if (lv <= 0) return 0;
+  if (lv <= 4) return 1;
+  if (lv <= 8) return 2;
+  if (lv <= 12) return 3;
+  return 4;
+}
+
+/** 봉황기연낭: percentage bonus silver coin when selling/dismissing heroes (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
+export function getLuckPouchSellCoinPct(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 5 + over * 3;
+}
+
+/** 천리안 영경: global flat attack range bonus (+4/lv to Lv.10 = +40, +3/lv Lv.11..15 = +55). */
+export function getRangeMirrorRangeBonus(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 4 + over * 3;
+}
+
+/** 천리안 영경: global stun & slow CC duration bonus (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%). */
+export function getRangeMirrorCcPct(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 4 + over * 2;
+}
+
+/** 팔괘진법경: global final ATK bonus in bps (+2.5%/lv to Lv.10 = +25%, +1.5%/lv Lv.11..15 = +32.5%). */
+export function getTrigramMirrorAtkBps(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 250 + over * 150;
+}
+
+/** 팔괘진법경: support totem tile aura boost (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
+export function getTrigramMirrorAuraPct(lv: number): number {
+  if (lv <= 0) return 0;
+  const { base, over } = splitRelicTier(lv);
+  return base * 5 + over * 3;
+}
+
 export function formatRelicStatSummary(id: RelicId, lv: number): string {
   const effLv = Math.max(1, lv);
   switch (id) {
@@ -290,5 +356,15 @@ export function formatRelicStatSummary(id: RelicId, lv: number): string {
       return `보스·현상수배 피해 +${getSlayerBannerBossPct(effLv)}% · 현상수배 은자 +${getSlayerBannerBountyCoinPct(effLv)}%`;
     case 'merchant_abacus':
       return `소환 비용 -${getAbacusSummonDiscount(effLv)} 은자 할인 · 처치 은자 +${getAbacusKillCoinPct(effLv)}%`;
+    case 'jade_training_manual':
+      return `내공 수련 비용 -${getTrainingManualCostDiscountPct(effLv)}% · 장 클리어 은자 +${getTrainingManualWaveCoinPct(effLv)}%`;
+    case 'phoenix_luck_pouch':
+      return `출정 초기 영단 +${getLuckPouchStartLuck(effLv)} · 협객 방출 은자 +${getLuckPouchSellCoinPct(effLv)}%`;
+    case 'dragon_range_mirror':
+      return `전 협객 사거리 +${getRangeMirrorRangeBonus(effLv)} · 기절·둔화 제어 +${getRangeMirrorCcPct(effLv)}%`;
+    case 'eight_trigram_mirror': {
+      const atkPct = (getTrigramMirrorAtkBps(effLv) / 100).toFixed(1);
+      return `전 협객 최종공격력 +${atkPct}% · 진법 서포터 버프 +${getTrigramMirrorAuraPct(effLv)}%`;
+    }
   }
 }

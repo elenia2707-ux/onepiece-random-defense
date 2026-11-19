@@ -8,10 +8,18 @@ import { EventBus } from './EventBus';
 import {
   CLEAR_TARGET_WAVE,
   getAbacusSummonDiscount,
+  getArmorGauntletShred,
   getFurnaceChanceBonusPct,
   getFurnaceRefundPct,
   getJadeSealStartCoin,
+  getLuckPouchSellCoinPct,
+  getLuckPouchStartLuck,
+  getRangeMirrorRangeBonus,
   getScrollChestGradeBonusCount,
+  getTrainingManualCostDiscountPct,
+  getTrainingManualWaveCoinPct,
+  getTrigramMirrorAtkBps,
+  getTrigramMirrorAuraPct,
   getUnitSellLuckRefund,
   getVaultInterestCap,
   getVaultInterestPct,
@@ -501,6 +509,10 @@ export class Simulation {
     celestial_skill_jade: 0,
     demon_slayer_banner: 0,
     merchant_abacus: 0,
+    jade_training_manual: 0,
+    phoenix_luck_pouch: 0,
+    dragon_range_mirror: 0,
+    eight_trigram_mirror: 0,
   };
   private readonly activeBoons: Record<BoonId, number> = {
     b_usury_vault: 0,
@@ -519,6 +531,7 @@ export class Simulation {
   private boonOfferSeq = 0;
   private readonly pendingBoonOffers: BoonOfferSnapshot[] = [];
   private appliedStartCoinBonus = 0;
+  private appliedStartLuckBonus = 0;
   private readonly appliedStartWisps: Record<GradeId, number> = {};
   private lastWaveInterest = 0;
   private pilferedCoinTotal = 0;
@@ -599,7 +612,7 @@ export class Simulation {
       const id = RELIC_IDS_ORDERED[i]!;
       const raw = incoming[id];
       if (typeof raw === 'number' && Number.isFinite(raw)) {
-        const maxLv = this.data.relicsById.get(id)?.maxLevel ?? 10;
+        const maxLv = this.data.relicsById.get(id)?.maxLevel ?? 15;
         this.relicLv[id] = Math.max(0, Math.min(maxLv, Math.floor(raw)));
       }
     }
@@ -608,6 +621,12 @@ export class Simulation {
     if (targetCoinBonus > this.appliedStartCoinBonus) {
       this.coin += targetCoinBonus - this.appliedStartCoinBonus;
       this.appliedStartCoinBonus = targetCoinBonus;
+    }
+
+    const targetLuckBonus = getLuckPouchStartLuck(this.relicLv.phoenix_luck_pouch);
+    if (targetLuckBonus > this.appliedStartLuckBonus) {
+      this.luckStone += targetLuckBonus - this.appliedStartLuckBonus;
+      this.appliedStartLuckBonus = targetLuckBonus;
     }
 
     let wispChanged = false;
@@ -747,8 +766,10 @@ export class Simulation {
     const lv = this.upgradeLv[groupId] ?? 0;
     const raw = def.baseCost + lv * def.costStep;
     const harmonyStacks = this.getBoonStacks('b_trinity_harmony');
-    if (harmonyStacks <= 0) return raw;
-    return Math.max(1, Math.round(raw * Math.max(0.5, 1 - 0.25 * harmonyStacks)));
+    const manualDiscountPct = getTrainingManualCostDiscountPct(this.relicLv.jade_training_manual ?? 0);
+    const totalDiscountPct = Math.min(60, harmonyStacks * 25 + manualDiscountPct);
+    if (totalDiscountPct <= 0) return raw;
+    return Math.max(1, Math.round((raw * (100 - totalDiscountPct)) / 100));
   }
 
   public computeFieldSynergy(): FactionSynergySnapshot {
@@ -775,6 +796,7 @@ export class Simulation {
       this.unitsByUid,
       this.data.unitsById,
       this.getBoonStacks('b_swift_formation'),
+      getTrigramMirrorAuraPct(this.relicLv.eight_trigram_mirror ?? 0),
     );
   }
 
@@ -804,7 +826,14 @@ export class Simulation {
       this.getBoonStacks('b_trinity_harmony'),
       this.getBoonStacks('b_demonic_overdrive'),
       this.trialId,
+      getTrigramMirrorAtkBps(this.relicLv.eight_trigram_mirror ?? 0),
     );
+  }
+
+  public getUnitSellCoin(baseSellCoin: number): number {
+    const sellPct = getLuckPouchSellCoinPct(this.relicLv.phoenix_luck_pouch ?? 0);
+    if (sellPct <= 0) return baseSellCoin;
+    return Math.round((baseSellCoin * (100 + sellPct)) / 100);
   }
 
   public scheduleCommandsForReplay(log: readonly StampedCommand[]): void {
@@ -929,6 +958,8 @@ export class Simulation {
         this.lastWaveInterest = v;
       },
       getEffectiveInterestConfig: () => this.getEffectiveInterestConfig(),
+      getWaveClearCoinBonusPct: () =>
+        getTrainingManualWaveCoinPct(this.relicLv.jade_training_manual ?? 0),
       hasFieldHazard: (fieldIndex) => this.hasFieldHazard(fieldIndex),
       markGameOver: (reason) => {
         this.gameOver = true;
@@ -1336,7 +1367,7 @@ export class Simulation {
         const def = this.data.unitsById.get(unit.unitId);
         const gradeDef = this.data.gradesById.get(unit.grade);
         const refundSpec = getUnitSellLuckRefund(gradeDef);
-        const coinEarned = def ? def.sellCoin : 10;
+        const coinEarned = this.getUnitSellCoin(def ? def.sellCoin : 10);
         let luckEarned = refundSpec.guaranteedLuck;
         if (refundSpec.chancePct > 0 && this.rng.nextInt(100) < refundSpec.chancePct) {
           luckEarned += 1;
@@ -1385,7 +1416,7 @@ export class Simulation {
           const u = this.unitsByUid.get(uid);
           if (!u) continue;
           const def = this.data.unitsById.get(u.unitId);
-          coinEarned += def ? def.sellCoin : 10;
+          coinEarned += this.getUnitSellCoin(def ? def.sellCoin : 10);
           this.removeUnitInternal(uid);
         }
         this.coin += coinEarned;
@@ -2072,6 +2103,8 @@ export class Simulation {
         : 0;
     const gradeDef = this.data.gradesById.get(u.grade);
     const refundSpec = getUnitSellLuckRefund(gradeDef);
+    const rangeMirrorBonus = getRangeMirrorRangeBonus(this.relicLv.dragon_range_mirror ?? 0);
+    const relicShred = getArmorGauntletShred(this.relicLv.armor_break_gauntlet ?? 0);
     return {
       uid: u.uid,
       unitId: u.unitId,
@@ -2079,14 +2112,14 @@ export class Simulation {
       faction: def?.faction ?? 'orthodox',
       grade: u.grade,
       locked: u.locked,
-      sellCoin: def?.sellCoin ?? 10,
+      sellCoin: this.getUnitSellCoin(def?.sellCoin ?? 10),
       sellLuck: refundSpec.guaranteedLuck,
       sellLuckChancePct: refundSpec.chancePct,
       baseAtk,
       bonusAtk,
-      range: (def?.range ?? 150) + harmonyRange,
+      range: (def?.range ?? 150) + harmonyRange + rangeMirrorBonus,
       skillName: def?.skill.name ?? '기본 초식',
-      armorShred: (def?.armorShred ?? 0) + crusherShred + trialShred,
+      armorShred: (def?.armorShred ?? 0) + crusherShred + trialShred + relicShred,
       supportAura: def?.supportAura,
       passiveTrait: def?.passiveTrait,
       tileBuffAtkPct: tileBuff.atkPct,
@@ -2123,6 +2156,7 @@ export class Simulation {
         options: [...o.options],
       })),
       appliedStartCoinBonus: this.appliedStartCoinBonus,
+      appliedStartLuckBonus: this.appliedStartLuckBonus,
       appliedStartWisps: { ...this.appliedStartWisps },
       lastWaveInterest: this.lastWaveInterest,
       pilferedCoinTotal: this.pilferedCoinTotal,
@@ -2213,6 +2247,7 @@ export class Simulation {
     }
 
     this.appliedStartCoinBonus = Math.max(0, Math.floor(save.appliedStartCoinBonus ?? 0));
+    this.appliedStartLuckBonus = Math.max(0, Math.floor(save.appliedStartLuckBonus ?? 0));
     for (const k of Object.keys(this.appliedStartWisps)) {
       delete this.appliedStartWisps[k];
     }
