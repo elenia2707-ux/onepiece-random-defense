@@ -14,12 +14,12 @@ import { getUnitCombatProfile, type UnitCombatProfile } from './weaponProfiles';
 /**
  * Crisp nearest-neighbor sprite sizes (~110% of tile width) and foot offsets from slot center.
  */
-const FIELD_SPRITE = 106;
-const BENCH_SPRITE = 114;
-const FIELD_FOOT = 42;
-const BENCH_FOOT = 35;
-const MOB_SPRITE = 76;
-const BOSS_SPRITE = 118;
+const FIELD_SPRITE = 116;
+const BENCH_SPRITE = 120;
+const FIELD_FOOT = 45;
+const BENCH_FOOT = 37;
+const MOB_SPRITE = 82;
+const BOSS_SPRITE = 128;
 
 export interface InteractionOverlayState {
   readonly selectedSlot: SlotRef | null;
@@ -1310,7 +1310,7 @@ export class Renderer {
 
       // 7. Drag Ghost (crisp nearest-neighbor)
       if (isDraggedOrigin) {
-        const ghostSize = 108;
+        const ghostSize = 118;
         const gx = Math.round(interaction.dragLogicalX);
         const gy = Math.round(interaction.dragLogicalY + ghostSize * 0.3);
         this.buckets[RenderLayer.WorldUI]!.push({

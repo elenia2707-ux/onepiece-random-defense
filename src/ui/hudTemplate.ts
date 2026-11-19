@@ -43,6 +43,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           <button id="btn-speed" type="button" class="hud-btn interactive active" aria-label="배속">1x</button>
           <button id="btn-pause" type="button" class="hud-btn interactive" aria-label="일시정지">⏸</button>
           <button id="btn-mute" type="button" class="hud-btn mute-btn interactive${mutedInit ? ' muted' : ''}" aria-label="효과음 전환">${mutedInit ? '🔇' : '🔊'}</button>
+          <button id="btn-vfx-mode" type="button" class="hud-btn vfx-btn interactive" title="절기 이펙트 밀도 전환 (화려함 / 가독성)" aria-label="이펙트 가독성 전환">✨</button>
           <button id="btn-help" type="button" class="hud-btn help-btn interactive" title="강호 입문 교범 보기" aria-label="강호 입문 교범">?</button>
           <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴"${devEnabled ? '' : ' hidden style="display:none"'}>DEV</button>
         </div>
@@ -102,7 +103,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
         <span id="discard-drop-text" class="discard-drop-text">🔥 연단 환원 · 여기에 놓아 버리기</span>
       </div>
 
-      <div id="bench-badge" class="bench-badge">${ICON.pavilion}<span>문파 대기석</span><b id="val-bench-count">0/12</b></div>
+      <button id="bench-badge" type="button" class="bench-badge interactive" title="문파 대기석 접기/펼치기 (접기 시 비무대 확대)">${ICON.pavilion}<span>대기석</span><b id="val-bench-count">0/12</b><span id="bench-fold-arrow" class="bench-fold-arrow">▾</span></button>
       <button id="btn-auto-arrange" type="button" class="auto-arrange-btn interactive" title="비무대 빈칸 자동출전 및 대기석 서열 정렬">⚡ 자동출전</button>
       <button id="btn-bulk-cleanup" type="button" class="bulk-cleanup-btn interactive" title="문파 대기석의 잠금 해제된 초급 협객 일괄 정리">🧹 잉여정리 <b id="val-surplus-count">0</b></button>
 
@@ -123,7 +124,10 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           </div>
           <div id="rec-ings" class="rec-ings"></div>
         </div>
-        <button id="btn-rec-cta" type="button" class="rec-cta interactive">합공보</button>
+        <div class="rec-actions">
+          <button id="btn-rec-craft-all" type="button" class="rec-all-btn interactive" title="가능한 상위 합공을 한 번에 모두 실행">⚡전부</button>
+          <button id="btn-rec-cta" type="button" class="rec-cta interactive">합공보</button>
+        </div>
       </section>
 
       <section id="unit-select-bar" class="unit-select-bar" aria-label="선택 협객">

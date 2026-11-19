@@ -3,10 +3,10 @@
    ========================================================= */
 .tactical-strip {
   position: absolute;
-  left: 12px;
-  right: 12px;
+  left: 10px;
+  right: 10px;
   top: 102px;
-  height: 31px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17,24 +17,24 @@
 }
 
 .tactical-strip.boss-active {
-  top: 170px;
+  top: 172px;
 }
 
 .tac-pill {
-  height: 31px;
-  padding: 0 9.5px;
+  height: 34px;
+  padding: 0 10.5px;
   border-radius: 999px;
   border: 2.5px solid var(--ink);
   background: linear-gradient(180deg, rgba(16, 62, 57, 0.96) 0%, rgba(7, 28, 26, 0.98) 100%);
   box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.24);
   color: #ffffff;
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 14.5px;
   text-shadow: var(--outline-1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 3.5px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   transition: transform 80ms ease, box-shadow 80ms ease;
@@ -755,4 +755,360 @@
   color: #fde047;
   font-weight: 400;
 }
+
+/* =========================================================
+   Desktop Wide Side Wings (shown when #app.is-desktop-wide >= 1060px)
+   ========================================================= */
+.desktop-wing {
+  display: none;
+  width: 276px;
+  height: min(calc(1280px * var(--scale)), calc(100dvh - 20px));
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+  pointer-events: auto;
+  user-select: none;
+}
+
+#app.is-desktop-wide .desktop-wing {
+  display: flex;
+}
+
+.wing-card {
+  border-radius: 18px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, rgba(13, 54, 50, 0.94) 0%, rgba(8, 35, 32, 0.97) 100%);
+  box-shadow: 0 6px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.16);
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.wing-dps-card,
+.wing-mission-card {
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.wing-buff-card {
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.wing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid rgba(250, 204, 21, 0.28);
+  flex-shrink: 0;
+}
+
+.wing-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: #fde047;
+  text-shadow: var(--outline-1);
+}
+
+.wing-meta {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #ccfbf1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wing-faction-bar {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  border: 1.5px solid var(--ink);
+  background: rgba(15, 23, 42, 0.7);
+  flex-shrink: 0;
+}
+
+.wing-faction-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-family: var(--font-display);
+  flex-shrink: 0;
+}
+
+.wing-dps-scroll,
+.wing-mission-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 2px;
+  flex: 1;
+}
+
+.wing-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.wing-chip {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: rgba(15, 23, 42, 0.75);
+  color: #f8fafc;
+}
+
+.wing-chip.chip-orthodox {
+  background: rgba(2, 132, 199, 0.45);
+}
+
+.wing-chip.chip-unorthodox {
+  background: rgba(21, 128, 61, 0.45);
+}
+
+.wing-chip.chip-demonic {
+  background: rgba(190, 18, 60, 0.45);
+}
+
+.wing-chip.chip-trinity {
+  background: rgba(217, 119, 6, 0.65);
+  color: #fef08a;
+}
+
+.wing-chip.chip-boon {
+  background: rgba(107, 33, 168, 0.45);
+}
+
+.wing-empty {
+  font-size: 12.5px;
+  color: #99f6e4;
+  opacity: 0.78;
+  line-height: 1.45;
+  padding: 6px 2px;
+}
+
+.wing-target-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wing-target-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.wing-target-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 2.5px solid var(--ink);
+  background: radial-gradient(circle at 50% 40%, #fffdf7 0%, #e6dbc4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.wing-target-avatar img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.wing-target-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wing-target-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+}
+
+.wing-target-name {
+  font-size: 16px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wing-target-sub {
+  font-size: 11.5px;
+  color: #fde68a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wing-ing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.wing-ing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 3px;
+  border-radius: 10px;
+  border: 2px solid var(--ink);
+  background: rgba(15, 23, 42, 0.72);
+  font-size: 11.5px;
+  color: #e2e8f0;
+}
+
+.wing-ing.ok {
+  border-color: #22c55e;
+  background: rgba(21, 128, 61, 0.35);
+  color: #dcfce7;
+}
+
+.wing-ing img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.wing-ing b {
+  font-family: var(--font-display);
+  font-weight: 400;
+  color: #fde047;
+}
+
+.wing-target-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wing-btn {
+  flex: 1;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 11px;
+  border: 2.5px solid var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+}
+
+.wing-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.wing-btn-gold {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+}
+
+.wing-btn-amber {
+  background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+}
+
+.wing-btn-dim {
+  background: linear-gradient(180deg, #2b8a7e 0%, #15524b 100%);
+}
+
+.wing-divider {
+  height: 1px;
+  background: rgba(250, 204, 21, 0.22);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
+
+.wing-mission-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 7px;
+  border-radius: 10px;
+  background: rgba(8, 25, 23, 0.65);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+}
+
+.wing-mission-row.is-claimable {
+  border-color: #fde047;
+  background: rgba(180, 83, 9, 0.35);
+}
+
+.wing-mission-row.is-done {
+  opacity: 0.65;
+}
+
+.wing-mission-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.wing-mission-name {
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wing-prog-tag {
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  color: #99f6e4;
+  flex-shrink: 0;
+}
+
+.wing-done-tag {
+  font-size: 11px;
+  color: #4ade80;
+  flex-shrink: 0;
+}
+
+.wing-claim-btn {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #1c1917;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wing-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  overflow: hidden;
+}
+
+.wing-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #fde047);
+}
+
 

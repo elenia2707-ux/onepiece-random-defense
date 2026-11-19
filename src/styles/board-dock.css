@@ -4,7 +4,7 @@
 .discard-drop-zone {
   position: absolute;
   left: 180px;
-  top: 658px;
+  top: calc(658px + var(--extra-top, 0px));
   width: 360px;
   height: 52px;
   padding: 0 16px;
@@ -53,14 +53,14 @@
 }
 
 /* =========================================================
-   Bench badge, Auto-Arrange & Bulk Cleanup (sits on the dancheong bridge, y=715)
+   Bench badge (clickable fold toggle), Auto-Arrange & Bulk Cleanup
    ========================================================= */
 .bench-badge {
   position: absolute;
-  left: 24px;
-  top: 715px;
+  left: 20px;
+  top: calc(715px + var(--extra-top, 0px));
   height: 32px;
-  padding: 0 9px 0 7px;
+  padding: 0 8px 0 7px;
   border-radius: 999px;
   border: 3px solid var(--ink);
   background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
@@ -68,20 +68,37 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 15px;
+  font-size: 14.5px;
   color: #ffffff;
   text-shadow: var(--outline-1);
-  z-index: 2;
+  z-index: 4;
+  transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 80ms ease;
+}
+
+.bench-badge:active {
+  transform: translateY(2px);
+}
+
+.bench-badge.has-hidden-row {
+  background: linear-gradient(180deg, #fb7185 0%, #be123c 100%);
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 2px #fde047, inset 0 2px 0 rgba(255, 255, 255, 0.45);
+}
+
+.bench-fold-arrow {
+  font-size: 12px;
+  line-height: 1;
+  color: #fef08a;
+  margin-left: 1px;
 }
 
 .bench-badge .ico {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .bench-badge b {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 13.5px;
+  font-size: 13px;
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--ink);
@@ -92,8 +109,8 @@
 
 .auto-arrange-btn {
   position: absolute;
-  left: 200px;
-  top: 715px;
+  left: 196px;
+  top: calc(715px + var(--extra-top, 0px));
   height: 32px;
   padding: 0 10px;
   border-radius: 999px;
@@ -107,8 +124,8 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  z-index: 2;
-  transition: transform 80ms ease, box-shadow 80ms ease;
+  z-index: 4;
+  transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 80ms ease, box-shadow 80ms ease;
 }
 
 .auto-arrange-btn:active {
@@ -124,8 +141,8 @@
 
 .bulk-cleanup-btn {
   position: absolute;
-  left: 310px;
-  top: 715px;
+  left: 306px;
+  top: calc(715px + var(--extra-top, 0px));
   height: 32px;
   padding: 0 9px;
   border-radius: 999px;
@@ -139,8 +156,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  z-index: 2;
-  transition: transform 80ms ease, box-shadow 80ms ease;
+  z-index: 4;
+  transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 80ms ease, box-shadow 80ms ease;
 }
 
 .bulk-cleanup-btn:active {
@@ -172,17 +189,30 @@
 }
 
 /* =========================================================
-   3-Faction Field Formation Synergy Bar (sits right of bridge, y=715)
+   3-Faction Field Formation Synergy Bar
    ========================================================= */
 .synergy-bar {
   position: absolute;
-  right: 24px;
-  top: 715px;
+  right: 20px;
+  top: calc(715px + var(--extra-top, 0px));
   height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  z-index: 2;
+  z-index: 4;
+  transition: top 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* When bench is folded & arena is zoomed 1.08x, slide bridge bar smoothly to match zoomed bridge */
+#game-root.bench-folded .bench-badge,
+#game-root.bench-folded .auto-arrange-btn,
+#game-root.bench-folded .bulk-cleanup-btn,
+#game-root.bench-folded .synergy-bar {
+  top: calc(752px + var(--extra-top, 0px));
+}
+
+#game-root.bench-folded .discard-drop-zone {
+  top: calc(690px + var(--extra-top, 0px));
 }
 
 .syn-pill {
@@ -261,7 +291,7 @@
   position: absolute;
   left: 16px;
   right: 16px;
-  top: 954px;
+  bottom: 248px;
   height: 78px;
   padding: 8px 10px;
   border-radius: 20px;
@@ -273,6 +303,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  z-index: 6;
 }
 
 .unit-select-bar.visible,
@@ -573,8 +604,42 @@
   background: var(--coral);
 }
 
+.rec-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rec-all-btn {
+  display: none;
+  height: 54px;
+  padding: 0 11px;
+  border-radius: 14px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+  box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  text-shadow: var(--outline-1);
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rec-all-btn.visible {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-all-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
 .rec-cta {
-  min-width: 94px;
+  min-width: 90px;
   height: 54px;
   padding: 0 12px;
   border-radius: 15px;
@@ -604,17 +669,18 @@
 }
 
 /* =========================================================
-   Bottom Dock (y: 1042..1264)
+   Bottom Dock (anchored cleanly to bottom on all mobile heights)
    ========================================================= */
 .bottom-dock {
   position: absolute;
   left: 16px;
   right: 16px;
-  top: 1042px;
   bottom: 16px;
+  height: 222px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  z-index: 6;
 }
 
 .currency-bar {

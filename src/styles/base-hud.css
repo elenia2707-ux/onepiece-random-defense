@@ -90,8 +90,10 @@ button {
   height: 100dvh;
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
   background: radial-gradient(circle at 50% 32%, #1d7066 0%, #0e3f3a 58%, #07221f 100%);
   touch-action: none;
   user-select: none;
@@ -102,8 +104,10 @@ button {
 #game-root {
   position: relative;
   width: calc(720px * var(--scale));
-  height: calc(1280px * var(--scale));
+  height: calc((1280px + var(--extra-h, 0px)) * var(--scale));
   overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #0b2d2a 0%, #0e3a35 12%, #092421 88%, #061816 100%);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -114,7 +118,12 @@ button {
 
 #shake-layer {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: calc(var(--extra-top, 0px) * var(--scale));
+  width: calc(720px * var(--scale));
+  height: calc(1280px * var(--scale));
+  transform-origin: 50% 20%;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
@@ -123,6 +132,18 @@ button {
   left: 0;
   top: 0;
   display: block;
+}
+
+#overlay-canvas {
+  top: calc(var(--extra-top, 0px) * var(--scale)) !important;
+  transform-origin: 50% 20%;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Bench-fold Arena Focus mode: smoothly zooms the 6x3 battlefield +8% while keeping monster path inside bounds */
+#game-root.bench-folded #shake-layer,
+#game-root.bench-folded #overlay-canvas {
+  transform: scale(1.08);
 }
 
 #bg-canvas,
@@ -144,7 +165,7 @@ button {
   left: 0;
   top: 0;
   width: 720px;
-  height: 1280px;
+  height: calc(1280px + var(--extra-h, 0px));
   transform: scale(var(--scale));
   transform-origin: 0 0;
   pointer-events: none;
@@ -376,6 +397,17 @@ button {
 .hud-btn.mute-btn.muted {
   background: linear-gradient(180deg, #475569 0%, #1e293b 100%);
   color: #cbd5e1;
+}
+
+.hud-btn.vfx-btn {
+  min-width: 42px;
+  padding: 0 5px;
+  font-size: 18px;
+}
+
+.hud-btn.vfx-btn.clean-mode {
+  background: linear-gradient(180deg, #0284c7 0%, #0c4a6e 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 1.5px #7dd3fc, inset 0 2px 0 rgba(255, 255, 255, 0.32);
 }
 
 .hud-btn.dev-btn {

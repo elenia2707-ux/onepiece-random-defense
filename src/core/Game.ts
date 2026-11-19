@@ -108,6 +108,14 @@ export class Game {
       this.bgPainter.paint(this.stack.bgCtx, this.sim.board, this.sim.path);
     });
     this.vfx = new VfxSystem(this.sprites);
+    try {
+      const savedVfx = window.localStorage.getItem('mrd_vfx_mode_v1');
+      if (savedVfx === 'clean' || savedVfx === 'full') {
+        this.vfx.setDensityMode(savedVfx);
+      }
+    } catch {
+      // ignore storage errors
+    }
     this.renderer = new Renderer(this.stack, this.sprites, this.vfx);
     this.syncCosmetics(false);
 
@@ -158,6 +166,18 @@ export class Game {
       getSoundVolume: () => this.sound.getVolumeLevel(),
       onToggleMute: () => this.sound.toggleMute(),
       onCycleSoundVolume: () => this.sound.cycleVolume(),
+      getVfxDensityMode: () => this.vfx.getDensityMode(),
+      onToggleVfxDensityMode: () => {
+        this.sound.playUiTap();
+        const next = this.vfx.getDensityMode() === 'full' ? 'clean' : 'full';
+        this.vfx.setDensityMode(next);
+        try {
+          window.localStorage.setItem('mrd_vfx_mode_v1', next);
+        } catch {
+          // ignore storage errors
+        }
+        return next;
+      },
       onClaimDailyQuest: (questId) => {
         const res = this.meta.claimDailyQuest(questId);
         if (res.ok) {
@@ -891,7 +911,7 @@ export class Game {
         const u = owned[i]!;
         const uDef = this.sim.data.unitsById.get(u.unitId);
         if (uDef && uDef.faction === ev.group) {
-          const footOff = u.slot.area === 'field' ? 42 : 35;
+          const footOff = u.slot.area === 'field' ? 45 : 37;
           this.vfx.spawnUpgradeResonanceFx(
             u.currX,
             u.currY + footOff,

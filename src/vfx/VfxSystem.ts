@@ -21,6 +21,8 @@ const MAX_PARTICLES = 1500;
 const MAX_SKILL_CALLOUTS = 2;
 const MAX_CONCURRENT_LARGE_ULTIMATES = 2;
 
+export type VfxDensityMode = 'full' | 'clean';
+
 interface FloatingDamageItem {
   active: boolean;
   entityId: number;
@@ -101,10 +103,19 @@ export class VfxSystem {
   private banner: OverlayBannerState | null = null;
   private cutIn: CutInState | null = null;
   private currentSimTimeSec = 0;
+  private densityMode: VfxDensityMode = 'full';
 
   private readonly particleBatchRenderable: IRenderable;
   private readonly damageBatchRenderable: IRenderable;
   private readonly calloutBatchRenderable: IRenderable;
+
+  public getDensityMode(): VfxDensityMode {
+    return this.densityMode;
+  }
+
+  public setDensityMode(mode: VfxDensityMode): void {
+    this.densityMode = mode;
+  }
 
   public constructor(sprites: SpriteCache) {
     this.sprites = sprites;
@@ -850,7 +861,12 @@ export class VfxSystem {
     let effectiveGlowRadius = cfg.glowRadius;
     let effectiveIsLargeUltimate = Boolean(cfg.isLargeUltimate);
 
-    // Enforce max 2 concurrent large Immortal ultimates to preserve board legibility
+    // Enforce concurrent large ultimate cap (2 in full mode, 1 in clean readability mode)
+    const maxLargeUlt = this.densityMode === 'clean' ? 1 : MAX_CONCURRENT_LARGE_ULTIMATES;
+    if (this.densityMode === 'clean' && !effectiveIsLargeUltimate && (cfg.gradeRank ?? 1) <= 4) {
+      effectiveToRadius *= 0.78;
+      effectiveGlowRadius *= 0.65;
+    }
     if (effectiveIsLargeUltimate) {
       let activeUltCount = 0;
       let oldestUltIdx = -1;
@@ -860,7 +876,7 @@ export class VfxSystem {
           if (oldestUltIdx < 0) oldestUltIdx = i;
         }
       }
-      if (activeUltCount >= MAX_CONCURRENT_LARGE_ULTIMATES) {
+      if (activeUltCount >= maxLargeUlt) {
         const oldestUlt = oldestUltIdx >= 0 ? this.activeTracks[oldestUltIdx] : undefined;
         if (oldestUlt && oldestUlt.progress >= 0.35) {
           this.activeTracks.splice(oldestUltIdx, 1);
@@ -1690,7 +1706,7 @@ export class VfxSystem {
 
       const formatted = formatDamageValue(item.value);
       const label = item.isCrit || item.isShred || hasPassive ? `${formatted}!` : formatted;
-      const safeMarginX = Math.max(48, Math.ceil(label.length * 14 * scale) + 10);
+      const safeMarginX = Math.max(74, Math.ceil(label.length * 14 * scale) + 18);
       const drawX = Math.max(safeMarginX, Math.min(LOGICAL_WIDTH - safeMarginX, rawDrawX));
       const style = item.isCrit
         ? 'crit'

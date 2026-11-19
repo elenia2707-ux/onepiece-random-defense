@@ -39,6 +39,7 @@ import {
 import type { SoundVolumeLevel } from '../platform/SoundSynthesizer';
 import type { SpriteCache } from '../render/SpriteCache';
 import { getUnitCombatProfile } from '../render/weaponProfiles';
+import type { VfxDensityMode } from '../vfx/VfxSystem';
 import { buildHudShellMarkup } from './hudTemplate';
 import { buildCodexPanelView } from './panels/CodexPanel';
 import {
@@ -49,6 +50,10 @@ import {
   buildWispSheetView,
   collectUnlockedCounts,
 } from './panels/CombatSheets';
+import {
+  buildDesktopLeftWingHtml,
+  buildDesktopRightWingHtml,
+} from './panels/DesktopSidePanels';
 import { buildRelicPanelView, buildWardrobePanelView } from './panels/RelicSkinPanel';
 import {
   buildBoonCardsHtml,
@@ -83,6 +88,8 @@ export interface UIControlHandlers {
   getSoundVolume(): SoundVolumeLevel;
   onToggleMute(): boolean;
   onCycleSoundVolume(): SoundVolumeLevel;
+  getVfxDensityMode(): VfxDensityMode;
+  onToggleVfxDensityMode(): VfxDensityMode;
   onClaimDailyQuest(questId: DailyQuestId): DailyQuestClaimResult;
   onSelectDifficulty(diff: DifficultyId): boolean;
   onSelectTrial(trialId: TrialId | null): boolean;
@@ -220,8 +227,18 @@ export class UIManager {
   private recGradeEl!: HTMLElement;
   private recNameEl!: HTMLElement;
   private recIngsEl!: HTMLElement;
+  private recCraftAllBtnEl!: HTMLButtonElement;
   private recCtaEl!: HTMLButtonElement;
+  private vfxModeBtnEl!: HTMLButtonElement;
+  private benchBadgeBtnEl!: HTMLButtonElement;
+  private benchFoldArrowEl!: HTMLElement;
   private benchCountEl!: HTMLElement;
+  private appEl: HTMLElement | null = null;
+  private gameRootEl: HTMLElement | null = null;
+  private desktopLeftEl: HTMLElement | null = null;
+  private desktopRightEl: HTMLElement | null = null;
+  private benchFolded = false;
+  private prevDesktopWingSig = '';
   private synergyBarEl!: HTMLElement;
   private synOrthodoxBtnEl!: HTMLButtonElement;
   private synUnorthodoxBtnEl!: HTMLButtonElement;
@@ -354,12 +371,14 @@ export class UIManager {
       this.prevRecommendSignature = '';
       this.prevBossPortraitKind = '';
       this.prevDpsSig = '';
+      this.prevDesktopWingSig = '';
       if (this.lastSnapshot) {
         if (this.lastSnapshot.boss && this.bossHudImgEl) {
           this.bossHudImgEl.src = this.sprites.monsterPortraitUrl(this.lastSnapshot.boss.kind);
         }
         this.refreshSelectedUnitBar(this.lastSnapshot);
         this.refreshRecommendBar(this.lastSnapshot);
+        this.refreshDesktopWings(this.lastSnapshot, this.handlers.getMetaProfile());
         if (this.dpsOpen) this.refreshDpsPanel(this.lastSnapshot);
         if (this.activeSheet) this.refreshSheet(this.lastSnapshot);
       }
@@ -371,6 +390,23 @@ export class UIManager {
     this.setText(this.muteBtnEl, vol === 0 ? '🔇' : vol === 0.5 ? '🔉' : '🔊');
     this.muteBtnEl.title =
       vol === 0 ? '효과음 음소거 (터치: 100%)' : vol === 0.5 ? '효과음 50% (터치: 음소거)' : '효과음 100% (터치: 50%)';
+  }
+
+  private applyVfxButtonVisual(mode: VfxDensityMode): void {
+    const clean = mode === 'clean';
+    this.vfxModeBtnEl.classList.toggle('clean-mode', clean);
+    this.setText(this.vfxModeBtnEl, clean ? '👁' : '✨');
+    this.vfxModeBtnEl.title = clean
+      ? '이펙트: 깔끔(가독성 우선) — 터치: 화려함'
+      : '이펙트: 화려함 — 터치: 깔끔(가독성 우선)';
+  }
+
+  private applyBenchFoldVisual(): void {
+    this.gameRootEl?.classList.toggle('bench-folded', this.benchFolded);
+    this.setText(this.benchFoldArrowEl, this.benchFolded ? '▴' : '▾');
+    this.benchBadgeBtnEl.title = this.benchFolded
+      ? '문파 대기석 펼치기 (전체 2줄 보기)'
+      : '문파 대기석 접기 (비무대 확대 · 1줄 보기)';
   }
 
   public mount(): void {
@@ -390,6 +426,11 @@ export class UIManager {
 
     this.tutorial.mount(this.root);
 
+    this.appEl = document.getElementById('app');
+    this.gameRootEl = document.getElementById('game-root');
+    this.desktopLeftEl = document.getElementById('desktop-left-panel');
+    this.desktopRightEl = document.getElementById('desktop-right-panel');
+
     this.waveBoxEl = this.mustGet('hud-wave-box');
     this.waveBadgeEl = this.mustGet('hud-wave-badge');
     this.waveTimerEl = this.mustGet('hud-wave-timer');
@@ -403,6 +444,8 @@ export class UIManager {
     this.pauseBtnEl = this.mustGet('btn-pause') as HTMLButtonElement;
     this.muteBtnEl = this.mustGet('btn-mute') as HTMLButtonElement;
     this.applyVolumeButtonVisual(this.handlers.getSoundVolume());
+    this.vfxModeBtnEl = this.mustGet('btn-vfx-mode') as HTMLButtonElement;
+    this.applyVfxButtonVisual(this.handlers.getVfxDensityMode());
     this.helpBtnEl = this.mustGet('btn-help') as HTMLButtonElement;
     this.devBtnEl = this.mustGet('btn-dev') as HTMLButtonElement;
     this.devPopoverEl = this.mustGet('dev-popover');
@@ -429,11 +472,20 @@ export class UIManager {
     this.dpsTotalEl = this.mustGet('dps-total-val');
     this.dpsListEl = this.mustGet('dps-list');
 
+    this.benchBadgeBtnEl = this.mustGet('bench-badge') as HTMLButtonElement;
+    this.benchFoldArrowEl = this.mustGet('bench-fold-arrow');
     this.autoArrangeBtnEl = this.mustGet('btn-auto-arrange') as HTMLButtonElement;
     this.bulkCleanupBtnEl = this.mustGet('btn-bulk-cleanup') as HTMLButtonElement;
     this.surplusCountEl = this.mustGet('val-surplus-count');
     this.discardDropZoneEl = this.mustGet('discard-drop-zone');
     this.discardDropTextEl = this.mustGet('discard-drop-text');
+
+    try {
+      this.benchFolded = window.localStorage.getItem('mrd_bench_folded_v1') === '1';
+    } catch {
+      this.benchFolded = false;
+    }
+    this.applyBenchFoldVisual();
 
     this.unitSelectBarEl = this.mustGet('unit-select-bar');
     this.unitPortraitImgEl = this.mustGet('sel-unit-img') as HTMLImageElement;
@@ -476,6 +528,7 @@ export class UIManager {
     this.recGradeEl = this.mustGet('rec-grade');
     this.recNameEl = this.mustGet('rec-name');
     this.recIngsEl = this.mustGet('rec-ings');
+    this.recCraftAllBtnEl = this.mustGet('btn-rec-craft-all') as HTMLButtonElement;
     this.recCtaEl = this.mustGet('btn-rec-cta') as HTMLButtonElement;
     this.benchCountEl = this.mustGet('val-bench-count');
     this.synergyBarEl = this.mustGet('synergy-bar');
@@ -551,9 +604,70 @@ export class UIManager {
     this.speedBtnEl.addEventListener('click', () => this.handlers.onCycleSpeed());
     this.pauseBtnEl.addEventListener('click', () => this.handlers.onTogglePause());
     this.muteBtnEl.addEventListener('click', () => {
-      const muted = this.handlers.onToggleMute();
-      this.muteBtnEl.classList.toggle('muted', muted);
-      this.setText(this.muteBtnEl, muted ? '🔇' : '🔊');
+      const vol = this.handlers.onCycleSoundVolume();
+      this.applyVolumeButtonVisual(vol);
+      this.showToast(
+        vol === 0 ? '🔇 효과음 음소거' : vol === 0.5 ? '🔉 효과음 50%' : '🔊 효과음 100%',
+      );
+    });
+    this.vfxModeBtnEl.addEventListener('click', () => {
+      const mode = this.handlers.onToggleVfxDensityMode();
+      this.applyVfxButtonVisual(mode);
+      this.showToast(
+        mode === 'clean'
+          ? '👁 이펙트 깔끔 모드 (전장 가독성 우선)'
+          : '✨ 이펙트 화려함 모드 (최대 연출)',
+      );
+    });
+    this.benchBadgeBtnEl.addEventListener('click', () => {
+      this.benchFolded = !this.benchFolded;
+      try {
+        window.localStorage.setItem('mrd_bench_folded_v1', this.benchFolded ? '1' : '0');
+      } catch {
+        // ignore storage errors
+      }
+      this.applyBenchFoldVisual();
+      this.showToast(
+        this.benchFolded
+          ? '🔍 대기석 접기 · 비무대 확대 모드 ON'
+          : '🏯 문파 대기석 전체 펼치기 (12칸)',
+      );
+    });
+    this.recCraftAllBtnEl.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.handlers.onDispatch({ type: 'craftAll' });
+    });
+    this.desktopRightEl?.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>(
+        '[data-wing-action]',
+      );
+      if (!btn) return;
+      const act = btn.dataset.wingAction;
+      if (act === 'craft') {
+        const recipeId = btn.dataset.recipeId;
+        const chain = btn.dataset.chain === '1';
+        if (recipeId) {
+          this.handlers.onDispatch({ type: 'craft', recipeId, chain });
+        }
+      } else if (act === 'craft-all') {
+        this.handlers.onDispatch({ type: 'craftAll' });
+      } else if (act === 'open-craft') {
+        this.openSheet('craft');
+      } else if (act === 'claim-daily') {
+        const questId = btn.dataset.questId as DailyQuestId | undefined;
+        if (questId) {
+          const res = this.handlers.onClaimDailyQuest(questId);
+          if (res.ok) {
+            const parts: string[] = [];
+            if (res.rewardGold > 0) parts.push(`주화 +${res.rewardGold}`);
+            if (res.rewardKeys > 0) parts.push(`열쇠 +${res.rewardKeys}`);
+            if (res.rewardSilk > 0) parts.push(`비단 +${res.rewardSilk}`);
+            this.showToast(`🎁 일일 과제 [${res.questName}] 수령! (${parts.join(' · ')})`);
+          } else {
+            this.showToast(res.reason, true);
+          }
+        }
+      }
     });
     this.helpBtnEl.addEventListener('click', () => {
       this.closeSheet();
@@ -1423,7 +1537,9 @@ export class UIManager {
     this.refreshRelicBuffStrip(snapshot, meta);
 
     this.setText(this.occupancyEl, `비무대 ${snapshot.fieldOccupied}/18`);
+    const hasBenchRow2 = snapshot.bench.slice(6).some((s) => s !== null);
     this.setText(this.benchCountEl, `${snapshot.benchOccupied}/12`);
+    this.benchBadgeBtnEl.classList.toggle('has-hidden-row', this.benchFolded && hasBenchRow2);
     this.autoArrangeBtnEl.classList.toggle(
       'can-deploy',
       snapshot.benchOccupied > 0 && snapshot.fieldOccupied < 18,
@@ -1503,6 +1619,7 @@ export class UIManager {
     this.refreshDragDiscardZone(snapshot);
     this.refreshSelectedUnitBar(snapshot);
     this.refreshRecommendBar(snapshot);
+    this.refreshDesktopWings(snapshot, meta);
 
     // 5. Active BottomSheet
     if (this.activeSheet) {
@@ -1831,9 +1948,40 @@ export class UIManager {
 
     const ready = st.lamp === 'ready';
     const chain = st.lamp === 'chainReady';
+    const totalReadyAll = snapshot.craft.readyCount + snapshot.craft.chainReadyCount;
+    this.recCraftAllBtnEl.classList.toggle('visible', totalReadyAll >= 2);
+    this.setText(this.recCraftAllBtnEl, `⚡전부 ${totalReadyAll}`);
     this.recCtaEl.className = `rec-cta interactive${ready ? ' cta-ready' : chain ? ' cta-chain' : ''}`;
     this.recCtaEl.textContent = ready ? '합공!' : chain ? '연쇄 등선' : `${st.have}/${st.need}`;
     this.recommendBarEl.classList.toggle('rec-lit', ready || chain);
+  }
+
+  private refreshDesktopWings(snapshot: UISnapshot, meta: MetaProfile): void {
+    if (!this.desktopLeftEl || !this.desktopRightEl) return;
+    if (!this.appEl?.classList.contains('is-desktop-wide')) return;
+
+    const rec = this.pickRecommendedRecipe(snapshot);
+    const dm = snapshot.damageMeter;
+    const syn = snapshot.synergy;
+    const sig = `${meta.rev}:${meta.claimableDailyCount}:${dm.totalDamage}:${dm.entries.length}:${syn.orthodoxTier}:${syn.unorthodoxTier}:${syn.demonicTier}:${syn.trinityActive ? 1 : 0}:${snapshot.totalBoonStacks}:${snapshot.craft.rev}:${this.pinnedRecipeId ?? ''}:${rec?.id ?? ''}:${snapshot.missionsCompletedCount}:${snapshot.monstersSlain}:${snapshot.wave}`;
+    if (sig === this.prevDesktopWingSig) return;
+    this.prevDesktopWingSig = sig;
+
+    this.desktopLeftEl.innerHTML = buildDesktopLeftWingHtml({
+      data: this.data,
+      sprites: this.sprites,
+      snapshot,
+      meta,
+    });
+    this.desktopRightEl.innerHTML = buildDesktopRightWingHtml({
+      data: this.data,
+      recipeGraph: this.recipeGraph,
+      sprites: this.sprites,
+      snapshot,
+      meta,
+      pinnedRecipeId: this.pinnedRecipeId,
+      recommendedRecipe: rec,
+    });
   }
 
   public showToast(message: string, isReject = false): void {
