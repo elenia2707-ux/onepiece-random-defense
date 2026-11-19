@@ -1,4 +1,4 @@
-import type { GradeId, RecipeId, RelicId, UnitId, UpgradeGroupId } from '../data/types';
+import type { BoonId, GradeId, RecipeId, RelicId, UnitId, UpgradeGroupId } from '../data/types';
 
 export type SlotArea = 'field' | 'bench';
 
@@ -19,6 +19,7 @@ export type GameCommand =
   | { readonly type: 'callBounty' }
   | { readonly type: 'autoArrange' }
   | { readonly type: 'enterEndless' }
+  | { readonly type: 'pickBoon'; readonly boonId: BoonId }
   | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {

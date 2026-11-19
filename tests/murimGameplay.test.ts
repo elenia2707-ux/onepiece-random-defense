@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { StampedCommand } from '../src/core/CommandQueue';
-import { Simulation } from '../src/core/Simulation';
+import {
+  HAZARD_WARNING_TICKS,
+  Simulation,
+  getWaveMutantKind,
+} from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
-import type { MonsterKind } from '../src/data/types';
+import type { BoonId, MonsterKind } from '../src/data/types';
 import {
   DEFAULT_COURT_SKIN_ID,
   MetaStore,
@@ -1077,6 +1081,332 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(reloaded.equippedHeroSkins[unownedHeroSkin.unitId]).toBe(unownedHeroSkin.id);
     expect(reloaded.ownedSkins.skin_cheonma_golden_emperor).toBe(true);
     expect(reloaded.ownedSkins.skin_sword_demon_azure).toBe(true);
+  });
+
+  it('triggers Mutant Special Waves (경공야습 · 철갑중장 · 인해전술) on designated Wave 6+ non-boss waves', () => {
+    const data = loadGameData();
+    expect(getWaveMutantKind(2, false)).toBeNull();
+    expect(getWaveMutantKind(4, false)).toBeNull();
+    expect(getWaveMutantKind(5, true)).toBeNull();
+    expect(getWaveMutantKind(10, true)).toBeNull();
+    expect(getWaveMutantKind(7, false)).toBe('swift_raid');
+    expect(getWaveMutantKind(9, false)).toBe('blood_swarm');
+    expect(getWaveMutantKind(12, false)).toBe('blood_swarm');
+    expect(getWaveMutantKind(14, false)).toBe('iron_wall');
+
+    const sim = new Simulation(data, 0x2468ace0);
+    // Iron wall Wave 14 adds +22 bonus armor over non-mutant formula
+    const wave13Armor = sim.computeMonsterArmor(13, false, false);
+    const wave14Armor = sim.computeMonsterArmor(14, false, false);
+    expect(wave14Armor - wave13Armor).toBeGreaterThanOrEqual(24); // +2.6 wave step + 22 iron_wall
+
+    spawnCheonmaHelper(sim);
+    for (let i = 0; i < 6; i++) {
+      sim.commands.enqueue({ type: 'grantTestCoin', amount: 500 });
+      sim.commands.enqueue({ type: 'upgrade', group: 'demonic' });
+    }
+    sim.tick();
+
+    const mutantEvents: string[] = [];
+    sim.events.on('wave:mutant', (ev) => {
+      mutantEvents.push(`${ev.wave}:${ev.mutant}`);
+    });
+
+    while (sim.buildSnapshot(1, false).wave < 7 && sim.tickCount < 8000) {
+      sim.tick();
+    }
+
+    const snap7 = sim.buildSnapshot(1, false);
+    expect(snap7.wave).toBe(7);
+    expect(snap7.waveMutant?.kind).toBe('swift_raid');
+    expect(mutantEvents).toContain('7:swift_raid');
+  });
+
+  it('executes White Tiger (호포진·광풍질주) and Black Serpent (만년현무 독갑 1.8x 파갑 특효 · 격파 기절 · 미격파 재생) boss patterns', () => {
+    const data = loadGameData();
+
+    // Part A: Wave 5 White Tiger casts tiger_roar (+cooldown) and tiger_sprint (<55% HP)
+    const simTiger = new Simulation(data, 0x13572468);
+    // Deploy medium DPS so White Tiger survives 120 ticks to roar AND drops below 55% HP
+    for (let i = 0; i < 3; i++) {
+      simTiger.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+      simTiger.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'plum_elder' });
+    }
+    simTiger.tick();
+
+    const tigerSkills = new Set<string>();
+    simTiger.events.on('boss:skill', (ev) => {
+      if (ev.bossKind === 'white_tiger') {
+        tigerSkills.add(ev.skillKind);
+      }
+    });
+
+    while (simTiger.buildSnapshot(1, false).wave < 5 && simTiger.tickCount < 6000) {
+      simTiger.tick();
+    }
+    // Run through Wave 5 until both roar and sprint have triggered (or Wave 5 ends)
+    for (let t = 0; t < 1600 && (!tigerSkills.has('tiger_roar') || !tigerSkills.has('tiger_sprint')); t++) {
+      simTiger.tick();
+    }
+    expect(tigerSkills.has('tiger_roar')).toBe(true);
+    expect(tigerSkills.has('tiger_sprint')).toBe(true);
+
+    // Part B: Wave 10 Black Serpent casts serpent_shell -> armor-shredding unit shatters it -> stun + +25 shred!
+    const simSerpent = new Simulation(data, 0x86421357);
+    spawnCheonmaHelper(simSerpent);
+    for (let i = 0; i < 8; i++) {
+      simSerpent.commands.enqueue({ type: 'grantTestCoin', amount: 500 });
+      simSerpent.commands.enqueue({ type: 'upgrade', group: 'demonic' });
+    }
+    simSerpent.tick();
+
+    // Fast-reach Wave 10, then temporarily bench Cheonma until Black Serpent casts serpent_shell!
+    while (simSerpent.buildSnapshot(1, false).wave < 10 && simSerpent.tickCount < 10000) {
+      simSerpent.tick();
+    }
+    expect(simSerpent.buildSnapshot(1, false).wave).toBe(10);
+
+    const cheonmaUnit = simSerpent.getUnits().find((u) => u.unitId === 'cheonma')!;
+    const originalFieldSlot = cheonmaUnit.slot;
+    simSerpent.commands.enqueue({
+      type: 'move',
+      from: originalFieldSlot,
+      to: { area: 'bench', index: 0 },
+    });
+    simSerpent.tick();
+
+    let shellCast = false;
+    let shattered = false;
+    simSerpent.events.on('boss:skill', (ev) => {
+      if (ev.skillKind === 'serpent_shell') shellCast = true;
+      if (ev.skillKind === 'serpent_shatter') shattered = true;
+    });
+
+    for (let t = 0; t < 220 && !shellCast; t++) {
+      simSerpent.tick();
+    }
+    expect(shellCast).toBe(true);
+    expect(simSerpent.buildSnapshot(1, false).boss?.shieldHp).toBeGreaterThan(0);
+
+    // Move Cheonma back to field and add an armor-shredding Tang Assassin to shatter the barrier!
+    simSerpent.commands.enqueue({
+      type: 'move',
+      from: { area: 'bench', index: 0 },
+      to: originalFieldSlot,
+    });
+    simSerpent.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    simSerpent.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'tang_assassin' });
+    for (let t = 0; t < 120 && !shattered; t++) {
+      simSerpent.tick();
+    }
+    expect(shattered).toBe(true);
+  });
+
+  it('executes Blood Patriarch 혈옥주박진 tile seal & immediate counterplay via drag-swap move and autoArrange evacuation', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x97531864);
+    spawnCheonmaHelper(sim);
+    for (let i = 0; i < 12; i++) {
+      sim.commands.enqueue({ type: 'grantTestCoin', amount: 500 });
+      sim.commands.enqueue({ type: 'upgrade', group: 'demonic' });
+    }
+    sim.tick();
+
+    // Advance rapidly to Wave 15 (Blood Patriarch)
+    while (sim.buildSnapshot(1, false).wave < 15 && sim.tickCount < 16000) {
+      sim.tick();
+    }
+    expect(sim.buildSnapshot(1, false).wave).toBe(15);
+
+    // Bench & lock Cheonma and place 2 weak heroes on field slots 0 and 1 so Blood Patriarch targets them
+    const cheonma = sim.getUnits().find((u) => u.unitId === 'cheonma')!;
+    sim.commands.enqueue({
+      type: 'move',
+      from: cheonma.slot,
+      to: { area: 'bench', index: 11 },
+    });
+    sim.commands.enqueue({ type: 'lock', uid: cheonma.uid, locked: true });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'mudang_disciple' });
+    sim.tick();
+
+    let telegraphedTiles: readonly number[] = [];
+    let sealActivated = false;
+    sim.events.on('boss:skill', (ev) => {
+      if (ev.skillKind === 'patriarch_telegraph' && ev.tileIndices) {
+        telegraphedTiles = ev.tileIndices;
+      }
+      if (ev.skillKind === 'patriarch_seal') {
+        sealActivated = true;
+      }
+    });
+
+    for (let t = 0; t < 200 && telegraphedTiles.length === 0; t++) {
+      sim.tick();
+    }
+    expect(telegraphedTiles.length).toBe(2);
+
+    // During telegraph window, targeted SlotViews report hazardWarning = true, sealed = false
+    const warnSnap = sim.buildSnapshot(1, false);
+    const targetIdx0 = telegraphedTiles[0]!;
+    const targetIdx1 = telegraphedTiles[1]!;
+    expect(warnSnap.field[targetIdx0]?.hazardWarning).toBe(true);
+    expect(warnSnap.field[targetIdx0]?.sealed).toBe(false);
+
+    // Advance exactly HAZARD_WARNING_TICKS -> seal activates!
+    for (let t = 0; t < HAZARD_WARNING_TICKS; t++) {
+      sim.tick();
+    }
+    expect(sealActivated).toBe(true);
+    expect(sim.isFieldSlotSealed(targetIdx0)).toBe(true);
+
+    const sealedHero0 = sim.getUnits().find(
+      (u) => u.slot.area === 'field' && u.slot.index === targetIdx0,
+    )!;
+    expect(sealedHero0).toBeDefined();
+    const attacksWhenSealed = sealedHero0.attackCount;
+
+    // While standing on sealed tile, hero cannot attack for 35 ticks
+    for (let t = 0; t < 35; t++) {
+      sim.tick();
+    }
+    expect(sealedHero0.attackCount).toBe(attacksWhenSealed);
+
+    // Counterplay 1: Drag-swap move hero 0 off the sealed tile to the safe field tile closest to the live boss -> un-petrified immediately!
+    const liveBoss = sim.getMonsters().find((m) => m.isBoss)!;
+    let safeFieldIdx = 0;
+    let bestDistSq = Infinity;
+    for (let idx = 0; idx < 18; idx++) {
+      if (!sim.hasFieldHazard(idx) && sim.board.field.getUidAt(idx) === null) {
+        const c = sim.board.getSlotCenter({ area: 'field', index: idx });
+        const dSq = (c.x - liveBoss.currX) ** 2 + (c.y - liveBoss.currY) ** 2;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          safeFieldIdx = idx;
+        }
+      }
+    }
+    sim.commands.enqueue({
+      type: 'move',
+      from: { area: 'field', index: targetIdx0 },
+      to: { area: 'field', index: safeFieldIdx },
+    });
+    sim.tick();
+    expect(sealedHero0.slot.index).toBe(safeFieldIdx);
+    expect(sim.isFieldSlotSealed(sealedHero0.slot.index)).toBe(false);
+
+    // Counterplay 2: autoArrange automatically evacuates remaining hero on targetIdx1 to a safe field tile right away!
+    const sealedHero1 = sim.getUnits().find(
+      (u) => u.slot.area === 'field' && u.slot.index === targetIdx1,
+    );
+    expect(sealedHero1).toBeDefined();
+    expect(sim.hasFieldHazard(targetIdx1)).toBe(true);
+    sim.commands.enqueue({ type: 'autoArrange' });
+    sim.tick();
+    expect(sim.hasFieldHazard(sealedHero1!.slot.index)).toBe(false);
+
+    // Un-petrified hero next to the boss immediately fires!
+    for (let t = 0; t < 40 && sealedHero0.attackCount === attacksWhenSealed; t++) {
+      sim.tick();
+    }
+    expect(sealedHero0.attackCount).toBeGreaterThan(attacksWhenSealed);
+  });
+
+  it('offers 3-choice Roguelike Boss Boons (강호 기연 3택 1), applies boon mechanics, and preserves 1x vs 3x determinism', () => {
+    const data = loadGameData();
+    expect(data.boons.length).toBe(12);
+    const uniqueIcons = new Set(data.boons.map((b) => b.iconKind));
+    expect(uniqueIcons.size).toBe(12);
+
+    const sim = new Simulation(data, 0x42424242);
+    spawnCheonmaHelper(sim);
+    for (let i = 0; i < 6; i++) {
+      sim.commands.enqueue({ type: 'grantTestCoin', amount: 500 });
+      sim.commands.enqueue({ type: 'upgrade', group: 'demonic' });
+    }
+    sim.tick();
+
+    let offeredOptions: readonly BoonId[] = [];
+    sim.events.on('boon:offered', (ev) => {
+      offeredOptions = ev.options;
+    });
+
+    while (offeredOptions.length === 0 && sim.tickCount < 6000) {
+      sim.tick();
+    }
+    expect(offeredOptions.length).toBe(3);
+    expect(new Set(offeredOptions).size).toBe(3);
+
+    const snapPending = sim.buildSnapshot(1, false);
+    expect(snapPending.pendingBoonOffer?.options).toEqual(offeredOptions);
+
+    // Picking an unoffered boonId must be rejected cleanly
+    const unoffered = data.boons.find((b) => !offeredOptions.includes(b.id))!.id;
+    let rejected = false;
+    sim.events.on('command:rejected', (ev) => {
+      if (ev.cmd === 'pickBoon') rejected = true;
+    });
+    sim.commands.enqueue({ type: 'pickBoon', boonId: unoffered });
+    sim.tick();
+    expect(rejected).toBe(true);
+    expect(sim.buildSnapshot(1, false).pendingBoonOffer).not.toBeNull();
+
+    // Picking a valid offered boonId activates it immediately and clears pendingBoonOffer
+    const chosenBoon = offeredOptions[0]!;
+    let pickedEventName = '';
+    sim.events.on('boon:picked', (ev) => {
+      pickedEventName = ev.name;
+    });
+    sim.commands.enqueue({ type: 'pickBoon', boonId: chosenBoon });
+    sim.tick();
+
+    const snapPicked = sim.buildSnapshot(1, false);
+    expect(pickedEventName.length).toBeGreaterThan(0);
+    expect(snapPicked.pendingBoonOffer).toBeNull();
+    expect(snapPicked.activeBoons[chosenBoon]).toBe(1);
+    expect(snapPicked.totalBoonStacks).toBe(1);
+
+    // Verify 100% bit-exact 1x vs 3x determinism across boss skills + boon:offered + pickBoon + Wave 7 mutant
+    const offerTick = sim.tickCount - 2;
+    const replayCmds: readonly StampedCommand[] = [
+      { tick: 0, command: { type: 'grantTestCoin', amount: 2500 } },
+      { tick: 1, command: { type: 'summon' } },
+      { tick: 1, command: { type: 'summon' } },
+      { tick: 1, command: { type: 'summon' } },
+      { tick: 2, command: { type: 'upgrade', group: 'orthodox' } },
+      { tick: Math.max(10, offerTick), command: { type: 'autoArrange' } },
+    ];
+
+    const det1x = new Simulation(data, 0x51515151);
+    det1x.scheduleCommandsForReplay(replayCmds);
+    const det3x = new Simulation(data, 0x51515151);
+    det3x.scheduleCommandsForReplay(replayCmds);
+
+    // Give both identical Cheonma setup at tick 0 so they slay Wave 5 boss and pick options[1]!
+    spawnCheonmaHelper(det1x);
+    spawnCheonmaHelper(det3x);
+
+    det1x.events.on('boon:offered', (ev) => {
+      det1x.commands.enqueue({ type: 'pickBoon', boonId: ev.options[1]! });
+    });
+    det3x.events.on('boon:offered', (ev) => {
+      det3x.commands.enqueue({ type: 'pickBoon', boonId: ev.options[1]! });
+    });
+
+    const runTicks = 4800; // Spans Waves 1..7 including Wave 5 Boss, pickBoon, and Wave 7 swift_raid mutant
+    for (let t = 0; t < runTicks; t++) {
+      det1x.tick();
+    }
+    for (let t = 0; t < runTicks; t += 3) {
+      det3x.tick();
+      det3x.tick();
+      det3x.tick();
+    }
+
+    expect(det1x.buildSnapshot(1, false).totalBoonStacks).toBeGreaterThanOrEqual(1);
+    expect(det3x.hashState()).toBe(det1x.hashState());
   });
 });
 

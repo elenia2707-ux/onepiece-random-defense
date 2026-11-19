@@ -1,4 +1,5 @@
 import rawBoard from './board.json';
+import rawBoons from './boons.json';
 import rawGambleRates from './gamble_rates.json';
 import rawGrades from './grades.json';
 import rawMissions from './missions.json';
@@ -12,6 +13,10 @@ import rawWispPools from './wisp_pools.json';
 import { secToTicks, TICK_DT } from '../core/time';
 import type {
   BoardConfig,
+  BoonDef,
+  BoonIconKind,
+  BoonId,
+  BoonRarity,
   CourtSkinDef,
   CourtSkinId,
   FactionId,
@@ -768,6 +773,77 @@ export function validateSkins(
   return { heroSkins, courtSkins };
 }
 
+const VALID_BOON_IDS: ReadonlySet<string> = new Set<BoonId>([
+  'b_usury_vault',
+  'b_wealth_blade',
+  'b_orthodox_zenith',
+  'b_unorthodox_pillage',
+  'b_demonic_overdrive',
+  'b_armor_crusher',
+  'b_swift_formation',
+  'b_hidden_acupoint',
+  'b_elixir_jackpot',
+  'b_heavenly_reinforce',
+  'b_bounty_hunter',
+  'b_trinity_harmony',
+]);
+
+const VALID_BOON_RARITIES: ReadonlySet<string> = new Set<BoonRarity>(['rare', 'epic', 'mythic']);
+const VALID_BOON_ICONS: ReadonlySet<string> = new Set<BoonIconKind>([
+  'vault',
+  'wealth_sword',
+  'orthodox',
+  'pillage',
+  'demonic',
+  'shatter',
+  'formation',
+  'acupoint',
+  'furnace',
+  'reinforce',
+  'bounty',
+  'trinity',
+]);
+
+function validateBoons(rawList: unknown): BoonDef[] {
+  if (!Array.isArray(rawList) || rawList.length < 3) {
+    throw new Error('[DataValidation] boons.json must be a non-empty array of at least 3 boons');
+  }
+  const seen = new Set<string>();
+  return rawList.map((raw, i) => {
+    const r = assertRecord(raw, `boons[${i}]`);
+    const idStr = assertNonEmptyString(r.id, `boons[${i}].id`);
+    if (!VALID_BOON_IDS.has(idStr)) {
+      throw new Error(`[DataValidation] boons[${i}].id invalid: ${idStr}`);
+    }
+    if (seen.has(idStr)) {
+      throw new Error(`[DataValidation] duplicate boon id: ${idStr}`);
+    }
+    seen.add(idStr);
+    const name = assertNonEmptyString(r.name, `boons[${i}].name`);
+    const tag = assertNonEmptyString(r.tag, `boons[${i}].tag`);
+    const rarityStr = assertNonEmptyString(r.rarity, `boons[${i}].rarity`);
+    if (!VALID_BOON_RARITIES.has(rarityStr)) {
+      throw new Error(`[DataValidation] boons[${i}].rarity invalid: ${rarityStr}`);
+    }
+    const maxStacks = Math.floor(assertPositiveNumber(r.maxStacks, `boons[${i}].maxStacks`));
+    const iconStr = assertNonEmptyString(r.iconKind, `boons[${i}].iconKind`);
+    if (!VALID_BOON_ICONS.has(iconStr)) {
+      throw new Error(`[DataValidation] boons[${i}].iconKind invalid: ${iconStr}`);
+    }
+    const desc = assertNonEmptyString(r.desc, `boons[${i}].desc`);
+
+    return {
+      id: idStr as BoonId,
+      name,
+      tag,
+      rarity: rarityStr as BoonRarity,
+      maxStacks,
+      iconKind: iconStr as BoonIconKind,
+      desc,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -791,6 +867,8 @@ export function loadGameData(): GameDataBundle {
   const relics = validateRelics(rawRelics);
   const relicsById = new Map<RelicId, RelicDef>(relics.map((rel) => [rel.id, rel]));
   const missions = validateMissions(rawMissions, gradesById);
+  const boons = validateBoons(rawBoons);
+  const boonsById = new Map<BoonId, BoonDef>(boons.map((b) => [b.id, b]));
   const { heroSkins, courtSkins } = validateSkins(rawSkins, unitsById);
   const heroSkinsById = new Map<string, HeroSkinDef>(heroSkins.map((s) => [s.id, s]));
   const heroSkinsByUnit = new Map<string, HeroSkinDef[]>();
@@ -816,6 +894,8 @@ export function loadGameData(): GameDataBundle {
     relics,
     relicsById,
     missions,
+    boons,
+    boonsById,
     heroSkins,
     heroSkinsById,
     heroSkinsByUnit,
@@ -824,5 +904,6 @@ export function loadGameData(): GameDataBundle {
   };
   return cachedBundle;
 }
+
 
 

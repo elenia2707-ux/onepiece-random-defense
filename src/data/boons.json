@@ -1,0 +1,110 @@
+[
+  {
+    "id": "b_usury_vault",
+    "name": "전장 고리대금",
+    "tag": "복리 · 재물",
+    "rarity": "epic",
+    "maxStacks": 2,
+    "iconKind": "vault",
+    "desc": "매 장 종료 복리 이자율 +3%p · 이자 상한 +60 은자 증가 (금고 신물 미해금 시에도 3% 이자 즉시 개통)"
+  },
+  {
+    "id": "b_wealth_blade",
+    "name": "황금만검술",
+    "tag": "이자 · 폭딜",
+    "rarity": "mythic",
+    "maxStacks": 2,
+    "iconKind": "wealth_sword",
+    "desc": "보유 은자 100당 전 협객 공격력 +2.5% 추가 증폭 (만금쾌검패와 합연산 복리 적용)"
+  },
+  {
+    "id": "b_orthodox_zenith",
+    "name": "만검귀종 심법",
+    "tag": "정파 · 회심",
+    "rarity": "epic",
+    "maxStacks": 2,
+    "iconKind": "orthodox",
+    "desc": "정파 협객 치명타 확률 +15%p 및 치명타 피해 배율 +0.55배 증폭"
+  },
+  {
+    "id": "b_unorthodox_pillage",
+    "name": "녹림 약탈령",
+    "tag": "사파 · 약탈",
+    "rarity": "epic",
+    "maxStacks": 2,
+    "iconKind": "pillage",
+    "desc": "사파 협객 공격속도 +22% 증폭 및 적 처치 시 35% 확률로 은자 +2 추가 강탈"
+  },
+  {
+    "id": "b_demonic_overdrive",
+    "name": "주화입마 혈공",
+    "tag": "마교 · 극딜",
+    "rarity": "mythic",
+    "maxStacks": 2,
+    "iconKind": "demonic",
+    "desc": "마교 협객 공격력 +35% 및 비급 스킬 계수 +30% 폭증"
+  },
+  {
+    "id": "b_armor_crusher",
+    "name": "파천쇄갑결",
+    "tag": "파갑 · 관통",
+    "rarity": "epic",
+    "maxStacks": 2,
+    "iconKind": "shatter",
+    "desc": "모든 협객 기본 파갑 +6 부여 및 방어력 격파(음수 강기) 피해 증폭 상한 +30%p 개방"
+  },
+  {
+    "id": "b_swift_formation",
+    "name": "질풍진법서",
+    "tag": "진법 · 가속",
+    "rarity": "rare",
+    "maxStacks": 2,
+    "iconKind": "formation",
+    "desc": "모든 비무대 협객 공격속도 +16% 및 진법 서포터(상하좌우 고무) 버프 수치 1.5배 증폭"
+  },
+  {
+    "id": "b_hidden_acupoint",
+    "name": "탈명점혈수",
+    "tag": "비급 · 제어",
+    "rarity": "rare",
+    "maxStacks": 2,
+    "iconKind": "acupoint",
+    "desc": "전 협객 비급 발동 필요 타수 1회 단축(최소 2타) 및 기절·둔화 지속시간 +35%"
+  },
+  {
+    "id": "b_elixir_jackpot",
+    "name": "태을금단 보패",
+    "tag": "영약 · 도박",
+    "rarity": "rare",
+    "maxStacks": 3,
+    "iconKind": "furnace",
+    "desc": "즉시 영단 +6개 획득 및 이번 출정 영약 도박 성공 확률 +12%p 영구 증가"
+  },
+  {
+    "id": "b_heavenly_reinforce",
+    "name": "강호 긴급소집",
+    "tag": "기연 · 지원",
+    "rarity": "epic",
+    "maxStacks": 3,
+    "iconKind": "reinforce",
+    "desc": "즉시 일류(희귀) 기연 +1개 · 이류(안흔함) 기연 +1개 · 군자금 +120 은자 보급"
+  },
+  {
+    "id": "b_bounty_hunter",
+    "name": "흑도 추살령",
+    "tag": "토벌 · 수배",
+    "rarity": "rare",
+    "maxStacks": 2,
+    "iconKind": "bounty",
+    "desc": "보스 및 현상수배범 대상 최종 피해량 +28% 증폭 · 현상수배 재사용 대기시간 35% 단축"
+  },
+  {
+    "id": "b_trinity_harmony",
+    "name": "삼교합일 태극공",
+    "tag": "천하 · 만능",
+    "rarity": "mythic",
+    "maxStacks": 1,
+    "iconKind": "trinity",
+    "desc": "전 문파 내공 수련 비용 25% 할인 · 모든 협객 공격력 +22% 및 사거리 +25 증가"
+  }
+]

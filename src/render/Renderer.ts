@@ -236,8 +236,8 @@ export class Renderer {
     const tick = sim.tickCount;
     const simTimeSec = (tick + alpha) * TICK_DT;
 
-    // 1. Collect slot selection / range circle / drop highlights
-    this.collectBoardOverlays(sim, interaction, simTimeSec);
+    // 1. Collect slot selection / range circle / drop highlights / boss tile hazards
+    this.collectBoardOverlays(sim, interaction, tick, alpha, simTimeSec);
 
     // 2. Collect living Wuxia sanctuary atmosphere (lantern candlelight, incense wisps, drifting petals)
     this.collectAmbientMurimWorld(simTimeSec);
@@ -364,8 +364,177 @@ export class Renderer {
   private collectBoardOverlays(
     sim: Simulation,
     interaction: InteractionOverlayState,
+    currentTick: number,
+    alpha: number,
     simTimeSec: number,
   ): void {
+    // 0. Blood Patriarch Tile Hazards (2.0s telegraph magic circle -> 4.5s blood-jade seal)
+    const hazards = sim.getTileHazards();
+    for (let i = 0; i < hazards.length; i++) {
+      const h = hazards[i]!;
+      if (currentTick >= h.expireTick) continue;
+      const rect = expandedSlotRect(sim.board, { area: 'field', index: h.fieldIndex });
+      const cx = rect.x + rect.w * 0.5;
+      const cy = rect.y + rect.h * 0.5;
+      const occupied = sim.board.field.getUidAt(h.fieldIndex) !== null;
+
+      if (currentTick < h.activateTick) {
+        const span = Math.max(1, h.activateTick - h.startTick);
+        const prog = Math.max(0, Math.min(1, (currentTick + alpha - h.startTick) / span));
+
+        this.buckets[RenderLayer.GroundFx]!.push({
+          layer: RenderLayer.GroundFx,
+          sortY: rect.y + 4,
+          render: (ctx) => {
+            const flash = 0.62 + Math.sin(simTimeSec * 14) * 0.35;
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 10);
+            ctx.fillStyle = `rgba(225, 29, 72, ${(0.22 + 0.16 * flash).toFixed(3)})`;
+            ctx.fill();
+            ctx.lineWidth = 4.2;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = 2.4;
+            ctx.strokeStyle = flash > 0.7 ? '#facc15' : '#fb7185';
+            ctx.stroke();
+
+            // Rotating 8-point crimson warning sigil + filling countdown ring
+            const r = Math.min(rect.w, rect.h) * 0.38;
+            ctx.translate(cx, cy + 8);
+            ctx.save();
+            ctx.rotate(simTimeSec * 2.8);
+            ctx.strokeStyle = '#fda4af';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-r * 0.68, -r * 0.68, r * 1.36, r * 1.36);
+            ctx.rotate(Math.PI * 0.25);
+            ctx.strokeStyle = '#facc15';
+            ctx.strokeRect(-r * 0.68, -r * 0.68, r * 1.36, r * 1.36);
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, r, -Math.PI * 0.5, -Math.PI * 0.5 + prog * Math.PI * 2);
+            ctx.lineWidth = 4.5;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = 2.6;
+            ctx.strokeStyle = '#fde047';
+            ctx.stroke();
+            ctx.restore();
+          },
+        });
+
+        this.buckets[RenderLayer.WorldUI]!.push({
+          layer: RenderLayer.WorldUI,
+          sortY: cy + 52,
+          render: (ctx) => {
+            const badge = this.sprites.statusBadge('warn');
+            const bob = Math.sin(simTimeSec * 11) * 3;
+            const bw = 92;
+            const bh = 25;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(badge, Math.round(cx - bw * 0.5), Math.round(rect.y - 12 + bob), bw, bh);
+            ctx.restore();
+          },
+        });
+      } else {
+        const span = Math.max(1, h.expireTick - h.activateTick);
+        const rem = Math.max(0, Math.min(1, (h.expireTick - (currentTick + alpha)) / span));
+
+        this.buckets[RenderLayer.GroundFx]!.push({
+          layer: RenderLayer.GroundFx,
+          sortY: rect.y + 5,
+          render: (ctx) => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 10);
+            ctx.fillStyle = 'rgba(88, 28, 135, 0.36)';
+            ctx.fill();
+            ctx.lineWidth = 4.5;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#e11d48';
+            ctx.stroke();
+
+            // Crossed blood-jade chains on floor
+            ctx.beginPath();
+            ctx.moveTo(rect.x + 10, rect.y + 10);
+            ctx.lineTo(rect.x + rect.w - 10, rect.y + rect.h - 10);
+            ctx.moveTo(rect.x + rect.w - 10, rect.y + 10);
+            ctx.lineTo(rect.x + 10, rect.y + rect.h - 10);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#c084fc';
+            ctx.stroke();
+
+            // Draining duration arc
+            const r = Math.min(rect.w, rect.h) * 0.36;
+            ctx.beginPath();
+            ctx.arc(cx, cy + 8, r, -Math.PI * 0.5, -Math.PI * 0.5 + rem * Math.PI * 2);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#fb7185';
+            ctx.stroke();
+            ctx.restore();
+          },
+        });
+
+        if (occupied) {
+          this.buckets[RenderLayer.AirFx]!.push({
+            layer: RenderLayer.AirFx,
+            sortY: cy + 44,
+            render: (ctx) => {
+              ctx.save();
+              const prevA = ctx.globalAlpha;
+              // Crimson-amethyst crystal prism cage locking the hero
+              ctx.globalAlpha = prevA * 0.52;
+              ctx.beginPath();
+              ctx.moveTo(cx, cy - 42);
+              ctx.lineTo(cx + 28, cy - 16);
+              ctx.lineTo(cx + 22, cy + 26);
+              ctx.lineTo(cx, cy + 36);
+              ctx.lineTo(cx - 22, cy + 26);
+              ctx.lineTo(cx - 28, cy - 16);
+              ctx.closePath();
+              ctx.fillStyle = '#be123c';
+              ctx.fill();
+              ctx.globalAlpha = prevA * 0.9;
+              ctx.lineWidth = 3.6;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 1.8;
+              ctx.strokeStyle = '#f472b6';
+              ctx.stroke();
+              ctx.restore();
+            },
+          });
+        }
+
+        this.buckets[RenderLayer.WorldUI]!.push({
+          layer: RenderLayer.WorldUI,
+          sortY: cy + 54,
+          render: (ctx) => {
+            const badge = this.sprites.statusBadge('sealed');
+            const bw = 82;
+            const bh = 24;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(
+              badge,
+              Math.round(cx - bw * 0.5),
+              Math.round(occupied ? rect.y - 16 : cy - 8),
+              bw,
+              bh,
+            );
+            ctx.restore();
+          },
+        });
+      }
+    }
+
     // 1. Live 6x3 orthogonal supportAura qi links & buffed-tile corner emblems
     const tileBuffs = sim.computeFieldTileBuffs();
     const fieldCap = sim.board.field.capacity;
@@ -541,16 +710,21 @@ export class Renderer {
     if (hover && interaction.draggingFromSlot) {
       const rect = expandedSlotRect(sim.board, hover);
       const occupied = sim.board.getUid(hover) !== null;
+      const isHazardous = hover.area === 'field' && sim.hasFieldHazard(hover.index);
       this.buckets[RenderLayer.WorldUI]!.push({
         layer: RenderLayer.WorldUI,
         sortY: rect.y,
         render: (ctx) => {
           ctx.beginPath();
           ctx.roundRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 12);
-          ctx.fillStyle = occupied ? 'rgba(234, 179, 8, 0.26)' : 'rgba(16, 185, 129, 0.28)';
+          ctx.fillStyle = isHazardous
+            ? 'rgba(225, 29, 72, 0.3)'
+            : occupied
+              ? 'rgba(234, 179, 8, 0.26)'
+              : 'rgba(16, 185, 129, 0.28)';
           ctx.fill();
           ctx.lineWidth = 3.5;
-          ctx.strokeStyle = occupied ? '#d97706' : '#059669';
+          ctx.strokeStyle = isHazardous ? '#e11d48' : occupied ? '#d97706' : '#059669';
           ctx.stroke();
         },
       });
@@ -588,6 +762,8 @@ export class Renderer {
       const isSlowed = currentTick < m.slowUntilTick;
       const isArmorShredded = currentTick < m.shredExpireTick && m.armorShred > 0;
       const isArmorBroken = isArmorShredded && m.armor - m.armorShred < 0;
+      const hasShield = m.shieldHp > 0 && currentTick < m.shieldExpireTick;
+      const isHasted = currentTick < m.hasteUntilTick;
       const drawSize = m.isBoss ? BOSS_SPRITE : MOB_SPRITE;
       const strideSin = isStunned
         ? 0
@@ -691,7 +867,67 @@ export class Renderer {
         },
       });
 
-      if (m.isBoss || m.hp < m.maxHp || isStunned || isArmorShredded) {
+      if (hasShield) {
+        this.buckets[RenderLayer.AirFx]!.push({
+          layer: RenderLayer.AirFx,
+          sortY: y + 4,
+          render: (ctx) => {
+            ctx.save();
+            const spin = (currentTick + alpha) * 0.07;
+            const r = m.radius * 1.55;
+            const cy = y - m.radius * 0.35;
+            ctx.translate(x, cy);
+            ctx.rotate(spin);
+
+            ctx.beginPath();
+            for (let v = 0; v < 6; v++) {
+              const ang = (v * Math.PI) / 3;
+              const vx = Math.cos(ang) * r;
+              const vy = Math.sin(ang) * r * 0.85;
+              if (v === 0) ctx.moveTo(vx, vy);
+              else ctx.lineTo(vx, vy);
+            }
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(20, 184, 166, 0.22)';
+            ctx.fill();
+            ctx.lineWidth = 4.5;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = 2.4;
+            ctx.strokeStyle = '#5eead4';
+            ctx.stroke();
+            ctx.restore();
+          },
+        });
+      }
+
+      if (isHasted) {
+        this.buckets[RenderLayer.AirFx]!.push({
+          layer: RenderLayer.AirFx,
+          sortY: y + 3,
+          render: (ctx) => {
+            ctx.save();
+            const dir = facingLeft ? 1 : -1;
+            const cy = y - m.radius * 0.32;
+            for (let l = 0; l < 3; l++) {
+              const ly = cy - 16 + l * 15;
+              const lx = x + dir * (18 + ((currentTick + l * 5) % 9) * 2.5);
+              ctx.beginPath();
+              ctx.moveTo(lx, ly);
+              ctx.lineTo(lx + dir * 24, ly);
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = l === 1 ? '#fef08a' : '#f59e0b';
+              ctx.stroke();
+            }
+            ctx.restore();
+          },
+        });
+      }
+
+      if (m.isBoss || m.hp < m.maxHp || isStunned || isArmorShredded || hasShield || isHasted) {
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
           sortY: y + 1,
@@ -730,6 +966,36 @@ export class Renderer {
               ctx.roundRect(bx + 1, by + 1, Math.max(2, barW * ratio - 2), barH * 0.36, 99);
               ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
               ctx.fill();
+            }
+
+            if (hasShield && m.shieldMaxHp > 0) {
+              const sRatio = Math.max(0, Math.min(1, m.shieldHp / m.shieldMaxHp));
+              const sy = by + barH + 3;
+              const sh = 6;
+              ctx.beginPath();
+              ctx.roundRect(bx - 1.5, sy - 1.5, barW + 3, sh + 3, 99);
+              ctx.fillStyle = PIXEL_OUTLINE;
+              ctx.fill();
+              ctx.beginPath();
+              ctx.roundRect(bx, sy, barW, sh, 99);
+              ctx.fillStyle = '#0f292e';
+              ctx.fill();
+              if (sRatio > 0) {
+                ctx.beginPath();
+                ctx.roundRect(bx, sy, Math.max(sh, barW * sRatio), sh, 99);
+                ctx.fillStyle = '#2dd4bf';
+                ctx.fill();
+              }
+            }
+
+            if (hasShield || isHasted) {
+              const badge = this.sprites.statusBadge(hasShield ? 'shield' : 'haste');
+              const bw = 88;
+              const bh = 24;
+              ctx.save();
+              ctx.imageSmoothingEnabled = false;
+              ctx.drawImage(badge, Math.round(x - bw * 0.5), Math.round(by - 26), bw, bh);
+              ctx.restore();
             }
 
             if (isArmorShredded) {
@@ -827,13 +1093,14 @@ export class Renderer {
       }
 
       const isField = u.slot.area === 'field';
+      const isSealed = isField && sim.isFieldSlotSealed(u.slot.index);
       const spriteSize = Math.round((isField ? FIELD_SPRITE : BENCH_SPRITE) * popScale);
-      const breath = Math.sin(simTimeSec * 3.4 + u.uid * 0.87);
+      const breath = isSealed ? 0 : Math.sin(simTimeSec * 3.4 + u.uid * 0.87);
 
       // Multi-phase smooth martial weapon swing choreography (NO rigid shoulder-checking!)
       const atkDurSec = Math.min(0.34, Math.max(0.24, def.attackIntervalTicks * TICK_DT * 0.74));
       const atkElapsedSec = (currentTick + alpha - u.lastAttackTick) * TICK_DT;
-      const isAttacking = isField && atkElapsedSec >= 0 && atkElapsedSec < atkDurSec;
+      const isAttacking = isField && !isSealed && atkElapsedSec >= 0 && atkElapsedSec < atkDurSec;
       const atkP = isAttacking ? atkElapsedSec / atkDurSec : 0;
       const comboSide = (u.attackCount & 1) === 0 ? 1 : -1;
       const isSkillStrike = u.attackCount > 0 && u.attackCount % def.skill.everyN === 0;

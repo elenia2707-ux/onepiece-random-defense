@@ -588,6 +588,217 @@ export class VfxSystem {
     }
   }
 
+  /** Dramatic world VFX & pre-baked martial callout when a Boss triggers a signature skill pattern. */
+  public spawnBossSkillFx(
+    skillKind:
+      | 'tiger_roar'
+      | 'tiger_sprint'
+      | 'serpent_shell'
+      | 'serpent_heal'
+      | 'serpent_shatter'
+      | 'patriarch_telegraph'
+      | 'patriarch_seal'
+      | 'patriarch_summon',
+    skillName: string,
+    x: number,
+    y: number,
+    tilePositions: readonly { readonly x: number; readonly y: number }[],
+    startTick: number,
+  ): void {
+    const calloutFaction: FactionId =
+      skillKind === 'tiger_roar' || skillKind === 'tiger_sprint'
+        ? 'orthodox'
+        : skillKind === 'serpent_shell' ||
+            skillKind === 'serpent_heal' ||
+            skillKind === 'serpent_shatter'
+          ? 'unorthodox'
+          : 'demonic';
+
+    this.spawnSkillCallout(x, y - 46, skillName, calloutFaction, 5, startTick);
+
+    switch (skillKind) {
+      case 'tiger_roar': {
+        this.pushTrack({
+          kind: 'golden_palm',
+          startTick,
+          durationSec: 0.56,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 24,
+          toRadius: 195,
+          color: '#f59e0b',
+          secondaryColor: '#fef08a',
+          lineWidth: 6,
+          glowRadius: 96,
+          gradeRank: 5,
+        });
+        this.emitRadialBurst(x, y, '#facc15', 22, 185, 0.38, 0, startTick);
+        this.triggerScreenFlash('#f59e0b', 0.08, 0.16, startTick);
+        break;
+      }
+      case 'tiger_sprint': {
+        this.pushTrack({
+          kind: 'ring',
+          startTick,
+          durationSec: 0.42,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 18,
+          toRadius: 96,
+          color: '#fde047',
+          lineWidth: 5,
+          glowRadius: 60,
+        });
+        this.emitRadialBurst(x, y, '#fef9c3', 18, 170, 0.34, 0, startTick);
+        break;
+      }
+      case 'serpent_shell': {
+        this.pushTrack({
+          kind: 'ring',
+          startTick,
+          durationSec: 0.5,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 16,
+          toRadius: 92,
+          color: '#14b8a6',
+          lineWidth: 5.5,
+          glowRadius: 68,
+        });
+        this.emitRadialBurst(x, y, '#5eead4', 20, 145, 0.38, -20, startTick);
+        break;
+      }
+      case 'serpent_shatter': {
+        this.pushTrack({
+          kind: 'armor_shatter',
+          startTick,
+          durationSec: 0.62,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 18,
+          toRadius: 98,
+          color: '#2dd4bf',
+          secondaryColor: '#f43f5e',
+          lineWidth: 6,
+          glowRadius: 84,
+          gradeRank: 5,
+        });
+        this.emitRadialBurst(x, y, '#5eead4', 22, 195, 0.42, 20, startTick);
+        this.emitRadialBurst(x, y, '#e879f9', 14, 155, 0.36, 15, startTick);
+        this.triggerScreenFlash('#2dd4bf', 0.12, 0.18, startTick);
+        break;
+      }
+      case 'serpent_heal': {
+        this.pushTrack({
+          kind: 'qi_resonance',
+          startTick,
+          durationSec: 0.55,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 18,
+          toRadius: 78,
+          color: '#10b981',
+          lineWidth: 5,
+          glowRadius: 54,
+        });
+        this.emitRadialBurst(x, y, '#4ade80', 18, 120, 0.42, -85, startTick);
+        break;
+      }
+      case 'patriarch_telegraph': {
+        this.pushTrack({
+          kind: 'demonic_flame',
+          startTick,
+          durationSec: 0.52,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 18,
+          toRadius: 84,
+          color: '#e11d48',
+          secondaryColor: '#facc15',
+          lineWidth: 5.5,
+          glowRadius: 72,
+          gradeRank: 5,
+        });
+        for (let i = 0; i < tilePositions.length; i++) {
+          const tp = tilePositions[i]!;
+          this.pushTrack({
+            kind: 'ring',
+            startTick,
+            durationSec: 0.45,
+            fromX: x,
+            fromY: y,
+            x: tp.x,
+            y: tp.y,
+            fromRadius: 12,
+            toRadius: 56,
+            color: '#fb7185',
+            lineWidth: 4.5,
+            glowRadius: 42,
+          });
+          this.emitRadialBurst(tp.x, tp.y, '#fda4af', 12, 110, 0.32, -30, startTick);
+        }
+        this.triggerScreenFlash('#e11d48', 0.09, 0.16, startTick);
+        break;
+      }
+      case 'patriarch_seal': {
+        for (let i = 0; i < tilePositions.length; i++) {
+          const tp = tilePositions[i]!;
+          this.pushTrack({
+            kind: 'blood_slash',
+            startTick,
+            durationSec: 0.46,
+            fromX: tp.x,
+            fromY: tp.y - 40,
+            x: tp.x,
+            y: tp.y,
+            fromRadius: 14,
+            toRadius: 62,
+            color: '#be123c',
+            secondaryColor: '#c084fc',
+            lineWidth: 5.5,
+            glowRadius: 58,
+            gradeRank: 5,
+          });
+          this.emitRadialBurst(tp.x, tp.y, '#e11d48', 16, 150, 0.36, 0, startTick);
+        }
+        break;
+      }
+      case 'patriarch_summon': {
+        this.pushTrack({
+          kind: 'heavenly_demon',
+          startTick,
+          durationSec: 0.56,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 20,
+          toRadius: 110,
+          color: '#be123c',
+          secondaryColor: '#fde047',
+          lineWidth: 6.5,
+          glowRadius: 92,
+          gradeRank: 6,
+        });
+        this.emitRadialBurst(x, y, '#f43f5e', 24, 190, 0.42, -25, startTick);
+        this.triggerScreenFlash('#be123c', 0.12, 0.18, startTick);
+        break;
+      }
+    }
+  }
+
   public spawnHitFx(
     entityId: number,
     x: number,

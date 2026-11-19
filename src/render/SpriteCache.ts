@@ -37,6 +37,7 @@ const BOSS_PIXEL_SIZE = 128; // 32 x 4
 
 export type GlyphStyle = 'normal' | 'skill' | 'crit' | 'shred';
 export type HitBadgeKind = 'crit' | 'shred' | 'execute';
+export type StatusBadgeKind = 'warn' | 'sealed' | 'shield' | 'haste';
 
 interface BannerSpec {
   readonly kind: 'boss' | 'craft';
@@ -70,6 +71,7 @@ export class SpriteCache {
   private readonly sealSpecs = new Map<string, SealSpec>();
   private readonly skillCalloutSpecs = new Map<string, SkillCalloutSpec>();
   private readonly hitBadgeSpecs = new Map<string, HitBadgeKind>();
+  private readonly statusBadgeSpecs = new Map<string, StatusBadgeKind>();
   private readonly skinnedVariants = new Map<string, Array<{ key: string; skin: HeroSkinDef }>>();
   private readonly probed = new Set<string>();
   private readonly loadedSheetImages = new Map<string, HTMLImageElement>();
@@ -102,6 +104,7 @@ export class SpriteCache {
     this.sealSpecs.delete(key);
     this.skillCalloutSpecs.delete(key);
     this.hitBadgeSpecs.delete(key);
+    this.statusBadgeSpecs.delete(key);
   }
 
   public disposeAll(): void {
@@ -115,6 +118,7 @@ export class SpriteCache {
     this.sealSpecs.clear();
     this.skillCalloutSpecs.clear();
     this.hitBadgeSpecs.clear();
+    this.statusBadgeSpecs.clear();
     this.skinnedVariants.clear();
     this.loadedSheetImages.clear();
     this.pendingSheetCallbacks.clear();
@@ -760,6 +764,73 @@ export class SpriteCache {
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.lineWidth = 6;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText(label, c.width * 0.5, c.height * 0.5 + 1);
+    ctx.fillStyle = '#fffbeb';
+    ctx.fillText(label, c.width * 0.5, c.height * 0.5 + 1);
+    ctx.restore();
+  }
+
+  /** Pre-rendered world status plaque ('주박예고!', '봉인!', '현무독갑', '광풍질주') with zero per-frame fillText. */
+  public statusBadge(kind: StatusBadgeKind): HTMLCanvasElement {
+    const key = `statusbadge:${kind}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(132, 36);
+    this.paintStatusBadge(c, kind);
+    this.cache.set(key, c);
+    this.statusBadgeSpecs.set(key, kind);
+    return c;
+  }
+
+  private paintStatusBadge(c: HTMLCanvasElement, kind: StatusBadgeKind): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+
+    let label = '봉인!';
+    let topCol = '#9333ea';
+    let botCol = '#7f1d1d';
+    let borderAccent = '#fda4af';
+
+    if (kind === 'warn') {
+      label = '주박예고!';
+      topCol = '#f59e0b';
+      botCol = '#dc2626';
+      borderAccent = '#fef08a';
+    } else if (kind === 'shield') {
+      label = '현무독갑';
+      topCol = '#14b8a6';
+      botCol = '#0f766e';
+      borderAccent = '#99f6e4';
+    } else if (kind === 'haste') {
+      label = '광풍질주';
+      topCol = '#facc15';
+      botCol = '#d97706';
+      borderAccent = '#fef9c3';
+    }
+
+    ctx.beginPath();
+    ctx.roundRect(6, 4, c.width - 12, c.height - 8, 10);
+    const bg = ctx.createLinearGradient(0, 4, 0, c.height - 4);
+    bg.addColorStop(0, topCol);
+    bg.addColorStop(1, botCol);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 4.2;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = borderAccent;
+    ctx.stroke();
+
+    ctx.font = `18px ${DISPLAY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 5;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.strokeText(label, c.width * 0.5, c.height * 0.5 + 1);
     ctx.fillStyle = '#fffbeb';

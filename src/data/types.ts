@@ -277,6 +277,47 @@ export interface CourtSkinDef {
   readonly petalSecondary: string;
 }
 
+export type BoonId =
+  | 'b_usury_vault'
+  | 'b_wealth_blade'
+  | 'b_orthodox_zenith'
+  | 'b_unorthodox_pillage'
+  | 'b_demonic_overdrive'
+  | 'b_armor_crusher'
+  | 'b_swift_formation'
+  | 'b_hidden_acupoint'
+  | 'b_elixir_jackpot'
+  | 'b_heavenly_reinforce'
+  | 'b_bounty_hunter'
+  | 'b_trinity_harmony';
+
+export type BoonRarity = 'rare' | 'epic' | 'mythic';
+export type BoonIconKind =
+  | 'vault'
+  | 'wealth_sword'
+  | 'orthodox'
+  | 'pillage'
+  | 'demonic'
+  | 'shatter'
+  | 'formation'
+  | 'acupoint'
+  | 'furnace'
+  | 'reinforce'
+  | 'bounty'
+  | 'trinity';
+
+export interface BoonDef {
+  readonly id: BoonId;
+  readonly name: string;
+  readonly tag: string;
+  readonly rarity: BoonRarity;
+  readonly maxStacks: number;
+  readonly iconKind: BoonIconKind;
+  readonly desc: string;
+}
+
+export type WaveMutantKind = 'swift_raid' | 'iron_wall' | 'blood_swarm';
+
 export interface GameDataBundle {
   readonly grades: readonly GradeDef[];
   readonly gradesById: ReadonlyMap<GradeId, GradeDef>;
@@ -292,10 +333,13 @@ export interface GameDataBundle {
   readonly relics: readonly RelicDef[];
   readonly relicsById: ReadonlyMap<RelicId, RelicDef>;
   readonly missions: readonly MissionDef[];
+  readonly boons: readonly BoonDef[];
+  readonly boonsById: ReadonlyMap<BoonId, BoonDef>;
   readonly heroSkins: readonly HeroSkinDef[];
   readonly heroSkinsById: ReadonlyMap<string, HeroSkinDef>;
   readonly heroSkinsByUnit: ReadonlyMap<UnitId, readonly HeroSkinDef[]>;
   readonly courtSkins: readonly CourtSkinDef[];
   readonly courtSkinsById: ReadonlyMap<CourtSkinId, CourtSkinDef>;
 }
+
 

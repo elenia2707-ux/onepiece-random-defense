@@ -265,4 +265,19 @@ export class SoundSynthesizer {
       this.playTone(notes[i]!, notes[i]! * 0.96, 0.24, 'sawtooth', 0.065, i * 0.09);
     }
   }
+
+  public playHazardWarn(): void {
+    // Urgent double woodblock + low crimson gong pulse for boss pattern / tile seal telegraph
+    this.playTone(880, 587.33, 0.085, 'triangle', 0.085, 0);
+    this.playTone(987.77, 659.25, 0.095, 'triangle', 0.09, 0.11);
+    this.playTone(146.83, 98, 0.28, 'sawtooth', 0.065, 0.02);
+  }
+
+  public playBoonOffer(): void {
+    // Auspicious Wuxia jade scroll chime (C5 - E5 - G5 - B5 - D6)
+    const chime = [523.25, 659.25, 783.99, 987.77, 1174.66];
+    for (let i = 0; i < chime.length; i++) {
+      this.playTone(chime[i]!, chime[i]! * 1.005, 0.2, 'sine', 0.075, i * 0.05);
+    }
+  }
 }

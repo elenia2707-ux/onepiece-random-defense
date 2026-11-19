@@ -35,6 +35,12 @@ export interface MonsterEntity {
   readonly armor: number;
   armorShred: number;
   shredExpireTick: number;
+  shieldHp: number;
+  shieldMaxHp: number;
+  shieldExpireTick: number;
+  hasteUntilTick: number;
+  nextBossSkillTick: number;
+  phaseTriggered: boolean;
   readonly speedPerTick: number;
   readonly radius: number;
   readonly rewardCoin: number;
@@ -49,6 +55,13 @@ export interface MonsterEntity {
   prevY: number;
   currX: number;
   currY: number;
+}
+
+export interface TileHazard {
+  readonly fieldIndex: number;
+  readonly startTick: number;
+  readonly activateTick: number;
+  readonly expireTick: number;
 }
 
 export interface ProjectileEntity {

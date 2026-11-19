@@ -101,6 +101,13 @@ export class Game {
         this.sound.playBossHorn();
         this.sim.commands.enqueue({ type: 'enterEndless' });
       },
+      onPickBoon: (boonId) => {
+        this.sound.playCraft(5);
+        this.sim.commands.enqueue({ type: 'pickBoon', boonId });
+        if (this.loop.isPaused()) {
+          this.loop.setPaused(false);
+        }
+      },
       onRestart: () => {
         window.location.reload();
       },
@@ -429,10 +436,48 @@ export class Game {
       );
     });
 
+    this.sim.events.on('wave:mutant', (ev) => {
+      this.sound.playHazardWarn();
+      const wStr = String(ev.wave).padStart(2, '0');
+      this.ui.showToast(`⚠️ 제 ${wStr} 장 변이 특집 [${ev.name}] — ${ev.desc}`);
+    });
+
     this.sim.events.on('wave:boss', (ev) => {
       this.sound.playBossHorn();
       this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
       this.vfx.triggerScreenFlash('#dc2626', 0.14, 0.24, ev.tick);
+    });
+
+    this.sim.events.on('boss:skill', (ev) => {
+      const tilePositions = (ev.tileIndices ?? []).map((idx) =>
+        this.sim.board.getSlotCenter({ area: 'field', index: idx }),
+      );
+      this.vfx.spawnBossSkillFx(
+        ev.skillKind,
+        ev.skillName,
+        ev.x,
+        ev.y,
+        tilePositions,
+        ev.tick,
+      );
+
+      if (ev.skillKind === 'serpent_shatter') {
+        this.sound.playCoinReward();
+        this.ui.showToast('💥 만년현무 독갑 분쇄! 보스 기절 및 호신강기 대파쇄!');
+      } else if (ev.skillKind === 'patriarch_telegraph') {
+        this.sound.playHazardWarn();
+        this.ui.showToast('🚨 혈옥주박진 예고! 붉은 마법진 위의 협객을 옆 칸으로 옮기세요!');
+      } else if (ev.skillKind === 'patriarch_seal') {
+        this.sound.playHazardWarn();
+      } else if (ev.skillKind === 'serpent_shell') {
+        this.sound.playHazardWarn();
+        this.ui.showToast('🛡 만년현무 독갑 전개! 파갑 협객으로 5초 내 격파 시 역류 기절!');
+      } else if (ev.skillKind === 'tiger_roar') {
+        this.sound.playHazardWarn();
+        this.ui.showToast('🐯 백호 호포진! 주변 협객 일시 경직!');
+      } else if (ev.skillKind === 'tiger_sprint' || ev.skillKind === 'patriarch_summon') {
+        this.sound.playBossHorn();
+      }
     });
 
     this.sim.events.on('boss:slain', (ev) => {
@@ -442,6 +487,17 @@ export class Game {
       this.ui.showToast(
         `🏆 ${ev.bossName} 토벌! 보상: 영단 +${ev.rewardLuck} · ${wispGradeName} 기연 +1`,
       );
+    });
+
+    this.sim.events.on('boon:offered', () => {
+      this.sound.playBoonOffer();
+      this.loop.setPaused(true);
+      this.ui.sync(this.sim.buildSnapshot(this.loop.getSpeed(), true), performance.now(), true);
+    });
+
+    this.sim.events.on('boon:picked', (ev) => {
+      this.vfx.triggerScreenFlash('#fde047', 0.1, 0.18, ev.tick);
+      this.ui.showToast(`☯ 강호 기연 전수! [${ev.name}] Lv.${ev.stacks} 발동!`);
     });
 
     this.sim.events.on('boss:timeout', (ev) => {

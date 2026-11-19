@@ -11,6 +11,10 @@ import type { SlotView, UISnapshot } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
+  BoonDef,
+  BoonIconKind,
+  BoonId,
+  BoonRarity,
   CourtSkinId,
   DifficultyId,
   FactionId,
@@ -44,6 +48,7 @@ import type { SpriteCache } from '../render/SpriteCache';
 
 export interface UIControlHandlers {
   onDispatch(cmd: GameCommand): void;
+  onPickBoon(boonId: BoonId): void;
   onCycleSpeed(): void;
   onTogglePause(): void;
   isSoundMuted(): boolean;
@@ -88,6 +93,14 @@ const FACTION_META: Readonly<Record<FactionId, { readonly label: string; readonl
   orthodox: { label: '정파', color: '#0284c7' },
   unorthodox: { label: '사파', color: '#15803d' },
   demonic: { label: '마교', color: '#be123c' },
+};
+
+const BOON_RARITY_META: Readonly<
+  Record<BoonRarity, { readonly label: string; readonly badge: string; readonly color: string }>
+> = {
+  rare: { label: '현급 기연', badge: '현급', color: '#0284c7' },
+  epic: { label: '지급 비전', badge: '지급', color: '#9333ea' },
+  mythic: { label: '천급 신공', badge: '천급', color: '#e11d48' },
 };
 
 const SKIN_RARITY_META: Readonly<
@@ -137,6 +150,36 @@ const ICON = {
   pavilion: `${SVG_OPEN}<path d="M2.5 11.5L12 4l9.5 7.5H2.5z" fill="#ef4444" stroke="${INK}" stroke-width="2.3" stroke-linejoin="round"/><rect x="5.5" y="11.5" width="13" height="8" rx="1.5" fill="#fef3c7" stroke="${INK}" stroke-width="2.2"/><path d="M9.5 19.5v-5h5v5" fill="#991b1b" stroke="${INK}" stroke-width="1.8"/></svg>`,
 } as const;
 
+function renderBoonIconSvg(kind: BoonIconKind): string {
+  const S = '<svg class="boon-svg" viewBox="0 0 32 32" aria-hidden="true">';
+  switch (kind) {
+    case 'vault':
+      return `${S}<rect x="4" y="9" width="24" height="17" rx="4" fill="#d97706" stroke="${INK}" stroke-width="2.6"/><path d="M4 13h24" stroke="${INK}" stroke-width="2.4"/><circle cx="16" cy="18" r="5" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><rect x="14.2" y="16.2" width="3.6" height="3.6" fill="${INK}"/><path d="M9 6h14l3 3H6l3-3z" fill="#fbbf24" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
+    case 'wealth_sword':
+      return `${S}<circle cx="16" cy="16" r="11" fill="#fde047" stroke="${INK}" stroke-width="2.5"/><rect x="12.5" y="12.5" width="7" height="7" fill="${INK}"/><path d="M6 26L26 6M20 5l7 0 0 7" stroke="${INK}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 26L26 6M20 5l7 0 0 7" stroke="#fb7185" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    case 'orthodox':
+      return `${S}<circle cx="16" cy="16" r="11.5" fill="#38bdf8" stroke="${INK}" stroke-width="2.6"/><path d="M16 4.5a5.75 5.75 0 0 1 0 11.5 5.75 5.75 0 0 0 0 11.5 11.5 11.5 0 0 1 0-23z" fill="#e0f2fe"/><circle cx="16" cy="10.2" r="2.1" fill="#0284c7"/><circle cx="16" cy="21.8" r="2.1" fill="#f8fafc"/><path d="M16 2v28" stroke="${INK}" stroke-width="2" stroke-dasharray="2 3"/></svg>`;
+    case 'pillage':
+      return `${S}<path d="M6 24L23 7l3 3-11 15-9-1z" fill="#4ade80" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="22" cy="22" r="5.5" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><rect x="20.4" y="20.4" width="3.2" height="3.2" fill="${INK}"/></svg>`;
+    case 'demonic':
+      return `${S}<path d="M16 3c5 5.5 9 9.5 9 15a9 9 0 0 1-18 0c0-4 2.2-7.2 4.6-9.6.5 2.4 1.6 3.8 3.2 4.2C13.6 9.5 14.4 6.5 16 3z" fill="#e11d48" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M16 14c2.5 2.8 4.2 4.6 4.2 7a4.2 4.2 0 0 1-8.4 0c0-2.1 1.6-4.1 4.2-7z" fill="#fde047"/></svg>`;
+    case 'shatter':
+      return `${S}<polygon points="16,3 27,8 25,20 16,29 7,20 5,8" fill="#c084fc" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><path d="M18 5l-5 10h6l-5 11" fill="none" stroke="#fef08a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    case 'formation':
+      return `${S}<polygon points="16,3 27,9.5 27,22.5 16,29 5,22.5 5,9.5" fill="#14b8a6" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><polygon points="16,8 22.5,12 22.5,20 16,24 9.5,20 9.5,12" fill="#99f6e4" stroke="${INK}" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="#fde047" stroke="${INK}" stroke-width="1.8"/></svg>`;
+    case 'acupoint':
+      return `${S}<circle cx="16" cy="16" r="10.5" fill="#1e293b" stroke="${INK}" stroke-width="2.6"/><circle cx="16" cy="16" r="5.5" fill="#f43f5e" stroke="#fde047" stroke-width="2"/><path d="M16 2v7M16 23v7M2 16h7M23 16h7" stroke="#5eead4" stroke-width="2.6" stroke-linecap="round"/></svg>`;
+    case 'furnace':
+      return `${S}<ellipse cx="16" cy="19" rx="10" ry="8" fill="#ea580c" stroke="${INK}" stroke-width="2.6"/><rect x="10" y="7" width="12" height="5" rx="2" fill="#facc15" stroke="${INK}" stroke-width="2.3"/><circle cx="16" cy="18" r="3.5" fill="#fef08a"/><path d="M10 26l-2 4M22 26l2 4" stroke="${INK}" stroke-width="2.8" stroke-linecap="round"/></svg>`;
+    case 'reinforce':
+      return `${S}<rect x="7" y="5" width="18" height="22" rx="3" fill="#5eead4" stroke="${INK}" stroke-width="2.6"/><rect x="4" y="4" width="4.5" height="24" rx="2" fill="#fde047" stroke="${INK}" stroke-width="2.2"/><path d="M13 11h8M13 16h8M13 21h5" stroke="#0f766e" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+    case 'bounty':
+      return `${S}<rect x="6" y="4" width="20" height="24" rx="3" fill="#fef3c7" stroke="${INK}" stroke-width="2.6"/><circle cx="16" cy="14" r="5" fill="#fb7185" stroke="${INK}" stroke-width="2.2"/><path d="M13 14h6M16 11v6" stroke="#fffbeb" stroke-width="2" stroke-linecap="round"/><path d="M10 23h12" stroke="#b91c1c" stroke-width="2.6" stroke-linecap="round"/></svg>`;
+    case 'trinity':
+      return `${S}<polygon points="16,3 28,25 4,25" fill="#fde047" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="16" cy="11" r="3.2" fill="#38bdf8" stroke="${INK}" stroke-width="1.8"/><circle cx="11" cy="21" r="3.2" fill="#4ade80" stroke="${INK}" stroke-width="1.8"/><circle cx="21" cy="21" r="3.2" fill="#f43f5e" stroke="${INK}" stroke-width="1.8"/></svg>`;
+  }
+}
+
 export class UIManager {
   private readonly root: HTMLElement;
   private readonly data: GameDataBundle;
@@ -167,6 +210,9 @@ export class UIManager {
   private bossHudHpEl!: HTMLElement;
   private bossHudTrailEl!: HTMLElement;
   private bossHudFillEl!: HTMLElement;
+  private bossHudShieldTrackEl!: HTMLElement;
+  private bossHudShieldFillEl!: HTMLElement;
+  private bossHudHintEl!: HTMLElement;
   private prevBossPortraitKind = '';
 
   private tacticalStripEl!: HTMLElement;
@@ -245,6 +291,15 @@ export class UIManager {
   private prevRecommendSignature = '';
 
   private toastLayerEl!: HTMLElement;
+  private boonPeekPillEl!: HTMLButtonElement;
+  private boonModalEl!: HTMLElement;
+  private boonTitleEl!: HTMLElement;
+  private boonCardsEl!: HTMLElement;
+  private boonPeekBtnEl!: HTMLButtonElement;
+  private boonMinimized = false;
+  private lastBoonOfferSeq = -1;
+  private prevBoonModalSig = '';
+
   private gameOverModalEl!: HTMLElement;
   private gameOverCardEl!: HTMLElement;
   private gameOverTitleEl!: HTMLElement;
@@ -388,6 +443,10 @@ export class UIManager {
             <div id="boss-hud-trail" class="boss-hud-trail"></div>
             <div id="boss-hud-fill" class="boss-hud-fill"></div>
           </div>
+          <div id="boss-hud-shield-track" class="boss-hud-shield-track">
+            <div id="boss-hud-shield-fill" class="boss-hud-shield-fill"></div>
+          </div>
+          <div id="boss-hud-hint" class="boss-hud-hint"></div>
         </div>
       </div>
 
@@ -527,6 +586,24 @@ export class UIManager {
         </div>
       </div>
 
+      <button id="boon-peek-pill" type="button" class="boon-peek-pill interactive">
+        ☯ 강호 기연 3택 1 선택 대기중 — 비급 펼치기
+      </button>
+
+      <div id="boon-modal" class="boon-modal interactive" role="dialog" aria-modal="true" aria-label="강호 기연 3택 1">
+        <div class="boon-shell">
+          <div class="boon-header">
+            <div class="boon-kicker">☯ 영물 토벌 보상 · 강호 기연 전수</div>
+            <div id="boon-title" class="boon-title">제 05 장 비전 비급 3택 1</div>
+            <div class="boon-subtitle">이번 출정 내내 영구 발동·중첩되는 무림 비급 하나를 택하십시오</div>
+          </div>
+          <div id="boon-cards" class="boon-cards"></div>
+          <div class="boon-footer">
+            <button id="btn-boon-peek" type="button" class="boon-peek-btn interactive">👁 비무대 전황 살펴보기</button>
+          </div>
+        </div>
+      </div>
+
       <div id="gameover-modal" class="gameover-modal interactive" role="alertdialog" aria-modal="true">
         <div id="gameover-card" class="gameover-card">
           <div id="gameover-title" class="gameover-title">비무대 함락 · 출정 정산</div>
@@ -565,6 +642,9 @@ export class UIManager {
     this.bossHudHpEl = this.mustGet('boss-hud-hp');
     this.bossHudTrailEl = this.mustGet('boss-hud-trail');
     this.bossHudFillEl = this.mustGet('boss-hud-fill');
+    this.bossHudShieldTrackEl = this.mustGet('boss-hud-shield-track');
+    this.bossHudShieldFillEl = this.mustGet('boss-hud-shield-fill');
+    this.bossHudHintEl = this.mustGet('boss-hud-hint');
 
     this.tacticalStripEl = this.mustGet('tactical-strip');
     this.bountyBtnEl = this.mustGet('btn-bounty') as HTMLButtonElement;
@@ -630,6 +710,12 @@ export class UIManager {
     this.synDemonicValEl = this.mustGet('syn-val-demonic');
 
     this.toastLayerEl = this.mustGet('toast-layer');
+    this.boonPeekPillEl = this.mustGet('boon-peek-pill') as HTMLButtonElement;
+    this.boonModalEl = this.mustGet('boon-modal');
+    this.boonTitleEl = this.mustGet('boon-title');
+    this.boonCardsEl = this.mustGet('boon-cards');
+    this.boonPeekBtnEl = this.mustGet('btn-boon-peek') as HTMLButtonElement;
+
     this.gameOverModalEl = this.mustGet('gameover-modal');
     this.gameOverCardEl = this.mustGet('gameover-card');
     this.gameOverTitleEl = this.mustGet('gameover-title');
@@ -645,7 +731,34 @@ export class UIManager {
   private bindEvents(): void {
     this.waveBoxEl.addEventListener('click', () => this.toggleSheet('codex'));
     this.relicBtnEl.addEventListener('click', () => this.toggleSheet('relic'));
-    this.relicBuffStripEl.addEventListener('click', () => this.toggleSheet('relic'));
+    this.relicBuffStripEl.addEventListener('click', (ev) => {
+      const boonTrigger = (ev.target as HTMLElement | null)?.closest('[data-open-boons]');
+      if (boonTrigger) {
+        this.toggleSheet('upgrade');
+      } else {
+        this.toggleSheet('relic');
+      }
+    });
+    this.boonCardsEl.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLElement>('[data-boon-id]');
+      const boonId = btn?.dataset.boonId as BoonId | undefined;
+      if (!boonId) return;
+      this.handlers.onPickBoon(boonId);
+    });
+    this.boonPeekBtnEl.addEventListener('click', () => {
+      this.boonMinimized = true;
+      this.prevBoonModalSig = '';
+      if (this.lastSnapshot) {
+        this.refreshBoonModal(this.lastSnapshot);
+      }
+    });
+    this.boonPeekPillEl.addEventListener('click', () => {
+      this.boonMinimized = false;
+      this.prevBoonModalSig = '';
+      if (this.lastSnapshot) {
+        this.refreshBoonModal(this.lastSnapshot);
+      }
+    });
     this.speedBtnEl.addEventListener('click', () => this.handlers.onCycleSpeed());
     this.pauseBtnEl.addEventListener('click', () => this.handlers.onTogglePause());
     this.muteBtnEl.addEventListener('click', () => {
@@ -1092,18 +1205,23 @@ export class UIManager {
     this.lastSnapshot = snapshot;
     const meta = this.handlers.getMetaProfile();
 
-    // 1. Top HUD Wave, Difficulty & Boss status
+    // 1. Top HUD Wave, Difficulty, Mutant Wave & Boss status
     const waveStr = String(snapshot.wave).padStart(2, '0');
     const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
     this.waveBoxEl.classList.toggle('boss-mode', snapshot.isBossWave);
     this.waveBoxEl.classList.toggle('endless-mode', snapshot.endlessMode);
+    this.waveBoxEl.classList.toggle('mutant-mode', Boolean(snapshot.waveMutant));
     const prefix = snapshot.isBossWave ? '영물' : snapshot.endlessMode ? '혈투' : '제';
     const shortDiff = diffCfg.badge.split(' ')[0] ?? diffCfg.badge;
-    this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${shortDiff}`);
+    const waveRight = snapshot.waveMutant ? snapshot.waveMutant.badge : shortDiff;
+    this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${waveRight}`);
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
     this.setText(this.devSimMetaEl, `30Hz · Tick ${snapshot.tick} · ${diffCfg.badge}`);
 
-    this.setText(this.monsterTitleEl, '침입 마물');
+    this.setText(
+      this.monsterTitleEl,
+      snapshot.waveMutant ? snapshot.waveMutant.name : '침입 마물',
+    );
     this.setText(this.monsterCountEl, `${snapshot.monsterCount} / ${snapshot.monsterCap}`);
     const pct = Math.min(100, Math.max(0, (snapshot.monsterCount / snapshot.monsterCap) * 100));
     this.monsterFillEl.style.width = `${pct.toFixed(1)}%`;
@@ -1137,9 +1255,13 @@ export class UIManager {
               : `${snapshot.boss.name} · 🛡강기 ${netArmor}`;
       }
       this.setText(this.bossHudNameEl, bossNameLabel);
+      const shieldPart =
+        snapshot.boss.shieldHp > 0
+          ? ` (+독갑 ${Math.ceil(snapshot.boss.shieldHp).toLocaleString('ko-KR')})`
+          : '';
       this.setText(
         this.bossHudHpEl,
-        `${Math.ceil(snapshot.boss.hp).toLocaleString('ko-KR')} / ${snapshot.boss.maxHp.toLocaleString('ko-KR')}`,
+        `${Math.ceil(snapshot.boss.hp).toLocaleString('ko-KR')} / ${snapshot.boss.maxHp.toLocaleString('ko-KR')}${shieldPart}`,
       );
       const bossPct = Math.min(
         100,
@@ -1148,6 +1270,18 @@ export class UIManager {
       const wCss = `${bossPct.toFixed(1)}%`;
       this.bossHudFillEl.style.width = wCss;
       this.bossHudTrailEl.style.width = wCss;
+
+      const hasShieldBar = snapshot.boss.shieldHp > 0 && snapshot.boss.shieldMaxHp > 0;
+      this.bossHudShieldTrackEl.classList.toggle('visible', hasShieldBar);
+      if (hasShieldBar) {
+        const sPct = Math.min(
+          100,
+          Math.max(0, (snapshot.boss.shieldHp / Math.max(1, snapshot.boss.shieldMaxHp)) * 100),
+        );
+        this.bossHudShieldFillEl.style.width = `${sPct.toFixed(1)}%`;
+      }
+      this.setText(this.bossHudHintEl, snapshot.boss.patternHint);
+      this.bossHudHintEl.classList.toggle('visible', snapshot.boss.patternHint.length > 0);
     }
 
     // 1b. Tactical Strip (Bounty · Missions · DPS · Wardrobe · Codex)
@@ -1301,8 +1435,93 @@ export class UIManager {
       this.refreshSheet(snapshot);
     }
 
-    // 6. Victory / Game Over Settlement Modal
+    // 6. Boss Reward 3-Choice Roguelike Boon Modal
+    this.refreshBoonModal(snapshot);
+
+    // 7. Victory / Game Over Settlement Modal
     this.refreshSettlementModal(snapshot, waveStr);
+  }
+
+  private refreshBoonModal(snapshot: UISnapshot): void {
+    const offer = snapshot.pendingBoonOffer;
+    if (!offer || snapshot.gameOver || snapshot.victoryHold) {
+      if (this.prevBoonModalSig !== 'closed') {
+        this.prevBoonModalSig = 'closed';
+        this.boonModalEl.classList.remove('open');
+        this.boonPeekPillEl.classList.remove('visible');
+      }
+      return;
+    }
+
+    if (offer.seq !== this.lastBoonOfferSeq) {
+      this.lastBoonOfferSeq = offer.seq;
+      this.boonMinimized = false;
+      if (this.activeSheet) {
+        this.closeSheet();
+      }
+    }
+
+    const sig = `${offer.seq}:${offer.wave}:${this.boonMinimized ? 1 : 0}:${offer.options.map((id) => `${id}=${snapshot.activeBoons[id] ?? 0}`).join(',')}`;
+    if (sig === this.prevBoonModalSig) {
+      return;
+    }
+    this.prevBoonModalSig = sig;
+
+    const offerWaveStr = String(offer.wave).padStart(2, '0');
+    this.setText(this.boonTitleEl, `제 ${offerWaveStr} 장 비전 비급 3택 1`);
+    this.setText(
+      this.boonPeekPillEl,
+      `☯ 제 ${offerWaveStr} 장 강호 기연 선택 대기중 — 비급 펼치기`,
+    );
+
+    if (this.boonMinimized) {
+      this.boonModalEl.classList.remove('open');
+      this.boonPeekPillEl.classList.add('visible');
+      return;
+    }
+
+    this.boonPeekPillEl.classList.remove('visible');
+    this.boonCardsEl.innerHTML = offer.options
+      .map((boonId) => {
+        const def: BoonDef | undefined = this.data.boonsById.get(boonId);
+        if (!def) return '';
+        const rMeta = BOON_RARITY_META[def.rarity];
+        const curStacks = snapshot.activeBoons[boonId] ?? 0;
+        const nextStacks = Math.min(def.maxStacks, curStacks + 1);
+        const stackBadge =
+          curStacks <= 0
+            ? '<span class="boon-stack-pill is-new">신규 전수</span>'
+            : `<span class="boon-stack-pill is-up">Lv.${curStacks} → Lv.${nextStacks}</span>`;
+
+        return `
+          <button
+            type="button"
+            class="boon-card rarity-${def.rarity} interactive"
+            data-boon-id="${def.id}"
+          >
+            <div class="boon-card-left">
+              <div class="boon-icon-frame rarity-${def.rarity}">
+                ${renderBoonIconSvg(def.iconKind)}
+              </div>
+            </div>
+            <div class="boon-card-body">
+              <div class="boon-card-top">
+                <span class="boon-rarity-pill" style="background:${rMeta.color}">${rMeta.label}</span>
+                <span class="boon-tag-pill">${escapeHtml(def.tag)}</span>
+                ${stackBadge}
+              </div>
+              <div class="boon-card-name">${escapeHtml(def.name)}</div>
+              <div class="boon-card-desc">${escapeHtml(def.desc)}</div>
+            </div>
+            <div class="boon-card-cta">
+              <span>전수</span>
+            </div>
+          </button>
+        `;
+      })
+      .join('');
+
+    this.boonModalEl.classList.add('open');
   }
 
   private getEquippedSkinDef(unitId: UnitId, meta: MetaProfile): HeroSkinDef | null {
@@ -1503,20 +1722,29 @@ export class UIManager {
     const vaultPct = snapshot.relicBonus.interestPct;
     const swordLv = snapshot.relics.million_sword_seal ?? 0;
     const swordBps = snapshot.relicBonus.wealthAtkBps;
+    const boonStacks = snapshot.totalBoonStacks;
     const activeRelicCount = this.data.relics.filter((d) => (snapshot.relics[d.id] ?? 0) > 0).length;
-    const sig = `${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${activeRelicCount}:${meta.keys}`;
+    const sig = `${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
     const pills: string[] = [];
+    if (boonStacks > 0) {
+      pills.push(
+        `<span class="relic-buff-pill boon-active" data-open-boons="1" title="이번 출정 전수받은 강호 기연 보기">☯ 기연 ${boonStacks}중</span>`,
+      );
+    }
     if (vaultPct > 0) {
       const iconUrl = this.sprites.relicPortraitUrl('golden_vault', Math.max(1, vaultLv));
       pills.push(
         `<span class="relic-buff-pill vault"><img class="relic-mini-px" src="${iconUrl}" alt="" />금고 +${vaultPct}%</span>`,
       );
     }
-    if (swordLv > 0) {
-      const iconUrl = this.sprites.relicPortraitUrl('million_sword_seal', swordLv);
+    if (swordLv > 0 || swordBps > 0) {
+      const iconUrl = this.sprites.relicPortraitUrl(
+        'million_sword_seal',
+        Math.max(1, swordLv),
+      );
       const pctStr = (swordBps / 100).toFixed(1);
       pills.push(
         `<span class="relic-buff-pill sword"><img class="relic-mini-px" src="${iconUrl}" alt="" />쾌검 +${pctStr}%</span>`,
@@ -1667,7 +1895,7 @@ export class UIManager {
     }
 
     const meta = this.handlers.getMetaProfile();
-    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
+    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
     if (sig === this.prevSelectSignature) {
       return;
     }
@@ -1712,6 +1940,18 @@ export class UIManager {
     const upperRecipes = this.recipeGraph.byIngredient.get(slotView.unitId) ?? [];
     this.unitShortcutsEl.innerHTML = '';
     let bestAscend: { recipeId: string; chain: boolean; rank: number; label: string } | null = null;
+
+    if (slotView.sealed) {
+      const sealChip = document.createElement('span');
+      sealChip.className = 'shortcut-chip hazard-chip sealed';
+      sealChip.textContent = '⛓ 혈옥 봉인됨! 옆 칸으로 이동 시 해제';
+      this.unitShortcutsEl.appendChild(sealChip);
+    } else if (slotView.hazardWarning) {
+      const warnChip = document.createElement('span');
+      warnChip.className = 'shortcut-chip hazard-chip warn';
+      warnChip.textContent = '🚨 주박 예고! 다른 칸으로 드래그 회피';
+      this.unitShortcutsEl.appendChild(warnChip);
+    }
 
     if (slotView.supportAura) {
       const auraChip = document.createElement('span');
@@ -1790,7 +2030,7 @@ export class UIManager {
     } else if (kind === 'gamble') {
       sig = `gamble:${meta.rev}:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
     } else if (kind === 'upgrade') {
-      sig = `upgrade:${meta.rev}:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${meta.keys}:${meta.discoveredCount}`;
+      sig = `upgrade:${meta.rev}:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${snapshot.totalBoonStacks}:${meta.keys}:${meta.discoveredCount}`;
     } else if (kind === 'wardrobe') {
       sig = `wardrobe:${this.wardrobeSubTab}:${meta.rev}:${this.lastSkinPull?.seq ?? 0}`;
     } else if (kind === 'codex') {
@@ -2194,10 +2434,13 @@ export class UIManager {
   }
 
   private renderUpgradeSheet(snapshot: UISnapshot, meta: MetaProfile): void {
-    this.setText(this.sheetTitleEl, '내공 수련');
+    const harmonyStacks = snapshot.activeBoons.b_trinity_harmony ?? 0;
+    const discountNote =
+      harmonyStacks > 0 ? ` · 삼재귀원 수련비 -${Math.min(50, harmonyStacks * 25)}%` : '';
+    this.setText(this.sheetTitleEl, '내공 수련 · 강호 기연');
     this.setText(
       this.sheetSubtitleEl,
-      `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 정파 내공 / 사파 외공 / 마교 마공`,
+      `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 정파 내공 / 사파 외공 / 마교 마공${discountNote}`,
     );
     this.renderGrowthTabs('upgrade', meta);
 
@@ -2205,7 +2448,11 @@ export class UIManager {
       .map((up) => {
         const lv = snapshot.upgradeLv[up.id] ?? 0;
         const isMax = lv >= up.maxLevel;
-        const cost = up.baseCost + lv * up.costStep;
+        const rawCost = up.baseCost + lv * up.costStep;
+        const cost =
+          harmonyStacks > 0
+            ? Math.max(1, Math.round(rawCost * Math.max(0.5, 1 - 0.25 * harmonyStacks)))
+            : rawCost;
         const icon = up.currency === 'coin' ? ICON.coin : ICON.elixir;
         const affordable = up.currency === 'coin' ? snapshot.coin >= cost : snapshot.luckStone >= cost;
 
@@ -2249,7 +2496,46 @@ export class UIManager {
       })
       .join('');
 
-    this.sheetBodyEl.innerHTML = cards;
+    let boonsHtml = '';
+    if (snapshot.totalBoonStacks > 0) {
+      const ownedRows = this.data.boons
+        .filter((b) => (snapshot.activeBoons[b.id] ?? 0) > 0)
+        .map((b) => {
+          const stacks = snapshot.activeBoons[b.id] ?? 0;
+          const rMeta = BOON_RARITY_META[b.rarity];
+          return `
+            <div class="sheet-card boon-owned-card rarity-${b.rarity}">
+              <div class="card-left">
+                <div class="boon-icon-frame compact rarity-${b.rarity}">
+                  ${renderBoonIconSvg(b.iconKind)}
+                </div>
+                <div class="card-info">
+                  <div class="card-name-row">
+                    <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label} · Lv.${stacks}/${b.maxStacks}</span>
+                    <span class="boon-tag-pill">${escapeHtml(b.tag)}</span>
+                    <span class="card-name">${escapeHtml(b.name)}</span>
+                  </div>
+                  <div class="card-sub">${escapeHtml(b.desc)}</div>
+                </div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      boonsHtml = `
+        <div class="boon-owned-header">☯ 이번 출정 전수받은 강호 기연 (${snapshot.totalBoonStacks}중 발동)</div>
+        ${ownedRows}
+      `;
+    } else {
+      boonsHtml = `
+        <div class="boon-owned-empty">
+          ☯ 제 05 · 10 · 15 · 20 · 25 장 영물 토벌 시 <b>『강호 기연 3택 1』</b> 비급을 전수받습니다.
+        </div>
+      `;
+    }
+
+    this.sheetBodyEl.innerHTML = cards + boonsHtml;
   }
 
   private renderRelicSheet(snapshot: UISnapshot, meta: MetaProfile): void {
