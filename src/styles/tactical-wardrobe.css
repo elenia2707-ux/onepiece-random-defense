@@ -1992,6 +1992,86 @@
   color: #fef9c3;
 }
 
+/* v3.2: Divine Armaments (신병단조각 · 명병 3슬롯) */
+.armament-forge-panel {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boon-owned-header.armament-header {
+  color: #fef08a;
+  border-left: 3px solid #f59e0b;
+  padding-left: 8px;
+}
+
+.armament-slot-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 27, 75, 0.95) 100%);
+  border-width: 2px;
+}
+
+.armament-slot-card.is-resonating {
+  box-shadow: 0 4px 0 var(--ink), 0 0 12px rgba(250, 204, 21, 0.35);
+}
+
+.card-avatar.armament-avatar {
+  background: radial-gradient(circle, rgba(250, 204, 21, 0.22) 0%, rgba(15, 23, 42, 0.92) 75%);
+  border: 2px solid #f59e0b;
+}
+
+.armament-res-line {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.armament-res-line.active {
+  color: #fef08a;
+}
+
+.armament-fac-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.armament-owner-line {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.armament-forge-cta-card {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.88) 0%, rgba(30, 27, 46, 0.94) 100%);
+  border-color: #f59e0b;
+}
+
+.shortcut-chip.arm-chip {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.96) 0%, rgba(15, 23, 42, 0.98) 100%);
+  color: #fef08a;
+  border: 1.8px solid #f59e0b;
+}
+
+.shortcut-chip.arm-chip.equipped {
+  background: linear-gradient(180deg, rgba(146, 64, 14, 0.96) 0%, rgba(69, 26, 3, 0.98) 100%);
+  border-color: #fde047;
+  color: #fffbeb;
+}
+
+.relic-buff-pill.armory-active {
+  background: linear-gradient(180deg, #7c2d12 0%, #431407 100%);
+  border-color: #fbbf24;
+  color: #fef3c7;
+  cursor: pointer;
+}
+
+
 
 
 

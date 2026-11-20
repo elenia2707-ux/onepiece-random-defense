@@ -452,7 +452,14 @@ export class VfxSystem {
       | 'serpent_shatter'
       | 'patriarch_telegraph'
       | 'patriarch_seal'
-      | 'patriarch_summon',
+      | 'patriarch_summon'
+      | 'dragon_thunder_warn'
+      | 'dragon_thunder_strike'
+      | 'dragon_backfire'
+      | 'dragon_tempest'
+      | 'phoenix_rebirth_egg'
+      | 'phoenix_rebirth_heal'
+      | 'phoenix_shatter',
     skillName: string,
     x: number,
     y: number,
@@ -460,7 +467,12 @@ export class VfxSystem {
     startTick: number,
   ): void {
     const calloutFaction: FactionId =
-      skillKind === 'tiger_roar' || skillKind === 'tiger_sprint'
+      skillKind === 'tiger_roar' ||
+      skillKind === 'tiger_sprint' ||
+      skillKind === 'dragon_thunder_warn' ||
+      skillKind === 'dragon_thunder_strike' ||
+      skillKind === 'dragon_backfire' ||
+      skillKind === 'dragon_tempest'
         ? 'orthodox'
         : skillKind === 'serpent_shell' ||
             skillKind === 'serpent_heal' ||
@@ -648,6 +660,169 @@ export class VfxSystem {
         });
         this.emitRadialBurst(x, y, '#f43f5e', 24, 190, 0.42, -25, startTick);
         this.triggerScreenFlash('#be123c', 0.12, 0.18, startTick);
+        break;
+      }
+      case 'dragon_thunder_warn': {
+        this.pushTrack({
+          kind: 'emperor_thunder',
+          startTick,
+          durationSec: 0.5,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 18,
+          toRadius: 88,
+          color: '#38bdf8',
+          secondaryColor: '#fde047',
+          lineWidth: 5.5,
+          glowRadius: 72,
+          gradeRank: 5,
+        });
+        for (let i = 0; i < tilePositions.length; i++) {
+          const tp = tilePositions[i]!;
+          this.pushTrack({
+            kind: 'ring',
+            startTick,
+            durationSec: 0.46,
+            fromX: x,
+            fromY: y,
+            x: tp.x,
+            y: tp.y,
+            fromRadius: 12,
+            toRadius: 56,
+            color: '#38bdf8',
+            lineWidth: 4.5,
+            glowRadius: 44,
+          });
+          this.emitRadialBurst(tp.x, tp.y, '#bae6fd', 12, 115, 0.32, -25, startTick);
+        }
+        this.triggerScreenFlash('#38bdf8', 0.08, 0.15, startTick);
+        break;
+      }
+      case 'dragon_thunder_strike': {
+        for (let i = 0; i < tilePositions.length; i++) {
+          const tp = tilePositions[i]!;
+          this.pushTrack({
+            kind: 'emperor_thunder',
+            startTick,
+            durationSec: 0.48,
+            fromX: tp.x,
+            fromY: tp.y - 60,
+            x: tp.x,
+            y: tp.y,
+            fromRadius: 14,
+            toRadius: 64,
+            color: '#0284c7',
+            secondaryColor: '#fde047',
+            lineWidth: 5.5,
+            glowRadius: 60,
+            gradeRank: 5,
+          });
+          this.emitRadialBurst(tp.x, tp.y, '#38bdf8', 16, 155, 0.36, 0, startTick);
+        }
+        break;
+      }
+      case 'dragon_backfire': {
+        this.pushTrack({
+          kind: 'armor_shatter',
+          startTick,
+          durationSec: 0.62,
+          fromX: x,
+          fromY: y - 48,
+          x,
+          y,
+          fromRadius: 20,
+          toRadius: 105,
+          color: '#fde047',
+          secondaryColor: '#38bdf8',
+          lineWidth: 6.5,
+          glowRadius: 92,
+          gradeRank: 6,
+        });
+        this.emitRadialBurst(x, y, '#fde047', 24, 195, 0.42, 15, startTick);
+        this.emitRadialBurst(x, y, '#38bdf8', 16, 160, 0.36, 10, startTick);
+        this.triggerScreenFlash('#fde047', 0.12, 0.18, startTick);
+        break;
+      }
+      case 'dragon_tempest': {
+        this.pushTrack({
+          kind: 'emperor_thunder',
+          startTick,
+          durationSec: 0.56,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 22,
+          toRadius: 170,
+          color: '#38bdf8',
+          secondaryColor: '#fef08a',
+          lineWidth: 6,
+          glowRadius: 92,
+          gradeRank: 5,
+        });
+        this.emitRadialBurst(x, y, '#67e8f9', 22, 185, 0.38, 0, startTick);
+        break;
+      }
+      case 'phoenix_rebirth_egg': {
+        this.pushTrack({
+          kind: 'demonic_flame',
+          startTick,
+          durationSec: 0.52,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 18,
+          toRadius: 96,
+          color: '#fb923c',
+          secondaryColor: '#fde047',
+          lineWidth: 5.8,
+          glowRadius: 76,
+          gradeRank: 5,
+        });
+        this.emitRadialBurst(x, y, '#fdba74', 20, 150, 0.38, -35, startTick);
+        break;
+      }
+      case 'phoenix_rebirth_heal': {
+        this.pushTrack({
+          kind: 'qi_resonance',
+          startTick,
+          durationSec: 0.56,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 20,
+          toRadius: 88,
+          color: '#f97316',
+          lineWidth: 5.5,
+          glowRadius: 68,
+        });
+        this.emitRadialBurst(x, y, '#fde047', 20, 140, 0.42, -85, startTick);
+        break;
+      }
+      case 'phoenix_shatter': {
+        this.pushTrack({
+          kind: 'armor_shatter',
+          startTick,
+          durationSec: 0.65,
+          fromX: x,
+          fromY: y,
+          x,
+          y,
+          fromRadius: 20,
+          toRadius: 108,
+          color: '#fde047',
+          secondaryColor: '#ef4444',
+          lineWidth: 6.5,
+          glowRadius: 92,
+          gradeRank: 6,
+        });
+        this.emitRadialBurst(x, y, '#fde047', 24, 200, 0.44, 15, startTick);
+        this.emitRadialBurst(x, y, '#fb923c', 16, 165, 0.38, 10, startTick);
+        this.triggerScreenFlash('#fb923c', 0.12, 0.18, startTick);
         break;
       }
     }

@@ -6,6 +6,7 @@ import type {
 } from '../core/Simulation';
 import type { RunModeId } from '../data/specialModes';
 import type {
+  ArmamentId,
   BoonId,
   DifficultyId,
   GameDataBundle,
@@ -48,6 +49,11 @@ export interface RunSaveData {
   readonly pendingContractOffer?: ContractOfferSnapshot | null;
   readonly queuedContractOfferWaves?: readonly number[];
   readonly activeContracts?: readonly ActiveContractState[];
+  readonly armory?: ReadonlyArray<{
+    readonly slotIndex: number;
+    readonly armamentId: ArmamentId;
+    readonly equippedUid: number | null;
+  }>;
   readonly bossSpawnTick?: number;
   readonly awakenCount?: number;
   readonly preserveBenchPassives?: boolean;

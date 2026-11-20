@@ -213,8 +213,8 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
   },
   {
     stage: 4,
-    bossName: '제4관문 · 광풍 백호군주',
-    monsterKind: 'white_tiger',
+    bossName: '제4관문 · 창궁신수 청룡',
+    monsterKind: 'azure_dragon',
     monsterHp: 98000,
     armorBonus: 32,
     durationSec: 52,
@@ -225,8 +225,8 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
   },
   {
     stage: 5,
-    bossName: '제5관문 · 구천 현무신수',
-    monsterKind: 'black_serpent',
+    bossName: '제5관문 · 남명신수 주작',
+    monsterKind: 'vermilion_bird',
     monsterHp: 210000,
     armorBonus: 42,
     durationSec: 55,
@@ -261,8 +261,8 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
   },
   {
     stage: 8,
-    bossName: '제8관문 · 심연 만독현무',
-    monsterKind: 'black_serpent',
+    bossName: '제8관문 · 뇌제창궁 청룡신왕',
+    monsterKind: 'azure_dragon',
     monsterHp: 1650000,
     armorBonus: 72,
     durationSec: 60,
@@ -273,8 +273,8 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
   },
   {
     stage: 9,
-    bossName: '제9관문 · 적월 혈마교주',
-    monsterKind: 'blood_patriarch',
+    bossName: '제9관문 · 적염열반 주작신왕',
+    monsterKind: 'vermilion_bird',
     monsterHp: 3100000,
     armorBonus: 84,
     durationSec: 62,
@@ -321,7 +321,13 @@ export function resolveBossRushWaveDef(stage: number): WaveDef {
   // Endless Boss Rush (stage 11+)
   const extra = clamped - BOSS_RUSH_STAGES.length;
   const last = BOSS_RUSH_STAGES[BOSS_RUSH_STAGES.length - 1]!;
-  const kinds: readonly MonsterKind[] = ['white_tiger', 'black_serpent', 'blood_patriarch'];
+  const kinds: readonly MonsterKind[] = [
+    'white_tiger',
+    'black_serpent',
+    'azure_dragon',
+    'vermilion_bird',
+    'blood_patriarch',
+  ];
   return {
     wave: clamped,
     durationTicks: 65 * 30,

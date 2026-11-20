@@ -548,8 +548,9 @@ export function buildUpgradeSheetView(params: {
   readonly sprites: SpriteCache;
   readonly snapshot: UISnapshot;
   readonly meta: MetaProfile;
+  readonly selectedUnit?: { readonly uid: number; readonly name: string } | null;
 }): { readonly subtitle: string; readonly bodyHtml: string } {
-  const { data, sprites, snapshot, meta } = params;
+  const { data, sprites, snapshot, meta, selectedUnit } = params;
   const harmonyStacks = snapshot.activeBoons.b_trinity_harmony ?? 0;
   const manualDiscountPct = getTrainingManualCostDiscountPct(
     snapshot.relics.jade_training_manual ?? 0,
@@ -557,7 +558,7 @@ export function buildUpgradeSheetView(params: {
   const setDiscountPct = computeRelicSetBonuses(snapshot.relics).upgradeDiscountPct;
   const totalDiscountPct = Math.min(60, harmonyStacks * 25 + manualDiscountPct + setDiscountPct);
   const discountNote = totalDiscountPct > 0 ? ` · 수련비 -${totalDiscountPct}%` : '';
-  const subtitle = `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 정파 내공 / 사파 외공 / 마교 마공${discountNote}`;
+  const subtitle = `보유 은자 ${snapshot.coin.toLocaleString('ko-KR')} · 영단 ${snapshot.luckStone} · 문파 내공 & 신병단조각 (${snapshot.armory.slots.length}/${snapshot.armory.maxSlots})${discountNote}`;
 
   const calcStepCost = (baseCost: number, costStep: number, level: number): number => {
     const raw = baseCost + level * costStep;
@@ -649,6 +650,162 @@ export function buildUpgradeSheetView(params: {
     })
     .join('');
 
+  // v3.2: 3-Slot Divine Armament Forge & Equip Panel (신병단조각 — 협객 전용 명병 3자루)
+  const armory = snapshot.armory;
+  let bestBoardCandidate: { uid: number; name: string; score: number; faction: string } | null = null;
+  const equippedUids = new Set<number>();
+  for (let i = 0; i < armory.slots.length; i++) {
+    const eq = armory.slots[i]!.equippedUid;
+    if (eq !== null) equippedUids.add(eq);
+  }
+  for (let i = 0; i < snapshot.field.length; i++) {
+    const sv = snapshot.field[i];
+    if (!sv || equippedUids.has(sv.uid)) continue;
+    const gRank = data.gradesById.get(sv.grade)?.rank ?? 1;
+    const sc = 1000 + gRank * 100 + sv.starLevel * 30;
+    if (!bestBoardCandidate || sc > bestBoardCandidate.score) {
+      bestBoardCandidate = { uid: sv.uid, name: sv.name, score: sc, faction: sv.faction };
+    }
+  }
+  if (!bestBoardCandidate) {
+    for (let i = 0; i < snapshot.bench.length; i++) {
+      const sv = snapshot.bench[i];
+      if (!sv || equippedUids.has(sv.uid)) continue;
+      const gRank = data.gradesById.get(sv.grade)?.rank ?? 1;
+      const sc = gRank * 100 + sv.starLevel * 30;
+      if (!bestBoardCandidate || sc > bestBoardCandidate.score) {
+        bestBoardCandidate = { uid: sv.uid, name: sv.name, score: sc, faction: sv.faction };
+      }
+    }
+  }
+
+  const forgedRows = armory.slots
+    .map((slot) => {
+      const armDef = data.armamentsById.get(slot.armamentId);
+      if (!armDef) return '';
+      const armPortrait = sprites.armamentPortraitUrl(armDef);
+      const resFacMeta = FACTION_META[armDef.resonance.faction];
+      const canReforge = snapshot.coin >= armory.reforgeCostCoin;
+      const isEquipped = slot.equippedUid !== null && slot.equippedUnitName !== null;
+      const canEquipSelected =
+        selectedUnit !== null &&
+        selectedUnit !== undefined &&
+        selectedUnit.uid !== slot.equippedUid;
+      const autoEquipTarget = canEquipSelected
+        ? selectedUnit!
+        : !isEquipped && bestBoardCandidate
+          ? bestBoardCandidate
+          : null;
+
+      return `
+        <div class="sheet-card armament-slot-card${slot.resonanceActive ? ' is-resonating' : ''}" style="border-color:${armDef.color}">
+          <div class="card-left">
+            <div class="card-avatar armament-avatar" style="border-color:${armDef.color}">
+              <img src="${armPortrait}" alt="" />
+            </div>
+            <div class="card-info">
+              <div class="card-name-row">
+                <span class="grade-pill" style="background:${armDef.color}">제${slot.slotIndex + 1}신병 · ${escapeHtml(armDef.badge)}</span>
+                <span class="boon-tag-pill">${escapeHtml(armDef.tag)}</span>
+                <span class="card-name">${escapeHtml(armDef.name)}</span>
+              </div>
+              <div class="card-sub">${escapeHtml(armDef.desc)}</div>
+              <div class="armament-res-line ${slot.resonanceActive ? 'active' : ''}">
+                <span class="armament-fac-dot" style="background:${resFacMeta.color}"></span>
+                ${escapeHtml(armDef.resonance.label)} ${slot.resonanceActive ? '<b>(공명 발동✦)</b>' : ''}
+              </div>
+              <div class="armament-owner-line">
+                ${
+                  isEquipped
+                    ? `🗡 패용 협객: <b>${escapeHtml(slot.equippedUnitName!)}</b> (합공·판매 시 자동 계승/회수)`
+                    : `📦 무기고 보관 중 — 전장 협객을 선택하거나 아래 수여 버튼을 누르세요`
+                }
+              </div>
+            </div>
+          </div>
+          <div class="upgrade-cta-row armament-cta-row">
+            <button
+              type="button"
+              class="card-cta-btn upgrade-x5-btn ${canReforge ? 'cta-sky interactive' : 'cta-disabled'}"
+              data-sheet-action="reforge-armament"
+              data-slot-index="${slot.slotIndex}"
+              ${canReforge ? '' : 'disabled'}
+            >
+              <span>재연마</span>
+              <span class="mini-price">${ICON.coin}${armory.reforgeCostCoin}</span>
+            </button>
+            ${
+              autoEquipTarget
+                ? `<button
+                    type="button"
+                    class="card-cta-btn interactive"
+                    data-sheet-action="equip-armament"
+                    data-slot-index="${slot.slotIndex}"
+                    data-target-uid="${autoEquipTarget.uid}"
+                  >
+                    <span>${canEquipSelected ? '선택수여' : '즉시수여'}</span>
+                    <span class="mini-price">${escapeHtml(autoEquipTarget.name.slice(0, 5))}</span>
+                  </button>`
+                : isEquipped
+                  ? `<button
+                      type="button"
+                      class="card-cta-btn cta-amber interactive"
+                      data-sheet-action="equip-armament"
+                      data-slot-index="${slot.slotIndex}"
+                      data-target-uid=""
+                    >
+                      <span>회수</span>
+                      <span class="mini-price">보관함</span>
+                    </button>`
+                  : ''
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  let forgeBtnHtml = '';
+  if (armory.nextForgeCost) {
+    const fc = armory.nextForgeCost;
+    const canForge = snapshot.coin >= fc.coin && snapshot.luckStone >= fc.luck;
+    const nextIdx = armory.slots.length + 1;
+    forgeBtnHtml = `
+      <div class="sheet-card armament-forge-cta-card">
+        <div class="card-left">
+          <div class="card-info">
+            <div class="card-name-row">
+              <span class="grade-pill" style="background:#d97706">신병 주조 ${armory.slots.length}/${armory.maxSlots}</span>
+              <span class="card-name">제 ${nextIdx} 신병이기 단조</span>
+            </div>
+            <div class="card-sub">
+              6대 전설 명병 중 미보유 신병 1자루를 주조하여 최강 협객에게 즉시 패용합니다. 문파 일치 시 전용 공명이 개방됩니다!
+            </div>
+          </div>
+        </div>
+        <div class="upgrade-cta-row">
+          <button
+            type="button"
+            class="card-cta-btn ${canForge ? 'interactive' : 'cta-disabled'}"
+            data-sheet-action="forge-armament"
+            ${canForge ? '' : 'disabled'}
+          >
+            <span>🔨 주조</span>
+            <span class="mini-price">${ICON.coin}${fc.coin} · ${ICON.elixir}${fc.luck}</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  const armoryHtml = `
+    <div class="armament-forge-panel">
+      <div class="boon-owned-header armament-header">🗡 문파 신병단조각 — 협객 전용 명병 장착 (${armory.slots.length}/${armory.maxSlots}자루)</div>
+      ${forgedRows}
+      ${forgeBtnHtml}
+    </div>
+  `;
+
   let boonsHtml = '';
   if (snapshot.totalBoonStacks > 0) {
     const ownedRows = data.boons
@@ -688,7 +845,7 @@ export function buildUpgradeSheetView(params: {
       `;
   }
 
-  return { subtitle, bodyHtml: cards + boonsHtml };
+  return { subtitle, bodyHtml: cards + armoryHtml + boonsHtml };
 }
 
 export function buildMissionSheetView(

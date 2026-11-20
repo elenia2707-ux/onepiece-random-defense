@@ -1,4 +1,5 @@
 import type {
+  ArmamentDef,
   CourtSkinDef,
   FactionId,
   GradeDef,
@@ -9,6 +10,7 @@ import type {
 } from '../data/types';
 import { type AtlasFrameRect, spriteAtlasLoader } from './AssetLoader';
 import {
+  paintArmamentPixelArt,
   paintMonsterChibi,
   paintRelicPixelArt,
   paintUnitChibi,
@@ -38,7 +40,20 @@ const BOSS_PIXEL_SIZE = 128; // 32 x 4
 
 export type GlyphStyle = 'normal' | 'skill' | 'crit' | 'shred';
 export type HitBadgeKind = 'crit' | 'shred' | 'kill' | 'execute' | 'pierce' | 'boss' | 'corrode';
-export type StatusBadgeKind = 'warn' | 'sealed' | 'shield' | 'haste';
+export type StatusBadgeKind =
+  | 'warn'
+  | 'sealed'
+  | 'shield'
+  | 'haste'
+  | 'thunder_warn'
+  | 'thunder_seal'
+  | 'phoenix_egg';
+
+interface ArmamentSealSpec {
+  readonly badge: string;
+  readonly color: string;
+  readonly resonanceActive: boolean;
+}
 
 interface BannerSpec {
   readonly kind: 'boss' | 'craft';
@@ -82,6 +97,7 @@ export class SpriteCache {
   private readonly skillCalloutSpecs = new Map<string, SkillCalloutSpec>();
   private readonly hitBadgeSpecs = new Map<string, HitBadgeKind>();
   private readonly statusBadgeSpecs = new Map<string, StatusBadgeKind>();
+  private readonly armamentSealSpecs = new Map<string, ArmamentSealSpec>();
   private readonly skinnedVariants = new Map<string, Array<{ key: string; skin: HeroSkinDef }>>();
   private readonly probed = new Set<string>();
   private readonly spriteListeners: Array<() => void> = [];
@@ -114,6 +130,7 @@ export class SpriteCache {
     this.skillCalloutSpecs.delete(key);
     this.hitBadgeSpecs.delete(key);
     this.statusBadgeSpecs.delete(key);
+    this.armamentSealSpecs.delete(key);
   }
 
   public disposeAll(): void {
@@ -129,6 +146,7 @@ export class SpriteCache {
     this.skillCalloutSpecs.clear();
     this.hitBadgeSpecs.clear();
     this.statusBadgeSpecs.clear();
+    this.armamentSealSpecs.clear();
     this.skinnedVariants.clear();
     if (this.glyphCanvas) {
       this.glyphCanvas.width = 0;
@@ -148,7 +166,7 @@ export class SpriteCache {
     Promise.all([
       fonts.load(
         `40px "Black Han Sans"`,
-        'BOSS 0123456789 剛破天魔毒血雷龍劍覇狂仙修炎魂 회심 파갑 참살 처형 관통 패왕 부식',
+        'BOSS 0123456789 剛破天魔毒血雷龍劍覇狂仙修炎魂 회심 파갑 참살 처형 관통 패왕 부식 화신 자하 현중 화우 혈마 백옥 파천',
       ),
       fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현 매화만개 천마군림보 화경 현경 강림'),
     ])
@@ -185,6 +203,12 @@ export class SpriteCache {
       const c = this.cache.get(key);
       if (c) this.paintStatusBadge(c, kind);
     }
+    for (const [key, spec] of this.armamentSealSpecs) {
+      const c = this.cache.get(key);
+      if (c) this.paintArmamentSealBadge(c, spec);
+    }
+    const avatarBadge = this.cache.get('badge:avatar_mastery');
+    if (avatarBadge) this.paintAvatarMasterySealBadge(avatarBadge);
     const benchBadge = this.cache.get('badge:bench_passive');
     if (benchBadge) this.paintBenchPassiveBadge(benchBadge);
   }
@@ -872,6 +896,125 @@ export class SpriteCache {
     return url;
   }
 
+  /** Cached 96x96 pixel-art portrait URL for the 6 Divine Armaments (신병이기). */
+  public armamentPortraitUrl(arm: ArmamentDef): string {
+    const key = `url:armament:${arm.id}`;
+    const existing = this.portraitUrls.get(key);
+    if (existing) return existing;
+
+    const canvasKey = `armament:${arm.id}`;
+    let c = this.cache.get(canvasKey);
+    if (!c) {
+      c = this.createOffscreen(96, 96);
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        paintArmamentPixelArt(ctx, arm.iconKind, arm.color, arm.secondaryColor, 96);
+      }
+      this.cache.set(canvasKey, c);
+    }
+
+    const url = c.width > 0 ? c.toDataURL('image/png') : '';
+    this.portraitUrls.set(key, url);
+    return url;
+  }
+
+  /** Pre-rendered compact board seal badge for equipped Divine Armaments (zero per-frame fillText). */
+  public armamentSealBadge(
+    armId: string,
+    badge: string,
+    color: string,
+    resonanceActive: boolean,
+  ): HTMLCanvasElement {
+    const key = `armseal:${armId}:${resonanceActive ? 1 : 0}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(64, 30);
+    const spec: ArmamentSealSpec = { badge, color, resonanceActive };
+    this.paintArmamentSealBadge(c, spec);
+    this.cache.set(key, c);
+    this.armamentSealSpecs.set(key, spec);
+    return c;
+  }
+
+  private paintArmamentSealBadge(c: HTMLCanvasElement, spec: ArmamentSealSpec): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+
+    ctx.beginPath();
+    ctx.roundRect(3, 3, c.width - 6, c.height - 6, 9);
+    const bg = ctx.createLinearGradient(0, 3, 0, c.height - 3);
+    bg.addColorStop(0, spec.color);
+    bg.addColorStop(1, '#1e1b4b');
+    ctx.fillStyle = bg;
+    ctx.fill();
+
+    ctx.lineWidth = 3.8;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = spec.resonanceActive ? '#fde047' : '#f8fafc';
+    ctx.stroke();
+
+    ctx.font = `15px ${DISPLAY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4.2;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    const text = spec.resonanceActive ? `✦${spec.badge}` : spec.badge;
+    ctx.strokeText(text, c.width * 0.5, c.height * 0.5 + 0.5);
+    ctx.fillStyle = spec.resonanceActive ? '#fef08a' : '#ffffff';
+    ctx.fillText(text, c.width * 0.5, c.height * 0.5 + 0.5);
+    ctx.restore();
+  }
+
+  /** Pre-rendered golden '화신' seal for Lv.5 Hero Proficiency masters (zero per-frame fillText). */
+  public avatarMasterySealBadge(): HTMLCanvasElement {
+    const key = 'badge:avatar_mastery';
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(58, 26);
+    this.paintAvatarMasterySealBadge(c);
+    this.cache.set(key, c);
+    return c;
+  }
+
+  private paintAvatarMasterySealBadge(c: HTMLCanvasElement): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(3, 3, c.width - 6, c.height - 6, 8);
+    const bg = ctx.createLinearGradient(0, 3, 0, c.height - 3);
+    bg.addColorStop(0, '#f59e0b');
+    bg.addColorStop(1, '#991b1b');
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 3.6;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = '#fef08a';
+    ctx.stroke();
+
+    ctx.font = `14px ${DISPLAY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText('화신', c.width * 0.5, c.height * 0.5 + 0.5);
+    ctx.fillStyle = '#fef9c3';
+    ctx.fillText('화신', c.width * 0.5, c.height * 0.5 + 0.5);
+    ctx.restore();
+  }
+
   /** Pre-rendered mini combat hit stamp ('회심!', '파갑!', '참살!') with zero per-frame fillText. */
   public hitBadge(kind: HitBadgeKind): HTMLCanvasElement {
     const key = `hitbadge:${kind}`;
@@ -955,7 +1098,7 @@ export class SpriteCache {
     ctx.restore();
   }
 
-  /** Pre-rendered world status plaque ('주박예고!', '봉인!', '현무독갑', '광풍질주') with zero per-frame fillText. */
+  /** Pre-rendered world status plaque ('주박예고!', '봉인!', '현무독갑', '광풍질주', '낙뢰예고!', '열반화란') with zero per-frame fillText. */
   public statusBadge(kind: StatusBadgeKind): HTMLCanvasElement {
     const key = `statusbadge:${kind}`;
     const existing = this.cache.get(key);
@@ -984,11 +1127,26 @@ export class SpriteCache {
       topCol = '#f59e0b';
       botCol = '#dc2626';
       borderAccent = '#fef08a';
+    } else if (kind === 'thunder_warn') {
+      label = '낙뢰예고!';
+      topCol = '#38bdf8';
+      botCol = '#0369a1';
+      borderAccent = '#fef08a';
+    } else if (kind === 'thunder_seal') {
+      label = '감전봉인!';
+      topCol = '#0284c7';
+      botCol = '#1e3a8a';
+      borderAccent = '#bae6fd';
     } else if (kind === 'shield') {
       label = '현무독갑';
       topCol = '#14b8a6';
       botCol = '#0f766e';
       borderAccent = '#99f6e4';
+    } else if (kind === 'phoenix_egg') {
+      label = '열반화란';
+      topCol = '#fb923c';
+      botCol = '#b91c1c';
+      borderAccent = '#fef08a';
     } else if (kind === 'haste') {
       label = '광풍질주';
       topCol = '#facc15';
@@ -1047,7 +1205,11 @@ export class SpriteCache {
     let baseCanvas = this.cache.get(baseKey);
     if (!baseCanvas) {
       const isBoss =
-        kind === 'white_tiger' || kind === 'black_serpent' || kind === 'blood_patriarch';
+        kind === 'white_tiger' ||
+        kind === 'black_serpent' ||
+        kind === 'blood_patriarch' ||
+        kind === 'azure_dragon' ||
+        kind === 'vermilion_bird';
       const size = isBoss ? BOSS_PIXEL_SIZE : MOB_PIXEL_SIZE;
       const created = this.createOffscreen(size, size);
       baseCanvas = created;

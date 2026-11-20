@@ -58,6 +58,8 @@ import {
 } from '../data/specialModes';
 import type {
   ArenaRuleId,
+  ArmamentDef,
+  ArmamentId,
   BenchPassiveDef,
   BoonId,
   DifficultyId,
@@ -96,6 +98,7 @@ import {
   getUnitAwakenCost,
   MAX_UNIT_STAR_LEVEL,
   MIN_AWAKEN_GRADE_RANK,
+  resolveArmamentBonuses,
   stepCombat,
   type TileAuraBuff,
 } from '../skills/SkillSystem';
@@ -144,6 +147,17 @@ export type {
   TileAuraBuff,
   WaveMutantMeta,
 };
+
+export const MAX_ARMAMENT_SLOTS = 3;
+export const ARMAMENT_REFORGE_COST_COIN = 110;
+export const ARMAMENT_FORGE_COSTS: ReadonlyArray<{
+  readonly coin: number;
+  readonly luck: number;
+}> = [
+  { coin: 160, luck: 2 },
+  { coin: 260, luck: 3 },
+  { coin: 380, luck: 4 },
+];
 
 export function getBoonRerollCost(rerollsUsed: number): number {
   return 150 * (Math.max(0, Math.floor(rerollsUsed)) + 1);
@@ -441,11 +455,66 @@ export interface SimEventMap {
     readonly hitCount: number;
     readonly tick: number;
   };
+  'armament:forged': {
+    readonly slotIndex: number;
+    readonly armamentId: ArmamentId;
+    readonly name: string;
+    readonly equippedUid: number | null;
+    readonly pos: Vec2 | null;
+    readonly tick: number;
+  };
+  'armament:reforged': {
+    readonly slotIndex: number;
+    readonly armamentId: ArmamentId;
+    readonly name: string;
+    readonly equippedUid: number | null;
+    readonly pos: Vec2 | null;
+    readonly tick: number;
+  };
+  'armament:equipped': {
+    readonly slotIndex: number;
+    readonly armamentId: ArmamentId;
+    readonly name: string;
+    readonly targetUid: number | null;
+    readonly pos: Vec2 | null;
+    readonly tick: number;
+  };
   'command:rejected': {
     readonly cmd: GameCommand['type'];
     readonly reason: string;
     readonly tick: number;
   };
+}
+
+export interface EquippedArmamentView {
+  readonly slotIndex: number;
+  readonly id: ArmamentId;
+  readonly name: string;
+  readonly badge: string;
+  readonly color: string;
+  readonly resonanceActive: boolean;
+}
+
+export interface ArmamentSlotSnapshot {
+  readonly slotIndex: number;
+  readonly armamentId: ArmamentId;
+  readonly equippedUid: number | null;
+  readonly equippedUnitName: string | null;
+  readonly equippedUnitFaction: FactionId | null;
+  readonly resonanceActive: boolean;
+}
+
+export interface ArmorySnapshot {
+  readonly maxSlots: number;
+  readonly nextForgeCost: { readonly coin: number; readonly luck: number } | null;
+  readonly reforgeCostCoin: number;
+  readonly slots: readonly ArmamentSlotSnapshot[];
+}
+
+interface ArmamentSlotState {
+  readonly slotIndex: number;
+  armamentId: ArmamentId;
+  equippedUid: number | null;
 }
 
 export interface SlotView {
@@ -468,6 +537,7 @@ export interface SlotView {
   readonly supportAura?: SupportAuraDef;
   readonly passiveTrait?: PassiveTraitDef;
   readonly benchPassive?: BenchPassiveDef;
+  readonly equippedArmament?: EquippedArmamentView;
   readonly tileBuffAtkPct: number;
   readonly tileBuffSpeedPct: number;
   readonly sealed: boolean;
@@ -637,6 +707,7 @@ export interface UISnapshot {
   readonly pendingContractOffer: ContractOfferSnapshot | null;
   readonly queuedContractCount: number;
   readonly contracts: readonly ContractItemSnapshot[];
+  readonly armory: ArmorySnapshot;
   readonly benchPassives: BenchPassiveSummary;
   readonly preserveBenchPassives: boolean;
   readonly missions: readonly MissionItemSnapshot[];
@@ -704,6 +775,7 @@ export class Simulation {
   private endgameBonuses: EndgameMetaBonuses = ZERO_ENDGAME_META_BONUSES;
   private arenaRule: ArenaRuleId | null = null;
   private heroMasteryAtkPct: Readonly<Partial<Record<UnitId, number>>> = {};
+  private readonly armory: ArmamentSlotState[] = [];
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
@@ -1155,11 +1227,63 @@ export class Simulation {
     );
   }
 
+  public getHeroMasteryAtkPct(unitId: UnitId): number {
+    return this.heroMasteryAtkPct[unitId] ?? 0;
+  }
+
+  public getEquippedArmamentForUid(uid: number): ArmamentDef | null {
+    for (let i = 0; i < this.armory.length; i++) {
+      const s = this.armory[i]!;
+      if (s.equippedUid === uid) {
+        return this.data.armamentsById.get(s.armamentId) ?? null;
+      }
+    }
+    return null;
+  }
+
+  public getEquippedArmamentSlotForUid(
+    uid: number,
+  ): { readonly slotIndex: number; readonly def: ArmamentDef } | null {
+    for (let i = 0; i < this.armory.length; i++) {
+      const s = this.armory[i]!;
+      if (s.equippedUid === uid) {
+        const def = this.data.armamentsById.get(s.armamentId);
+        return def ? { slotIndex: s.slotIndex, def } : null;
+      }
+    }
+    return null;
+  }
+
+  private findBestAutoEquipUid(preferredFaction?: FactionId): number | null {
+    const equippedUids = new Set<number>();
+    for (let i = 0; i < this.armory.length; i++) {
+      const eq = this.armory[i]!.equippedUid;
+      if (eq !== null) equippedUids.add(eq);
+    }
+    let best: UnitEntity | null = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < this.units.length; i++) {
+      const u = this.units[i]!;
+      if (equippedUids.has(u.uid)) continue;
+      const def = this.data.unitsById.get(u.unitId);
+      const rank = this.data.gradesById.get(u.grade)?.rank ?? 1;
+      const fieldBonus = u.slot.area === 'field' ? 1000 : 0;
+      const facBonus = preferredFaction && def?.faction === preferredFaction ? 15 : 0;
+      const score = fieldBonus + rank * 100 + (u.starLevel ?? 0) * 30 + facBonus - u.uid * 0.001;
+      if (score > bestScore) {
+        bestScore = score;
+        best = u;
+      }
+    }
+    return best ? best.uid : null;
+  }
+
   public getUnitEffectiveAtk(
     unitId: UnitId,
     precomputedSynergy?: FactionSynergySnapshot,
     tileBuffAtkPct = 0,
     starLevel = 0,
+    extraArmamentAtkPct = 0,
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
     const setBonus = computeRelicSetBonuses(this.relicLv);
     let extraTraitPct = 0;
@@ -1184,6 +1308,9 @@ export class Simulation {
     const heroProfPct = this.heroMasteryAtkPct[unitId] ?? 0;
     if (heroProfPct > 0) {
       extraTraitPct += heroProfPct;
+    }
+    if (extraArmamentAtkPct > 0) {
+      extraTraitPct += extraArmamentAtkPct;
     }
     if (this.arenaRule === 'bloodflame_forge') {
       extraTraitPct += 5;
@@ -1449,8 +1576,9 @@ export class Simulation {
       victoryAchieved: this.victoryAchieved,
       getBoonStacks: (id) => this.getBoonStacks(id),
       isFieldSlotSealed: (fieldIndex) => this.isFieldSlotSealed(fieldIndex),
-      getUnitEffectiveAtk: (unitId, synergy, tileBuffAtkPct, starLevel = 0) =>
-        this.getUnitEffectiveAtk(unitId, synergy, tileBuffAtkPct, starLevel),
+      getUnitArmament: (uid) => this.getEquippedArmamentForUid(uid),
+      getUnitEffectiveAtk: (unitId, synergy, tileBuffAtkPct, starLevel = 0, extraArmAtkPct = 0) =>
+        this.getUnitEffectiveAtk(unitId, synergy, tileBuffAtkPct, starLevel, extraArmAtkPct),
       allocateProjectileId: () => this.nextProjectileId++,
       recordDamage: (unitId, amount) => {
         this.damageByUnit.set(unitId, (this.damageByUnit.get(unitId) ?? 0) + amount);
@@ -2125,9 +2253,17 @@ export class Simulation {
       }
 
       case 'craft': {
+        const freedArmamentSlots: number[] = [];
         const res = this.craftSystem.execute(cmd.recipeId, cmd.chain, this.inventoryIndex, {
           getUnitStarLevel: (uid) => this.unitsByUid.get(uid)?.starLevel ?? 0,
-          removeUnitByUid: (uid) => this.removeUnitInternal(uid),
+          removeUnitByUid: (uid) => {
+            for (let s = 0; s < this.armory.length; s++) {
+              if (this.armory[s]!.equippedUid === uid) {
+                freedArmamentSlots.push(s);
+              }
+            }
+            return this.removeUnitInternal(uid);
+          },
           spawnCraftedUnit: (unitId, preferredFieldIndex, inheritedStarLevel = 0) => {
             const slot = this.board.findPlacementSlot(preferredFieldIndex);
             if (!slot) return null;
@@ -2141,6 +2277,12 @@ export class Simulation {
         }
         const outUnit = this.unitsByUid.get(res.outputUid);
         if (outUnit) {
+          if (
+            freedArmamentSlots.length > 0 &&
+            this.getEquippedArmamentSlotForUid(outUnit.uid) === null
+          ) {
+            this.armory[freedArmamentSlots[0]!]!.equippedUid = outUnit.uid;
+          }
           if (res.inheritedStarLevel > 0 && !outUnit.locked) {
             outUnit.locked = true;
             this.inventoryIndex.setLocked(outUnit.uid, true);
@@ -2199,9 +2341,17 @@ export class Simulation {
 
           if (!bestRecipeId) break;
 
+          const freedSlotsIter: number[] = [];
           const res = this.craftSystem.execute(bestRecipeId, bestChain, this.inventoryIndex, {
             getUnitStarLevel: (uid) => this.unitsByUid.get(uid)?.starLevel ?? 0,
-            removeUnitByUid: (uid) => this.removeUnitInternal(uid),
+            removeUnitByUid: (uid) => {
+              for (let s = 0; s < this.armory.length; s++) {
+                if (this.armory[s]!.equippedUid === uid) {
+                  freedSlotsIter.push(s);
+                }
+              }
+              return this.removeUnitInternal(uid);
+            },
             spawnCraftedUnit: (unitId, preferredFieldIndex, inheritedStarLevel = 0) => {
               const slot = this.board.findPlacementSlot(preferredFieldIndex);
               if (!slot) return null;
@@ -2212,6 +2362,12 @@ export class Simulation {
           if (!res.ok) break;
           const outUnit = this.unitsByUid.get(res.outputUid);
           if (outUnit) {
+            if (
+              freedSlotsIter.length > 0 &&
+              this.getEquippedArmamentSlotForUid(outUnit.uid) === null
+            ) {
+              this.armory[freedSlotsIter[0]!]!.equippedUid = outUnit.uid;
+            }
             if (res.inheritedStarLevel > 0 && !outUnit.locked) {
               outUnit.locked = true;
               this.inventoryIndex.setLocked(outUnit.uid, true);
@@ -2250,6 +2406,137 @@ export class Simulation {
           });
         }
         this.priorityDirty = true;
+        return;
+      }
+
+      case 'forgeArmament': {
+        const nextSlot = this.armory.length;
+        if (nextSlot >= MAX_ARMAMENT_SLOTS) {
+          this.reject('forgeArmament', '이미 명병 3자루를 모두 주조했습니다.');
+          return;
+        }
+        const cost = ARMAMENT_FORGE_COSTS[nextSlot] ?? { coin: 380, luck: 4 };
+        if (this.coin < cost.coin) {
+          this.reject('forgeArmament', `은자가 부족합니다 (${cost.coin} 필요)`);
+          return;
+        }
+        if (this.luckStone < cost.luck) {
+          this.reject('forgeArmament', `영단이 부족합니다 (${cost.luck}개 필요)`);
+          return;
+        }
+        const ownedIds = new Set<ArmamentId>(this.armory.map((s) => s.armamentId));
+        const candidates = this.data.armaments.filter((a) => !ownedIds.has(a.id));
+        if (candidates.length === 0) {
+          this.reject('forgeArmament', '더 이상 주조 가능한 신병이기가 없습니다.');
+          return;
+        }
+
+        this.coin -= cost.coin;
+        this.luckStone -= cost.luck;
+        const picked = candidates[this.rng.nextInt(candidates.length)]!;
+        const autoTargetUid = this.findBestAutoEquipUid(picked.resonance.faction);
+        this.armory.push({
+          slotIndex: nextSlot,
+          armamentId: picked.id,
+          equippedUid: autoTargetUid,
+        });
+        const eqUnit = autoTargetUid !== null ? this.unitsByUid.get(autoTargetUid) : undefined;
+        this.priorityDirty = true;
+        this.events.emit('armament:forged', {
+          slotIndex: nextSlot,
+          armamentId: picked.id,
+          name: picked.name,
+          equippedUid: autoTargetUid,
+          pos: eqUnit ? { x: eqUnit.currX, y: eqUnit.currY } : null,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'reforgeArmament': {
+        const slotIdx = Math.floor(cmd.slotIndex);
+        const slot = this.armory[slotIdx];
+        if (!slot) {
+          this.reject('reforgeArmament', '해당 신병 슬롯이 아직 주조되지 않았습니다.');
+          return;
+        }
+        if (this.coin < ARMAMENT_REFORGE_COST_COIN) {
+          this.reject(
+            'reforgeArmament',
+            `재연마에 은자가 부족합니다 (${ARMAMENT_REFORGE_COST_COIN} 필요)`,
+          );
+          return;
+        }
+        const ownedIds = new Set<ArmamentId>(this.armory.map((s) => s.armamentId));
+        const candidates = this.data.armaments.filter((a) => !ownedIds.has(a.id));
+        if (candidates.length === 0) {
+          this.reject('reforgeArmament', '교체 가능한 다른 신병 도안이 없습니다.');
+          return;
+        }
+        this.coin -= ARMAMENT_REFORGE_COST_COIN;
+        const nextArm = candidates[this.rng.nextInt(candidates.length)]!;
+        slot.armamentId = nextArm.id;
+        const eqUnit =
+          slot.equippedUid !== null ? this.unitsByUid.get(slot.equippedUid) : undefined;
+        this.priorityDirty = true;
+        this.events.emit('armament:reforged', {
+          slotIndex: slotIdx,
+          armamentId: nextArm.id,
+          name: nextArm.name,
+          equippedUid: slot.equippedUid,
+          pos: eqUnit ? { x: eqUnit.currX, y: eqUnit.currY } : null,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'equipArmament': {
+        const slotIdx = Math.floor(cmd.slotIndex);
+        const slot = this.armory[slotIdx];
+        if (!slot) {
+          this.reject('equipArmament', '장착할 신병 슬롯을 찾을 수 없습니다.');
+          return;
+        }
+        const armDef = this.data.armamentsById.get(slot.armamentId);
+        if (!armDef) {
+          this.reject('equipArmament', '신병 정보를 찾을 수 없습니다.');
+          return;
+        }
+
+        if (cmd.targetUid === null) {
+          slot.equippedUid = null;
+          this.priorityDirty = true;
+          this.events.emit('armament:equipped', {
+            slotIndex: slotIdx,
+            armamentId: armDef.id,
+            name: armDef.name,
+            targetUid: null,
+            pos: null,
+            tick: this.currentTick,
+          });
+          return;
+        }
+
+        const targetUnit = this.unitsByUid.get(cmd.targetUid);
+        if (!targetUnit) {
+          this.reject('equipArmament', '장착 대상 협객이 전장에 없습니다.');
+          return;
+        }
+        for (let i = 0; i < this.armory.length; i++) {
+          if (i !== slotIdx && this.armory[i]!.equippedUid === cmd.targetUid) {
+            this.armory[i]!.equippedUid = slot.equippedUid;
+          }
+        }
+        slot.equippedUid = cmd.targetUid;
+        this.priorityDirty = true;
+        this.events.emit('armament:equipped', {
+          slotIndex: slotIdx,
+          armamentId: armDef.id,
+          name: armDef.name,
+          targetUid: cmd.targetUid,
+          pos: { x: targetUnit.currX, y: targetUnit.currY },
+          tick: this.currentTick,
+        });
         return;
       }
 
@@ -2826,6 +3113,12 @@ export class Simulation {
     if (!entity) return null;
     const oldSlot = entity.slot;
 
+    for (let i = 0; i < this.armory.length; i++) {
+      if (this.armory[i]!.equippedUid === uid) {
+        this.armory[i]!.equippedUid = null;
+      }
+    }
+
     this.board.setUid(oldSlot, null);
     this.unitsByUid.delete(uid);
     const idx = this.units.findIndex((u) => u.uid === uid);
@@ -3083,7 +3376,11 @@ export class Simulation {
             ? '권능: 호포 경직 · 광풍질주'
             : activeBoss.kind === 'black_serpent'
               ? '권능: 현무 독갑 (파갑 1.8x 특효)'
-              : '권능: 혈옥주박 타일봉인 (스왑 회피!)'
+              : activeBoss.kind === 'azure_dragon'
+                ? '권능: 구천낙뢰진 (스왑 회피 시 역뢰 파훼 +70은자!)'
+                : activeBoss.kind === 'vermilion_bird'
+                  ? '권능: 열반화란 (회심·파갑 1.8x 파훼 시 영단+1·은자+80!)'
+                  : '권능: 혈옥주박 타일봉인 (스왑 회피!)'
       : '';
 
     const fieldUnitSet = new Set<UnitId>();
@@ -3114,6 +3411,24 @@ export class Simulation {
         });
       }
     }
+
+    const armorySlots: ArmamentSlotSnapshot[] = this.armory.map((s) => {
+      const aDef = this.data.armamentsById.get(s.armamentId);
+      const eqUnit = s.equippedUid !== null ? this.unitsByUid.get(s.equippedUid) : undefined;
+      const eqDef = eqUnit ? this.data.unitsById.get(eqUnit.unitId) : undefined;
+      return {
+        slotIndex: s.slotIndex,
+        armamentId: s.armamentId,
+        equippedUid: eqUnit ? eqUnit.uid : null,
+        equippedUnitName: eqDef?.name ?? null,
+        equippedUnitFaction: eqDef?.faction ?? null,
+        resonanceActive: Boolean(aDef && eqDef && aDef.resonance.faction === eqDef.faction),
+      };
+    });
+    const nextForgeCost =
+      this.armory.length < MAX_ARMAMENT_SLOTS
+        ? (ARMAMENT_FORGE_COSTS[this.armory.length] ?? { coin: 380, luck: 4 })
+        : null;
 
     return {
       tick: this.currentTick,
@@ -3175,6 +3490,12 @@ export class Simulation {
         : null,
       queuedContractCount: this.queuedContractOfferWaves.length,
       contracts: contractItems,
+      armory: {
+        maxSlots: MAX_ARMAMENT_SLOTS,
+        nextForgeCost,
+        reforgeCostCoin: ARMAMENT_REFORGE_COST_COIN,
+        slots: armorySlots,
+      },
       benchPassives,
       preserveBenchPassives: this.preserveBenchPassives,
       missions: missionItems,
@@ -3231,18 +3552,22 @@ export class Simulation {
     const u = this.unitsByUid.get(uid);
     if (!u) return null;
     const def = this.data.unitsById.get(u.unitId);
+    const faction = def?.faction ?? 'orthodox';
+    const eqSlot = this.getEquippedArmamentSlotForUid(u.uid);
+    const armBonus = resolveArmamentBonuses(eqSlot?.def ?? null, faction);
     const starLevel = u.starLevel ?? 0;
     const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
       u.unitId,
       synergy,
       tileBuff.atkPct,
       starLevel,
+      armBonus.atkPct,
     );
     const isField = u.slot.area === 'field';
     const harmonyRange = this.getBoonStacks('b_trinity_harmony') * 25;
     const crusherShred = this.getBoonStacks('b_armor_crusher') * 6;
     const trialShred =
-      def?.faction === 'unorthodox' && this.trialId
+      faction === 'unorthodox' && this.trialId
         ? TRIAL_CONFIGS[this.trialId].unorthodoxBonusShred
         : 0;
     const gradeDef = this.data.gradesById.get(u.grade);
@@ -3256,7 +3581,7 @@ export class Simulation {
       uid: u.uid,
       unitId: u.unitId,
       name: def?.name ?? u.unitId,
-      faction: def?.faction ?? 'orthodox',
+      faction,
       grade: u.grade,
       locked: u.locked,
       starLevel,
@@ -3274,10 +3599,23 @@ export class Simulation {
         trialShred +
         relicShred +
         benchPassives.armorShred +
-        (this.endgameBonuses.armorShred ?? 0),
+        (this.endgameBonuses.armorShred ?? 0) +
+        armBonus.armorShred,
       supportAura: def?.supportAura,
       passiveTrait: def?.passiveTrait,
       benchPassive: def?.benchPassive,
+      ...(eqSlot
+        ? {
+            equippedArmament: {
+              slotIndex: eqSlot.slotIndex,
+              id: eqSlot.def.id,
+              name: eqSlot.def.name,
+              badge: eqSlot.def.badge,
+              color: eqSlot.def.color,
+              resonanceActive: armBonus.resonanceActive,
+            },
+          }
+        : {}),
       tileBuffAtkPct: tileBuff.atkPct,
       tileBuffSpeedPct: tileBuff.speedPct,
       sealed: isField ? this.isFieldSlotSealed(u.slot.index) : false,
@@ -3351,6 +3689,11 @@ export class Simulation {
         : null,
       queuedContractOfferWaves: [...this.queuedContractOfferWaves],
       activeContracts: this.activeContracts.map((c) => ({ ...c })),
+      armory: this.armory.map((s) => ({
+        slotIndex: s.slotIndex,
+        armamentId: s.armamentId,
+        equippedUid: s.equippedUid,
+      })),
       preserveBenchPassives: this.preserveBenchPassives,
       bossRetryUsed: this.bossRetryUsed,
       comboCooldowns: Object.fromEntries(this.comboCooldowns),
@@ -3584,6 +3927,33 @@ export class Simulation {
     this.craftIndex.rebuildAll(this.inventoryIndex);
     this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
 
+    this.armory.length = 0;
+    if (Array.isArray(save.armory)) {
+      const seenArm = new Set<ArmamentId>();
+      const seenEq = new Set<number>();
+      for (let i = 0; i < Math.min(MAX_ARMAMENT_SLOTS, save.armory.length); i++) {
+        const item = save.armory[i];
+        if (!item || !this.data.armamentsById.has(item.armamentId)) continue;
+        if (seenArm.has(item.armamentId)) continue;
+        seenArm.add(item.armamentId);
+        let eqUid: number | null = null;
+        if (
+          typeof item.equippedUid === 'number' &&
+          this.unitsByUid.has(item.equippedUid) &&
+          !seenEq.has(item.equippedUid)
+        ) {
+          const validUid = item.equippedUid;
+          eqUid = validUid;
+          seenEq.add(validUid);
+        }
+        this.armory.push({
+          slotIndex: this.armory.length,
+          armamentId: item.armamentId,
+          equippedUid: eqUid,
+        });
+      }
+    }
+
     this.monsters.length = 0;
     for (let i = 0; i < save.monsters.length; i++) {
       this.monsters.push({ ...save.monsters[i]! });
@@ -3680,12 +4050,20 @@ export class Simulation {
       feedInt(this.activeBoons[bid] ?? 0);
     }
 
+    feedInt(this.armory.length);
+    for (let i = 0; i < this.armory.length; i++) {
+      const arm = this.armory[i]!;
+      feedStr(arm.armamentId);
+      feedInt(arm.equippedUid ?? -1);
+    }
+
     feedInt(this.tileHazards.length);
     for (let i = 0; i < this.tileHazards.length; i++) {
       const h = this.tileHazards[i]!;
       feedInt(h.fieldIndex);
       feedInt(h.activateTick);
       feedInt(h.expireTick);
+      feedStr(h.hazardKind ?? 'seal');
     }
 
     for (let i = 0; i < this.board.field.capacity; i++) {

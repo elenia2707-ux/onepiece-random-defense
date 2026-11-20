@@ -1,3 +1,4 @@
+import rawArmaments from './armaments.json';
 import rawBoard from './board.json';
 import rawBoons from './boons.json';
 import rawDifficulties from './difficulties.json';
@@ -15,6 +16,10 @@ import rawWaves from './waves.json';
 import rawWispPools from './wisp_pools.json';
 import { secToTicks, TICK_DT } from '../core/time';
 import type {
+  ArmamentDef,
+  ArmamentIconKind,
+  ArmamentId,
+  ArmamentResonanceDef,
   BenchPassiveDef,
   BoardConfig,
   BoonDef,
@@ -96,6 +101,8 @@ const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
   'white_tiger',
   'black_serpent',
   'blood_patriarch',
+  'azure_dragon',
+  'vermilion_bird',
 ]);
 
 const VALID_UPGRADE_GROUPS: ReadonlySet<string> = new Set<UpgradeGroupId>([
@@ -1296,6 +1303,155 @@ export function validateTitles(input: unknown): TitleDef[] {
   });
 }
 
+const VALID_ARMAMENT_IDS: ReadonlySet<string> = new Set<ArmamentId>([
+  'arm_violet_sword',
+  'arm_obsidian_greatsword',
+  'arm_thousand_needles',
+  'arm_asura_saber',
+  'arm_frost_jade_fan',
+  'arm_thunder_halberd',
+]);
+
+const VALID_ARMAMENT_ICONS: ReadonlySet<string> = new Set<ArmamentIconKind>([
+  'sword',
+  'greatsword',
+  'needles',
+  'saber',
+  'fan',
+  'halberd',
+]);
+
+export function validateArmaments(input: unknown): ArmamentDef[] {
+  if (!Array.isArray(input) || input.length < 3) {
+    throw new Error('[DataValidation] armaments.json must be an array of at least 3 armaments');
+  }
+  const seen = new Set<string>();
+  return input.map((item, i) => {
+    const r = assertRecord(item, `armaments[${i}]`);
+    const idStr = assertNonEmptyString(r.id, `armaments[${i}].id`);
+    if (!VALID_ARMAMENT_IDS.has(idStr)) {
+      throw new Error(`[DataValidation] armaments[${i}].id invalid: ${idStr}`);
+    }
+    if (seen.has(idStr)) {
+      throw new Error(`[DataValidation] duplicate armament id: ${idStr}`);
+    }
+    seen.add(idStr);
+
+    const name = assertNonEmptyString(r.name, `armaments[${i}].name`);
+    const badge = assertNonEmptyString(r.badge, `armaments[${i}].badge`);
+    const tag = assertNonEmptyString(r.tag, `armaments[${i}].tag`);
+    const iconStr = assertNonEmptyString(r.iconKind, `armaments[${i}].iconKind`);
+    if (!VALID_ARMAMENT_ICONS.has(iconStr)) {
+      throw new Error(`[DataValidation] armaments[${i}].iconKind invalid: ${iconStr}`);
+    }
+    const color = assertNonEmptyString(r.color, `armaments[${i}].color`);
+    const secondaryColor = assertNonEmptyString(
+      r.secondaryColor,
+      `armaments[${i}].secondaryColor`,
+    );
+    const desc = assertNonEmptyString(r.desc, `armaments[${i}].desc`);
+    const atkPct = Math.floor(assertPositiveNumber(r.atkPct, `armaments[${i}].atkPct`));
+
+    const speedPct =
+      r.speedPct !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.speedPct, `armaments[${i}].speedPct`))
+        : undefined;
+    const critChanceBps =
+      r.critChanceBps !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.critChanceBps, `armaments[${i}].critChanceBps`))
+        : undefined;
+    const critMultBonus =
+      r.critMultBonus !== undefined
+        ? assertNonNegativeNumber(r.critMultBonus, `armaments[${i}].critMultBonus`)
+        : undefined;
+    const armorShred =
+      r.armorShred !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.armorShred, `armaments[${i}].armorShred`))
+        : undefined;
+    const skillDamagePct =
+      r.skillDamagePct !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.skillDamagePct, `armaments[${i}].skillDamagePct`))
+        : undefined;
+    const bossDamagePct =
+      r.bossDamagePct !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.bossDamagePct, `armaments[${i}].bossDamagePct`))
+        : undefined;
+    const splashBonus =
+      r.splashBonus !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.splashBonus, `armaments[${i}].splashBonus`))
+        : undefined;
+    const bonusSlowPct =
+      r.bonusSlowPct !== undefined
+        ? Math.floor(assertNonNegativeNumber(r.bonusSlowPct, `armaments[${i}].bonusSlowPct`))
+        : undefined;
+
+    const resRaw = assertRecord(r.resonance, `armaments[${i}].resonance`);
+    const resFac = assertNonEmptyString(resRaw.faction, `armaments[${i}].resonance.faction`);
+    if (!VALID_FACTIONS.has(resFac)) {
+      throw new Error(`[DataValidation] armaments[${i}].resonance.faction invalid: ${resFac}`);
+    }
+    const resLabel = assertNonEmptyString(resRaw.label, `armaments[${i}].resonance.label`);
+    const resonance: ArmamentResonanceDef = {
+      faction: resFac as FactionId,
+      label: resLabel,
+      ...(resRaw.atkPct !== undefined
+        ? { atkPct: Math.floor(assertNonNegativeNumber(resRaw.atkPct, 'res.atkPct')) }
+        : {}),
+      ...(resRaw.speedPct !== undefined
+        ? { speedPct: Math.floor(assertNonNegativeNumber(resRaw.speedPct, 'res.speedPct')) }
+        : {}),
+      ...(resRaw.critChanceBps !== undefined
+        ? {
+            critChanceBps: Math.floor(
+              assertNonNegativeNumber(resRaw.critChanceBps, 'res.critChanceBps'),
+            ),
+          }
+        : {}),
+      ...(resRaw.critMultBonus !== undefined
+        ? { critMultBonus: assertNonNegativeNumber(resRaw.critMultBonus, 'res.critMultBonus') }
+        : {}),
+      ...(resRaw.armorShred !== undefined
+        ? { armorShred: Math.floor(assertNonNegativeNumber(resRaw.armorShred, 'res.armorShred')) }
+        : {}),
+      ...(resRaw.skillDamagePct !== undefined
+        ? {
+            skillDamagePct: Math.floor(
+              assertNonNegativeNumber(resRaw.skillDamagePct, 'res.skillDamagePct'),
+            ),
+          }
+        : {}),
+      ...(resRaw.bossDamagePct !== undefined
+        ? {
+            bossDamagePct: Math.floor(
+              assertNonNegativeNumber(resRaw.bossDamagePct, 'res.bossDamagePct'),
+            ),
+          }
+        : {}),
+    };
+
+    return {
+      id: idStr as ArmamentId,
+      name,
+      badge,
+      tag,
+      iconKind: iconStr as ArmamentIconKind,
+      color,
+      secondaryColor,
+      desc,
+      atkPct,
+      ...(speedPct !== undefined ? { speedPct } : {}),
+      ...(critChanceBps !== undefined ? { critChanceBps } : {}),
+      ...(critMultBonus !== undefined ? { critMultBonus } : {}),
+      ...(armorShred !== undefined ? { armorShred } : {}),
+      ...(skillDamagePct !== undefined ? { skillDamagePct } : {}),
+      ...(bossDamagePct !== undefined ? { bossDamagePct } : {}),
+      ...(splashBonus !== undefined ? { splashBonus } : {}),
+      ...(bonusSlowPct !== undefined ? { bonusSlowPct } : {}),
+      resonance,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -1318,6 +1474,8 @@ export function loadGameData(): GameDataBundle {
   }
   const relics = validateRelics(rawRelics);
   const relicsById = new Map<RelicId, RelicDef>(relics.map((rel) => [rel.id, rel]));
+  const armaments = validateArmaments(rawArmaments);
+  const armamentsById = new Map<ArmamentId, ArmamentDef>(armaments.map((a) => [a.id, a]));
   const missions = validateMissions(rawMissions, gradesById);
   const boons = validateBoons(rawBoons);
   const boonsById = new Map<BoonId, BoonDef>(boons.map((b) => [b.id, b]));
@@ -1353,6 +1511,8 @@ export function loadGameData(): GameDataBundle {
     upgradesByFaction,
     relics,
     relicsById,
+    armaments,
+    armamentsById,
     missions,
     boons,
     boonsById,

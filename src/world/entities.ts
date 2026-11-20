@@ -65,6 +65,8 @@ export interface TileHazard {
   readonly startTick: number;
   readonly activateTick: number;
   readonly expireTick: number;
+  readonly hazardKind?: 'seal' | 'thunder';
+  readonly bossEntityId?: number;
 }
 
 export interface ProjectileEntity {
@@ -93,5 +95,6 @@ export interface ProjectileEntity {
   readonly stunTicks: number;
   readonly slowPct: number;
   readonly slowTicks: number;
+  readonly bonusBossDamagePct?: number;
 }
 

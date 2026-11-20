@@ -1,0 +1,118 @@
+[
+  {
+    "id": "arm_violet_sword",
+    "name": "자하신검 · 화산진보",
+    "badge": "자하",
+    "tag": "검기 · 회심",
+    "iconKind": "sword",
+    "color": "#38bdf8",
+    "secondaryColor": "#f472b6",
+    "desc": "공격력 +24% · 회심 확률 +8% · 초식 피해 +18%",
+    "atkPct": 24,
+    "critChanceBps": 800,
+    "skillDamagePct": 18,
+    "resonance": {
+      "faction": "orthodox",
+      "label": "정파 공명: 회심 배율 +0.35x · 공속 +8%",
+      "critMultBonus": 0.35,
+      "speedPct": 8
+    }
+  },
+  {
+    "id": "arm_obsidian_greatsword",
+    "name": "흑철현중검 · 독고유물",
+    "badge": "현중",
+    "tag": "중검 · 파갑",
+    "iconKind": "greatsword",
+    "color": "#f59e0b",
+    "secondaryColor": "#fef08a",
+    "desc": "공격력 +28% · 방어력 파쇄 +18 · 광역 반경 +28",
+    "atkPct": 28,
+    "armorShred": 18,
+    "splashBonus": 28,
+    "resonance": {
+      "faction": "demonic",
+      "label": "마교 공명: 영물 보스 피해 +22% · 파갑 +8",
+      "bossDamagePct": 22,
+      "armorShred": 8
+    }
+  },
+  {
+    "id": "arm_thousand_needles",
+    "name": "만천화우침 · 당문비기",
+    "badge": "화우",
+    "tag": "암기 · 속공",
+    "iconKind": "needles",
+    "color": "#10b981",
+    "secondaryColor": "#a7f3d0",
+    "desc": "공격력 +18% · 공격 속도 +22% · 방어력 파쇄 +12",
+    "atkPct": 18,
+    "speedPct": 22,
+    "armorShred": 12,
+    "resonance": {
+      "faction": "unorthodox",
+      "label": "사파 공명: 회심 확률 +7% · 공속 +10%",
+      "critChanceBps": 700,
+      "speedPct": 10
+    }
+  },
+  {
+    "id": "arm_asura_saber",
+    "name": "수라혈마도 · 마교성물",
+    "badge": "혈마",
+    "tag": "패도 · 절기",
+    "iconKind": "saber",
+    "color": "#ef4444",
+    "secondaryColor": "#fca5a5",
+    "desc": "공격력 +26% · 초식 피해 +30% · 보스 피해 +15%",
+    "atkPct": 26,
+    "skillDamagePct": 30,
+    "bossDamagePct": 15,
+    "resonance": {
+      "faction": "demonic",
+      "label": "마교 공명: 초식 피해 +18% · 공격력 +10%",
+      "skillDamagePct": 18,
+      "atkPct": 10
+    }
+  },
+  {
+    "id": "arm_frost_jade_fan",
+    "name": "한빙백옥선 · 북해신보",
+    "badge": "백옥",
+    "tag": "빙한 · 제어",
+    "iconKind": "fan",
+    "color": "#22d3ee",
+    "secondaryColor": "#e0f2fe",
+    "desc": "공격력 +20% · 공격 속도 +14% · 초식 둔화 +15% · 반경 +24",
+    "atkPct": 20,
+    "speedPct": 14,
+    "bonusSlowPct": 15,
+    "splashBonus": 24,
+    "resonance": {
+      "faction": "orthodox",
+      "label": "정파 공명: 초식 피해 +20% · 공격력 +8%",
+      "skillDamagePct": 20,
+      "atkPct": 8
+    }
+  },
+  {
+    "id": "arm_thunder_halberd",
+    "name": "뇌제파천창 · 개세신병",
+    "badge": "파천",
+    "tag": "신뢰 · 토벌",
+    "iconKind": "halberd",
+    "color": "#a855f7",
+    "secondaryColor": "#fde047",
+    "desc": "공격력 +22% · 회심 +6% · 회심배율 +0.3x · 보스 피해 +20%",
+    "atkPct": 22,
+    "critChanceBps": 600,
+    "critMultBonus": 0.3,
+    "bossDamagePct": 20,
+    "resonance": {
+      "faction": "unorthodox",
+      "label": "사파 공명: 보스 피해 +18% · 공격력 +12%",
+      "bossDamagePct": 18,
+      "atkPct": 12
+    }
+  }
+]

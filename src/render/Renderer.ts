@@ -242,6 +242,8 @@ export class Renderer {
       const cy = rect.y + rect.h * 0.5;
       const occupied = sim.board.field.getUidAt(h.fieldIndex) !== null;
 
+      const isThunder = h.hazardKind === 'thunder';
+
       if (currentTick < h.activateTick) {
         const span = Math.max(1, h.activateTick - h.startTick);
         const prog = Math.max(0, Math.min(1, (currentTick + alpha - h.startTick) / span));
@@ -254,21 +256,23 @@ export class Renderer {
             ctx.save();
             ctx.beginPath();
             ctx.roundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 10);
-            ctx.fillStyle = `rgba(225, 29, 72, ${(0.22 + 0.16 * flash).toFixed(3)})`;
+            ctx.fillStyle = isThunder
+              ? `rgba(14, 165, 233, ${(0.22 + 0.16 * flash).toFixed(3)})`
+              : `rgba(225, 29, 72, ${(0.22 + 0.16 * flash).toFixed(3)})`;
             ctx.fill();
             ctx.lineWidth = 4.2;
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
             ctx.lineWidth = 2.4;
-            ctx.strokeStyle = flash > 0.7 ? '#facc15' : '#fb7185';
+            ctx.strokeStyle = flash > 0.7 ? '#facc15' : isThunder ? '#38bdf8' : '#fb7185';
             ctx.stroke();
 
-            // Rotating 8-point crimson warning sigil + filling countdown ring
+            // Rotating 8-point warning sigil + filling countdown ring
             const r = Math.min(rect.w, rect.h) * 0.38;
             ctx.translate(cx, cy + 8);
             ctx.save();
-            ctx.rotate(simTimeSec * 2.8);
-            ctx.strokeStyle = '#fda4af';
+            ctx.rotate(simTimeSec * (isThunder ? -3.4 : 2.8));
+            ctx.strokeStyle = isThunder ? '#7dd3fc' : '#fda4af';
             ctx.lineWidth = 2;
             ctx.strokeRect(-r * 0.68, -r * 0.68, r * 1.36, r * 1.36);
             ctx.rotate(Math.PI * 0.25);
@@ -282,7 +286,7 @@ export class Renderer {
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
             ctx.lineWidth = 2.6;
-            ctx.strokeStyle = '#fde047';
+            ctx.strokeStyle = isThunder ? '#67e8f9' : '#fde047';
             ctx.stroke();
             ctx.restore();
           },
@@ -292,7 +296,7 @@ export class Renderer {
           layer: RenderLayer.WorldUI,
           sortY: cy + 52,
           render: (ctx) => {
-            const badge = this.sprites.statusBadge('warn');
+            const badge = this.sprites.statusBadge(isThunder ? 'thunder_warn' : 'warn');
             const bob = Math.sin(simTimeSec * 11) * 3;
             const bw = 92;
             const bh = 25;
@@ -313,16 +317,16 @@ export class Renderer {
             ctx.save();
             ctx.beginPath();
             ctx.roundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 10);
-            ctx.fillStyle = 'rgba(88, 28, 135, 0.36)';
+            ctx.fillStyle = isThunder ? 'rgba(12, 74, 110, 0.38)' : 'rgba(88, 28, 135, 0.36)';
             ctx.fill();
             ctx.lineWidth = 4.5;
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
             ctx.lineWidth = 2.5;
-            ctx.strokeStyle = '#e11d48';
+            ctx.strokeStyle = isThunder ? '#38bdf8' : '#e11d48';
             ctx.stroke();
 
-            // Crossed blood-jade chains on floor
+            // Crossed chains / lightning arcs on floor
             ctx.beginPath();
             ctx.moveTo(rect.x + 10, rect.y + 10);
             ctx.lineTo(rect.x + rect.w - 10, rect.y + rect.h - 10);
@@ -332,7 +336,7 @@ export class Renderer {
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
             ctx.lineWidth = 2;
-            ctx.strokeStyle = '#c084fc';
+            ctx.strokeStyle = isThunder ? '#fde047' : '#c084fc';
             ctx.stroke();
 
             // Draining duration arc
@@ -340,7 +344,7 @@ export class Renderer {
             ctx.beginPath();
             ctx.arc(cx, cy + 8, r, -Math.PI * 0.5, -Math.PI * 0.5 + rem * Math.PI * 2);
             ctx.lineWidth = 3;
-            ctx.strokeStyle = '#fb7185';
+            ctx.strokeStyle = isThunder ? '#67e8f9' : '#fb7185';
             ctx.stroke();
             ctx.restore();
           },
@@ -353,7 +357,6 @@ export class Renderer {
             render: (ctx) => {
               ctx.save();
               const prevA = ctx.globalAlpha;
-              // Crimson-amethyst crystal prism cage locking the hero
               ctx.globalAlpha = prevA * 0.52;
               ctx.beginPath();
               ctx.moveTo(cx, cy - 42);
@@ -363,14 +366,14 @@ export class Renderer {
               ctx.lineTo(cx - 22, cy + 26);
               ctx.lineTo(cx - 28, cy - 16);
               ctx.closePath();
-              ctx.fillStyle = '#be123c';
+              ctx.fillStyle = isThunder ? '#0284c7' : '#be123c';
               ctx.fill();
               ctx.globalAlpha = prevA * 0.9;
               ctx.lineWidth = 3.6;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
               ctx.lineWidth = 1.8;
-              ctx.strokeStyle = '#f472b6';
+              ctx.strokeStyle = isThunder ? '#fef08a' : '#f472b6';
               ctx.stroke();
               ctx.restore();
             },
@@ -381,7 +384,7 @@ export class Renderer {
           layer: RenderLayer.WorldUI,
           sortY: cy + 54,
           render: (ctx) => {
-            const badge = this.sprites.statusBadge('sealed');
+            const badge = this.sprites.statusBadge(isThunder ? 'thunder_seal' : 'sealed');
             const bw = 82;
             const bh = 24;
             ctx.save();
@@ -762,7 +765,11 @@ export class Renderer {
                 ? '#38bdf8'
                 : m.kind === 'black_serpent'
                   ? '#10b981'
-                  : '#e11d48';
+                  : m.kind === 'azure_dragon'
+                    ? '#0ea5e9'
+                    : m.kind === 'vermilion_bird'
+                      ? '#f97316'
+                      : '#e11d48';
             const glow = this.sprites.glow(bossCol, 42);
             const prevA = ctx.globalAlpha;
             ctx.globalAlpha = prevA * 0.42;
@@ -788,7 +795,12 @@ export class Renderer {
               const py = by + Math.sin(a) * ry;
               ctx.beginPath();
               ctx.arc(px, py, 2.6, 0, Math.PI * 2);
-              ctx.fillStyle = '#fef08a';
+              ctx.fillStyle =
+                m.kind === 'azure_dragon'
+                  ? '#67e8f9'
+                  : m.kind === 'vermilion_bird'
+                    ? '#fb923c'
+                    : '#fef08a';
               ctx.fill();
               ctx.lineWidth = 1.2;
               ctx.strokeStyle = PIXEL_OUTLINE;
@@ -903,6 +915,7 @@ export class Renderer {
       });
 
       if (hasShield) {
+        const isPhoenixEgg = m.kind === 'vermilion_bird';
         this.buckets[RenderLayer.AirFx]!.push({
           layer: RenderLayer.AirFx,
           sortY: y + 4,
@@ -912,25 +925,50 @@ export class Renderer {
             const r = m.radius * 1.55;
             const cy = y - m.radius * 0.35;
             ctx.translate(x, cy);
-            ctx.rotate(spin);
+            if (isPhoenixEgg) {
+              // Blazing solar Nirvana flame-egg cocoon
+              const pulse = 1 + Math.sin(spin * 2.8) * 0.06;
+              ctx.beginPath();
+              ctx.ellipse(0, -2, r * 0.92 * pulse, r * 1.12 * pulse, 0, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(249, 115, 22, 0.26)';
+              ctx.fill();
+              ctx.lineWidth = 4.6;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2.6;
+              ctx.strokeStyle = '#fde047';
+              ctx.stroke();
 
-            ctx.beginPath();
-            for (let v = 0; v < 6; v++) {
-              const ang = (v * Math.PI) / 3;
-              const vx = Math.cos(ang) * r;
-              const vy = Math.sin(ang) * r * 0.85;
-              if (v === 0) ctx.moveTo(vx, vy);
-              else ctx.lineTo(vx, vy);
+              // 4 orbiting solar flame tongues
+              for (let f = 0; f < 4; f++) {
+                const fa = spin * 1.8 + (f * Math.PI) / 2;
+                const fx = Math.cos(fa) * r * 0.95;
+                const fy = Math.sin(fa) * r * 0.85;
+                ctx.beginPath();
+                ctx.arc(fx, fy, 3.8, 0, Math.PI * 2);
+                ctx.fillStyle = f % 2 === 0 ? '#fef08a' : '#fb923c';
+                ctx.fill();
+              }
+            } else {
+              ctx.rotate(spin);
+              ctx.beginPath();
+              for (let v = 0; v < 6; v++) {
+                const ang = (v * Math.PI) / 3;
+                const vx = Math.cos(ang) * r;
+                const vy = Math.sin(ang) * r * 0.85;
+                if (v === 0) ctx.moveTo(vx, vy);
+                else ctx.lineTo(vx, vy);
+              }
+              ctx.closePath();
+              ctx.fillStyle = 'rgba(20, 184, 166, 0.22)';
+              ctx.fill();
+              ctx.lineWidth = 4.5;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = 2.4;
+              ctx.strokeStyle = '#5eead4';
+              ctx.stroke();
             }
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(20, 184, 166, 0.22)';
-            ctx.fill();
-            ctx.lineWidth = 4.5;
-            ctx.strokeStyle = PIXEL_OUTLINE;
-            ctx.stroke();
-            ctx.lineWidth = 2.4;
-            ctx.strokeStyle = '#5eead4';
-            ctx.stroke();
             ctx.restore();
           },
         });
@@ -1022,18 +1060,24 @@ export class Renderer {
               ctx.fill();
               ctx.beginPath();
               ctx.roundRect(bx, sy, barW, sh, 99);
-              ctx.fillStyle = '#0f292e';
+              ctx.fillStyle = m.kind === 'vermilion_bird' ? '#431407' : '#0f292e';
               ctx.fill();
               if (sRatio > 0) {
                 ctx.beginPath();
                 ctx.roundRect(bx, sy, Math.max(sh, barW * sRatio), sh, 99);
-                ctx.fillStyle = '#2dd4bf';
+                ctx.fillStyle = m.kind === 'vermilion_bird' ? '#fb923c' : '#2dd4bf';
                 ctx.fill();
               }
             }
 
             if (hasShield || isHasted) {
-              const badge = this.sprites.statusBadge(hasShield ? 'shield' : 'haste');
+              const badge = this.sprites.statusBadge(
+                hasShield
+                  ? m.kind === 'vermilion_bird'
+                    ? 'phoenix_egg'
+                    : 'shield'
+                  : 'haste',
+              );
               const bw = 88;
               const bh = 24;
               ctx.save();
@@ -1328,8 +1372,18 @@ export class Renderer {
         },
       });
 
-      // 2b. High-tier Martial Back-Halo (절정 광기 / 화경 광륜 / 현경·신마 광배) rendered behind hero sprite
-      if (isField && (grade.rank >= 4 || equippedSkin !== null) && !isDraggedOrigin) {
+      // 2b. High-tier Martial Back-Halo (절정 광기 / 화경 광륜 / 현경·신마 광배 / Lv.5 화신 무신광배)
+      const isAvatarMaster = sim.getHeroMasteryAtkPct(u.unitId) >= 15;
+      const eqArmSlot = sim.getEquippedArmamentSlotForUid(u.uid);
+      const armResonance = Boolean(
+        eqArmSlot && eqArmSlot.def.resonance.faction === def.faction,
+      );
+
+      if (
+        isField &&
+        (grade.rank >= 4 || equippedSkin !== null || isAvatarMaster) &&
+        !isDraggedOrigin
+      ) {
         this.buckets[RenderLayer.Unit]!.push({
           layer: RenderLayer.Unit,
           sortY: drawY - 0.12,
@@ -1339,13 +1393,14 @@ export class Renderer {
               drawX,
               drawFootY - hopY - idleHoverY - spriteSize * 0.44,
               def.faction,
-              grade.rank,
-              grade.color,
+              isAvatarMaster ? Math.max(5, grade.rank) : grade.rank,
+              isAvatarMaster && grade.rank < 5 ? '#f59e0b' : grade.color,
               profile.primary,
               profile.secondary,
               simTimeSec,
               u.uid,
               skillReady,
+              isAvatarMaster,
             );
           },
         });
@@ -1382,7 +1437,23 @@ export class Renderer {
         const aimAngle = Math.atan2(u.attackDirY, u.attackDirX);
         const swingOriginX = drawX + u.attackDirX * 18;
         const swingOriginY = drawFootY - hopY - idleHoverY - spriteSize * 0.38 + u.attackDirY * 12;
-        const rankScale = 0.92 + Math.min(5, grade.rank - 1) * 0.075 + (isSkillStrike ? 0.16 : 0);
+        const rankScale =
+          0.92 +
+          Math.min(5, grade.rank - 1) * 0.075 +
+          (isSkillStrike ? 0.16 : 0) +
+          (isAvatarMaster ? 0.14 : 0) +
+          (eqArmSlot ? 0.1 : 0);
+        const evolvedProfile: UnitCombatProfile = eqArmSlot
+          ? {
+              ...profile,
+              secondary: eqArmSlot.def.color,
+            }
+          : isAvatarMaster
+            ? {
+                ...profile,
+                secondary: '#fde047',
+              }
+            : profile;
 
         this.buckets[RenderLayer.AirFx]!.push({
           layer: RenderLayer.AirFx,
@@ -1397,33 +1468,47 @@ export class Renderer {
               comboSide,
               rankScale,
               isSkillStrike,
-              profile,
+              evolvedProfile,
+              isAvatarMaster,
+              eqArmSlot?.def.color ?? null,
             );
           },
         });
       }
 
-      // 5. Floating sect qi-diamond motes on high-tier masters (절정+) or skill-charged heroes
-      if (isField && (grade.rank >= 4 || equippedSkin !== null || skillReady) && !isDraggedOrigin) {
+      // 5. Floating sect qi-diamond motes on high-tier masters (절정+), Lv.5 화신, or skill-charged heroes
+      if (
+        isField &&
+        (grade.rank >= 4 || equippedSkin !== null || skillReady || isAvatarMaster) &&
+        !isDraggedOrigin
+      ) {
         this.buckets[RenderLayer.AirFx]!.push({
           layer: RenderLayer.AirFx,
           sortY: drawY + 2,
           render: (ctx) => {
             const count =
-              grade.rank >= 6 ? 4 : grade.rank >= 5 || equippedSkin ? 3 : grade.rank >= 4 ? 2 : 2;
+              grade.rank >= 6 || isAvatarMaster
+                ? 4
+                : grade.rank >= 5 || equippedSkin
+                  ? 3
+                  : 2;
             const prevA = ctx.globalAlpha;
-            ctx.globalAlpha = prevA * (grade.rank >= 4 || equippedSkin ? 0.9 : 0.72);
+            ctx.globalAlpha =
+              prevA * (grade.rank >= 4 || equippedSkin || isAvatarMaster ? 0.92 : 0.72);
             for (let m = 0; m < count; m++) {
-              const orbit = simTimeSec * (skillReady ? 3.5 : 2.5) + u.uid + (m * Math.PI * 2) / count;
-              const radX = grade.rank >= 5 ? 31 : 26;
+              const orbit =
+                simTimeSec * (skillReady || isAvatarMaster ? 3.5 : 2.5) +
+                u.uid +
+                (m * Math.PI * 2) / count;
+              const radX = grade.rank >= 5 || isAvatarMaster ? 32 : 26;
               const ox = drawX + Math.cos(orbit) * radX;
               const oy =
                 drawFootY -
                 idleHoverY -
                 32 +
                 Math.sin(orbit * 1.45) * 12 -
-                (grade.rank >= 5 ? 5 : 0);
-              const r = grade.rank >= 6 ? 4.2 : grade.rank >= 5 ? 3.5 : 2.9;
+                (grade.rank >= 5 || isAvatarMaster ? 5 : 0);
+              const r = grade.rank >= 6 ? 4.2 : grade.rank >= 5 || isAvatarMaster ? 3.7 : 2.9;
               ctx.beginPath();
               ctx.moveTo(ox, oy - r * 1.25);
               ctx.lineTo(ox + r * 0.85, oy);
@@ -1431,15 +1516,57 @@ export class Renderer {
               ctx.lineTo(ox - r * 0.85, oy);
               ctx.closePath();
               ctx.fillStyle =
-                skillReady && m === 0
+                (skillReady || isAvatarMaster) && m === 0
                   ? '#fef08a'
-                  : m % 2 === 0
-                    ? profile.primary
-                    : profile.secondary;
+                  : isAvatarMaster && m === 2
+                    ? '#fb7185'
+                    : m % 2 === 0
+                      ? profile.primary
+                      : profile.secondary;
               ctx.fill();
               ctx.lineWidth = 1.3;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
+            }
+            ctx.globalAlpha = prevA;
+          },
+        });
+      }
+
+      // 5b. Orbiting Divine Armament Spirit Blade (신병 어검령) when equipped on a hero
+      if (eqArmSlot && !isDraggedOrigin) {
+        this.buckets[RenderLayer.AirFx]!.push({
+          layer: RenderLayer.AirFx,
+          sortY: drawY + 2.4,
+          render: (ctx) => {
+            const bladeCount = armResonance ? 2 : 1;
+            const prevA = ctx.globalAlpha;
+            ctx.globalAlpha = prevA * 0.95;
+            for (let b = 0; b < bladeCount; b++) {
+              const ang = simTimeSec * 3.2 + u.uid * 0.7 + b * Math.PI;
+              const bx = drawX + Math.cos(ang) * (isField ? 29 : 23);
+              const by = drawFootY - idleHoverY - 28 + Math.sin(ang) * 9;
+              ctx.save();
+              ctx.translate(bx, by);
+              ctx.rotate(ang + Math.PI * 0.5);
+              ctx.beginPath();
+              ctx.moveTo(0, -9);
+              ctx.lineTo(3.2, 2);
+              ctx.lineTo(0, 7);
+              ctx.lineTo(-3.2, 2);
+              ctx.closePath();
+              ctx.fillStyle = b === 0 ? eqArmSlot.def.color : eqArmSlot.def.secondaryColor;
+              ctx.fill();
+              ctx.lineWidth = 1.6;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(0, -8);
+              ctx.lineTo(0, 3);
+              ctx.lineWidth = 1.2;
+              ctx.strokeStyle = '#ffffff';
+              ctx.stroke();
+              ctx.restore();
             }
             ctx.globalAlpha = prevA;
           },
@@ -1488,7 +1615,44 @@ export class Renderer {
         });
       }
 
-      // 6c. Bench passive active jade emblem ('진') — pre-rendered sprite (zero per-frame fillText)
+      // 6c. Equipped Divine Armament Seal Badge ('✦자하' / '현중' ...) — pre-rendered sprite
+      if (eqArmSlot && !isDraggedOrigin) {
+        this.buckets[RenderLayer.WorldUI]!.push({
+          layer: RenderLayer.WorldUI,
+          sortY: drawY + 3.2,
+          render: (ctx) => {
+            const badge = this.sprites.armamentSealBadge(
+              eqArmSlot.def.id,
+              eqArmSlot.def.badge,
+              eqArmSlot.def.color,
+              armResonance,
+            );
+            const bw = isField ? 42 : 36;
+            const bh = isField ? 20 : 17;
+            const bx = drawX - spriteSize * 0.34;
+            const by = drawFootY - idleHoverY - spriteSize * 0.8;
+            ctx.drawImage(badge, Math.round(bx - bw * 0.5), Math.round(by - bh * 0.5), bw, bh);
+          },
+        });
+      }
+
+      // 6d. Lv.5 Avatar Mastery ('화신') golden crest seal — pre-rendered sprite
+      if (isAvatarMaster && !isDraggedOrigin) {
+        this.buckets[RenderLayer.WorldUI]!.push({
+          layer: RenderLayer.WorldUI,
+          sortY: drawY + 3.1,
+          render: (ctx) => {
+            const badge = this.sprites.avatarMasterySealBadge();
+            const bw = isField ? 38 : 32;
+            const bh = isField ? 17 : 14;
+            const bx = drawX + spriteSize * 0.32;
+            const by = drawFootY - idleHoverY - spriteSize * 0.22;
+            ctx.drawImage(badge, Math.round(bx - bw * 0.5), Math.round(by - bh * 0.5), bw, bh);
+          },
+        });
+      }
+
+      // 6e. Bench passive active jade emblem ('진') — pre-rendered sprite (zero per-frame fillText)
       if (!isField && def.benchPassive && !isDraggedOrigin) {
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
@@ -1497,7 +1661,7 @@ export class Renderer {
             const badge = this.sprites.benchPassiveBadge();
             const sz = 23;
             const bx = drawX - spriteSize * 0.32;
-            const by = drawFootY - spriteSize * 0.76;
+            const by = drawFootY - spriteSize * (eqArmSlot ? 0.52 : 0.76);
             ctx.drawImage(badge, Math.round(bx - sz * 0.5), Math.round(by - sz * 0.5), sz, sz);
           },
         });
@@ -1524,7 +1688,7 @@ export class Renderer {
   }
 
   /**
-   * Renders rank-tiered celestial / demonic back-halos behind 절정(4)·화경(5)·현경(6) heroes.
+   * Renders rank-tiered celestial / demonic back-halos behind 절정(4)·화경(5)·현경(6) & Lv.5 화신 heroes.
    * Placed behind the hero sprite in `RenderLayer.Unit` so silhouettes stay crisp and regal.
    */
   private renderUnitBackHalo(
@@ -1539,16 +1703,17 @@ export class Renderer {
     simTimeSec: number,
     uid: number,
     skillReady: boolean,
+    isAvatarMaster = false,
   ): void {
     const prevA = ctx.globalAlpha;
     const pulse = 1 + Math.sin(simTimeSec * 4.2 + uid) * 0.05;
     const baseR = (rank >= 6 ? 35 : rank >= 5 ? 30 : 24) * pulse;
-    const glowR = rank >= 6 ? 50 : rank >= 5 ? 42 : 34;
+    const glowR = rank >= 6 || isAvatarMaster ? 50 : rank >= 5 ? 42 : 34;
 
     // Soft aura halo glow behind torso
-    const auraCol = rank >= 6 ? primary : gradeColor;
+    const auraCol = isAvatarMaster ? '#f59e0b' : rank >= 6 ? primary : gradeColor;
     const glow = this.sprites.glow(auraCol, glowR);
-    ctx.globalAlpha = prevA * (rank >= 6 ? 0.44 : rank >= 5 ? 0.34 : 0.24);
+    ctx.globalAlpha = prevA * (rank >= 6 || isAvatarMaster ? 0.48 : rank >= 5 ? 0.34 : 0.24);
     ctx.drawImage(glow, cx - glowR, cy - glowR, glowR * 2, glowR * 2);
 
     if (rank >= 5) {
@@ -1564,36 +1729,36 @@ export class Renderer {
       ctx.strokeStyle = PIXEL_OUTLINE;
       ctx.stroke();
       ctx.lineWidth = rank >= 6 ? 2.6 : 2.0;
-      ctx.strokeStyle = rank >= 6 ? '#fde047' : gradeColor;
+      ctx.strokeStyle = rank >= 6 || isAvatarMaster ? '#fde047' : gradeColor;
       ctx.stroke();
 
-      // Inner counter-rotating sacred ring (Immortal rank 6)
-      if (rank >= 6) {
+      // Inner counter-rotating sacred ring (Immortal rank 6 or Lv.5 Avatar Master)
+      if (rank >= 6 || isAvatarMaster) {
         ctx.save();
         ctx.rotate(-rot * 1.4);
         ctx.setLineDash([7, 5]);
         ctx.beginPath();
         ctx.arc(0, 0, baseR * 0.76, 0, Math.PI * 2);
         ctx.lineWidth = 2.0;
-        ctx.strokeStyle = primary;
+        ctx.strokeStyle = isAvatarMaster ? '#fb7185' : primary;
         ctx.stroke();
         ctx.restore();
       }
 
       // Cardinal martial crest diamonds / spikes around halo perimeter
-      const nodeCount = rank >= 6 ? 6 : 4;
+      const nodeCount = rank >= 6 || isAvatarMaster ? 6 : 4;
       for (let k = 0; k < nodeCount; k++) {
         const a = rot + (k * Math.PI * 2) / nodeCount;
         const nx = Math.cos(a) * baseR;
         const ny = Math.sin(a) * baseR;
-        const nr = rank >= 6 ? (k % 2 === 0 ? 5.0 : 3.6) : 3.8;
+        const nr = rank >= 6 || isAvatarMaster ? (k % 2 === 0 ? 5.0 : 3.6) : 3.8;
         ctx.beginPath();
         ctx.moveTo(nx + Math.cos(a) * nr * 1.4, ny + Math.sin(a) * nr * 1.4);
         ctx.lineTo(nx + Math.cos(a + Math.PI * 0.5) * nr * 0.7, ny + Math.sin(a + Math.PI * 0.5) * nr * 0.7);
         ctx.lineTo(nx - Math.cos(a) * nr * 0.9, ny - Math.sin(a) * nr * 0.9);
         ctx.lineTo(nx + Math.cos(a - Math.PI * 0.5) * nr * 0.7, ny + Math.sin(a - Math.PI * 0.5) * nr * 0.7);
         ctx.closePath();
-        ctx.fillStyle = k % 2 === 0 ? '#fffbeb' : secondary;
+        ctx.fillStyle = k % 2 === 0 ? '#fffbeb' : isAvatarMaster ? '#f59e0b' : secondary;
         ctx.fill();
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = PIXEL_OUTLINE;
@@ -1801,17 +1966,7 @@ export class Renderer {
 
   /**
    * Draws an animated cel-shaded weapon motion right in front of the attacking hero's hand
-   * across all 10 Murim weapon archetypes:
-   * - `fan`: 사천당가 만독철선 부채 펼치기 (7-rib royal purple-emerald-gold war fan + poison needle storm)
-   * - `dual_sword`: 쌍검 X자 교차 베기 (crossed twin blades + X clash spark)
-   * - `flying_sword`: 어검술 다중 비검 출격 (sword-command seal + 3~5 levitating spirit swords)
-   * - `sword`: 정통 장검·중검 일섬 (sect-accented Jian / heavy greatsword arc)
-   * - `saber`: 묵직한 패도·대도 참격 (broad curved Dadao cleaver + jagged shock-crescent)
-   * - `spear_staff`: 장창·타구봉·목봉 찌르기 (wooden/bamboo/bone shaft + sonic rings + skill whirl)
-   * - `palm_fist`: 금강권·흑염권 정권 & 광마 혈조 (clenched fist + sonic ring / 3-claw rend)
-   * - `dagger_hidden`: 쌍독비수·암기 투척 (reverse-grip whip arcs + 3 kunai fan)
-   * - `staff_gourd`: 독호리병 기울이기 & 만독연무 분사 (tilting calabash gourd + bubbling venom mist)
-   * - `sorcery_qi`: 해골장 혈마구 & 양수 마염화구 영창 (6-point demonic rune circle + hellfire orbs)
+   * across all 10 Murim weapon archetypes + Lv.5 Avatar Mastery & Divine Armament outer sword-qi arc.
    */
   private renderWeaponSwing(
     ctx: CanvasRenderingContext2D,
@@ -1823,6 +1978,8 @@ export class Renderer {
     rankScale: number,
     isSkill: boolean,
     profile: UnitCombatProfile,
+    isAvatarMaster = false,
+    armamentColor: string | null = null,
   ): void {
     const fade = sp < 0.64 ? 1 : 1 - (sp - 0.64) / 0.36;
     if (fade <= 0.01) return;
@@ -1832,6 +1989,29 @@ export class Renderer {
     ctx.translate(ox, oy);
     ctx.rotate(aimAngle);
     ctx.globalAlpha = prevAlpha * fade;
+
+    // Evolved outer Sword-Qi Shockwave Rim when wielding a Divine Armament or Lv.5 Avatar Mastery!
+    if ((isAvatarMaster || armamentColor !== null) && sp > 0.05 && sp < 0.85) {
+      const evoP = Math.min(1, (sp - 0.05) / 0.55);
+      const evoR = (38 + evoP * 20) * rankScale;
+      const evoCol = armamentColor ?? '#fde047';
+      ctx.beginPath();
+      ctx.arc(4, 0, evoR, -Math.PI * 0.42, Math.PI * 0.42);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 4.2;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = hexWithAlpha(evoCol, 0.88 * (1 - evoP * 0.35));
+      ctx.stroke();
+      if (isAvatarMaster) {
+        ctx.beginPath();
+        ctx.arc(4, 0, evoR + 4.5, -Math.PI * 0.32, Math.PI * 0.32);
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = hexWithAlpha('#fb7185', 0.72 * (1 - evoP * 0.4));
+        ctx.stroke();
+      }
+    }
 
     const style = profile.style;
 

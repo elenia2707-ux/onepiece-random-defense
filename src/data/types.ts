@@ -36,7 +36,9 @@ export type MonsterKind =
   | 'blood_zealot'
   | 'white_tiger'
   | 'black_serpent'
-  | 'blood_patriarch';
+  | 'blood_patriarch'
+  | 'azure_dragon'
+  | 'vermilion_bird';
 
 export interface GradeDef {
   readonly id: GradeId;
@@ -497,6 +499,55 @@ export interface BoonDef {
   readonly desc: string;
 }
 
+export type ArmamentId =
+  | 'arm_violet_sword'
+  | 'arm_obsidian_greatsword'
+  | 'arm_thousand_needles'
+  | 'arm_asura_saber'
+  | 'arm_frost_jade_fan'
+  | 'arm_thunder_halberd';
+
+export type ArmamentIconKind =
+  | 'sword'
+  | 'greatsword'
+  | 'needles'
+  | 'saber'
+  | 'fan'
+  | 'halberd';
+
+export interface ArmamentResonanceDef {
+  readonly faction: FactionId;
+  readonly label: string;
+  readonly atkPct?: number;
+  readonly speedPct?: number;
+  readonly critChanceBps?: number;
+  readonly critMultBonus?: number;
+  readonly armorShred?: number;
+  readonly skillDamagePct?: number;
+  readonly bossDamagePct?: number;
+}
+
+export interface ArmamentDef {
+  readonly id: ArmamentId;
+  readonly name: string;
+  readonly badge: string;
+  readonly tag: string;
+  readonly iconKind: ArmamentIconKind;
+  readonly color: string;
+  readonly secondaryColor: string;
+  readonly desc: string;
+  readonly atkPct: number;
+  readonly speedPct?: number;
+  readonly critChanceBps?: number;
+  readonly critMultBonus?: number;
+  readonly armorShred?: number;
+  readonly skillDamagePct?: number;
+  readonly bossDamagePct?: number;
+  readonly splashBonus?: number;
+  readonly bonusSlowPct?: number;
+  readonly resonance: ArmamentResonanceDef;
+}
+
 export type WaveMutantKind = 'swift_raid' | 'iron_wall' | 'blood_swarm';
 
 export interface GameDataBundle {
@@ -513,6 +564,8 @@ export interface GameDataBundle {
   readonly upgradesByFaction: ReadonlyMap<FactionId, UpgradeGroupDef>;
   readonly relics: readonly RelicDef[];
   readonly relicsById: ReadonlyMap<RelicId, RelicDef>;
+  readonly armaments: readonly ArmamentDef[];
+  readonly armamentsById: ReadonlyMap<ArmamentId, ArmamentDef>;
   readonly missions: readonly MissionDef[];
   readonly boons: readonly BoonDef[];
   readonly boonsById: ReadonlyMap<BoonId, BoonDef>;

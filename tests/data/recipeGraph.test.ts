@@ -183,4 +183,25 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     ];
     expect(() => new RecipeGraph(data.units, data.gradesById, dupRecipes)).toThrow(/\[R5\]/);
   });
+
+  it('validates v3.2 armaments.json (6 Divine Armaments across all 3 factions) and v3.3 Four Symbols Boss waves', async () => {
+    const { validateArmaments } = await import('../../src/data/loader');
+    const data = loadGameData();
+    expect(data.armaments).toHaveLength(6);
+    const factions = new Set(data.armaments.map((a) => a.resonance.faction));
+    expect(factions).toEqual(new Set(['orthodox', 'unorthodox', 'demonic']));
+
+    // Duplicate armament id rejected
+    expect(() => validateArmaments([data.armaments[0], data.armaments[0], data.armaments[1]])).toThrow(
+      /duplicate armament id/,
+    );
+
+    // Four Symbols Guardian Bosses + Heavenly Demon across the 30-wave campaign
+    expect(data.waves[4]?.monsterKind).toBe('white_tiger');
+    expect(data.waves[9]?.monsterKind).toBe('black_serpent');
+    expect(data.waves[14]?.monsterKind).toBe('blood_patriarch');
+    expect(data.waves[19]?.monsterKind).toBe('azure_dragon');
+    expect(data.waves[24]?.monsterKind).toBe('vermilion_bird');
+    expect(data.waves[29]?.monsterKind).toBe('blood_patriarch');
+  });
 });

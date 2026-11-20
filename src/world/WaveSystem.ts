@@ -98,7 +98,14 @@ export type BossSkillKind =
   | 'serpent_shatter'
   | 'patriarch_telegraph'
   | 'patriarch_seal'
-  | 'patriarch_summon';
+  | 'patriarch_summon'
+  | 'dragon_thunder_warn'
+  | 'dragon_thunder_strike'
+  | 'dragon_backfire'
+  | 'dragon_tempest'
+  | 'phoenix_rebirth_egg'
+  | 'phoenix_rebirth_heal'
+  | 'phoenix_shatter';
 
 export const BOUNTY_ROSTER: readonly {
   readonly name: string;
@@ -399,7 +406,11 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
               ? 120
               : waveDef.monsterKind === 'black_serpent'
                 ? 135
-                : 105) * bossCdMult,
+                : waveDef.monsterKind === 'azure_dragon'
+                  ? 115
+                  : waveDef.monsterKind === 'vermilion_bird'
+                    ? 125
+                    : 105) * bossCdMult,
           ),
         );
 
@@ -579,23 +590,32 @@ function pickHazardTiles(ctx: WaveSystemContext, count: number): number[] {
 }
 
 export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
-  // 0. Prune expired tile hazards & emit seal activation when warning completes
+  // 0. Prune expired tile hazards & resolve seal / thunder activations
   if (ctx.tileHazards.length > 0) {
-    const activatedIndices: number[] = [];
+    const activatedSealIndices: number[] = [];
+    const activatedThunderHazards: { idxInArr: number; fieldIndex: number; bossEntityId?: number }[] = [];
     for (let i = ctx.tileHazards.length - 1; i >= 0; i--) {
       const h = ctx.tileHazards[i]!;
       if (ctx.currentTick >= h.expireTick) {
         ctx.tileHazards.splice(i, 1);
         ctx.markPriorityDirty();
       } else if (ctx.currentTick === h.activateTick) {
-        activatedIndices.push(h.fieldIndex);
+        if (h.hazardKind === 'thunder') {
+          activatedThunderHazards.push({
+            idxInArr: i,
+            fieldIndex: h.fieldIndex,
+            bossEntityId: h.bossEntityId,
+          });
+        } else {
+          activatedSealIndices.push(h.fieldIndex);
+        }
         ctx.markPriorityDirty();
       }
     }
-    if (activatedIndices.length > 0) {
+    if (activatedSealIndices.length > 0) {
       const firstCenter = ctx.board.getSlotCenter({
         area: 'field',
-        index: activatedIndices[0]!,
+        index: activatedSealIndices[0]!,
       });
       ctx.events.emit('boss:skill', {
         entityId: 0,
@@ -604,9 +624,68 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
         skillName: '혈옥주박 봉인 발동!',
         x: firstCenter.x,
         y: firstCenter.y,
-        tileIndices: activatedIndices,
+        tileIndices: activatedSealIndices,
         tick: ctx.currentTick,
       });
+    }
+    if (activatedThunderHazards.length > 0) {
+      const thunderTiles = activatedThunderHazards.map((t) => t.fieldIndex);
+      const anyUnitHit = thunderTiles.some((fIdx) => ctx.board.field.getUidAt(fIdx) !== null);
+      const dragonBoss =
+        ctx.monsters.find(
+          (m) =>
+            m.isBoss &&
+            !m.isBounty &&
+            (m.entityId === activatedThunderHazards[0]?.bossEntityId || m.kind === 'azure_dragon'),
+        ) ?? null;
+
+      if (!anyUnitHit) {
+        // Counterplay success! Player evacuated every targeted tile -> thunder backfires onto Azure Dragon!
+        for (let i = ctx.tileHazards.length - 1; i >= 0; i--) {
+          const h = ctx.tileHazards[i]!;
+          if (h.hazardKind === 'thunder' && h.activateTick === ctx.currentTick) {
+            ctx.tileHazards.splice(i, 1);
+          }
+        }
+        ctx.setCoin(ctx.getCoin() + 70);
+        if (dragonBoss) {
+          dragonBoss.stunUntilTick = Math.max(dragonBoss.stunUntilTick, ctx.currentTick + 54);
+          const curShred = ctx.currentTick < dragonBoss.shredExpireTick ? dragonBoss.armorShred : 0;
+          dragonBoss.armorShred = Math.min(200, curShred + 25);
+          dragonBoss.shredExpireTick = Math.max(dragonBoss.shredExpireTick, ctx.currentTick + 150);
+        }
+        const fxPos = dragonBoss
+          ? { x: dragonBoss.currX, y: dragonBoss.currY }
+          : ctx.board.getSlotCenter({ area: 'field', index: thunderTiles[0]! });
+        ctx.events.emit('boss:skill', {
+          entityId: dragonBoss?.entityId ?? 0,
+          bossKind: 'azure_dragon',
+          skillKind: 'dragon_backfire',
+          skillName: '역뢰 파훼! 청룡 감전 · 은자+70',
+          x: fxPos.x,
+          y: fxPos.y,
+          tileIndices: thunderTiles,
+          tick: ctx.currentTick,
+        });
+      } else {
+        if (dragonBoss) {
+          dragonBoss.hasteUntilTick = Math.max(dragonBoss.hasteUntilTick, ctx.currentTick + 45);
+        }
+        const firstCenter = ctx.board.getSlotCenter({
+          area: 'field',
+          index: thunderTiles[0]!,
+        });
+        ctx.events.emit('boss:skill', {
+          entityId: dragonBoss?.entityId ?? 0,
+          bossKind: 'azure_dragon',
+          skillKind: 'dragon_thunder_strike',
+          skillName: '구천낙뢰 감전 봉인!',
+          x: firstCenter.x,
+          y: firstCenter.y,
+          tileIndices: thunderTiles,
+          tick: ctx.currentTick,
+        });
+      }
     }
   }
 
@@ -618,19 +697,23 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
   for (let i = 0; i < ctx.monsters.length; i++) {
     const m = ctx.monsters[i]!;
 
-    // Unbroken Black Serpent poison-shell barrier expires -> heals boss 6% Max HP!
+    // Unbroken boss barrier expires -> Serpent regenerates 6%, Vermilion Bird rebirths 8% + haste!
     if (m.shieldHp > 0 && ctx.currentTick >= m.shieldExpireTick) {
       m.shieldHp = 0;
       m.shieldMaxHp = 0;
       m.shieldExpireTick = 0;
-      const healAmt = Math.max(1, Math.round(m.maxHp * 0.06));
+      const isPhoenix = m.kind === 'vermilion_bird';
+      const healAmt = Math.max(1, Math.round(m.maxHp * (isPhoenix ? 0.08 : 0.06)));
       m.hp = Math.min(m.maxHp, m.hp + healAmt);
+      if (isPhoenix) {
+        m.hasteUntilTick = Math.max(m.hasteUntilTick, ctx.currentTick + 60);
+      }
       ctx.markPriorityDirty();
       ctx.events.emit('boss:skill', {
         entityId: m.entityId,
         bossKind: m.kind,
-        skillKind: 'serpent_heal',
-        skillName: '만년독갑 흡수 · 재생!',
+        skillKind: isPhoenix ? 'phoenix_rebirth_heal' : 'serpent_heal',
+        skillName: isPhoenix ? '남명열반 화란 부활!' : '만년독갑 흡수 · 재생!',
         x: m.currX,
         y: m.currY,
         tick: ctx.currentTick,
@@ -699,6 +782,52 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
             bossKind: m.kind,
             skillKind: 'tiger_sprint',
             skillName: '백호 광풍질주!',
+            x: m.currX,
+            y: m.currY,
+            tick: ctx.currentTick,
+          });
+        } else if (m.kind === 'azure_dragon') {
+          m.hasteUntilTick = Math.max(m.hasteUntilTick, ctx.currentTick + 75);
+          m.slowUntilTick = 0;
+          m.slowFactor = 1;
+          const tempestSq = 165 * 165;
+          for (let uIdx = 0; uIdx < ctx.units.length; uIdx++) {
+            const u = ctx.units[uIdx]!;
+            if (u.slot.area !== 'field') continue;
+            const dx = u.currX - m.currX;
+            const dy = u.currY - m.currY;
+            if (dx * dx + dy * dy <= tempestSq) {
+              u.cooldownTicks = Math.min(90, u.cooldownTicks + 20);
+            }
+          }
+          ctx.markPriorityDirty();
+          ctx.events.emit('boss:skill', {
+            entityId: m.entityId,
+            bossKind: m.kind,
+            skillKind: 'dragon_tempest',
+            skillName: '창궁뇌룡 승천폭뢰!',
+            x: m.currX,
+            y: m.currY,
+            tick: ctx.currentTick,
+          });
+        } else if (m.kind === 'vermilion_bird') {
+          if (m.shieldHp <= 0 || ctx.currentTick >= m.shieldExpireTick) {
+            const eggAmt = Math.max(80, Math.round(m.maxHp * 0.1));
+            m.shieldHp = eggAmt;
+            m.shieldMaxHp = eggAmt;
+            m.shieldExpireTick = ctx.currentTick + 150;
+            m.nextBossSkillTick = Math.max(
+              m.nextBossSkillTick,
+              ctx.currentTick + Math.max(120, Math.round(240 * bossCdMult)),
+            );
+          }
+          m.hasteUntilTick = Math.max(m.hasteUntilTick, ctx.currentTick + 45);
+          ctx.markPriorityDirty();
+          ctx.events.emit('boss:skill', {
+            entityId: m.entityId,
+            bossKind: m.kind,
+            skillKind: 'phoenix_rebirth_egg',
+            skillName: '주작 열반화란 전개! (회심·파갑 1.8x)',
             x: m.currX,
             y: m.currY,
             tick: ctx.currentTick,
@@ -795,6 +924,51 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
             bossKind: m.kind,
             skillKind: 'serpent_shell',
             skillName: '만년현무 독갑!',
+            x: m.currX,
+            y: m.currY,
+            tick: ctx.currentTick,
+          });
+        } else if (m.kind === 'azure_dragon') {
+          m.nextBossSkillTick = ctx.currentTick + Math.max(90, Math.round(240 * bossCdMult));
+          const thunderCount = waveNumber >= 25 ? 2 : 1;
+          const chosenTiles = pickHazardTiles(ctx, thunderCount);
+          if (chosenTiles.length > 0) {
+            const warnTicks =
+              HAZARD_WARNING_TICKS + (ctx.arenaRule === 'sandstorm_crit' ? 12 : 0);
+            for (let c = 0; c < chosenTiles.length; c++) {
+              ctx.tileHazards.push({
+                fieldIndex: chosenTiles[c]!,
+                startTick: ctx.currentTick,
+                activateTick: ctx.currentTick + warnTicks,
+                expireTick: ctx.currentTick + warnTicks + 120,
+                hazardKind: 'thunder',
+                bossEntityId: m.entityId,
+              });
+            }
+            ctx.markPriorityDirty();
+            ctx.events.emit('boss:skill', {
+              entityId: m.entityId,
+              bossKind: m.kind,
+              skillKind: 'dragon_thunder_warn',
+              skillName: '구천낙뢰진 예고! (회피 시 역뢰 파훼)',
+              x: m.currX,
+              y: m.currY,
+              tileIndices: chosenTiles,
+              tick: ctx.currentTick,
+            });
+          }
+        } else if (m.kind === 'vermilion_bird') {
+          m.nextBossSkillTick = ctx.currentTick + Math.max(90, Math.round(270 * bossCdMult));
+          const eggAmt = Math.max(80, Math.round(m.maxHp * 0.1));
+          m.shieldHp = eggAmt;
+          m.shieldMaxHp = eggAmt;
+          m.shieldExpireTick = ctx.currentTick + 150;
+          ctx.markPriorityDirty();
+          ctx.events.emit('boss:skill', {
+            entityId: m.entityId,
+            bossKind: m.kind,
+            skillKind: 'phoenix_rebirth_egg',
+            skillName: '남명주작 열반화란!',
             x: m.currX,
             y: m.currY,
             tick: ctx.currentTick,

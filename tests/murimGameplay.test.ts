@@ -3548,6 +3548,215 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(restored.getProfile().spentMeridianPoints).toBe(0);
     expect(restored.getProfile().unspentMeridianPoints).toBe(rProf.cultivation.totalMeridianPoints);
   });
+
+  it('supports v3.2 Divine Armaments (신병이기 3슬롯 주조·재연마·장착·공명, 합공 자동계승, 판매 안전회수, 1x=3x 결정성)', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x32320001, {}, 'normal', null, false, {
+      heroMasteryAtkPct: { hwasan_novice: 15 }, // Lv.5 화신
+    });
+    expect(sim.getHeroMasteryAtkPct('hwasan_novice')).toBe(15);
+
+    // Spawn hwasan_novice (orthodox) + mudang_disciple (orthodox) + cult_initiate (demonic)
+    sim.commands.enqueue({ type: 'grantTestCoin', amount: 2000 });
+    sim.commands.enqueue({ type: 'grantTestResource', luck: 20 });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'mudang_disciple' });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'cult_initiate' });
+    sim.tick();
+
+    const snap0 = sim.buildSnapshot(1, false);
+    const hwasanSlot = snap0.field.find((u) => u?.unitId === 'hwasan_novice')!;
+    const cultSlot = snap0.field.find((u) => u?.unitId === 'cult_initiate')!;
+    expect(hwasanSlot).toBeDefined();
+    expect(cultSlot).toBeDefined();
+    const baseAtkBeforeArm = hwasanSlot.baseAtk + hwasanSlot.bonusAtk;
+
+    // Forge all 3 Divine Armament slots (4th must reject)
+    sim.commands.enqueue({ type: 'forgeArmament' });
+    sim.commands.enqueue({ type: 'forgeArmament' });
+    sim.commands.enqueue({ type: 'forgeArmament' });
+    sim.commands.enqueue({ type: 'forgeArmament' });
+    sim.tick();
+
+    const snapForged = sim.buildSnapshot(1, false);
+    expect(snapForged.armory.slots).toHaveLength(3);
+    expect(snapForged.armory.nextForgeCost).toBeNull();
+    expect(snapForged.rejects.some((r) => r.cmd === 'forgeArmament')).toBe(true);
+    expect(new Set(snapForged.armory.slots.map((s) => s.armamentId)).size).toBe(3);
+
+    // Reforge slot 0 to a different Armament
+    const oldArm0 = snapForged.armory.slots[0]!.armamentId;
+    sim.commands.enqueue({ type: 'reforgeArmament', slotIndex: 0 });
+    sim.tick();
+    const snapReforged = sim.buildSnapshot(1, false);
+    const newArm0 = snapReforged.armory.slots[0]!.armamentId;
+    expect(newArm0).not.toBe(oldArm0);
+
+    // Equip slot 0 onto hwasan_novice and verify ATK increases + SlotView.equippedArmament populated
+    sim.commands.enqueue({ type: 'equipArmament', slotIndex: 0, targetUid: hwasanSlot.uid });
+    sim.commands.enqueue({ type: 'equipArmament', slotIndex: 1, targetUid: null });
+    sim.commands.enqueue({ type: 'equipArmament', slotIndex: 2, targetUid: cultSlot.uid });
+    sim.tick();
+
+    const snapEquipped = sim.buildSnapshot(1, false);
+    const hwasanArmed = snapEquipped.field.find((u) => u?.uid === hwasanSlot.uid)!;
+    expect(hwasanArmed.equippedArmament?.id).toBe(newArm0);
+    expect(hwasanArmed.baseAtk + hwasanArmed.bonusAtk).toBeGreaterThan(baseAtkBeforeArm);
+
+    const arm0Def = data.armamentsById.get(newArm0)!;
+    expect(hwasanArmed.equippedArmament?.resonanceActive).toBe(
+      arm0Def.resonance.faction === 'orthodox',
+    );
+
+    // Craft r_plum_swordsman (hwasan_novice + mudang_disciple -> plum_swordsman):
+    // Slot 0 armament on hwasan_novice must automatically inherit onto the newly crafted plum_swordsman!
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_plum_swordsman', chain: false });
+    sim.tick();
+    const snapAfterCraft = sim.buildSnapshot(1, false);
+    const plumUnit = snapAfterCraft.field.find((u) => u?.unitId === 'plum_swordsman')!;
+    expect(plumUnit).toBeDefined();
+    expect(plumUnit.equippedArmament?.id).toBe(newArm0);
+    expect(snapAfterCraft.armory.slots[0]?.equippedUid).toBe(plumUnit.uid);
+
+    // Selling cult_initiate safely returns slot 2 armament to armory bag (equippedUid === null, never lost!)
+    sim.commands.enqueue({ type: 'sell', uid: cultSlot.uid });
+    sim.tick();
+    const snapAfterSell = sim.buildSnapshot(1, false);
+    expect(snapAfterSell.armory.slots).toHaveLength(3);
+    expect(snapAfterSell.armory.slots[2]?.equippedUid).toBeNull();
+
+    // Save & restore round-trip preserves armory & equipped state + 1x=3x replay determinism
+    const saved = sim.exportRunSave(12345);
+    const simRestored = new Simulation(data, 0x99999999);
+    expect(simRestored.restoreRunSave(saved)).toBe(true);
+    expect(simRestored.hashState()).toBe(sim.hashState());
+
+    const cmdHistory = sim.commands.getHistory();
+    const simReplayA = new Simulation(data, 0x32320001, {}, 'normal', null, false, {
+      heroMasteryAtkPct: { hwasan_novice: 15 },
+    });
+    const simReplayB = new Simulation(data, 0x32320001, {}, 'normal', null, false, {
+      heroMasteryAtkPct: { hwasan_novice: 15 },
+    });
+    simReplayA.scheduleCommandsForReplay(cmdHistory);
+    simReplayB.scheduleCommandsForReplay(cmdHistory);
+    while (simReplayA.tickCount < sim.tickCount) {
+      simReplayA.tick();
+    }
+    while (simReplayB.tickCount < sim.tickCount) {
+      for (let step = 0; step < 3 && simReplayB.tickCount < sim.tickCount; step++) {
+        simReplayB.tick();
+      }
+    }
+    expect(simReplayA.hashState()).toBe(sim.hashState());
+    expect(simReplayB.hashState()).toBe(sim.hashState());
+  });
+
+  it('executes v3.3 Four Symbols Boss patterns & counterplay: 창궁청룡 (역뢰 파훼 +70은자) and 남명주작 (열반화란 파훼 영단+1·은자+80)', () => {
+    const data = loadGameData();
+
+    // 1. Boss Rush Stage 4 = 창궁신수 청룡 (azure_dragon)
+    const simDragon = new Simulation(data, 0x33040001, {}, 'hard', null, false, {
+      runMode: 'boss_rush',
+    });
+    // Advance run state cleanly to Boss Rush Stage 4 by restoring a Stage 4 snapshot with 1 field unit
+    simDragon.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    simDragon.tick();
+    const baseSave = simDragon.exportRunSave(100);
+    const stage4Save = {
+      ...baseSave,
+      waveNumber: 4,
+      waveTicksLeft: 52 * 30,
+      spawnedInWave: 0,
+      nextSpawnTick: simDragon.tickCount + 1,
+      monsters: [],
+      tileHazards: [],
+    };
+    expect(simDragon.restoreRunSave(stage4Save)).toBe(true);
+
+    const dragonEvents: string[] = [];
+    simDragon.events.on('boss:skill', (ev) => {
+      dragonEvents.push(ev.skillKind);
+    });
+
+    // Tick until azure_dragon casts dragon_thunder_warn
+    let warnedTile: number | null = null;
+    for (let t = 0; t < 200; t++) {
+      simDragon.tick();
+      const hazards = simDragon.getTileHazards();
+      if (hazards.length > 0 && hazards[0]?.hazardKind === 'thunder') {
+        warnedTile = hazards[0].fieldIndex;
+        break;
+      }
+    }
+    expect(dragonEvents).toContain('dragon_thunder_warn');
+    expect(warnedTile).not.toBeNull();
+
+    // Evacuate the warned field tile to an empty bench slot before activateTick!
+    const coinBeforeBackfire = simDragon.buildSnapshot(1, false).coin;
+    if (simDragon.board.field.getUidAt(warnedTile!) !== null) {
+      simDragon.commands.enqueue({
+        type: 'move',
+        from: { area: 'field', index: warnedTile! },
+        to: { area: 'bench', index: 0 },
+      });
+    }
+    for (let t = 0; t < 70; t++) {
+      simDragon.tick();
+      if (dragonEvents.includes('dragon_backfire')) break;
+    }
+    expect(dragonEvents).toContain('dragon_backfire');
+    expect(simDragon.buildSnapshot(1, false).coin).toBeGreaterThanOrEqual(coinBeforeBackfire + 70);
+    const dragonEnt = simDragon.getMonsters().find((m) => m.kind === 'azure_dragon')!;
+    expect(dragonEnt).toBeDefined();
+    expect(dragonEnt.armorShred).toBeGreaterThanOrEqual(25);
+
+    // 2. Boss Rush Stage 5 = 남명신수 주작 (vermilion_bird) Nirvana Flame Egg shatter counterplay!
+    const simPhoenix = new Simulation(data, 0x33050002, {}, 'hard', null, false, {
+      runMode: 'boss_rush',
+    });
+    spawnCheonmaHelper(simPhoenix);
+    simPhoenix.commands.enqueue({ type: 'grantTestCoin', amount: 3000 });
+    simPhoenix.commands.enqueue({ type: 'upgrade', group: 'demonic', count: 10 });
+    simPhoenix.tick();
+
+    const phoenixBase = simPhoenix.exportRunSave(200);
+    const stage5Save = {
+      ...phoenixBase,
+      waveNumber: 5,
+      waveTicksLeft: 55 * 30,
+      spawnedInWave: 0,
+      nextSpawnTick: simPhoenix.tickCount + 1,
+      monsters: [],
+      tileHazards: [],
+    };
+    expect(simPhoenix.restoreRunSave(stage5Save)).toBe(true);
+
+    const phoenixEvents: string[] = [];
+    let luckAtEgg = 0;
+    let coinAtEgg = 0;
+    simPhoenix.events.on('boss:skill', (ev) => {
+      phoenixEvents.push(ev.skillKind);
+      if (ev.skillKind === 'phoenix_rebirth_egg' && luckAtEgg === 0) {
+        const snapNow = simPhoenix.buildSnapshot(1, false);
+        luckAtEgg = snapNow.luckStone;
+        coinAtEgg = snapNow.coin;
+      }
+    });
+
+    for (let t = 0; t < 450; t++) {
+      simPhoenix.tick();
+      if (phoenixEvents.includes('phoenix_shatter')) break;
+    }
+    expect(phoenixEvents).toContain('phoenix_rebirth_egg');
+    expect(phoenixEvents).toContain('phoenix_shatter');
+    const snapAfterShatter = simPhoenix.buildSnapshot(1, false);
+    expect(snapAfterShatter.luckStone).toBeGreaterThanOrEqual(luckAtEgg + 1);
+    expect(snapAfterShatter.coin).toBeGreaterThanOrEqual(coinAtEgg + 80);
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {

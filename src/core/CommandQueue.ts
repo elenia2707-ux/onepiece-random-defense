@@ -37,6 +37,9 @@ export type GameCommand =
   | { readonly type: 'rerollBoon' }
   | { readonly type: 'pickContract'; readonly contractId: ContractId }
   | { readonly type: 'dismissContractOffer' }
+  | { readonly type: 'forgeArmament' }
+  | { readonly type: 'reforgeArmament'; readonly slotIndex: number }
+  | { readonly type: 'equipArmament'; readonly slotIndex: number; readonly targetUid: number | null }
   | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
   | {
       readonly type: 'syncMetaBonuses';

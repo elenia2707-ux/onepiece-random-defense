@@ -931,9 +931,23 @@ export class UIManager {
     });
 
     this.unitShortcutsEl.addEventListener('click', (ev) => {
-      const chip = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>(
-        '[data-shortcut-recipe]',
-      );
+      const target = ev.target as HTMLElement | null;
+      const forgeChip = target?.closest<HTMLButtonElement>('[data-shortcut-open-forge]');
+      if (forgeChip) {
+        this.openSheet('upgrade');
+        return;
+      }
+      const armChip = target?.closest<HTMLButtonElement>('[data-shortcut-arm-slot]');
+      if (armChip) {
+        const slotIndex = Number(armChip.dataset.shortcutArmSlot ?? '-1');
+        const rawTarget = armChip.dataset.targetUid ?? '';
+        const targetUid = rawTarget === '' ? null : Number(rawTarget);
+        if (slotIndex >= 0 && (targetUid === null || Number.isFinite(targetUid))) {
+          this.handlers.onDispatch({ type: 'equipArmament', slotIndex, targetUid });
+        }
+        return;
+      }
+      const chip = target?.closest<HTMLButtonElement>('[data-shortcut-recipe]');
       if (!chip || !this.lastSnapshot) return;
       const rid = chip.dataset.shortcutRecipe!;
       const st = this.lastSnapshot.craft.recipes[rid];
@@ -1076,6 +1090,20 @@ export class UIManager {
         const group = btn.dataset.group as UpgradeGroupId | undefined;
         if (group) {
           this.handlers.onDispatch({ type: 'upgrade', group, count: 5 });
+        }
+      } else if (action === 'forge-armament') {
+        this.handlers.onDispatch({ type: 'forgeArmament' });
+      } else if (action === 'reforge-armament') {
+        const slotIndex = Number(btn.dataset.slotIndex ?? '-1');
+        if (slotIndex >= 0) {
+          this.handlers.onDispatch({ type: 'reforgeArmament', slotIndex });
+        }
+      } else if (action === 'equip-armament') {
+        const slotIndex = Number(btn.dataset.slotIndex ?? '-1');
+        const rawUid = btn.dataset.targetUid ?? '';
+        const targetUid = rawUid === '' ? null : Number(rawUid);
+        if (slotIndex >= 0 && (targetUid === null || Number.isFinite(targetUid))) {
+          this.handlers.onDispatch({ type: 'equipArmament', slotIndex, targetUid });
         }
       } else if (action === 'pin-recipe') {
         const recipeId = btn.dataset.recipeId;
@@ -1685,9 +1713,10 @@ export class UIManager {
               : `${snapshot.boss.name} · 🛡강기 ${netArmor}`;
       }
       this.setText(this.bossHudNameEl, bossNameLabel);
+      const shieldLabel = snapshot.boss.kind === 'vermilion_bird' ? '화란' : '독갑';
       const shieldPart =
         snapshot.boss.shieldHp > 0
-          ? ` (+독갑 ${Math.ceil(snapshot.boss.shieldHp).toLocaleString('ko-KR')})`
+          ? ` (+${shieldLabel} ${Math.ceil(snapshot.boss.shieldHp).toLocaleString('ko-KR')})`
           : '';
       this.setText(
         this.bossHudHpEl,
@@ -2193,7 +2222,8 @@ export class UIManager {
     const cultLv = meta.cultivation.level;
     const unspentQi = meta.unspentMeridianPoints;
     const claimRealm = meta.claimableRealmCount;
-    const sig = `${equippedTitleId}:${cultLv}:${unspentQi}:${claimRealm}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
+    const armoryCount = snapshot.armory.slots.length;
+    const sig = `${equippedTitleId}:${cultLv}:${unspentQi}:${claimRealm}:${armoryCount}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
@@ -2208,6 +2238,11 @@ export class UIManager {
       const alertCls = unspentQi > 0 || claimRealm > 0 ? ' has-qi-alert' : '';
       pills.push(
         `<span class="relic-buff-pill hud-realm-pill${alertCls}" style="border-color:${meta.cultivation.realmColor}" title="단전 내공 경지: ${escapeHtml(meta.cultivation.realmName)} (터치하여 기경팔맥 타통)">☯ ${escapeHtml(meta.cultivation.realmBadge)} Lv.${cultLv}${escapeHtml(qiSuffix)}</span>`,
+      );
+    }
+    if (armoryCount > 0) {
+      pills.push(
+        `<span class="relic-buff-pill armory-active" data-open-boons="1" title="이번 출정 주조한 신병이기 보기">🗡 신병 ${armoryCount}/${snapshot.armory.maxSlots}</span>`,
       );
     }
     if (meta.equippedTitle) {
@@ -2654,7 +2689,14 @@ export class UIManager {
     const meta = this.handlers.getMetaProfile();
     const canAffordAwaken =
       slotView.awakenCost !== null && snapshot.coin >= slotView.awakenCost;
-    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
+    const armSig = snapshot.armory.slots
+      .map((s) => `${s.slotIndex}:${s.armamentId}:${s.equippedUid ?? 0}`)
+      .join(',');
+    const canForgeNow =
+      snapshot.armory.nextForgeCost !== null &&
+      snapshot.coin >= snapshot.armory.nextForgeCost.coin &&
+      snapshot.luckStone >= snapshot.armory.nextForgeCost.luck;
+    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${armSig}:${canForgeNow ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
     if (sig === this.prevSelectSignature) {
       return;
     }
@@ -2680,7 +2722,8 @@ export class UIManager {
     this.unitFactionPillEl.textContent = fMeta.label;
     this.unitFactionPillEl.style.backgroundColor = fMeta.color;
     const starSuffix = slotView.starLevel > 0 ? ` ${'★'.repeat(slotView.starLevel)}` : '';
-    this.unitNameEl.textContent = `${slotView.name}${starSuffix}`;
+    const armPrefix = slotView.equippedArmament ? `🗡[${slotView.equippedArmament.badge}] ` : '';
+    this.unitNameEl.textContent = `${armPrefix}${slotView.name}${starSuffix}`;
 
     const atkText =
       slotView.bonusAtk > 0
@@ -2705,13 +2748,47 @@ export class UIManager {
     if (slotView.sealed) {
       const sealChip = document.createElement('span');
       sealChip.className = 'shortcut-chip hazard-chip sealed';
-      sealChip.textContent = '⛓ 혈옥 봉인됨! 옆 칸으로 이동 시 해제';
+      sealChip.textContent = '⛓ 주박/감전 봉인됨! 옆 칸으로 이동 시 해제';
       this.unitShortcutsEl.appendChild(sealChip);
     } else if (slotView.hazardWarning) {
       const warnChip = document.createElement('span');
       warnChip.className = 'shortcut-chip hazard-chip warn';
-      warnChip.textContent = '🚨 주박 예고! 다른 칸으로 드래그 회피';
+      warnChip.textContent = '🚨 진법 예고! 다른 칸으로 드래그 회피';
       this.unitShortcutsEl.appendChild(warnChip);
+    }
+
+    // Divine Armament quick-equip / unequip chips right on the selected hero bar!
+    if (slotView.equippedArmament) {
+      const eqBtn = document.createElement('button');
+      eqBtn.type = 'button';
+      eqBtn.className = 'shortcut-chip arm-chip equipped interactive';
+      eqBtn.dataset.shortcutArmSlot = String(slotView.equippedArmament.slotIndex);
+      eqBtn.dataset.targetUid = '';
+      const resTag = slotView.equippedArmament.resonanceActive ? ' · ✦공명' : '';
+      eqBtn.textContent = `🗡 ${slotView.equippedArmament.name}${resTag} (해제)`;
+      this.unitShortcutsEl.appendChild(eqBtn);
+    }
+    for (let i = 0; i < snapshot.armory.slots.length; i++) {
+      const aSlot = snapshot.armory.slots[i]!;
+      if (aSlot.equippedUid === slotView.uid) continue;
+      const aDef = this.data.armamentsById.get(aSlot.armamentId);
+      if (!aDef) continue;
+      const eqBtn = document.createElement('button');
+      eqBtn.type = 'button';
+      eqBtn.className = 'shortcut-chip arm-chip interactive';
+      eqBtn.dataset.shortcutArmSlot = String(aSlot.slotIndex);
+      eqBtn.dataset.targetUid = String(slotView.uid);
+      const willResonate = aDef.resonance.faction === slotView.faction;
+      eqBtn.textContent = `🗡 [${aDef.badge}] 수여${willResonate ? '✦공명' : ''}`;
+      this.unitShortcutsEl.appendChild(eqBtn);
+    }
+    if (snapshot.armory.slots.length === 0 && canForgeNow) {
+      const forgeBtn = document.createElement('button');
+      forgeBtn.type = 'button';
+      forgeBtn.className = 'shortcut-chip arm-chip interactive';
+      forgeBtn.dataset.shortcutOpenForge = '1';
+      forgeBtn.textContent = '🔨 신병이기 주조 가능!';
+      this.unitShortcutsEl.appendChild(forgeBtn);
     }
 
     if (slotView.benchPassive) {
@@ -2862,7 +2939,11 @@ export class UIManager {
     } else if (kind === 'gamble') {
       sig = `gamble:${meta.rev}:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
     } else if (kind === 'upgrade') {
-      sig = `upgrade:${meta.rev}:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${snapshot.totalBoonStacks}:${meta.keys}:${meta.discoveredCount}`;
+      const armSheetSig = snapshot.armory.slots
+        .map((s) => `${s.slotIndex}:${s.armamentId}:${s.equippedUid ?? 0}:${s.resonanceActive ? 1 : 0}`)
+        .join(',');
+      const selUid = this.getSelectedSlotView(snapshot)?.uid ?? 0;
+      sig = `upgrade:${meta.rev}:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${armSheetSig}:${selUid}:${snapshot.totalBoonStacks}:${meta.keys}:${meta.discoveredCount}`;
     } else if (kind === 'wardrobe') {
       sig = `wardrobe:${this.wardrobeSubTab}:${meta.rev}:${this.lastSkinPull?.seq ?? 0}`;
     } else if (kind === 'codex') {
@@ -2983,7 +3064,7 @@ export class UIManager {
     const wardrobeDot = hasWardrobeNotif ? '<span class="sheet-tab-dot"></span>' : '';
     this.sheetTabsEl.style.display = 'flex';
     this.sheetTabsEl.innerHTML = `
-      <button type="button" class="sheet-tab-btn interactive${active === 'upgrade' ? ' active' : ''}" data-tab-id="sheet-upgrade">문파 내공</button>
+      <button type="button" class="sheet-tab-btn interactive${active === 'upgrade' ? ' active' : ''}" data-tab-id="sheet-upgrade">내공 · 신병</button>
       <button type="button" class="sheet-tab-btn interactive${active === 'relic' ? ' active' : ''}" data-tab-id="sheet-relic">무림 신물${relicDot}</button>
       <button type="button" class="sheet-tab-btn interactive${active === 'wardrobe' ? ' active' : ''}" data-tab-id="sheet-wardrobe">금수화장각 (${meta.ownedSkinCount}/${totalSkins})${wardrobeDot}</button>
       <button type="button" class="sheet-tab-btn interactive${active === 'codex' ? ' active' : ''}" data-tab-id="sheet-codex">명숙록 (${meta.discoveredCount}/${this.data.units.length})</button>
@@ -2991,13 +3072,15 @@ export class UIManager {
   }
 
   private renderUpgradeSheet(snapshot: UISnapshot, meta: MetaProfile): void {
+    const selSlot = this.getSelectedSlotView(snapshot);
     const view = buildUpgradeSheetView({
       data: this.data,
       sprites: this.sprites,
       snapshot,
       meta,
+      selectedUnit: selSlot ? { uid: selSlot.uid, name: selSlot.name } : null,
     });
-    this.setText(this.sheetTitleEl, '내공 수련 · 강호 기연');
+    this.setText(this.sheetTitleEl, '내공 수련 · 신병단조각');
     this.setText(this.sheetSubtitleEl, view.subtitle);
     this.renderGrowthTabs('upgrade', meta);
     this.sheetBodyEl.innerHTML = view.bodyHtml;

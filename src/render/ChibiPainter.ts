@@ -1,4 +1,4 @@
-import type { MonsterKind, RelicId, UnitId } from '../data/types';
+import type { ArmamentIconKind, MonsterKind, RelicId, UnitId } from '../data/types';
 
 /**
  * 32x32 SD Wuxia pixel-art renderer ('King God Castle' / 'Guardian Tales' style).
@@ -134,6 +134,36 @@ class PixelCanvas {
               : light > -r * 0.05
                 ? ramp[1]
                 : light > -r * 0.42
+                  ? ramp[2]
+                  : ramp[3];
+          this.set(Math.round(cx + dx), Math.round(cy + dy), tone, layer);
+        }
+      }
+    }
+  }
+
+  public ellipse(
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number,
+    ramp: Ramp4,
+    layer = LAYER_BODY,
+  ): void {
+    const irx = Math.ceil(rx);
+    const iry = Math.ceil(ry);
+    const rxSq = Math.max(0.5, rx * rx);
+    const rySq = Math.max(0.5, ry * ry);
+    for (let dy = -iry; dy <= iry; dy++) {
+      for (let dx = -irx; dx <= irx; dx++) {
+        if ((dx * dx) / rxSq + (dy * dy) / rySq <= 1.05) {
+          const light = (dx / Math.max(1, rx)) * -0.45 + (dy / Math.max(1, ry)) * -0.65;
+          const tone =
+            light > 0.35
+              ? ramp[0]
+              : light > -0.05
+                ? ramp[1]
+                : light > -0.42
                   ? ramp[2]
                   : ramp[3];
           this.set(Math.round(cx + dx), Math.round(cy + dy), tone, layer);
@@ -1344,6 +1374,79 @@ export function paintMonsterChibi(
       p.disc(27, 19, 2.4, ROBE_CRIMSON, LAYER_FX);
       break;
     }
+
+    case 'azure_dragon': {
+      // 창궁청룡 — Coiling celestial azure-cyan dragon guardian clutching a golden thunder pearl
+      const DRAGON_AZURE: Ramp4 = ['#bae6fd', '#38bdf8', '#0284c7', '#0c4a6e'];
+      const DRAGON_GOLD: Ramp4 = ['#fef9c3', '#facc15', '#d97706', '#92400e'];
+      // Coiling tail & dorsal ridge behind body
+      p.disc(8, 22, 5.2, DRAGON_AZURE, LAYER_BACK);
+      p.disc(6, 15, 4.4, DRAGON_AZURE, LAYER_BACK);
+      p.line(4, 12, 9, 8, '#fde047', LAYER_BACK, 2);
+      // Serpentine scaled torso + golden imperial belly plates
+      p.ellipse(15.5, 22.5, 7.6, 5.8, DRAGON_AZURE, LAYER_BODY);
+      p.ellipse(16, 23, 4.4, 3.8, DRAGON_GOLD, LAYER_BODY);
+      p.hline(13, 18, 21, '#ca8a04', LAYER_BODY);
+      p.hline(13, 18, 24, '#ca8a04', LAYER_BODY);
+      // Fierce horned dragon head (3/4 forward gaze)
+      p.ellipse(16, 12.5, 6.8, 5.6, DRAGON_AZURE, LAYER_HEAD);
+      // Twin golden imperial dragon antlers + flowing silver-azure mane
+      p.line(11, 8, 6, 2, '#fde047', LAYER_HEAD, 2);
+      p.line(8, 4, 10, 2, '#facc15', LAYER_HEAD, 1);
+      p.line(20, 8, 26, 2, '#fde047', LAYER_HEAD, 2);
+      p.line(24, 4, 22, 2, '#facc15', LAYER_HEAD, 1);
+      // Snout ridge, flowing whiskers & fierce bean eyes with cyan-gold catchlights
+      p.rect(13, 14, 8, 3, '#0284c7', LAYER_HEAD);
+      p.line(11, 15, 4, 18, '#e0f2fe', LAYER_FRONT, 1);
+      p.line(22, 15, 29, 17, '#e0f2fe', LAYER_FRONT, 1);
+      p.rect(12, 11, 2, 2, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(12, 11, '#fde047', LAYER_HEAD);
+      p.rect(19, 11, 2, 2, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(19, 11, '#fde047', LAYER_HEAD);
+      // Claws + crackling Thunder Dragon Pearl (여의뇌주)
+      p.disc(10, 27, 2.5, DRAGON_GOLD, LAYER_FRONT);
+      p.disc(21, 27, 2.5, DRAGON_GOLD, LAYER_FRONT);
+      p.disc(25, 19, 3.4, ['#ffffff', '#fef08a', '#38bdf8', '#0284c7'], LAYER_FX);
+      p.line(25, 14, 28, 10, '#fef08a', LAYER_FX, 1);
+      p.set(5, 8, '#67e8f9', LAYER_FX);
+      break;
+    }
+
+    case 'vermilion_bird': {
+      // 남명주작 — Blazing crimson-gold sacred phoenix with spread solar wings & 3-plume crown
+      const PHOENIX_RED: Ramp4 = ['#fed7aa', '#fb923c', '#ef4444', '#991b1b'];
+      const PHOENIX_GOLD: Ramp4 = ['#ffffff', '#fef08a', '#f59e0b', '#b45309'];
+      // Sweeping spread solar wings (left & right layered pinions)
+      p.line(12, 19, 2, 8, '#ef4444', LAYER_BACK, 4);
+      p.line(11, 21, 3, 15, '#fb923c', LAYER_BACK, 3);
+      p.line(9, 14, 2, 8, '#fde047', LAYER_BACK, 2);
+      p.line(20, 19, 30, 8, '#ef4444', LAYER_BACK, 4);
+      p.line(21, 21, 29, 15, '#fb923c', LAYER_BACK, 3);
+      p.line(23, 14, 30, 8, '#fde047', LAYER_BACK, 2);
+      // Three trailing Nirvana tail ribbons
+      p.line(13, 25, 8, 30, '#f97316', LAYER_BACK, 2);
+      p.line(16, 26, 16, 30, '#fde047', LAYER_BACK, 2);
+      p.line(19, 25, 24, 30, '#f97316', LAYER_BACK, 2);
+      // Sacred avian chest & solar core jewel
+      p.ellipse(16, 21.5, 5.8, 5.4, PHOENIX_RED, LAYER_BODY);
+      p.disc(16, 21, 2.8, PHOENIX_GOLD, LAYER_FRONT);
+      // Regal phoenix head + 3-plume imperial flame crest + golden hooked beak
+      p.ellipse(16, 12.5, 5.6, 5.0, PHOENIX_RED, LAYER_HEAD);
+      p.line(16, 7, 16, 1, '#fde047', LAYER_HEAD, 2);
+      p.line(13, 8, 10, 3, '#fb923c', LAYER_HEAD, 2);
+      p.line(19, 8, 22, 3, '#fb923c', LAYER_HEAD, 2);
+      p.rect(12, 12, 2, 2, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(12, 12, '#fef08a', LAYER_HEAD);
+      p.rect(19, 12, 2, 2, PIXEL_OUTLINE, LAYER_HEAD);
+      p.set(19, 12, '#fef08a', LAYER_HEAD);
+      // Golden beak
+      p.rect(15, 14, 3, 2, '#facc15', LAYER_FRONT);
+      p.set(16, 16, '#eab308', LAYER_FRONT);
+      // Orbiting Nirvana embers
+      p.disc(5, 22, 1.8, PHOENIX_GOLD, LAYER_FX);
+      p.disc(27, 22, 1.8, PHOENIX_GOLD, LAYER_FX);
+      break;
+    }
   }
 
   p.flush(ctx, canvasSize);
@@ -1768,6 +1871,94 @@ export function paintRelicPixelArt(
   if (level <= 0) {
     p.line(7, 24, 24, 7, '#fef3c7', LAYER_FX, 2);
     p.line(9, 22, 22, 9, '#dc2626', LAYER_FX, 1);
+  }
+
+  p.flush(ctx, canvasSize);
+}
+
+/* ========================================================================== */
+/*  6 Bespoke 32x32 Divine Armament Pixel-Art Icons (신병이기 6대 명병)          */
+/* ========================================================================== */
+
+export function paintArmamentPixelArt(
+  ctx: CanvasRenderingContext2D,
+  iconKind: ArmamentIconKind,
+  primary: string,
+  secondary: string,
+  canvasSize: number,
+): void {
+  const p = new PixelCanvas();
+
+  // Subtle sacred forge halo behind weapon
+  for (let a = 0; a < 12; a++) {
+    const rad = (a * Math.PI * 2) / 12;
+    const hx = Math.round(15.5 + Math.cos(rad) * 12);
+    const hy = Math.round(15.5 + Math.sin(rad) * 12);
+    p.set(hx, hy, a % 2 === 0 ? primary : secondary, LAYER_BACK);
+  }
+
+  switch (iconKind) {
+    case 'sword': {
+      // 자하신검 — Radiant violet-azure Mount Hua jian with plum-blossom guard
+      p.line(7, 25, 11, 21, '#92400e', LAYER_BODY, 2);
+      p.disc(6, 26, 2.0, ['#fde047', '#eab308', '#a16207', '#422006'], LAYER_FRONT);
+      p.line(9, 17, 15, 23, '#facc15', LAYER_FRONT, 2);
+      p.line(12, 20, 26, 6, primary, LAYER_BODY, 3);
+      p.line(13, 19, 27, 5, '#ffffff', LAYER_FX, 1);
+      p.disc(12, 20, 2.2, [secondary, primary, '#be185d', '#4c0519'], LAYER_FX);
+      break;
+    }
+    case 'greatsword': {
+      // 흑철현중검 — Heavy edgeless obsidian-gold colossal greatsword
+      p.line(6, 26, 11, 21, '#78350f', LAYER_BODY, 2);
+      p.line(9, 17, 16, 24, '#f59e0b', LAYER_FRONT, 3);
+      p.line(13, 19, 25, 7, '#334155', LAYER_BODY, 5);
+      p.line(14, 18, 25, 7, '#64748b', LAYER_BODY, 2);
+      p.line(13, 19, 24, 8, secondary, LAYER_FX, 1);
+      break;
+    }
+    case 'needles': {
+      // 만천화우침 — Tang Clan fan of 5 gleaming emerald-jade flying needles
+      const tips: ReadonlyArray<readonly [number, number]> = [
+        [7, 7],
+        [13, 4],
+        [20, 5],
+        [26, 10],
+        [27, 17],
+      ];
+      for (const [tx, ty] of tips) {
+        p.line(8, 24, tx, ty, primary, LAYER_BODY, 2);
+        p.set(tx, ty, '#ffffff', LAYER_FX);
+      }
+      p.disc(8, 24, 3.2, ['#fef08a', '#10b981', '#047857', '#064e3b'], LAYER_FRONT);
+      break;
+    }
+    case 'saber': {
+      // 수라혈마도 — Broad curved crimson-obsidian Asura dadao cleaver
+      p.line(6, 26, 11, 21, '#450a0a', LAYER_BODY, 2);
+      p.line(9, 18, 15, 24, '#facc15', LAYER_FRONT, 2);
+      p.line(12, 20, 25, 6, '#991b1b', LAYER_BODY, 4);
+      p.line(14, 16, 26, 6, primary, LAYER_FRONT, 3);
+      p.line(16, 13, 27, 5, '#ffffff', LAYER_FX, 1);
+      break;
+    }
+    case 'fan': {
+      // 한빙백옥선 — Spread frost-jade war fan with 5 icy crystal ribs
+      p.ellipse(16, 15, 10.5, 7.5, ['#ffffff', secondary, primary, '#0e7490'], LAYER_BODY);
+      for (const tx of [7, 11, 16, 21, 25]) {
+        p.line(16, 25, tx, 9, '#f8fafc', LAYER_FRONT, 1);
+      }
+      p.disc(16, 25, 2.4, ['#fde047', '#38bdf8', '#0284c7', '#0c4a6e'], LAYER_FX);
+      break;
+    }
+    case 'halberd': {
+      // 뇌제파천창 — Thunder Emperor crescent dragon-halberd crackling with gold lightning
+      p.line(6, 26, 24, 8, '#ca8a04', LAYER_BODY, 2);
+      p.line(21, 11, 27, 5, '#ffffff', LAYER_FRONT, 3);
+      p.line(19, 9, 25, 15, primary, LAYER_FRONT, 3);
+      p.line(16, 12, 22, 18, secondary, LAYER_FX, 1);
+      break;
+    }
   }
 
   p.flush(ctx, canvasSize);

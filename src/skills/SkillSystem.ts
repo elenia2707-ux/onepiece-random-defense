@@ -28,6 +28,7 @@ import {
 } from '../data/specialModes';
 import type {
   ArenaRuleId,
+  ArmamentDef,
   BoonId,
   DifficultyId,
   FactionId,
@@ -290,6 +291,52 @@ export function computeUnitEffectiveAtk(
   return { baseAtk: def.atk, bonusAtk: Math.max(0, effectiveTotal - def.atk) };
 }
 
+export interface ResolvedArmamentBonuses {
+  readonly atkPct: number;
+  readonly speedPct: number;
+  readonly critChanceBps: number;
+  readonly critMultBonus: number;
+  readonly armorShred: number;
+  readonly skillDamagePct: number;
+  readonly bossDamagePct: number;
+  readonly splashBonus: number;
+  readonly bonusSlowPct: number;
+  readonly resonanceActive: boolean;
+}
+
+export function resolveArmamentBonuses(
+  arm: ArmamentDef | null | undefined,
+  faction: FactionId,
+): ResolvedArmamentBonuses {
+  if (!arm) {
+    return {
+      atkPct: 0,
+      speedPct: 0,
+      critChanceBps: 0,
+      critMultBonus: 0,
+      armorShred: 0,
+      skillDamagePct: 0,
+      bossDamagePct: 0,
+      splashBonus: 0,
+      bonusSlowPct: 0,
+      resonanceActive: false,
+    };
+  }
+  const res = arm.resonance.faction === faction ? arm.resonance : null;
+  return {
+    atkPct: arm.atkPct + (res?.atkPct ?? 0),
+    speedPct: (arm.speedPct ?? 0) + (res?.speedPct ?? 0),
+    critChanceBps: (arm.critChanceBps ?? 0) + (res?.critChanceBps ?? 0),
+    critMultBonus: (arm.critMultBonus ?? 0) + (res?.critMultBonus ?? 0),
+    armorShred: (arm.armorShred ?? 0) + (res?.armorShred ?? 0),
+    skillDamagePct: (arm.skillDamagePct ?? 0) + (res?.skillDamagePct ?? 0),
+    bossDamagePct: (arm.bossDamagePct ?? 0) + (res?.bossDamagePct ?? 0),
+    splashBonus: arm.splashBonus ?? 0,
+    bonusSlowPct: arm.bonusSlowPct ?? 0,
+    resonanceActive: res !== null,
+  };
+}
+
 export interface CombatSystemContext {
   readonly data: GameDataBundle;
   readonly difficulty: DifficultyId;
@@ -316,11 +363,13 @@ export interface CombatSystemContext {
   readonly victoryAchieved: boolean;
   getBoonStacks(id: BoonId): number;
   isFieldSlotSealed(fieldIndex: number): boolean;
+  getUnitArmament?(uid: number): ArmamentDef | null;
   getUnitEffectiveAtk(
     unitId: UnitId,
     synergy: FactionSynergySnapshot,
     tileBuffAtkPct: number,
     starLevel?: number,
+    extraArmamentAtkPct?: number,
   ): { readonly baseAtk: number; readonly bonusAtk: number };
   allocateProjectileId(): number;
   recordDamage(unitId: UnitId, amount: number): void;
@@ -422,6 +471,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
       }
 
       if (bestTarget !== null) {
+        const armDef = ctx.getUnitArmament?.(u.uid) ?? null;
+        const armBonus = resolveArmamentBonuses(armDef, def.faction);
         const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
         const swiftBootsPct =
           getSwiftBootsSpeedPct(ctx.relicLv.wind_swift_boots ?? 0) +
@@ -452,6 +503,9 @@ export function stepCombat(ctx: CombatSystemContext): void {
         if (starSpeedPct > 0) {
           speedMult *= 1 + starSpeedPct / 100;
         }
+        if (armBonus.speedPct > 0) {
+          speedMult *= 1 + armBonus.speedPct / 100;
+        }
         const dailyFacSpd = ctx.dailyRule?.modifiers.factionSpeedMult?.[def.faction];
         if (dailyFacSpd !== undefined && dailyFacSpd !== 1) {
           speedMult *= dailyFacSpd;
@@ -468,7 +522,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
         const travelTicks = Math.max(2, Math.min(10, Math.round(dist / 32)));
         const gradeDef = ctx.data.gradesById.get(u.grade) ?? ctx.data.grades[0]!;
-        const gradeColor = gradeDef.color;
+        const gradeColor = armDef?.color ?? gradeDef.color;
         const gradeRank = gradeDef.rank;
 
         const { baseAtk, bonusAtk } = ctx.getUnitEffectiveAtk(
@@ -476,6 +530,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
           synergy,
           tileBuff.atkPct,
           u.starLevel ?? 0,
+          armBonus.atkPct,
         );
         const totalAtk = baseAtk + bonusAtk;
         const effectiveEveryN = Math.max(2, def.skill.everyN - acupointStacks);
@@ -488,6 +543,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
             getCritBladeChanceBps(critBladeLv) / 10000 +
             benchPassive.critChancePct / 100 +
             (ctx.endgameBonuses?.critChanceBps ?? 0) / 10000 +
+            armBonus.critChanceBps / 10000 +
             (ctx.arenaRule === 'sandstorm_crit' ? 0.06 : 0),
         );
         let critMult =
@@ -495,12 +551,14 @@ export function stepCombat(ctx: CombatSystemContext): void {
           getCritBladeMultBonus(critBladeLv) +
           setBonus.critMultBonus +
           benchPassive.critMultBonus +
-          (ctx.endgameBonuses?.critMultBonus ?? 0);
+          (ctx.endgameBonuses?.critMultBonus ?? 0) +
+          armBonus.critMultBonus;
         const skillJadePct =
           getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) +
           setBonus.skillDamagePct +
           benchPassive.skillDamagePct +
-          (ctx.endgameBonuses?.skillDamagePct ?? 0);
+          (ctx.endgameBonuses?.skillDamagePct ?? 0) +
+          armBonus.skillDamagePct;
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult =
           (1 + 0.35 * acupointStacks) *
@@ -561,13 +619,25 @@ export function stepCombat(ctx: CombatSystemContext): void {
           trialShred +
           relicShred +
           benchPassive.armorShred +
-          (ctx.endgameBonuses?.armorShred ?? 0);
+          (ctx.endgameBonuses?.armorShred ?? 0) +
+          armBonus.armorShred;
         const echoBonusShred =
           isSkill && piercingEchoStacks > 0 ? (piercingEchoStacks >= 2 ? 34 : 18) : 0;
         const projectileShred =
           unitBaseShred > 0 || echoBonusShred > 0
             ? (isSkill ? Math.round(unitBaseShred * 1.5) : unitBaseShred) + echoBonusShred
             : 0;
+
+        const skillSplash = isSkill
+          ? def.skill.splashRadius > 0
+            ? def.skill.splashRadius + armBonus.splashBonus
+            : armBonus.splashBonus
+          : 0;
+        const skillSlowPct = isSkill
+          ? Math.min(0.75, def.skill.slowPct + armBonus.bonusSlowPct / 100)
+          : 0;
+        const baseSlowTicks =
+          def.skill.slowTicks > 0 ? def.skill.slowTicks : armBonus.bonusSlowPct > 0 ? 45 : 0;
 
         ctx.projectiles.push({
           id: ctx.allocateProjectileId(),
@@ -591,16 +661,15 @@ export function stepCombat(ctx: CombatSystemContext): void {
           isSkill,
           skillName: def.skill.name,
           vfxTrack: def.skill.vfxTrack,
-          splashRadius: isSkill ? def.skill.splashRadius : 0,
+          splashRadius: skillSplash,
           stunTicks:
             isSkill && def.skill.stunTicks > 0
               ? Math.max(1, Math.round(def.skill.stunTicks * ccMult))
               : 0,
-          slowPct: isSkill ? def.skill.slowPct : 0,
+          slowPct: skillSlowPct,
           slowTicks:
-            isSkill && def.skill.slowTicks > 0
-              ? Math.max(1, Math.round(def.skill.slowTicks * ccMult))
-              : 0,
+            isSkill && baseSlowTicks > 0 ? Math.max(1, Math.round(baseSlowTicks * ccMult)) : 0,
+          ...(armBonus.bossDamagePct > 0 ? { bonusBossDamagePct: armBonus.bossDamagePct } : {}),
         });
       }
     }
@@ -769,8 +838,12 @@ function stepComboSkills(
 
     const tbA = tileBuffs[uA.slot.index]?.atkPct ?? 0;
     const tbB = tileBuffs[uB.slot.index]?.atkPct ?? 0;
-    const atkA = ctx.getUnitEffectiveAtk(uA.unitId, synergy, tbA, uA.starLevel);
-    const atkB = ctx.getUnitEffectiveAtk(uB.unitId, synergy, tbB, uB.starLevel);
+    const facA = ctx.data.unitsById.get(uA.unitId)?.faction ?? 'orthodox';
+    const facB = ctx.data.unitsById.get(uB.unitId)?.faction ?? 'orthodox';
+    const armAtkA = resolveArmamentBonuses(ctx.getUnitArmament?.(uA.uid), facA).atkPct;
+    const armAtkB = resolveArmamentBonuses(ctx.getUnitArmament?.(uB.uid), facB).atkPct;
+    const atkA = ctx.getUnitEffectiveAtk(uA.unitId, synergy, tbA, uA.starLevel, armAtkA);
+    const atkB = ctx.getUnitEffectiveAtk(uB.unitId, synergy, tbB, uB.starLevel, armAtkB);
     const avgAtk = (atkA.baseAtk + atkA.bonusAtk + atkB.baseAtk + atkB.bonusAtk) * 0.5;
     const baseComboDmg = Math.max(1, Math.round(avgAtk * def.atkMult));
 
@@ -889,7 +962,8 @@ function applyHitToMonster(
     getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0) +
     setBonus.bossDamagePct +
     benchPassive.bossDamagePct +
-    (ctx.endgameBonuses?.bossDamagePct ?? 0);
+    (ctx.endgameBonuses?.bossDamagePct ?? 0) +
+    (p.bonusBossDamagePct ?? 0);
   if (m.isBoss && slayerBannerPct > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + slayerBannerPct / 100));
   }
@@ -957,32 +1031,42 @@ function applyHitToMonster(
     damage = Math.max(1, Math.round(effectiveRaw * (1 + amp)));
   }
 
-  // Black Serpent poison-shell barrier absorption (armor-shredding attacks deal 1.8x bonus vs barrier!)
+  // Boss barrier absorption:
+  // - Black Serpent poison-shell: armor-shredding attacks deal 1.8x bonus!
+  // - Vermilion Bird Nirvana flame-egg: BOTH critical hits & armor-shredding attacks deal 1.8x bonus,
+  //   and shattering it rewards +1 영단 & +80 은자!
   if (m.shieldHp > 0 && ctx.currentTick < m.shieldExpireTick) {
-    const shieldDamage = p.armorShred > 0 ? Math.round(damage * 1.8) : damage;
+    const isPhoenix = m.kind === 'vermilion_bird';
+    const hasCounterMult = p.armorShred > 0 || (isPhoenix && p.isCrit);
+    const shieldMult = hasCounterMult ? 1.8 : 1;
+    const shieldDamage = hasCounterMult ? Math.round(damage * 1.8) : damage;
     if (shieldDamage < m.shieldHp) {
       m.shieldHp -= shieldDamage;
       m.lastHitTick = ctx.currentTick;
       ctx.recordDamage(p.unitId, damage);
       damage = shieldDamage;
     } else {
-      const shieldMult = p.armorShred > 0 ? 1.8 : 1;
       const overflow = Math.max(0, Math.round((shieldDamage - m.shieldHp) / shieldMult));
       m.shieldHp = 0;
       m.shieldMaxHp = 0;
       m.shieldExpireTick = 0;
       m.hp -= overflow;
       m.lastHitTick = ctx.currentTick;
-      m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + 45);
-      m.armorShred = Math.min(200, activeShred + 25);
-      m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + 150);
+      m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + (isPhoenix ? 54 : 45));
+      m.armorShred = Math.min(200, activeShred + (isPhoenix ? 30 : 25));
+      m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + (isPhoenix ? 180 : 150));
       justShattered = true;
       ctx.recordDamage(p.unitId, damage);
+      if (isPhoenix) {
+        ctx.addLuckStone(1);
+        ctx.addCoin(80, false);
+        ctx.markPriorityDirty();
+      }
       ctx.events.emit('boss:skill', {
         entityId: m.entityId,
         bossKind: m.kind,
-        skillKind: 'serpent_shatter',
-        skillName: '현무 독갑 격파! (기절)',
+        skillKind: isPhoenix ? 'phoenix_shatter' : 'serpent_shatter',
+        skillName: isPhoenix ? '화란 파훼! 기절 · 영단+1 · 은자+80' : '현무 독갑 격파! (기절)',
         x: m.currX,
         y: m.currY,
         tick: ctx.currentTick,
@@ -992,6 +1076,25 @@ function applyHitToMonster(
     m.hp -= damage;
     m.lastHitTick = ctx.currentTick;
     ctx.recordDamage(p.unitId, damage);
+    if (m.kind === 'vermilion_bird' && m.isBoss && !m.isBounty && !m.phaseTriggered && m.hp <= 0) {
+      m.hp = 1;
+      m.phaseTriggered = true;
+      const eggAmt = Math.max(80, Math.round(m.maxHp * 0.1));
+      m.shieldHp = eggAmt;
+      m.shieldMaxHp = eggAmt;
+      m.shieldExpireTick = ctx.currentTick + 150;
+      m.hasteUntilTick = Math.max(m.hasteUntilTick, ctx.currentTick + 45);
+      ctx.markPriorityDirty();
+      ctx.events.emit('boss:skill', {
+        entityId: m.entityId,
+        bossKind: m.kind,
+        skillKind: 'phoenix_rebirth_egg',
+        skillName: '주작 열반화란 전개! (회심·파갑 1.8x)',
+        x: m.currX,
+        y: m.currY,
+        tick: ctx.currentTick,
+      });
+    }
   }
 
   // Boon: 사신추명결 (b_reaper_seal) — instant execute for non-boss mobs below 12% / 18% HP

@@ -242,9 +242,9 @@
     "monsterSpeed": 96,
     "monsterRadius": 28,
     "rewardCoin": 500,
-    "monsterKind": "white_tiger",
+    "monsterKind": "azure_dragon",
     "isBoss": true,
-    "bossName": "창궁백호 신수왕",
+    "bossName": "창궁신수 영물 청룡",
     "rewardWispGrade": "rare"
   },
   {
@@ -304,9 +304,9 @@
     "monsterSpeed": 95,
     "monsterRadius": 29,
     "rewardCoin": 720,
-    "monsterKind": "black_serpent",
+    "monsterKind": "vermilion_bird",
     "isBoss": true,
-    "bossName": "구천묵룡 만독신수",
+    "bossName": "남명신수 영물 주작",
     "rewardWispGrade": "rare"
   },
   {

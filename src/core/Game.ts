@@ -945,6 +945,20 @@ export class Game {
       if (ev.skillKind === 'serpent_shatter') {
         this.sound.playCoinReward();
         this.ui.showToast('💥 만년현무 독갑 분쇄! 보스 기절 및 호신강기 대파쇄!');
+      } else if (ev.skillKind === 'phoenix_shatter') {
+        this.sound.playCoinReward();
+        this.haptics.trigger('heavy');
+        this.ui.showToast('🔥 남명주작 열반화란 파훼! 기절 · 파갑 + 영단 +1 · 은자 +80!');
+      } else if (ev.skillKind === 'dragon_backfire') {
+        this.sound.playCoinReward();
+        this.haptics.trigger('success');
+        this.ui.showToast('⚡ 구천낙뢰 회피 성공! 역뢰 파훼로 청룡 감전 + 은자 +70!');
+      } else if (ev.skillKind === 'dragon_thunder_warn') {
+        this.sound.playHazardWarn();
+        this.ui.showToast('⚡ 창궁청룡 낙뢰진 예고! 푸른 마법진의 협객을 옮기면 역뢰 파훼!');
+      } else if (ev.skillKind === 'phoenix_rebirth_egg') {
+        this.sound.playHazardWarn();
+        this.ui.showToast('🔥 남명주작 열반화란 전개! 회심·파갑 1.8x 화력으로 깨뜨리면 영단 획득!');
       } else if (ev.skillKind === 'patriarch_telegraph') {
         if (ev.skillName.includes('이중권능')) {
           this.sound.playBossPhaseDrum();
@@ -953,7 +967,7 @@ export class Game {
           this.sound.playHazardWarn();
           this.ui.showToast('🚨 혈옥주박진 예고! 붉은 마법진 위의 협객을 옆 칸으로 옮기세요!');
         }
-      } else if (ev.skillKind === 'patriarch_seal') {
+      } else if (ev.skillKind === 'patriarch_seal' || ev.skillKind === 'dragon_thunder_strike') {
         this.sound.playHazardWarn();
       } else if (ev.skillKind === 'serpent_shell') {
         this.sound.playHazardWarn();
@@ -961,9 +975,56 @@ export class Game {
       } else if (ev.skillKind === 'tiger_roar') {
         this.sound.playHazardWarn();
         this.ui.showToast('🐯 백호 호포진! 주변 협객 일시 경직!');
-      } else if (ev.skillKind === 'tiger_sprint' || ev.skillKind === 'patriarch_summon') {
+      } else if (
+        ev.skillKind === 'tiger_sprint' ||
+        ev.skillKind === 'patriarch_summon' ||
+        ev.skillKind === 'dragon_tempest' ||
+        ev.skillKind === 'phoenix_rebirth_heal'
+      ) {
         this.sound.playBossPhaseDrum();
       }
+    });
+
+    this.sim.events.on('armament:forged', (ev) => {
+      this.sound.playCraft(5);
+      this.haptics.trigger('medium');
+      const armDef = this.sim.data.armamentsById.get(ev.armamentId);
+      if (ev.pos) {
+        this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, armDef?.color ?? '#facc15', 5, ev.tick);
+      }
+      const eqUnit = ev.equippedUid !== null ? this.sim.getUnitByUid(ev.equippedUid) : undefined;
+      const uName = eqUnit ? this.sim.data.unitsById.get(eqUnit.unitId)?.name : null;
+      this.ui.showToast(
+        uName
+          ? `🗡 신병 주조 완료! [${ev.name}] → ${uName} 즉시 패용!`
+          : `🗡 신병 주조 완료! [${ev.name}] 무기고 보관!`,
+      );
+    });
+
+    this.sim.events.on('armament:reforged', (ev) => {
+      this.sound.playCraft(4);
+      const armDef = this.sim.data.armamentsById.get(ev.armamentId);
+      if (ev.pos) {
+        this.vfx.spawnArrivalFx(ev.pos.x, ev.pos.y, armDef?.color ?? '#38bdf8', 4, ev.tick);
+      }
+      this.ui.showToast(`🔨 신병 재연마 완료! → [${ev.name}]`);
+    });
+
+    this.sim.events.on('armament:equipped', (ev) => {
+      this.sound.playUiTap();
+      const armDef = this.sim.data.armamentsById.get(ev.armamentId);
+      if (ev.pos) {
+        this.vfx.spawnArrivalFx(ev.pos.x, ev.pos.y, armDef?.color ?? '#facc15', 4, ev.tick);
+      }
+      const eqUnit = ev.targetUid !== null ? this.sim.getUnitByUid(ev.targetUid) : undefined;
+      const uDef = eqUnit ? this.sim.data.unitsById.get(eqUnit.unitId) : undefined;
+      const resTxt =
+        armDef && uDef && armDef.resonance.faction === uDef.faction ? ' · ✦문파공명 발동!' : '';
+      this.ui.showToast(
+        uDef
+          ? `🗡 [${ev.name}] → ${uDef.name} 수여 완료!${resTxt}`
+          : `🗡 [${ev.name}] 장착을 해제하여 무기고로 회수했습니다.`,
+      );
     });
 
     this.sim.events.on('boss:slain', (ev) => {
