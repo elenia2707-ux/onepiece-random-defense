@@ -18,6 +18,7 @@ import {
 } from '../core/relicFormulas';
 import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
+import { COMBO_SKILLS, type ComboSkillId } from '../data/comboSkills';
 import {
   BOSS_RUSH_STAGES,
   type DailyRuleDef,
@@ -298,6 +299,8 @@ export interface CombatSystemContext {
   readonly projectiles: ProjectileEntity[];
   readonly tileHazards: TileHazard[];
   readonly relicLv: Readonly<Record<RelicId, number>>;
+  readonly comboCooldowns?: Map<ComboSkillId, number>;
+  readonly comboTriggerCounts?: Map<ComboSkillId, number>;
   readonly currentTick: number;
   readonly waveNumber: number;
   readonly endlessMode: boolean;
@@ -672,6 +675,154 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
       ctx.projectiles.splice(i, 1);
     }
+  }
+
+  // v2.6: Execute active Combo Skills (문파 연환절기 · 합체기)
+  if (ctx.comboCooldowns && ctx.comboTriggerCounts) {
+    stepComboSkills(ctx, synergy, setBonus, benchPassive, tileBuffs);
+  }
+}
+
+function stepComboSkills(
+  ctx: CombatSystemContext,
+  synergy: FactionSynergySnapshot,
+  setBonus: ReturnType<typeof computeRelicSetBonuses>,
+  benchPassive: BenchPassiveSummary,
+  tileBuffs: readonly TileAuraBuff[],
+): void {
+  const comboCooldowns = ctx.comboCooldowns!;
+  const comboTriggerCounts = ctx.comboTriggerCounts!;
+  const fieldByUnit = new Map<UnitId, UnitEntity[]>();
+  for (let i = 0; i < ctx.units.length; i++) {
+    const u = ctx.units[i]!;
+    if (u.slot.area !== 'field' || ctx.isFieldSlotSealed(u.slot.index)) continue;
+    const list = fieldByUnit.get(u.unitId);
+    if (list) list.push(u);
+    else fieldByUnit.set(u.unitId, [u]);
+  }
+
+  for (let i = 0; i < COMBO_SKILLS.length; i++) {
+    const def = COMBO_SKILLS[i]!;
+    const uA = fieldByUnit.get(def.requiredUnits[0])?.[0];
+    const uB = fieldByUnit.get(def.requiredUnits[1])?.[0];
+    if (!uA || !uB) {
+      comboCooldowns.delete(def.id);
+      continue;
+    }
+
+    let cd = comboCooldowns.get(def.id);
+    if (cd === undefined) {
+      cd = Math.min(180, Math.floor(def.cooldownTicks * 0.4));
+      comboCooldowns.set(def.id, cd);
+    }
+    if (cd > 0) {
+      cd--;
+      comboCooldowns.set(def.id, cd);
+    }
+    if (cd > 0 || ctx.monsters.length === 0) continue;
+
+    // Pick priority target: boss/bounty first, else front-most monster
+    let bestTarget: MonsterEntity | null = null;
+    for (let mIdx = 0; mIdx < ctx.monsters.length; mIdx++) {
+      const m = ctx.monsters[mIdx]!;
+      if (m.hp <= 0) continue;
+      if (!bestTarget) {
+        bestTarget = m;
+        continue;
+      }
+      const mPrio = m.isBoss || m.isBounty ? 1 : 0;
+      const bPrio = bestTarget.isBoss || bestTarget.isBounty ? 1 : 0;
+      if (
+        mPrio > bPrio ||
+        (mPrio === bPrio &&
+          (m.currDistance > bestTarget.currDistance ||
+            (m.currDistance === bestTarget.currDistance && m.entityId < bestTarget.entityId)))
+      ) {
+        bestTarget = m;
+      }
+    }
+    if (!bestTarget) continue;
+
+    const tbA = tileBuffs[uA.slot.index]?.atkPct ?? 0;
+    const tbB = tileBuffs[uB.slot.index]?.atkPct ?? 0;
+    const atkA = ctx.getUnitEffectiveAtk(uA.unitId, synergy, tbA, uA.starLevel);
+    const atkB = ctx.getUnitEffectiveAtk(uB.unitId, synergy, tbB, uB.starLevel);
+    const avgAtk = (atkA.baseAtk + atkA.bonusAtk + atkB.baseAtk + atkB.bonusAtk) * 0.5;
+    const baseComboDmg = Math.max(1, Math.round(avgAtk * def.atkMult));
+
+    const targetX = bestTarget.currX;
+    const targetY = bestTarget.currY;
+    const rSq = def.radius * def.radius;
+    const victims = ctx.monsters
+      .filter((m) => {
+        if (m.hp <= 0) return false;
+        const dx = m.currX - targetX;
+        const dy = m.currY - targetY;
+        return dx * dx + dy * dy <= rSq;
+      })
+      .sort((a, b) =>
+        b.currDistance !== a.currDistance
+          ? b.currDistance - a.currDistance
+          : a.entityId - b.entityId,
+      );
+
+    if (victims.length === 0) continue;
+
+    const primaryGrade = ctx.data.gradesById.get(ctx.data.unitsById.get(uA.unitId)?.grade ?? 'immortal');
+    const syntheticProj: ProjectileEntity = {
+      id: ctx.allocateProjectileId(),
+      unitId: uA.unitId,
+      startTick: ctx.currentTick,
+      arriveTick: ctx.currentTick,
+      fromX: uA.currX,
+      fromY: uA.currY - 12,
+      targetEntityId: bestTarget.entityId,
+      targetX,
+      targetY,
+      prevX: targetX,
+      prevY: targetY,
+      currX: targetX,
+      currY: targetY,
+      damage: baseComboDmg,
+      armorShred: def.armorShred,
+      color: def.color,
+      gradeRank: Math.max(5, primaryGrade?.rank ?? 6),
+      isCrit: false,
+      isSkill: true,
+      skillName: def.name,
+      vfxTrack: ctx.data.unitsById.get(uA.unitId)?.skill.vfxTrack ?? 'im_cheonma',
+      splashRadius: def.radius,
+      stunTicks: Math.round(def.stunSec * 30),
+      slowPct: def.slowPct,
+      slowTicks: Math.round(def.slowSec * 30),
+    };
+
+    let totalDamage = 0;
+    for (let v = 0; v < victims.length; v++) {
+      const m = victims[v]!;
+      const bossMult = m.isBoss || m.isBounty ? 1 + def.bossBonusPct / 100 : 1;
+      const dmg = Math.max(1, Math.round(baseComboDmg * bossMult));
+      const hpBefore = m.hp;
+      applyHitToMonster(ctx, m, dmg, syntheticProj, synergy, setBonus, benchPassive);
+      totalDamage += Math.max(1, Math.round(hpBefore - Math.max(0, m.hp)));
+    }
+
+    comboCooldowns.set(def.id, def.cooldownTicks);
+    comboTriggerCounts.set(def.id, (comboTriggerCounts.get(def.id) ?? 0) + 1);
+    ctx.events.emit('combo:triggered', {
+      comboId: def.id,
+      name: def.name,
+      unitIds: def.requiredUnits,
+      fromX: (uA.currX + uB.currX) * 0.5,
+      fromY: (uA.currY + uB.currY) * 0.5,
+      x: targetX,
+      y: targetY,
+      radius: def.radius,
+      color: def.color,
+      totalDamage,
+      hitCount: victims.length,
+      tick: ctx.currentTick,
+    });
   }
 }
 

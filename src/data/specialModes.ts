@@ -244,7 +244,7 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
     durationSec: 55,
     rewardCoin: 480,
     rewardLuck: 4,
-    rewardWispGrade: 'epic',
+    rewardWispGrade: 'rare',
     offersBoon: false,
   },
   {
@@ -256,7 +256,7 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
     durationSec: 58,
     rewardCoin: 560,
     rewardLuck: 5,
-    rewardWispGrade: 'epic',
+    rewardWispGrade: 'rare',
     offersBoon: true,
   },
   {
@@ -268,7 +268,7 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
     durationSec: 60,
     rewardCoin: 650,
     rewardLuck: 5,
-    rewardWispGrade: 'epic',
+    rewardWispGrade: 'rare',
     offersBoon: false,
   },
   {
@@ -280,7 +280,7 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
     durationSec: 62,
     rewardCoin: 750,
     rewardLuck: 6,
-    rewardWispGrade: 'epic',
+    rewardWispGrade: 'rare',
     offersBoon: true,
   },
   {
@@ -292,7 +292,7 @@ export const BOSS_RUSH_STAGES: readonly BossRushStageDef[] = [
     durationSec: 70,
     rewardCoin: 1000,
     rewardLuck: 8,
-    rewardWispGrade: 'epic',
+    rewardWispGrade: 'rare',
     offersBoon: false,
   },
 ];
@@ -334,7 +334,7 @@ export function resolveBossRushWaveDef(stage: number): WaveDef {
     monsterKind: kinds[(clamped - 1) % kinds.length]!,
     isBoss: true,
     bossName: `무한 보스 러시 제 ${clamped} 관문`,
-    rewardWispGrade: 'epic',
+    rewardWispGrade: 'rare',
   };
 }
 

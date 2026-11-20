@@ -1493,6 +1493,106 @@
   border-color: #fb7185;
 }
 
+/* v2.6: Combo Skills (문파 연환절기) & Codex Collection Milestones */
+.combo-encyclopedia-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.combo-card {
+  background: rgba(11, 37, 36, 0.9);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.combo-card.active {
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.92) 0%, rgba(15, 23, 42, 0.94) 100%);
+  box-shadow: 0 0 0 1.5px #fde047;
+}
+
+.codex-milestone-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.codex-ms-card {
+  background: rgba(10, 34, 33, 0.92);
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-radius: 11px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.codex-ms-card.ready {
+  background: linear-gradient(135deg, rgba(161, 98, 7, 0.9) 0%, rgba(120, 53, 15, 0.95) 100%);
+  border-color: #fde047;
+}
+
+.codex-ms-card.claimed {
+  background: linear-gradient(135deg, rgba(20, 83, 45, 0.88) 0%, rgba(6, 46, 36, 0.94) 100%);
+  border-color: #4ade80;
+}
+
+.codex-ms-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+  color: #fff;
+}
+
+.codex-ms-claim-btn {
+  padding: 3px 9px !important;
+  min-height: 24px !important;
+  font-size: 12px !important;
+}
+
+.codex-ms-done {
+  font-size: 11.5px;
+  color: #86efac;
+  font-weight: 700;
+}
+
+.codex-ms-prog {
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.codex-ms-rewards {
+  font-size: 11.5px;
+  color: #fef08a;
+}
+
+.wing-chip.chip-combo {
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.92), rgba(30, 27, 75, 0.94));
+  color: #fef08a;
+}
+
+.relic-buff-pill.combo-active {
+  background: linear-gradient(180deg, #0284c7 0%, #1e3a8a 100%);
+  border-color: #fde047;
+  color: #fef08a;
+}
+
+.relic-buff-pill.codex-atk {
+  background: linear-gradient(180deg, #15803d 0%, #14532d 100%);
+  color: #dcfce7;
+}
+
+.tac-pill.codex-claimable {
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 2px #fde047, inset 0 1.5px 0 rgba(255, 255, 255, 0.45);
+  animation: chipGlow 0.9s ease-in-out infinite alternate;
+}
+
+
 
 
 

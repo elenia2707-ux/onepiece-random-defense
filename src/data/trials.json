@@ -108,7 +108,7 @@
     "targetWave": 15,
     "hpMult": 3.15,
     "lateWaveRamp": 15.2,
-    "bossHpMult": 5.0,
+    "bossHpMult": 5.45,
     "speedMult": 1.4,
     "bonusMonsterArmor": 54,
     "bossCooldownMult": 0.72,

@@ -720,6 +720,26 @@
       { "unit": "tang_elder", "n": 1 }
     ],
     "priority": 589
+  },
+  {
+    "id": "r_alt_cheonma_flame",
+    "output": "cheonma",
+    "ingredients": [
+      { "unit": "heavenly_demon_heir", "n": 1 },
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "cult_elder", "n": 1 }
+    ],
+    "priority": 611
+  },
+  {
+    "id": "r_alt_wuji_lord",
+    "output": "wuji_grandmaster",
+    "ingredients": [
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 }
+    ],
+    "priority": 601
   }
 ]
 

@@ -1049,29 +1049,29 @@
     "faction": "demonic",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3280,
+    "atk": 3420,
     "range": 335,
-    "attackIntervalSec": 0.42,
-    "critChance": 0.52,
-    "critMult": 3.05,
+    "attackIntervalSec": 0.41,
+    "critChance": 0.53,
+    "critMult": 3.08,
     "sellCoin": 1400,
-    "armorShred": 32,
+    "armorShred": 35,
     "supportAura": {
       "name": "천마군림진",
       "atkPct": 30,
-      "speedPct": 12
+      "speedPct": 13
     },
     "passiveTrait": {
       "id": "overlord_dominion",
       "name": "천마위압",
-      "desc": "영물 보스 및 현상수배범에게 입히는 최종 피해 +45% 패왕 증폭",
-      "bossDamagePct": 45
+      "desc": "영물 보스 및 현상수배범에게 입히는 최종 피해 +46% 패왕 증폭",
+      "bossDamagePct": 46
     },
     "skill": {
       "name": "천마군림보 · 공간파쇄",
-      "desc": "3타마다 8각 혈성 흑뢰가 공간을 찢어 415% 전장 초토화 및 1.25초 기절",
+      "desc": "3타마다 8각 혈성 흑뢰가 공간을 찢어 425% 전장 초토화 및 1.25초 기절",
       "everyN": 3,
-      "atkRatio": 4.15,
+      "atkRatio": 4.25,
       "splashRadius": 225,
       "stunSec": 1.25,
       "slowPct": 0.55,
@@ -1124,7 +1124,7 @@
     "faction": "unorthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 1960,
+    "atk": 1920,
     "range": 318,
     "attackIntervalSec": 0.24,
     "critChance": 0.56,
@@ -1139,9 +1139,9 @@
     "passiveTrait": {
       "id": "asura_execute",
       "name": "수라처형",
-      "desc": "0.24초 초고속 쌍도 광란 연타 · 체력 50% 이하 마물·보스 처형 피해 +72%",
+      "desc": "0.24초 초고속 쌍도 광란 연타 · 체력 50% 이하 마물·보스 처형 피해 +66%",
       "executeBelowHpPct": 0.5,
-      "executeDamagePct": 72
+      "executeDamagePct": 66
     },
     "skill": {
       "name": "수라혈겁 · 만독멸세",
@@ -1236,13 +1236,13 @@
     "faction": "demonic",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3980,
+    "atk": 3940,
     "range": 336,
-    "attackIntervalSec": 0.94,
-    "critChance": 0.46,
-    "critMult": 3.0,
+    "attackIntervalSec": 1.08,
+    "critChance": 0.43,
+    "critMult": 2.9,
     "sellCoin": 1400,
-    "armorShred": 42,
+    "armorShred": 38,
     "supportAura": {
       "name": "구천업화진",
       "atkPct": 34,
@@ -1251,14 +1251,14 @@
     "passiveTrait": {
       "id": "hellfire_cataclysm",
       "name": "구천겁화",
-      "desc": "전 협객 최고 기본공(3980) 초중량 포격 · 파갑된 적 대상 피해 +20%",
-      "shreddedDamagePct": 20
+      "desc": "전 협객 최고 기본공(3940) 초중량 포격 · 파갑된 적 대상 피해 +18%",
+      "shreddedDamagePct": 18
     },
     "skill": {
       "name": "구천겁화 · 적멸홍련",
-      "desc": "4타마다 9구 구천마염주가 홍련 업화로 수렴 폭발해 355% 집중 소각 및 1.25초 기절",
+      "desc": "4타마다 9구 구천마염주가 홍련 업화로 수렴 폭발해 310% 집중 소각 및 1.25초 기절",
       "everyN": 4,
-      "atkRatio": 3.55,
+      "atkRatio": 3.1,
       "splashRadius": 182,
       "stunSec": 1.25,
       "slowPct": 0.55,
@@ -1344,9 +1344,9 @@
     "faction": "orthodox",
     "grade": "immortal",
     "leaf": false,
-    "atk": 3580,
+    "atk": 3720,
     "range": 350,
-    "attackIntervalSec": 0.4,
+    "attackIntervalSec": 0.39,
     "critChance": 0.56,
     "critMult": 3.35,
     "sellCoin": 1400,
@@ -1365,9 +1365,9 @@
     },
     "skill": {
       "name": "태극무극 · 팔괘천선검",
-      "desc": "3타마다 거대 태극음양진과 팔괘선기가 작렬해 445% 광역 피해 및 1.2초 기절·58% 둔화",
+      "desc": "3타마다 거대 태극음양진과 팔괘선기가 작렬해 450% 광역 피해 및 1.2초 기절·58% 둔화",
       "everyN": 3,
-      "atkRatio": 4.45,
+      "atkRatio": 4.5,
       "splashRadius": 215,
       "stunSec": 1.2,
       "slowPct": 0.58,

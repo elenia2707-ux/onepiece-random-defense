@@ -79,6 +79,7 @@ export class Game {
       {
         runMode: selRunMode,
         dailyDateKey: metaProf.dailyDate,
+        codexAtkBonusPct: metaProf.codexAtkBonusPct,
       },
     );
 
@@ -193,6 +194,23 @@ export class Game {
         const res = this.meta.claimDailyQuest(questId);
         if (res.ok) {
           this.sound.playCoinReward();
+          this.announceUnlockedTitles(res.unlockedTitleIds);
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onClaimCodexMilestone: (target) => {
+        const res = this.meta.claimCodexMilestone(target);
+        if (res.ok) {
+          this.sound.playCraft(5);
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            codexAtkBonusPct: res.totalCodexAtkBonusPct,
+          });
           this.announceUnlockedTitles(res.unlockedTitleIds);
         }
         this.ui.sync(
@@ -984,6 +1002,28 @@ export class Game {
       this.ui.showToast(
         `🏛 ${ev.label} 달성! 전투 보급 은자+${ev.inRunCoin} · 영단+${ev.inRunLuck} (정산 시 영구 보상 지급!)`,
       );
+    });
+
+    this.sim.events.on('combo:triggered', (ev) => {
+      this.sound.playCraft(6);
+      const uDef = this.sim.data.unitsById.get(ev.unitIds[0]);
+      this.vfx.spawnSkillTrack(
+        uDef?.skill.vfxTrack ?? 'im_cheonma',
+        ev.fromX,
+        ev.fromY,
+        ev.x,
+        ev.y,
+        ev.radius,
+        ev.color,
+        6,
+        ev.tick,
+        ev.color,
+        '#fde047',
+        'sword',
+      );
+      this.vfx.triggerScreenFlash(ev.color, 0.11, 0.2, ev.tick);
+      this.vfx.showCraftCelebrationBanner('문파 연환절기', ev.name, ev.color, performance.now());
+      this.ui.showToast(`⚡ 연환절기 【${ev.name}】 작렬! (${ev.hitCount}기 명중)`);
     });
 
     this.sim.events.on('gamble:result', (ev) => {

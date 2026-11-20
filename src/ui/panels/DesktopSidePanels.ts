@@ -49,6 +49,15 @@ export function buildDesktopLeftWingHtml(params: {
     synBadges.push('<span class="wing-chip chip-trinity">✦ 삼재합진 활성</span>');
   }
 
+  // Active Combo Skills (문파 연환절기)
+  const comboChipsHtml = snapshot.activeCombos
+    .map((c) => {
+      const cdSec = Math.ceil(c.cooldownLeftTicks / 30);
+      const cdLabel = cdSec > 0 ? `${cdSec}s` : '발동!';
+      return `<span class="wing-chip chip-combo" style="border-color:${c.color}" title="${escapeHtml(c.desc)}">⚡ ${escapeHtml(c.name)} ${cdLabel}</span>`;
+    })
+    .join('');
+
   // Active Bench Passives
   const benchChipsHtml = snapshot.benchPassives.activeUnits
     .map(
@@ -92,7 +101,11 @@ export function buildDesktopLeftWingHtml(params: {
       : '';
 
   const hasAnyChip =
-    synBadges.length > 0 || benchChipsHtml.length > 0 || setHtml.length > 0 || boonHtml.length > 0;
+    synBadges.length > 0 ||
+    comboChipsHtml.length > 0 ||
+    benchChipsHtml.length > 0 ||
+    setHtml.length > 0 ||
+    boonHtml.length > 0;
 
   return `
     <section class="wing-card wing-dps-card">
@@ -106,15 +119,16 @@ export function buildDesktopLeftWingHtml(params: {
 
     <section class="wing-card wing-buff-card">
       <div class="wing-head">
-        <span class="wing-title">☯ 진법 · 대기진 · 비급</span>
-        <span class="wing-meta">비급 ${snapshot.totalBoonStacks} · 대기진 ${snapshot.benchPassives.activeUnits.length}</span>
+        <span class="wing-title">☯ 진법 · 연환 · 비급</span>
+        <span class="wing-meta">연환 ${snapshot.activeCombos.length} · 비급 ${snapshot.totalBoonStacks}</span>
       </div>
       <div class="wing-chip-wrap">
         ${synBadges.join('')}
+        ${comboChipsHtml}
         ${benchChipsHtml}
         ${setHtml}
         ${boonHtml}
-        ${hasAnyChip ? '' : '<div class="wing-empty">협객 배치·대기석 진법 및 영물 토벌 시 활성 버프가 표시됩니다.</div>'}
+        ${hasAnyChip ? '' : '<div class="wing-empty">협객 배치·연환절기·대기석 진법 및 영물 토벌 시 활성 버프가 표시됩니다.</div>'}
       </div>
     </section>
   `;

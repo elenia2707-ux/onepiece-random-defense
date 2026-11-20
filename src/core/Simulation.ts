@@ -36,6 +36,11 @@ import { InventoryIndex } from '../craft/InventoryIndex';
 import { RecipeGraph } from '../craft/RecipeGraph';
 import { type WispHint, WispSystem } from '../craft/WispSystem';
 import {
+  COMBO_SKILLS,
+  COMBO_SKILLS_BY_ID,
+  type ComboSkillId,
+} from '../data/comboSkills';
+import {
   CONTRACT_DEFS,
   CONTRACT_OFFER_WAVES,
   CONTRACTS_BY_ID,
@@ -419,6 +424,20 @@ export interface SimEventMap {
     readonly inRunLuck: number;
     readonly tick: number;
   };
+  'combo:triggered': {
+    readonly comboId: ComboSkillId;
+    readonly name: string;
+    readonly unitIds: readonly [UnitId, UnitId];
+    readonly fromX: number;
+    readonly fromY: number;
+    readonly x: number;
+    readonly y: number;
+    readonly radius: number;
+    readonly color: string;
+    readonly totalDamage: number;
+    readonly hitCount: number;
+    readonly tick: number;
+  };
   'command:rejected': {
     readonly cmd: GameCommand['type'];
     readonly reason: string;
@@ -550,9 +569,22 @@ export interface ContractItemSnapshot {
   readonly rewardUpgradeAll?: number;
 }
 
+export interface ActiveComboView {
+  readonly id: ComboSkillId;
+  readonly name: string;
+  readonly desc: string;
+  readonly unitIds: readonly [UnitId, UnitId];
+  readonly color: string;
+  readonly tierLabel: string;
+  readonly cooldownLeftTicks: number;
+  readonly cooldownTotalTicks: number;
+  readonly triggerCount: number;
+}
+
 export interface SimulationModeOptions {
   readonly runMode?: RunModeId;
   readonly dailyDateKey?: string;
+  readonly codexAtkBonusPct?: number;
 }
 
 export interface UISnapshot {
@@ -564,6 +596,8 @@ export interface UISnapshot {
   readonly runMode: RunModeId;
   readonly dailyChallenge: DailyChallengeSpec | null;
   readonly endlessMilestonesReached: readonly number[];
+  readonly activeCombos: readonly ActiveComboView[];
+  readonly codexAtkBonusPct: number;
   readonly clearTargetWave: number;
   readonly gameOver: boolean;
   readonly gameOverReason: GameOverReason;
@@ -657,6 +691,9 @@ export class Simulation {
   public readonly craftSystem: CraftSystem;
   public readonly wispSystem: WispSystem;
   private readonly endlessMilestonesReached = new Set<number>();
+  private readonly comboCooldowns = new Map<ComboSkillId, number>();
+  private readonly comboTriggerCounts = new Map<ComboSkillId, number>();
+  private codexAtkBonusPct = 0;
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
@@ -776,6 +813,7 @@ export class Simulation {
   ) {
     this.data = data;
     this.runMode = options?.runMode ?? 'standard';
+    this.codexAtkBonusPct = Math.max(0, Math.min(50, Math.round(options?.codexAtkBonusPct ?? 0)));
     if (this.runMode === 'daily_challenge') {
       const spec = getDailyChallengeSpec(options?.dailyDateKey ?? '2026-11-19');
       this.dailyChallengeSpec = spec;
@@ -1115,6 +1153,9 @@ export class Simulation {
       const benchCount = this.board.bench.countOccupied();
       extraTraitPct += Math.round(benchCount * (benchBoonStacks >= 2 ? 4.5 : 2.5));
     }
+    if (this.codexAtkBonusPct > 0) {
+      extraTraitPct += this.codexAtkBonusPct;
+    }
 
     const baseResult = computeUnitEffectiveAtk(
       this.data,
@@ -1365,6 +1406,8 @@ export class Simulation {
       projectiles: this.projectiles,
       tileHazards: this.tileHazards,
       relicLv: this.relicLv,
+      comboCooldowns: this.comboCooldowns,
+      comboTriggerCounts: this.comboTriggerCounts,
       currentTick: this.currentTick,
       waveNumber: this.waveNumber,
       endlessMode: this.endlessMode,
@@ -1429,6 +1472,14 @@ export class Simulation {
   private applyCommand(cmd: GameCommand): void {
     if (cmd.type === 'syncRelics') {
       this.syncRelicsInternal(cmd.relics, true);
+      return;
+    }
+
+    if (cmd.type === 'syncMetaBonuses') {
+      if (typeof cmd.codexAtkBonusPct === 'number' && Number.isFinite(cmd.codexAtkBonusPct)) {
+        this.codexAtkBonusPct = Math.max(0, Math.min(50, Math.round(cmd.codexAtkBonusPct)));
+        this.priorityDirty = true;
+      }
       return;
     }
 
@@ -2981,6 +3032,35 @@ export class Simulation {
               : '권능: 혈옥주박 타일봉인 (스왑 회피!)'
       : '';
 
+    const fieldUnitSet = new Set<UnitId>();
+    for (let i = 0; i < this.units.length; i++) {
+      const u = this.units[i]!;
+      if (u.slot.area === 'field' && !this.isFieldSlotSealed(u.slot.index)) {
+        fieldUnitSet.add(u.unitId);
+      }
+    }
+    const activeCombos: ActiveComboView[] = [];
+    for (let i = 0; i < COMBO_SKILLS.length; i++) {
+      const cDef = COMBO_SKILLS[i]!;
+      if (
+        fieldUnitSet.has(cDef.requiredUnits[0]) &&
+        fieldUnitSet.has(cDef.requiredUnits[1])
+      ) {
+        activeCombos.push({
+          id: cDef.id,
+          name: cDef.name,
+          desc: cDef.desc,
+          unitIds: cDef.requiredUnits,
+          color: cDef.color,
+          tierLabel: cDef.tierLabel,
+          cooldownLeftTicks:
+            this.comboCooldowns.get(cDef.id) ?? Math.min(180, Math.floor(cDef.cooldownTicks * 0.4)),
+          cooldownTotalTicks: cDef.cooldownTicks,
+          triggerCount: this.comboTriggerCounts.get(cDef.id) ?? 0,
+        });
+      }
+    }
+
     return {
       tick: this.currentTick,
       speed,
@@ -2990,6 +3070,8 @@ export class Simulation {
       runMode: this.runMode,
       dailyChallenge: this.dailyChallengeSpec,
       endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
+      activeCombos,
+      codexAtkBonusPct: this.codexAtkBonusPct,
       clearTargetWave: this.clearTargetWave,
       gameOver: this.gameOver,
       gameOverReason: this.gameOverReason,
@@ -3186,6 +3268,8 @@ export class Simulation {
       activeContracts: this.activeContracts.map((c) => ({ ...c })),
       preserveBenchPassives: this.preserveBenchPassives,
       bossRetryUsed: this.bossRetryUsed,
+      comboCooldowns: Object.fromEntries(this.comboCooldowns),
+      comboTriggerCounts: Object.fromEntries(this.comboTriggerCounts),
       appliedStartCoinBonus: this.appliedStartCoinBonus,
       appliedStartLuckBonus: this.appliedStartLuckBonus,
       appliedStartWisps: { ...this.appliedStartWisps },
@@ -3237,6 +3321,22 @@ export class Simulation {
       for (const w of save.endlessMilestonesReached) {
         if (typeof w === 'number' && Number.isFinite(w) && w > 0) {
           this.endlessMilestonesReached.add(Math.floor(w));
+        }
+      }
+    }
+    this.comboCooldowns.clear();
+    if (save.comboCooldowns && typeof save.comboCooldowns === 'object') {
+      for (const [k, v] of Object.entries(save.comboCooldowns)) {
+        if (COMBO_SKILLS_BY_ID.has(k as ComboSkillId) && typeof v === 'number' && Number.isFinite(v)) {
+          this.comboCooldowns.set(k as ComboSkillId, Math.max(0, Math.floor(v)));
+        }
+      }
+    }
+    this.comboTriggerCounts.clear();
+    if (save.comboTriggerCounts && typeof save.comboTriggerCounts === 'object') {
+      for (const [k, v] of Object.entries(save.comboTriggerCounts)) {
+        if (COMBO_SKILLS_BY_ID.has(k as ComboSkillId) && typeof v === 'number' && Number.isFinite(v)) {
+          this.comboTriggerCounts.set(k as ComboSkillId, Math.max(0, Math.floor(v)));
         }
       }
     }

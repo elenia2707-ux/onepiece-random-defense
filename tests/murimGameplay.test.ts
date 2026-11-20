@@ -3214,6 +3214,113 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(prof.hallOfFame.length).toBeGreaterThanOrEqual(4);
     expect(prof.hallOfFame[0]!.wave).toBe(55);
   });
+
+  it('v2.6: fires deterministic Combo Skills (문파 연환절기), supports new Immortal alt recipes, and awards permanent Codex Milestone ATK bonuses', () => {
+    const data = loadGameData();
+
+    // 1. Combo Skill activation, firing, cooldown reset, save/restore, and bench deactivation
+    const sim = new Simulation(data, 0x26260001);
+    const craftById = (recipeId: string): void => {
+      const leaves = sim.recipeGraph.leafCost.get(recipeId)!;
+      for (const [unitId, count] of leaves) {
+        for (let i = 0; i < count; i++) {
+          sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+          sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+        }
+      }
+      sim.tick();
+      sim.commands.enqueue({ type: 'craft', recipeId, chain: true });
+      sim.tick();
+    };
+    craftById('r_sword_saint');
+    craftById('r_murim_lord');
+    sim.commands.enqueue({ type: 'autoArrange', preserveBenchPassives: false });
+    sim.tick();
+
+    const snap0 = sim.buildSnapshot(1, false);
+    expect(snap0.activeCombos.some((c) => c.id === 'combo_orthodox_masters')).toBe(true);
+
+    let comboHits = 0;
+    sim.events.on('combo:triggered', (ev) => {
+      if (ev.comboId === 'combo_orthodox_masters') {
+        comboHits++;
+        expect(ev.totalDamage).toBeGreaterThan(0);
+      }
+    });
+    for (let t = 0; t < 350 && comboHits === 0; t++) {
+      sim.tick();
+    }
+    expect(comboHits).toBeGreaterThanOrEqual(1);
+    const afterFire = sim.buildSnapshot(1, false).activeCombos.find((c) => c.id === 'combo_orthodox_masters')!;
+    expect(afterFire.triggerCount).toBeGreaterThanOrEqual(1);
+    expect(afterFire.cooldownLeftTicks).toBeGreaterThan(500);
+
+    // Save/restore preserves combo cooldown & trigger count
+    const saved = sim.exportRunSave(Date.now());
+    const simRestored = new Simulation(data, 0x26260001);
+    expect(simRestored.restoreRunSave(saved)).toBe(true);
+    const restoredCombo = simRestored
+      .buildSnapshot(1, false)
+      .activeCombos.find((c) => c.id === 'combo_orthodox_masters')!;
+    expect(restoredCombo.triggerCount).toBe(afterFire.triggerCount);
+
+    // Moving one partner to bench deactivates the combo
+    const murimLord = sim.getUnits().find((u) => u.unitId === 'murim_lord')!;
+    sim.commands.enqueue({ type: 'move', from: murimLord.slot, to: { area: 'bench', index: 0 } });
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).activeCombos.length).toBe(0);
+
+    // 2. Verify new alternate Immortal recipes exist in recipeGraph
+    expect(sim.recipeGraph.recipesById.get('r_alt_cheonma_flame')?.output).toBe('cheonma');
+    expect(sim.recipeGraph.recipesById.get('r_alt_wuji_lord')?.output).toBe('wuji_grandmaster');
+
+    // 3. Codex Milestones (10/20/30/44) claim + permanent ATK bonus + backup round-trip
+    const backing = new Map<string, string>();
+    const storage: StorageLike = {
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+      removeItem: (k) => {
+        backing.delete(k);
+      },
+    };
+    const meta = new MetaStore(storage);
+    // Cannot claim 10-hero milestone with 0 discovered
+    expect(meta.claimCodexMilestone(10).ok).toBe(false);
+
+    // Discover 10 heroes
+    for (const u of data.units.slice(0, 10)) {
+      const g = data.gradesById.get(u.grade)!;
+      meta.discoverUnit(u, g);
+    }
+    expect(meta.getProfile().claimableCodexCount).toBe(1);
+    const claim10 = meta.claimCodexMilestone(10);
+    expect(claim10.ok).toBe(true);
+    if (claim10.ok) {
+      expect(claim10.rewardGold).toBe(150);
+      expect(claim10.atkBonusPct).toBe(2);
+      expect(claim10.totalCodexAtkBonusPct).toBe(2);
+    }
+    // No double-claim
+    expect(meta.claimCodexMilestone(10).ok).toBe(false);
+
+    // Persists across reload and boosts Simulation ATK live via syncMetaBonuses
+    const metaReloaded = new MetaStore(storage);
+    expect(metaReloaded.getCodexAtkBonusPct()).toBe(2);
+    expect(metaReloaded.getProfile().claimedCodexMilestones).toEqual([10]);
+
+    const simCodex = new Simulation(data, 0x26260002, {}, 'normal', null, false, {
+      codexAtkBonusPct: 0,
+    });
+    const baseCheonma = simCodex.getUnitEffectiveAtk('cheonma');
+    simCodex.commands.enqueue({ type: 'syncMetaBonuses', codexAtkBonusPct: 11 });
+    simCodex.tick();
+    const boostedCheonma = simCodex.getUnitEffectiveAtk('cheonma');
+    expect(boostedCheonma.baseAtk + boostedCheonma.bonusAtk).toBeGreaterThan(
+      baseCheonma.baseAtk + baseCheonma.bonusAtk,
+    );
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {

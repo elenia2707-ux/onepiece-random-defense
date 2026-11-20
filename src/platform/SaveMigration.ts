@@ -52,6 +52,8 @@ export interface RunSaveData {
   readonly awakenCount?: number;
   readonly preserveBenchPassives?: boolean;
   readonly bossRetryUsed?: boolean;
+  readonly comboCooldowns?: Readonly<Record<string, number>>;
+  readonly comboTriggerCounts?: Readonly<Record<string, number>>;
   readonly appliedStartCoinBonus: number;
   readonly appliedStartLuckBonus?: number;
   readonly appliedStartWisps: Readonly<Record<GradeId, number>>;

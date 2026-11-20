@@ -29,6 +29,10 @@ export type GameCommand =
   | { readonly type: 'pickContract'; readonly contractId: ContractId }
   | { readonly type: 'dismissContractOffer' }
   | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
+  | {
+      readonly type: 'syncMetaBonuses';
+      readonly codexAtkBonusPct?: number;
+    }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {
       readonly type: 'grantTestResource';

@@ -1,4 +1,5 @@
 import {
+  CODEX_MILESTONES,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
   formatCompactNumber,
@@ -8,6 +9,7 @@ import {
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
 import type { RecipeGraph } from '../../craft/RecipeGraph';
+import { COMBO_SKILLS } from '../../data/comboSkills';
 import {
   BOSS_RUSH_TARGET_STAGE,
   ENDLESS_MILESTONES,
@@ -441,6 +443,48 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
           .join('')
       : '<div class="hof-empty">아직 등재된 전설 기록이 없습니다. 5장 이상 돌파하거나 무한 40장+에 도전해 보세요!</div>';
 
+  const activeComboIds = new Set(snapshot.activeCombos.map((c) => c.id));
+  const comboCardsHtml = COMBO_SKILLS.map((c) => {
+    const u0 = data.unitsById.get(c.requiredUnits[0])?.name ?? c.requiredUnits[0];
+    const u1 = data.unitsById.get(c.requiredUnits[1])?.name ?? c.requiredUnits[1];
+    const isActive = activeComboIds.has(c.id);
+    const cdSec = Math.round(c.cooldownTicks / 30);
+    return `
+      <div class="combo-card${isActive ? ' active' : ''}" style="border-left:4px solid ${c.color}">
+        <div class="card-name-row">
+          <span class="grade-pill" style="background:${c.color}">${escapeHtml(c.tierLabel)}</span>
+          <span class="card-name">${escapeHtml(c.name)}</span>
+          <span class="diff-best-pill">${escapeHtml(u0)} + ${escapeHtml(u1)}</span>
+          ${isActive ? '<span class="diff-clear-pill">⚡ 발동 중</span>' : `<span class="trial-rule-tag">${cdSec}초</span>`}
+        </div>
+        <div class="card-sub">${escapeHtml(c.desc)}</div>
+      </div>
+    `;
+  }).join('');
+
+  const claimedCodexSet = new Set(meta.claimedCodexMilestones);
+  const codexMilestoneHtml = CODEX_MILESTONES.map((ms) => {
+    const claimed = claimedCodexSet.has(ms.target);
+    const reached = meta.discoveredCount >= ms.target;
+    const rewardParts = [`+${ms.rewardGold}주화`, `🔑+${ms.rewardKeys}`];
+    if (ms.rewardSilk > 0) rewardParts.push(`🧵+${ms.rewardSilk}`);
+    rewardParts.push(`⚔공+${ms.atkBonusPct}%`);
+    const btnHtml = claimed
+      ? '<span class="codex-ms-done">✓ 수령완료</span>'
+      : reached
+        ? `<button type="button" class="card-cta-btn cta-gold interactive codex-ms-claim-btn" data-sheet-action="claim-codex-milestone" data-codex-target="${ms.target}"><span>보상 수령</span></button>`
+        : `<span class="codex-ms-prog">${meta.discoveredCount}/${ms.target}</span>`;
+    return `
+      <div class="codex-ms-card${claimed ? ' claimed' : reached ? ' ready' : ''}">
+        <div class="codex-ms-head">
+          <strong>${escapeHtml(ms.name)}</strong>
+          ${btnHtml}
+        </div>
+        <div class="codex-ms-rewards">${escapeHtml(rewardParts.join(' · '))}</div>
+      </div>
+    `;
+  }).join('');
+
   const bodyHtml = `
     <div class="codex-guide-banner">
       <div class="settlement-preview-info">
@@ -458,6 +502,8 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
       <div class="endless-milestone-grid">${endlessMilestoneChipsHtml}</div>
       <div class="hof-list">${hofRowsHtml}</div>
     </div>
+    <div class="sheet-section-label">⚡ 문파 연환절기 (합체기 · 비무대 동시 배치 시 자동 발동 ${snapshot.activeCombos.length}/${COMBO_SKILLS.length})</div>
+    <div class="combo-encyclopedia-grid">${comboCardsHtml}</div>
     <div class="sheet-section-label">⚔ 표준 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
     <div class="diff-list">${diffCards}</div>
     <div class="sheet-section-label">🌀 무림 비경 — 특수 규칙 엔드게임 시련 (${meta.clearedTrialCount}/${TRIAL_ORDER.length} 제패)</div>
@@ -465,9 +511,10 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     <div class="sheet-section-label">🏅 강호 칭호 · 업적 보상 사다리 (${meta.unlockedTitleCount}/${TITLE_DEFS.length} 해금)</div>
     <div class="title-ladder-list">${titleCards}</div>
     <div class="codex-header-bar">
-      <span class="sheet-section-label">📖 무림 ${data.units.length}인 명숙록 (${meta.discoveredCount}/${data.units.length})</span>
+      <span class="sheet-section-label">📖 무림 ${data.units.length}인 명숙록 (${meta.discoveredCount}/${data.units.length}${meta.codexAtkBonusPct > 0 ? ` · 영구 공격력 +${meta.codexAtkBonusPct}%` : ''})</span>
       <div class="codex-filter-row">${filterHtml}</div>
     </div>
+    <div class="codex-milestone-strip">${codexMilestoneHtml}</div>
     ${unitCards}
   `;
 

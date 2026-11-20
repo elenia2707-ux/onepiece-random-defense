@@ -552,3 +552,36 @@ export function computeRelicSetBonuses(
     ccPct,
   };
 }
+
+export interface CodexMilestoneDef {
+  readonly target: number;
+  readonly name: string;
+  readonly rewardGold: number;
+  readonly rewardKeys: number;
+  readonly rewardSilk: number;
+  readonly atkBonusPct: number;
+}
+
+export const CODEX_MILESTONES: readonly CodexMilestoneDef[] = [
+  { target: 10, name: '초출명숙 (10인)', rewardGold: 150, rewardKeys: 1, rewardSilk: 0, atkBonusPct: 2 },
+  { target: 20, name: '강호박식 (20인)', rewardGold: 300, rewardKeys: 2, rewardSilk: 15, atkBonusPct: 4 },
+  { target: 30, name: '무림명감 (30인)', rewardGold: 500, rewardKeys: 3, rewardSilk: 30, atkBonusPct: 5 },
+  { target: 44, name: '천하대도감 (44인)', rewardGold: 1200, rewardKeys: 6, rewardSilk: 80, atkBonusPct: 9 },
+];
+
+export const CODEX_MILESTONES_BY_TARGET: ReadonlyMap<number, CodexMilestoneDef> = new Map(
+  CODEX_MILESTONES.map((m) => [m.target, m]),
+);
+
+export function computeCodexAtkBonusPct(claimedTargets: ReadonlySet<number> | readonly number[]): number {
+  const set = claimedTargets instanceof Set ? claimedTargets : new Set(claimedTargets);
+  let total = 0;
+  for (let i = 0; i < CODEX_MILESTONES.length; i++) {
+    const ms = CODEX_MILESTONES[i]!;
+    if (set.has(ms.target)) {
+      total += ms.atkBonusPct;
+    }
+  }
+  return total;
+}
+

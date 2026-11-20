@@ -32,6 +32,7 @@ import type {
 import type { DragDiscardView } from '../input/DragController';
 import {
   type BackupImportResult,
+  type CodexMilestoneClaimResult,
   type DailyQuestClaimResult,
   type DailyQuestId,
   type MetaProfile,
@@ -99,6 +100,7 @@ export interface UIControlHandlers {
   getVfxDensityMode(): VfxDensityMode;
   onToggleVfxDensityMode(): VfxDensityMode;
   onClaimDailyQuest(questId: DailyQuestId): DailyQuestClaimResult;
+  onClaimCodexMilestone(target: number): CodexMilestoneClaimResult;
   onSelectDifficulty(diff: DifficultyId): boolean;
   onSelectTrial(trialId: TrialId | null): boolean;
   onSelectRunMode(mode: RunModeId): boolean;
@@ -1303,6 +1305,20 @@ export class UIManager {
         if (!ok) {
           this.showToast('전환할 수 없는 출정 모드입니다.', true);
         }
+      } else if (action === 'claim-codex-milestone') {
+        const target = Number(btn.dataset.codexTarget ?? '0');
+        if (!target) return;
+        const res = this.handlers.onClaimCodexMilestone(target);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          const silkTxt = res.rewardSilk > 0 ? ` · 비단+${res.rewardSilk}필` : '';
+          this.showToast(
+            `📖 [${res.name}] 수집 보상 수령! +${res.rewardGold}주화 · 열쇠+${res.rewardKeys}${silkTxt} · 영구 공+${res.atkBonusPct}%`,
+          );
+        } else {
+          this.showToast(res.reason, true);
+        }
       } else if (action === 'codex-filter') {
         this.codexFilter = (btn.dataset.filter ?? 'all') as CodexFilterId;
         this.prevSheetSignature = '';
@@ -1653,7 +1669,13 @@ export class UIManager {
     );
 
     this.codexBtnEl.classList.toggle('active', this.activeSheet === 'codex');
-    this.setText(this.codexBtnEl, `📖 명숙록 ${meta.discoveredCount}/${this.data.units.length}`);
+    this.codexBtnEl.classList.toggle('codex-claimable', meta.claimableCodexCount > 0);
+    this.setText(
+      this.codexBtnEl,
+      meta.claimableCodexCount > 0
+        ? `📖 명숙록 ${meta.discoveredCount}/${this.data.units.length} 🎁`
+        : `📖 명숙록 ${meta.discoveredCount}/${this.data.units.length}`,
+    );
 
     if (this.dpsOpen) {
       this.refreshDpsPanel(snapshot);
@@ -2056,7 +2078,9 @@ export class UIManager {
     const boonStacks = snapshot.totalBoonStacks;
     const activeRelicCount = this.data.relics.filter((d) => (snapshot.relics[d.id] ?? 0) > 0).length;
     const equippedTitleId = meta.equippedTitle ?? '';
-    const sig = `${equippedTitleId}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${activeRelicCount}:${meta.keys}`;
+    const comboCount = snapshot.activeCombos.length;
+    const codexAtk = snapshot.codexAtkBonusPct;
+    const sig = `${equippedTitleId}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
@@ -2068,6 +2092,17 @@ export class UIManager {
           `<span class="relic-buff-pill hud-title-pill" data-open-titles="1" style="background:${titleDef.color}" title="장착 중인 강호 칭호: ${escapeHtml(titleDef.name)}">🏅 ${escapeHtml(titleDef.badge)}</span>`,
         );
       }
+    }
+    if (comboCount > 0) {
+      const comboNames = snapshot.activeCombos.map((c) => c.name).join(', ');
+      pills.push(
+        `<span class="relic-buff-pill combo-active" title="활성 문파 연환절기: ${escapeHtml(comboNames)}">⚡ 연환 ${comboCount}종</span>`,
+      );
+    }
+    if (codexAtk > 0) {
+      pills.push(
+        `<span class="relic-buff-pill codex-atk" title="명숙록 수집 영구 공격력 보너스">📖 공+${codexAtk}%</span>`,
+      );
     }
     if (boonStacks > 0) {
       pills.push(

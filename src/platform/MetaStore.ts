@@ -1,5 +1,8 @@
 import {
   CLEAR_TARGET_WAVE,
+  CODEX_MILESTONES,
+  CODEX_MILESTONES_BY_TARGET,
+  computeCodexAtkBonusPct,
   computeRelicSetBonuses,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
@@ -148,6 +151,23 @@ export type DailyQuestClaimResult =
       readonly reason: string;
     };
 
+export type CodexMilestoneClaimResult =
+  | {
+      readonly ok: true;
+      readonly target: number;
+      readonly name: string;
+      readonly rewardGold: number;
+      readonly rewardKeys: number;
+      readonly rewardSilk: number;
+      readonly atkBonusPct: number;
+      readonly totalCodexAtkBonusPct: number;
+      readonly unlockedTitleIds?: readonly TitleId[];
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
 export interface MetaProfile {
   readonly gold: number;
   readonly keys: number;
@@ -168,6 +188,9 @@ export interface MetaProfile {
   readonly dailyChallengeStreak: number;
   readonly bossRushRecord: BossRushRecord;
   readonly endlessMilestonesCleared: readonly number[];
+  readonly claimedCodexMilestones: readonly number[];
+  readonly codexAtkBonusPct: number;
+  readonly claimableCodexCount: number;
   readonly hallOfFame: readonly HallOfFameEntry[];
   readonly unlockedTitles: Readonly<Record<TitleId, boolean>>;
   readonly unlockedTitleCount: number;
@@ -621,6 +644,7 @@ export class MetaStore {
   private lastDailyChallengeDate: string | null = null;
   private bossRushRecord: BossRushRecord = { clears: 0, bestStage: 0, bestTicks: null };
   private readonly endlessMilestonesCleared = new Set<number>();
+  private readonly claimedCodexMilestones = new Set<number>();
   private hallOfFame: HallOfFameEntry[] = [];
   private readonly unlockedTitles: Record<TitleId, boolean> = createEmptyUnlockedTitles();
   private equippedTitle: TitleId | null = null;
@@ -752,6 +776,10 @@ export class MetaStore {
     const unlockedTitleCount = Object.values(this.unlockedTitles).filter(Boolean).length;
     const dailyQuests = this.buildDailyQuestViews(dateKey);
     const claimableDailyCount = dailyQuests.filter((q) => q.completed && !q.claimed).length;
+    const claimableCodexCount = CODEX_MILESTONES.filter(
+      (m) => discoveredCount >= m.target && !this.claimedCodexMilestones.has(m.target),
+    ).length;
+    const codexAtkBonusPct = computeCodexAtkBonusPct(this.claimedCodexMilestones);
     const trialRecordsCopy: Record<TrialId, TrialRecord> = {
       trial_venom_gale: { ...this.trialRecords.trial_venom_gale },
       trial_sword_tomb: { ...this.trialRecords.trial_sword_tomb },
@@ -782,6 +810,9 @@ export class MetaStore {
       dailyChallengeStreak: this.dailyChallengeStreak,
       bossRushRecord: { ...this.bossRushRecord },
       endlessMilestonesCleared: [...this.endlessMilestonesCleared].sort((a, b) => a - b),
+      claimedCodexMilestones: [...this.claimedCodexMilestones].sort((a, b) => a - b),
+      codexAtkBonusPct,
+      claimableCodexCount,
       hallOfFame: this.hallOfFame.map((e) => ({ ...e })),
       unlockedTitles: { ...this.unlockedTitles },
       unlockedTitleCount,
@@ -932,6 +963,45 @@ export class MetaStore {
       gradeName: gradeDef.name,
       bonusGold: reward.gold,
       bonusKeys: reward.keys,
+      unlockedTitleIds: titleRes.unlockedIds,
+    };
+  }
+
+  public getCodexAtkBonusPct(): number {
+    return computeCodexAtkBonusPct(this.claimedCodexMilestones);
+  }
+
+  public claimCodexMilestone(target: number): CodexMilestoneClaimResult {
+    const def = CODEX_MILESTONES_BY_TARGET.get(target);
+    if (!def) {
+      return { ok: false, reason: '존재하지 않는 명숙록 수집 보상 단계입니다.' };
+    }
+    if (this.claimedCodexMilestones.has(target)) {
+      return { ok: false, reason: '이미 수령한 명숙록 수집 보상입니다.' };
+    }
+    const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
+    if (discoveredCount < def.target) {
+      return {
+        ok: false,
+        reason: `협객 ${def.target}인 등재 시 수령 가능합니다 (현재 ${discoveredCount}/${def.target})`,
+      };
+    }
+    this.claimedCodexMilestones.add(target);
+    this.gold += def.rewardGold;
+    this.keys += def.rewardKeys;
+    this.silk += def.rewardSilk;
+    const titleRes = this.evaluateTitles(true);
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      target: def.target,
+      name: def.name,
+      rewardGold: def.rewardGold,
+      rewardKeys: def.rewardKeys,
+      rewardSilk: def.rewardSilk,
+      atkBonusPct: def.atkBonusPct,
+      totalCodexAtkBonusPct: this.getCodexAtkBonusPct(),
       unlockedTitleIds: titleRes.unlockedIds,
     };
   }
@@ -2204,6 +2274,14 @@ export class MetaStore {
         }
       }
     }
+    this.claimedCodexMilestones.clear();
+    if (Array.isArray(rec.claimedCodexMilestones)) {
+      for (const t of rec.claimedCodexMilestones) {
+        if (typeof t === 'number' && CODEX_MILESTONES_BY_TARGET.has(Math.floor(t))) {
+          this.claimedCodexMilestones.add(Math.floor(t));
+        }
+      }
+    }
     this.hallOfFame = [];
     if (Array.isArray(rec.hallOfFame)) {
       for (const rawH of rec.hallOfFame.slice(0, 12)) {
@@ -2273,6 +2351,7 @@ export class MetaStore {
       lastDailyChallengeDate: this.lastDailyChallengeDate,
       bossRushRecord: this.bossRushRecord,
       endlessMilestonesCleared: [...this.endlessMilestonesCleared].sort((a, b) => a - b),
+      claimedCodexMilestones: [...this.claimedCodexMilestones].sort((a, b) => a - b),
       hallOfFame: this.hallOfFame,
       unlockedTitles: this.unlockedTitles,
       equippedTitle: this.equippedTitle,
