@@ -16,6 +16,8 @@ import type { MonsterEntity, TileHazard, UnitEntity } from './entities';
 
 export const BOUNTY_COOLDOWN_TICKS = 1350; // 45s
 export const BOUNTY_DURATION_TICKS = 900; // 30s
+export const ELITE_BOUNTY_COST = 300;
+export const ELITE_BOUNTY_MIN_WAVE = 8;
 export const HAZARD_WARNING_TICKS = 60; // 2.0s telegraph warning
 export const HAZARD_SEAL_TICKS = 135; // 4.5s active seal duration
 
@@ -223,12 +225,14 @@ export interface WaveSystemContext {
   hasFieldHazard(fieldIndex: number): boolean;
   markGameOver(reason: GameOverReason): void;
   markPriorityDirty(): void;
+  onWaveAdvanced?(completedWave: number, nextWaveNum: number): void;
 }
 
 export function spawnBountyOutlaw(
   ctx: WaveSystemContext,
   bountiesCalled: number,
   hunterStacks: number,
+  elite = false,
 ): { readonly nextBountyReadyTick: number } {
   const waveNumber = ctx.getWaveNumber();
   const spec = BOUNTY_ROSTER[bountiesCalled % BOUNTY_ROSTER.length]!;
@@ -239,11 +243,19 @@ export function spawnBountyOutlaw(
   const waveDef = resolveWaveDef(ctx.data.waves, waveNumber);
   const waveBaseHp = waveDef.monsterHp;
   const hpScale = computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false);
-  const bountyHp = Math.round(
+  const baseBountyHp = Math.round(
     Math.max(1200, waveBaseHp * (waveDef.isBoss ? 0.35 : 5.2)) * hpScale,
   );
-  const rewardCoin = 45 + waveNumber * 10;
-  const rewardLuck = waveNumber >= 14 ? 3 : 2;
+  const bountyHp = elite ? Math.round(baseBountyHp * 2.2) : baseBountyHp;
+  const baseCoin = 45 + waveNumber * 10;
+  const baseLuck = waveNumber >= 14 ? 3 : 2;
+  const rewardCoin = elite ? baseCoin * 2 : baseCoin;
+  const rewardLuck = elite ? baseLuck * 2 : baseLuck;
+  const rewardWispGrade = elite
+    ? (Object.keys(ctx.data.wispPools).find((g) => ctx.data.gradesById.get(g)?.rank === 3) ??
+      Object.keys(ctx.data.wispPools)[0])
+    : undefined;
+  const bossName = elite ? `🔥 정예 · ${spec.name}` : spec.name;
   const startPos = ctx.path.sample(0);
 
   const outlaw: MonsterEntity = {
@@ -251,12 +263,16 @@ export function spawnBountyOutlaw(
     kind: spec.kind,
     isBoss: true,
     isBounty: true,
+    isEliteBounty: elite,
     expireTick: ctx.currentTick + BOUNTY_DURATION_TICKS,
     bountyRewardLuck: rewardLuck,
-    bossName: spec.name,
+    bountyRewardWispGrade: rewardWispGrade,
+    bossName,
     hp: bountyHp,
     maxHp: bountyHp,
-    armor: computeMonsterArmor(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false, true),
+    armor:
+      computeMonsterArmor(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false, true) +
+      (elite ? 12 : 0),
     armorShred: 0,
     shredExpireTick: 0,
     shieldHp: 0,
@@ -266,7 +282,7 @@ export function spawnBountyOutlaw(
     nextBossSkillTick: 999999999,
     phaseTriggered: true,
     speedPerTick: 3.4 * diffCfg.speedMult * trialSpdMult,
-    radius: spec.radius,
+    radius: elite ? spec.radius + 3 : spec.radius,
     rewardCoin,
     spawnTick: ctx.currentTick,
     stunUntilTick: 0,
@@ -287,9 +303,10 @@ export function spawnBountyOutlaw(
   ctx.markPriorityDirty();
 
   ctx.events.emit('bounty:called', {
-    bossName: spec.name,
+    bossName,
     rewardCoin,
     rewardLuck,
+    isElite: elite,
     tick: ctx.currentTick,
   });
 
@@ -462,6 +479,7 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     ctx.setCoin(updatedCoin);
     ctx.addLuckStone(1);
     ctx.markPriorityDirty();
+    ctx.onWaveAdvanced?.(completedWave, nextWaveNum);
 
     if (interestCoin > 0) {
       ctx.events.emit('wave:interest', {

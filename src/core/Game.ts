@@ -480,8 +480,13 @@ export class Game {
   private dispatchCommand(cmd: GameCommand): void {
     this.sim.commands.enqueue(cmd);
     this.runSaveDirty = true;
+    const flushNowWhilePaused =
+      this.tutorialPaused ||
+      cmd.type === 'rerollBoon' ||
+      cmd.type === 'pickContract' ||
+      cmd.type === 'awaken';
     if (
-      this.tutorialPaused &&
+      flushNowWhilePaused &&
       this.loop.isPaused() &&
       !this.sim.isGameOver &&
       !this.sim.isVictoryHold
@@ -799,6 +804,50 @@ export class Game {
       this.ui.showToast(`☯ 강호 기연 전수! [${ev.name}] Lv.${ev.stacks} 발동!`);
     });
 
+    this.sim.events.on('boon:rerolled', (ev) => {
+      this.sound.playSummon();
+      this.ui.showToast(`🎲 기연 비급 다시 뽑기! (은자 -${ev.cost})`);
+    });
+
+    this.sim.events.on('unit:awakened', (ev) => {
+      this.sound.playCraft(5);
+      const uDef = this.sim.data.unitsById.get(ev.unitId);
+      const stars = '★'.repeat(ev.starLevel);
+      this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, '#facc15', 5, ev.tick);
+      this.ui.showToast(`⭐ [${uDef?.name ?? ev.unitId}] ${stars} 각성 돌파! (공격력·공속 대폭 상승)`);
+    });
+
+    this.sim.events.on('contract:offered', (ev) => {
+      this.sound.playBoonOffer();
+      this.ui.showToast(`📜 제 ${String(ev.wave).padStart(2, '0')} 장 강호 밀명 3택 도착! [의뢰]에서 수락하세요`);
+    });
+
+    this.sim.events.on('contract:picked', (ev) => {
+      this.sound.playSummon();
+      this.ui.showToast(`📜 강호 밀명 [${ev.name}] 수락! (제 ${ev.deadlineWave} 장까지 완료)`);
+    });
+
+    this.sim.events.on('contract:completed', (ev) => {
+      this.sound.playVictory();
+      const parts: string[] = [];
+      if (ev.rewardCoin > 0) parts.push(`은자 +${ev.rewardCoin}`);
+      if (ev.rewardLuck > 0) parts.push(`영단 +${ev.rewardLuck}`);
+      if (ev.rewardWispGrade) {
+        const gName =
+          this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
+        parts.push(`${gName} 기연 +${ev.rewardWispCount ?? 1}`);
+      }
+      if (ev.rewardUpgradeAll && ev.rewardUpgradeAll > 0) {
+        parts.push(`전 문파 내공 +${ev.rewardUpgradeAll}Lv`);
+      }
+      this.vfx.triggerScreenFlash('#fde047', 0.14, 0.24, ev.tick);
+      this.ui.showToast(`🏆 밀명 완수 [${ev.name}]! 보상: ${parts.join(' · ')}`);
+    });
+
+    this.sim.events.on('contract:failed', (ev) => {
+      this.ui.showToast(`⌛ 밀명 [${ev.name}] 기한 만료로 종료되었습니다.`, true);
+    });
+
     this.sim.events.on('boss:timeout', (ev) => {
       this.vfx.triggerScreenFlash('#991b1b', 0.22, 0.3, ev.tick);
       this.ui.showToast(`⏳ 제한시간 초과! ${ev.bossName} 토벌에 실패했습니다!`, true);
@@ -806,16 +855,20 @@ export class Game {
 
     this.sim.events.on('bounty:called', (ev) => {
       this.sound.playBossHorn();
-      this.vfx.triggerScreenFlash('#f59e0b', 0.12, 0.2, ev.tick);
+      this.vfx.triggerScreenFlash(ev.isElite ? '#e11d48' : '#f59e0b', 0.14, 0.22, ev.tick);
+      const extra = ev.isElite ? ' · 일류 기연 +1' : '';
       this.ui.showToast(
-        `📜 ${ev.bossName} 출현! 30초 내 토벌 시 은자+${ev.rewardCoin} · 영단+${ev.rewardLuck}`,
+        `📜 ${ev.bossName} 출현! 30초 내 토벌 시 은자+${ev.rewardCoin} · 영단+${ev.rewardLuck}${extra}`,
       );
     });
 
     this.sim.events.on('bounty:slain', (ev) => {
       this.sound.playCoinReward();
+      const wispText = ev.rewardWispGrade
+        ? ` · ${this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade} 기연 +1`
+        : '';
       this.ui.showToast(
-        `🎯 수배범 포획 성공! 은자 +${ev.rewardCoin} · 영단 +${ev.rewardLuck} 획득!`,
+        `🎯 ${ev.isElite ? '정예 ' : ''}수배범 포획 성공! 은자 +${ev.rewardCoin} · 영단 +${ev.rewardLuck}${wispText} 획득!`,
       );
     });
 

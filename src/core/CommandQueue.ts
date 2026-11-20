@@ -1,3 +1,4 @@
+import type { ContractId } from '../data/contracts';
 import type { BoonId, GradeId, RecipeId, RelicId, UnitId, UpgradeGroupId } from '../data/types';
 
 export type SlotArea = 'field' | 'bench';
@@ -13,15 +14,18 @@ export type GameCommand =
   | { readonly type: 'sell'; readonly uid: number }
   | { readonly type: 'sellSurplusCommon' }
   | { readonly type: 'lock'; readonly uid: number; readonly locked: boolean }
+  | { readonly type: 'awaken'; readonly uid: number }
   | { readonly type: 'craft'; readonly recipeId: RecipeId; readonly chain: boolean }
   | { readonly type: 'craftAll' }
   | { readonly type: 'useWisp'; readonly grade: GradeId; readonly unitId: UnitId }
   | { readonly type: 'gamble'; readonly tier: GradeId }
   | { readonly type: 'upgrade'; readonly group: UpgradeGroupId; readonly count?: number }
-  | { readonly type: 'callBounty' }
+  | { readonly type: 'callBounty'; readonly elite?: boolean }
   | { readonly type: 'autoArrange' }
   | { readonly type: 'enterEndless' }
   | { readonly type: 'pickBoon'; readonly boonId: BoonId }
+  | { readonly type: 'rerollBoon' }
+  | { readonly type: 'pickContract'; readonly contractId: ContractId }
   | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {

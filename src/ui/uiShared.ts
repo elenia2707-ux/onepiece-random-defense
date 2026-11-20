@@ -198,6 +198,11 @@ export function buildUnitRoleBadgesHtml(u: UnitDef, includeWeapon = false): stri
       `<span class="role-chip totem" title="${escapeHtml(u.supportAura.name)}: 비무대 십자 인접 아군 공격력 +${u.supportAura.atkPct}%${spdPart}">✦고무 +${u.supportAura.atkPct}%</span>`,
     );
   }
+  if (u.benchPassive) {
+    chips.push(
+      `<span class="role-chip bench-passive" title="${escapeHtml(u.benchPassive.name)}: ${escapeHtml(u.benchPassive.desc)}">🏯대기진·${escapeHtml(u.benchPassive.name)}</span>`,
+    );
+  }
   if ((u.armorShred ?? 0) > 0) {
     chips.push(
       `<span class="role-chip shred" title="타격 시 마물 호신강기 -${u.armorShred} 파쇄 (중첩)">💥파갑 ${u.armorShred}</span>`,

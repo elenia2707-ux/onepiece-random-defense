@@ -7,6 +7,7 @@ export interface UnitEntity {
   readonly grade: GradeId;
   slot: SlotRef;
   locked: boolean;
+  starLevel: number;
   spawnTick: number;
   moveFromX: number;
   moveFromY: number;
@@ -27,8 +28,10 @@ export interface MonsterEntity {
   readonly kind: MonsterKind;
   readonly isBoss: boolean;
   readonly isBounty?: boolean;
+  readonly isEliteBounty?: boolean;
   readonly expireTick?: number;
   readonly bountyRewardLuck?: number;
+  readonly bountyRewardWispGrade?: GradeId;
   readonly bossName?: string;
   hp: number;
   readonly maxHp: number;

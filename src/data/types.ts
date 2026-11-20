@@ -100,6 +100,20 @@ export interface PassiveTraitDef {
   readonly armorPiercePct?: number;
 }
 
+export interface BenchPassiveDef {
+  readonly name: string;
+  readonly desc: string;
+  readonly interestPct?: number;
+  readonly interestCap?: number;
+  readonly killCoinPct?: number;
+  readonly gambleBonusPct?: number;
+  readonly critChancePct?: number;
+  readonly critMultBonus?: number;
+  readonly armorShred?: number;
+  readonly skillDamagePct?: number;
+  readonly bossDamagePct?: number;
+}
+
 export interface RawUnitDef {
   readonly id: UnitId;
   readonly name: string;
@@ -116,6 +130,7 @@ export interface RawUnitDef {
   readonly armorShred?: number;
   readonly supportAura?: SupportAuraDef;
   readonly passiveTrait?: PassiveTraitDef;
+  readonly benchPassive?: BenchPassiveDef;
   readonly skill: RawUnitSkillDef;
 }
 
@@ -135,6 +150,7 @@ export interface UnitDef {
   readonly armorShred: number;
   readonly supportAura?: SupportAuraDef;
   readonly passiveTrait?: PassiveTraitDef;
+  readonly benchPassive?: BenchPassiveDef;
   readonly skill: UnitSkillDef;
 }
 

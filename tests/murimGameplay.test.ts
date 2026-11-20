@@ -2758,6 +2758,137 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const hp45 = computeWaveHpScale(data, 'normal', null, 45, false);
     expect(hp45 / hp40).toBeGreaterThan(4.0);
   });
+
+  it('v2.3 build variety & strategy: Bench Passives (unique per unitId), Wave 5 3-choice Contracts, Boon Reroll, Elite Bounty, and Hero Awakening (★1-★3 + Save round-trip)', () => {
+    const data = loadGameData();
+
+    // 1. Track A — Bench Passives on 9 Rank 1-3 heroes & unique-per-unitId non-stacking
+    const benchUnits = data.units.filter((u) => Boolean(u.benchPassive));
+    expect(benchUnits.length).toBe(9);
+    const simBench = new Simulation(data, 0x23230001);
+    const baseInterest = simBench.getEffectiveInterestConfig();
+    const baseGamble = simBench.getEffectiveGambleBonusPct();
+    expect(baseInterest.pct).toBe(0);
+
+    simBench.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    simBench.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'haomun_ronin' });
+    simBench.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    simBench.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'haomun_ronin' });
+    simBench.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    simBench.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'cult_initiate' });
+    simBench.tick();
+
+    // Move all 3 from field[0..2] to bench[0..2]
+    simBench.commands.enqueue({ type: 'move', from: { area: 'field', index: 0 }, to: { area: 'bench', index: 0 } });
+    simBench.commands.enqueue({ type: 'move', from: { area: 'field', index: 1 }, to: { area: 'bench', index: 1 } });
+    simBench.commands.enqueue({ type: 'move', from: { area: 'field', index: 2 }, to: { area: 'bench', index: 2 } });
+    simBench.tick();
+
+    const snapBench = simBench.buildSnapshot(1, false);
+    // 2 copies of haomun_ronin MUST count once (+2%p interest, NOT +4%p), plus 1 cult_initiate (+4%p gamble)
+    expect(snapBench.benchPassives.activeUnits.length).toBe(2);
+    expect(snapBench.benchPassives.interestPct).toBe(2);
+    expect(simBench.getEffectiveInterestConfig().pct).toBe(2);
+    expect(simBench.getEffectiveGambleBonusPct()).toBe(baseGamble + 4);
+
+    // 2. Track C3 — Hero Awakening (0 -> 1 -> 2 -> 3, ATK boost, cap reject, and Save round-trip)
+    const simAwk = new Simulation(data, 0x23230002);
+    spawnCheonmaHelper(simAwk);
+    simAwk.commands.enqueue({ type: 'grantTestCoin', amount: 10000 });
+    simAwk.tick();
+
+    const cheonmaSlot0 = simAwk.buildSnapshot(1, false).field.find((s) => s?.unitId === 'cheonma')!;
+    expect(cheonmaSlot0).toBeTruthy();
+    expect(cheonmaSlot0.starLevel).toBe(0);
+    const atk0 = cheonmaSlot0.baseAtk + cheonmaSlot0.bonusAtk;
+
+    let awakenedStars: number[] = [];
+    simAwk.events.on('unit:awakened', (ev) => awakenedStars.push(ev.starLevel));
+    for (let s = 0; s < 3; s++) {
+      simAwk.commands.enqueue({ type: 'awaken', uid: cheonmaSlot0.uid });
+      simAwk.tick();
+    }
+    const cheonmaSlot3 = simAwk.buildSnapshot(1, false).field.find((s) => s?.uid === cheonmaSlot0.uid)!;
+    expect(awakenedStars).toEqual([1, 2, 3]);
+    expect(cheonmaSlot3.starLevel).toBe(3);
+    expect(cheonmaSlot3.awakenCost).toBeNull();
+    expect(cheonmaSlot3.baseAtk + cheonmaSlot3.bonusAtk).toBeGreaterThan(Math.round(atk0 * 1.55));
+
+    // Reject 4th awaken beyond MAX_UNIT_STAR_LEVEL
+    simAwk.commands.enqueue({ type: 'awaken', uid: cheonmaSlot0.uid });
+    simAwk.tick();
+    expect(simAwk.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'awaken')).toBe(true);
+
+    // RunSave round-trip preserves starLevel=3
+    const exportedAwk = simAwk.exportRunSave(12345);
+    const simAwkRestored = new Simulation(data, 0x23230002);
+    expect(simAwkRestored.restoreRunSave(exportedAwk)).toBe(true);
+    const restoredSlot = simAwkRestored.buildSnapshot(1, false).field.find((s) => s?.uid === cheonmaSlot0.uid)!;
+    expect(restoredSlot.starLevel).toBe(3);
+
+    // 3. Track B & C1 & C2 — Wave 5 Contract 3-choice + Boon Reroll + Wave 8 Elite Bounty
+    const simProg = new Simulation(data, 0x23230003);
+    spawnCheonmaHelper(simProg);
+    simProg.commands.enqueue({ type: 'grantTestCoin', amount: 5000 });
+    simProg.tick();
+
+    // Advance to Wave 5 -> Contract 3-choice offer arrives automatically
+    while (simProg.buildSnapshot(1, false).wave < 5) {
+      simProg.tick();
+    }
+    const snapW5 = simProg.buildSnapshot(1, false);
+    expect(snapW5.pendingContractOffer).not.toBeNull();
+    expect(snapW5.pendingContractOffer!.options.length).toBe(3);
+    const chosenContract = snapW5.pendingContractOffer!.options[0]!;
+    simProg.commands.enqueue({ type: 'pickContract', contractId: chosenContract });
+    simProg.tick();
+    const snapAfterPick = simProg.buildSnapshot(1, false);
+    expect(snapAfterPick.pendingContractOffer).toBeNull();
+    expect(snapAfterPick.contracts.length).toBe(1);
+    expect(snapAfterPick.contracts[0]!.contractId).toBe(chosenContract);
+
+    // Wait for Wave 5 Boss kill -> Boon offer arrives -> test rerollBoon
+    for (let t = 0; t < 1800 && !simProg.buildSnapshot(1, false).pendingBoonOffer; t++) {
+      simProg.tick();
+    }
+    const snapBoon1 = simProg.buildSnapshot(1, false);
+    expect(snapBoon1.pendingBoonOffer).not.toBeNull();
+    const origOptions = [...snapBoon1.pendingBoonOffer!.options];
+    const coinBeforeReroll = snapBoon1.coin;
+    simProg.commands.enqueue({ type: 'rerollBoon' });
+    simProg.tick();
+    const snapBoon2 = simProg.buildSnapshot(1, false);
+    expect(snapBoon2.pendingBoonOffer!.rerollsUsed).toBe(1);
+    expect(snapBoon2.coin).toBeLessThanOrEqual(coinBeforeReroll - 150);
+    expect(snapBoon2.pendingBoonOffer!.options.every((id) => !origOptions.includes(id))).toBe(true);
+    // Pick a boon to clear the offer
+    simProg.commands.enqueue({ type: 'pickBoon', boonId: snapBoon2.pendingBoonOffer!.options[0]! });
+    simProg.tick();
+
+    // Elite Bounty rejected before Wave 8
+    simProg.commands.enqueue({ type: 'callBounty', elite: true });
+    simProg.tick();
+    expect(simProg.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'callBounty')).toBe(true);
+
+    // Advance to Wave 8 -> call Elite Bounty -> slay -> verify +1 rare wisp + coin/luck!
+    while (simProg.buildSnapshot(1, false).wave < 8) {
+      simProg.tick();
+    }
+    const snapW8 = simProg.buildSnapshot(1, false);
+    expect(snapW8.bounty.eliteUnlocked).toBe(true);
+    expect(snapW8.bounty.canCallElite).toBe(true);
+    const rareWispBefore = snapW8.wisps.rare ?? 0;
+    let eliteSlain = false;
+    simProg.events.on('bounty:slain', (ev) => {
+      if (ev.isElite && ev.rewardWispGrade) eliteSlain = true;
+    });
+    simProg.commands.enqueue({ type: 'callBounty', elite: true });
+    for (let t = 0; t < 360 && !eliteSlain; t++) {
+      simProg.tick();
+    }
+    expect(eliteSlain).toBe(true);
+    expect(simProg.buildSnapshot(1, false).wisps.rare ?? 0).toBeGreaterThanOrEqual(rareWispBefore + 1);
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {

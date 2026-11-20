@@ -15,6 +15,7 @@ import rawWaves from './waves.json';
 import rawWispPools from './wisp_pools.json';
 import { secToTicks, TICK_DT } from '../core/time';
 import type {
+  BenchPassiveDef,
   BoardConfig,
   BoonDef,
   BoonIconKind,
@@ -390,6 +391,62 @@ function validatePassiveTrait(input: unknown, label: string): PassiveTraitDef {
   };
 }
 
+function validateBenchPassive(input: unknown, label: string): BenchPassiveDef {
+  const r = assertRecord(input, label);
+  const name = assertNonEmptyString(r.name, `${label}.name`);
+  const desc = assertNonEmptyString(r.desc, `${label}.desc`);
+  const interestPct =
+    r.interestPct !== undefined
+      ? assertNonNegativeNumber(r.interestPct, `${label}.interestPct`)
+      : undefined;
+  const interestCap =
+    r.interestCap !== undefined
+      ? assertNonNegativeNumber(r.interestCap, `${label}.interestCap`)
+      : undefined;
+  const killCoinPct =
+    r.killCoinPct !== undefined
+      ? assertNonNegativeNumber(r.killCoinPct, `${label}.killCoinPct`)
+      : undefined;
+  const gambleBonusPct =
+    r.gambleBonusPct !== undefined
+      ? assertNonNegativeNumber(r.gambleBonusPct, `${label}.gambleBonusPct`)
+      : undefined;
+  const critChancePct =
+    r.critChancePct !== undefined
+      ? assertNonNegativeNumber(r.critChancePct, `${label}.critChancePct`)
+      : undefined;
+  const critMultBonus =
+    r.critMultBonus !== undefined
+      ? assertNonNegativeNumber(r.critMultBonus, `${label}.critMultBonus`)
+      : undefined;
+  const armorShred =
+    r.armorShred !== undefined
+      ? assertNonNegativeNumber(r.armorShred, `${label}.armorShred`)
+      : undefined;
+  const skillDamagePct =
+    r.skillDamagePct !== undefined
+      ? assertNonNegativeNumber(r.skillDamagePct, `${label}.skillDamagePct`)
+      : undefined;
+  const bossDamagePct =
+    r.bossDamagePct !== undefined
+      ? assertNonNegativeNumber(r.bossDamagePct, `${label}.bossDamagePct`)
+      : undefined;
+
+  return {
+    name,
+    desc,
+    interestPct,
+    interestCap,
+    killCoinPct,
+    gambleBonusPct,
+    critChancePct,
+    critMultBonus,
+    armorShred,
+    skillDamagePct,
+    bossDamagePct,
+  };
+}
+
 export function validateUnits(
   input: unknown,
   gradesById: ReadonlyMap<string, GradeDef>,
@@ -454,6 +511,10 @@ export function validateUnits(
       row.passiveTrait !== undefined
         ? validatePassiveTrait(row.passiveTrait, `units[${i}].passiveTrait`)
         : undefined;
+    const benchPassive =
+      row.benchPassive !== undefined
+        ? validateBenchPassive(row.benchPassive, `units[${i}].benchPassive`)
+        : undefined;
     const skill = validateUnitSkill(row.skill, `units[${i}].skill`);
 
     out.push({
@@ -472,6 +533,7 @@ export function validateUnits(
       armorShred,
       supportAura,
       passiveTrait,
+      benchPassive,
       skill,
     });
   }

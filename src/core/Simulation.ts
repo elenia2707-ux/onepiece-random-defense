@@ -35,7 +35,14 @@ import { CraftSystem } from '../craft/CraftSystem';
 import { InventoryIndex } from '../craft/InventoryIndex';
 import { RecipeGraph } from '../craft/RecipeGraph';
 import { type WispHint, WispSystem } from '../craft/WispSystem';
+import {
+  CONTRACT_DEFS,
+  CONTRACT_OFFER_WAVES,
+  CONTRACTS_BY_ID,
+  type ContractId,
+} from '../data/contracts';
 import type {
+  BenchPassiveDef,
   BoonId,
   DifficultyId,
   FactionId,
@@ -62,11 +69,16 @@ import {
   type RunSaveData,
 } from '../platform/SaveMigration';
 import {
+  type BenchPassiveSummary,
   type CombatSystemContext,
+  computeBenchPassiveSummary,
   computeFieldSynergy,
   computeFieldTileBuffs,
   computeUnitEffectiveAtk,
   type FactionSynergySnapshot,
+  getStarAtkBps,
+  getUnitAwakenCost,
+  MAX_UNIT_STAR_LEVEL,
   stepCombat,
   type TileAuraBuff,
 } from '../skills/SkillSystem';
@@ -77,6 +89,8 @@ import {
   BOUNTY_COOLDOWN_TICKS,
   BOUNTY_DURATION_TICKS,
   computeMonsterArmor,
+  ELITE_BOUNTY_COST,
+  ELITE_BOUNTY_MIN_WAVE,
   getWaveMutantKind,
   HAZARD_SEAL_TICKS,
   HAZARD_WARNING_TICKS,
@@ -93,19 +107,29 @@ import type { MonsterEntity, ProjectileEntity, TileHazard, UnitEntity } from '..
 export {
   BOUNTY_COOLDOWN_TICKS,
   BOUNTY_DURATION_TICKS,
+  ELITE_BOUNTY_COST,
+  ELITE_BOUNTY_MIN_WAVE,
+  getUnitAwakenCost,
   getWaveMutantKind,
   HAZARD_SEAL_TICKS,
   HAZARD_WARNING_TICKS,
+  MAX_UNIT_STAR_LEVEL,
   RUN_SAVE_SCHEMA_VERSION,
   WAVE_MUTANT_META,
 };
 export type {
+  BenchPassiveSummary,
   BossSkillKind,
+  ContractId,
   FactionSynergySnapshot,
   RunSaveData,
   TileAuraBuff,
   WaveMutantMeta,
 };
+
+export function getBoonRerollCost(rerollsUsed: number): number {
+  return 150 * (Math.max(0, Math.floor(rerollsUsed)) + 1);
+}
 
 export const BOON_IDS_ORDERED: readonly BoonId[] = [
   'b_usury_vault',
@@ -282,16 +306,61 @@ export interface SimEventMap {
     readonly stacks: number;
     readonly tick: number;
   };
+  'boon:rerolled': {
+    readonly seq: number;
+    readonly wave: number;
+    readonly cost: number;
+    readonly options: readonly BoonId[];
+    readonly tick: number;
+  };
+  'unit:awakened': {
+    readonly uid: number;
+    readonly unitId: UnitId;
+    readonly starLevel: number;
+    readonly cost: number;
+    readonly pos: Vec2;
+    readonly tick: number;
+  };
+  'contract:offered': {
+    readonly seq: number;
+    readonly wave: number;
+    readonly options: readonly ContractId[];
+    readonly tick: number;
+  };
+  'contract:picked': {
+    readonly contractId: ContractId;
+    readonly name: string;
+    readonly deadlineWave: number;
+    readonly tick: number;
+  };
+  'contract:completed': {
+    readonly contractId: ContractId;
+    readonly name: string;
+    readonly rewardCoin: number;
+    readonly rewardLuck: number;
+    readonly rewardWispGrade?: GradeId;
+    readonly rewardWispCount?: number;
+    readonly rewardUpgradeAll?: number;
+    readonly tick: number;
+  };
+  'contract:failed': {
+    readonly contractId: ContractId;
+    readonly name: string;
+    readonly tick: number;
+  };
   'bounty:called': {
     readonly bossName: string;
     readonly rewardCoin: number;
     readonly rewardLuck: number;
+    readonly isElite?: boolean;
     readonly tick: number;
   };
   'bounty:slain': {
     readonly bossName: string;
     readonly rewardCoin: number;
     readonly rewardLuck: number;
+    readonly rewardWispGrade?: GradeId;
+    readonly isElite?: boolean;
     readonly tick: number;
   };
   'bounty:escaped': {
@@ -327,6 +396,8 @@ export interface SlotView {
   readonly faction: FactionId;
   readonly grade: GradeId;
   readonly locked: boolean;
+  readonly starLevel: number;
+  readonly awakenCost: number | null;
   readonly sellCoin: number;
   readonly sellLuck: number;
   readonly sellLuckChancePct: number;
@@ -337,6 +408,7 @@ export interface SlotView {
   readonly armorShred: number;
   readonly supportAura?: SupportAuraDef;
   readonly passiveTrait?: PassiveTraitDef;
+  readonly benchPassive?: BenchPassiveDef;
   readonly tileBuffAtkPct: number;
   readonly tileBuffSpeedPct: number;
   readonly sealed: boolean;
@@ -369,6 +441,9 @@ export interface RelicBonusSnapshot {
 
 export interface BountySnapshot {
   readonly canCall: boolean;
+  readonly canCallElite: boolean;
+  readonly eliteUnlocked: boolean;
+  readonly eliteCost: number;
   readonly unlocked: boolean;
   readonly active: boolean;
   readonly activeTicksLeft: number;
@@ -401,6 +476,39 @@ export interface BoonOfferSnapshot {
   readonly seq: number;
   readonly wave: number;
   readonly options: readonly BoonId[];
+  readonly rerollsUsed?: number;
+}
+
+export interface ContractOfferSnapshot {
+  readonly seq: number;
+  readonly wave: number;
+  readonly options: readonly ContractId[];
+}
+
+export interface ActiveContractState {
+  readonly contractId: ContractId;
+  readonly acceptedWave: number;
+  readonly deadlineWave: number;
+  progress: number;
+  readonly baseline: number;
+  status: 'active' | 'completed' | 'failed';
+}
+
+export interface ContractItemSnapshot {
+  readonly contractId: ContractId;
+  readonly name: string;
+  readonly tag: string;
+  readonly desc: string;
+  readonly acceptedWave: number;
+  readonly deadlineWave: number;
+  readonly progress: number;
+  readonly target: number;
+  readonly status: 'active' | 'completed' | 'failed';
+  readonly rewardCoin: number;
+  readonly rewardLuck: number;
+  readonly rewardWispGrade?: GradeId;
+  readonly rewardWispCount?: number;
+  readonly rewardUpgradeAll?: number;
 }
 
 export interface UISnapshot {
@@ -437,6 +545,9 @@ export interface UISnapshot {
   readonly pendingBoonOffer: BoonOfferSnapshot | null;
   readonly activeBoons: Readonly<Record<BoonId, number>>;
   readonly totalBoonStacks: number;
+  readonly pendingContractOffer: ContractOfferSnapshot | null;
+  readonly contracts: readonly ContractItemSnapshot[];
+  readonly benchPassives: BenchPassiveSummary;
   readonly missions: readonly MissionItemSnapshot[];
   readonly missionsCompletedCount: number;
   readonly damageMeter: {
@@ -504,6 +615,7 @@ export class Simulation {
   private nextProjectileId = 1;
   private gambleSeq = 0;
   private gambleWins = 0;
+  private awakenCount = 0;
 
   private readonly units: UnitEntity[] = [];
   private readonly unitsByUid = new Map<number, UnitEntity>();
@@ -560,6 +672,9 @@ export class Simulation {
   };
   private boonOfferSeq = 0;
   private readonly pendingBoonOffers: BoonOfferSnapshot[] = [];
+  private contractOfferSeq = 0;
+  private pendingContractOffer: ContractOfferSnapshot | null = null;
+  private readonly activeContracts: ActiveContractState[] = [];
   private appliedStartCoinBonus = 0;
   private appliedStartLuckBonus = 0;
   private readonly appliedStartWisps: Record<GradeId, number> = {};
@@ -759,14 +874,19 @@ export class Simulation {
     return this.activeBoons[id] ?? 0;
   }
 
+  public computeBenchPassives(): BenchPassiveSummary {
+    return computeBenchPassiveSummary(this.units, this.data.unitsById);
+  }
+
   public getEffectiveInterestConfig(): { readonly pct: number; readonly cap: number } {
     if (this.trialId && TRIAL_CONFIGS[this.trialId].disableInterest) {
       return { pct: 0, cap: 0 };
     }
     const setBonus = computeRelicSetBonuses(this.relicLv);
+    const benchBonus = this.computeBenchPassives();
     const usuryStacks = this.getBoonStacks('b_usury_vault');
     const basePct = getVaultInterestPct(this.relicLv.golden_vault);
-    const pct = basePct + usuryStacks * 3 + setBonus.interestPct;
+    const pct = basePct + usuryStacks * 3 + setBonus.interestPct + benchBonus.interestPct;
     if (pct <= 0) {
       return { pct: 0, cap: 0 };
     }
@@ -774,7 +894,7 @@ export class Simulation {
       this.relicLv.golden_vault > 0 ? getVaultInterestCap(this.relicLv.golden_vault) : 120;
     return {
       pct,
-      cap: baseCap + usuryStacks * 60 + setBonus.interestCap,
+      cap: baseCap + usuryStacks * 60 + setBonus.interestCap + benchBonus.interestCap,
     };
   }
 
@@ -790,11 +910,13 @@ export class Simulation {
 
   public getEffectiveGambleBonusPct(): number {
     const setBonus = computeRelicSetBonuses(this.relicLv);
+    const benchBonus = this.computeBenchPassives();
     const trialBonus = this.trialId ? TRIAL_CONFIGS[this.trialId].gambleBonusPct : 0;
     return (
       getFurnaceChanceBonusPct(this.relicLv.immortal_furnace) +
       this.getBoonStacks('b_elixir_jackpot') * 12 +
       setBonus.gambleBonusPct +
+      benchBonus.gambleBonusPct +
       trialBonus
     );
   }
@@ -866,6 +988,7 @@ export class Simulation {
     unitId: UnitId,
     precomputedSynergy?: FactionSynergySnapshot,
     tileBuffAtkPct = 0,
+    starLevel = 0,
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
     const setBonus = computeRelicSetBonuses(this.relicLv);
     let extraTraitPct = 0;
@@ -892,7 +1015,9 @@ export class Simulation {
       this.getBoonStacks('b_trinity_harmony'),
       this.getBoonStacks('b_demonic_overdrive'),
       this.trialId,
-      getTrigramMirrorAtkBps(this.relicLv.eight_trigram_mirror ?? 0) + setBonus.atkBps,
+      getTrigramMirrorAtkBps(this.relicLv.eight_trigram_mirror ?? 0) +
+        setBonus.atkBps +
+        getStarAtkBps(starLevel),
       extraTraitPct,
     );
   }
@@ -977,9 +1102,10 @@ export class Simulation {
       this.priorityDirty = true;
     }
 
-    // 6. Deterministic in-run mission evaluation (강호 의뢰)
+    // 6. Deterministic in-run mission & contract evaluation (강호 의뢰 · 밀명 계약)
     if (!this.gameOver) {
       this.evaluateMissions();
+      this.evaluateContracts();
     }
 
     this.currentTick++;
@@ -1000,6 +1126,7 @@ export class Simulation {
     }
     if (!this.gameOver) {
       this.evaluateMissions();
+      this.evaluateContracts();
     }
   }
 
@@ -1060,6 +1187,9 @@ export class Simulation {
       markPriorityDirty: () => {
         this.priorityDirty = true;
       },
+      onWaveAdvanced: (completedWave, nextWaveNum) => {
+        this.handleWaveAdvancedForContracts(completedWave, nextWaveNum);
+      },
     };
   }
 
@@ -1084,8 +1214,8 @@ export class Simulation {
       victoryAchieved: this.victoryAchieved,
       getBoonStacks: (id) => this.getBoonStacks(id),
       isFieldSlotSealed: (fieldIndex) => this.isFieldSlotSealed(fieldIndex),
-      getUnitEffectiveAtk: (unitId, synergy, tileBuffAtkPct) =>
-        this.getUnitEffectiveAtk(unitId, synergy, tileBuffAtkPct),
+      getUnitEffectiveAtk: (unitId, synergy, tileBuffAtkPct, starLevel = 0) =>
+        this.getUnitEffectiveAtk(unitId, synergy, tileBuffAtkPct, starLevel),
       allocateProjectileId: () => this.nextProjectileId++,
       recordDamage: (unitId, amount) => {
         this.damageByUnit.set(unitId, (this.damageByUnit.get(unitId) ?? 0) + amount);
@@ -1109,10 +1239,13 @@ export class Simulation {
         this.wisps[gradeId] = (this.wisps[gradeId] ?? 0) + 1;
         this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
       },
-      onMonsterSlain: (isWaveBoss, isBounty) => {
+      onMonsterSlain: (isWaveBoss, isBounty, spawnTick) => {
         this.monstersSlain++;
         if (isWaveBoss) {
           this.bossesSlain++;
+          if (spawnTick !== undefined) {
+            this.handleWaveBossSlainForContracts(Math.max(0, this.currentTick - spawnTick));
+          }
         } else if (isBounty) {
           this.bountiesSlain++;
         }
@@ -1201,6 +1334,120 @@ export class Simulation {
           boonId: cmd.boonId,
           name: boonDef.name,
           stacks: nextStacks,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'rerollBoon': {
+        const currentOffer = this.pendingBoonOffers[0];
+        if (!currentOffer) {
+          this.reject('rerollBoon', '현재 리롤할 강호 기연이 없습니다.');
+          return;
+        }
+        const rerollsUsed = currentOffer.rerollsUsed ?? 0;
+        const cost = getBoonRerollCost(rerollsUsed);
+        if (this.coin < cost) {
+          this.reject('rerollBoon', `은자가 부족합니다 (${cost} 필요)`);
+          return;
+        }
+        const fresh = this.rollBoonOptions(currentOffer.wave, currentOffer.options);
+        if (fresh.length === 0) {
+          this.reject('rerollBoon', '더 이상 새로 뽑을 수 있는 기연 비급이 없습니다.');
+          return;
+        }
+        this.coin -= cost;
+        this.pendingBoonOffers[0] = {
+          seq: currentOffer.seq,
+          wave: currentOffer.wave,
+          options: fresh,
+          rerollsUsed: rerollsUsed + 1,
+        };
+        this.priorityDirty = true;
+        this.events.emit('boon:rerolled', {
+          seq: currentOffer.seq,
+          wave: currentOffer.wave,
+          cost,
+          options: fresh,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'pickContract': {
+        const offer = this.pendingContractOffer;
+        if (!offer) {
+          this.reject('pickContract', '현재 수락 가능한 강호 밀명 계약이 없습니다.');
+          return;
+        }
+        if (!offer.options.includes(cmd.contractId)) {
+          this.reject('pickContract', '제시된 밀명 목록에 없는 계약입니다.');
+          return;
+        }
+        const cDef = CONTRACTS_BY_ID.get(cmd.contractId);
+        if (!cDef) {
+          this.reject('pickContract', '존재하지 않는 밀명 계약입니다.');
+          return;
+        }
+        const baseline =
+          cDef.condition === 'bounty_kills_delta'
+            ? this.bountiesSlain
+            : cDef.condition === 'gamble_wins_delta'
+              ? this.gambleWins
+              : cDef.condition === 'awaken_count_delta'
+                ? this.awakenCount
+                : 0;
+        const deadlineWave = this.waveNumber + cDef.durationWaves;
+        this.activeContracts.push({
+          contractId: cDef.id,
+          acceptedWave: this.waveNumber,
+          deadlineWave,
+          progress: 0,
+          baseline,
+          status: 'active',
+        });
+        this.pendingContractOffer = null;
+        this.priorityDirty = true;
+        this.events.emit('contract:picked', {
+          contractId: cDef.id,
+          name: cDef.name,
+          deadlineWave,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'awaken': {
+        const u = this.unitsByUid.get(cmd.uid);
+        if (!u) {
+          this.reject('awaken', '각성할 협객을 찾을 수 없습니다.');
+          return;
+        }
+        const curStar = u.starLevel ?? 0;
+        if (curStar >= MAX_UNIT_STAR_LEVEL) {
+          this.reject('awaken', '이미 극성 각성(★★★)에 도달한 협객입니다.');
+          return;
+        }
+        const gradeRank = this.data.gradesById.get(u.grade)?.rank ?? 1;
+        const cost = getUnitAwakenCost(gradeRank, curStar);
+        if (cost === null) {
+          this.reject('awaken', '더 이상 각성할 수 없습니다.');
+          return;
+        }
+        if (this.coin < cost) {
+          this.reject('awaken', `은자가 부족합니다 (${cost} 필요)`);
+          return;
+        }
+        this.coin -= cost;
+        u.starLevel = curStar + 1;
+        this.awakenCount++;
+        this.priorityDirty = true;
+        this.events.emit('unit:awakened', {
+          uid: u.uid,
+          unitId: u.unitId,
+          starLevel: u.starLevel,
+          cost,
+          pos: { x: u.currX, y: u.currY },
           tick: this.currentTick,
         });
         return;
@@ -1363,7 +1610,20 @@ export class Simulation {
           this.reject('callBounty', '먼저 천하통일 정산 선택을 완료해 주세요.');
           return;
         }
-        if (this.waveNumber < 2) {
+        const isElite = Boolean(cmd.elite);
+        if (isElite) {
+          if (this.waveNumber < ELITE_BOUNTY_MIN_WAVE) {
+            this.reject(
+              'callBounty',
+              `정예 현상수배는 제 0${ELITE_BOUNTY_MIN_WAVE} 장부터 호출할 수 있습니다.`,
+            );
+            return;
+          }
+          if (this.coin < ELITE_BOUNTY_COST) {
+            this.reject('callBounty', `정예 수배에 은자가 부족합니다 (${ELITE_BOUNTY_COST} 필요)`);
+            return;
+          }
+        } else if (this.waveNumber < 2) {
           this.reject('callBounty', '현상수배는 제 02 장부터 호출할 수 있습니다.');
           return;
         }
@@ -1381,11 +1641,15 @@ export class Simulation {
           return;
         }
 
+        if (isElite) {
+          this.coin -= ELITE_BOUNTY_COST;
+        }
         const hunterStacks = this.getBoonStacks('b_bounty_hunter');
         const { nextBountyReadyTick } = spawnBountyOutlaw(
           this.createWaveSystemContext(),
           this.bountiesCalled,
           hunterStacks,
+          isElite,
         );
         this.bountiesCalled++;
         this.bountyReadyTick = nextBountyReadyTick;
@@ -1944,6 +2208,155 @@ export class Simulation {
     }
   }
 
+  private offerContracts(wave: number): void {
+    const alreadyTaken = new Set<ContractId>(this.activeContracts.map((c) => c.contractId));
+    const eligible = CONTRACT_DEFS.filter(
+      (c) => wave >= c.minWave && !alreadyTaken.has(c.id),
+    );
+    if (eligible.length === 0) return;
+
+    // Derived deterministic RNG so offering contracts never perturbs core combat/summon RNG
+    const offerRng = new Rng(((this.rng.getState() ^ Math.imul(wave, 0x9e3779b1)) >>> 0) || 1);
+    const pool = eligible.slice();
+    const picked: ContractId[] = [];
+    const count = Math.min(3, pool.length);
+    for (let i = 0; i < count; i++) {
+      const idx = offerRng.nextInt(pool.length);
+      picked.push(pool.splice(idx, 1)[0]!.id);
+    }
+
+    this.pendingContractOffer = {
+      seq: ++this.contractOfferSeq,
+      wave,
+      options: picked,
+    };
+    this.priorityDirty = true;
+    this.events.emit('contract:offered', {
+      seq: this.pendingContractOffer.seq,
+      wave,
+      options: picked,
+      tick: this.currentTick,
+    });
+  }
+
+  private completeContract(state: ActiveContractState): void {
+    if (state.status !== 'active') return;
+    const def = CONTRACTS_BY_ID.get(state.contractId);
+    if (!def) return;
+    state.status = 'completed';
+    state.progress = def.target;
+
+    if (def.rewardCoin > 0) {
+      this.coin += def.rewardCoin;
+    }
+    if (def.rewardLuck > 0) {
+      this.luckStone += def.rewardLuck;
+    }
+    if (def.rewardWispGrade && (def.rewardWispCount ?? 1) > 0) {
+      const cnt = def.rewardWispCount ?? 1;
+      this.wisps[def.rewardWispGrade] = (this.wisps[def.rewardWispGrade] ?? 0) + cnt;
+      this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+    }
+    if (def.rewardUpgradeAll && def.rewardUpgradeAll > 0) {
+      for (let i = 0; i < UPGRADE_ORDER.length; i++) {
+        const g = UPGRADE_ORDER[i]!;
+        const upDef = this.data.upgrades.find((u) => u.id === g);
+        const cap = upDef?.maxLevel ?? 40;
+        this.upgradeLv[g] = Math.min(cap, (this.upgradeLv[g] ?? 0) + def.rewardUpgradeAll);
+      }
+    }
+
+    this.priorityDirty = true;
+    this.events.emit('contract:completed', {
+      contractId: def.id,
+      name: def.name,
+      rewardCoin: def.rewardCoin,
+      rewardLuck: def.rewardLuck,
+      rewardWispGrade: def.rewardWispGrade,
+      rewardWispCount: def.rewardWispCount,
+      rewardUpgradeAll: def.rewardUpgradeAll,
+      tick: this.currentTick,
+    });
+  }
+
+  private handleWaveAdvancedForContracts(_completedWave: number, nextWaveNum: number): void {
+    const synergy = this.computeFieldSynergy();
+    for (let i = 0; i < this.activeContracts.length; i++) {
+      const st = this.activeContracts[i]!;
+      if (st.status !== 'active') continue;
+      const def = CONTRACTS_BY_ID.get(st.contractId);
+      if (!def) continue;
+
+      if (def.condition === 'faction_field_waves' && def.faction) {
+        if ((synergy.counts[def.faction] ?? 0) >= (def.minFactionCount ?? 4)) {
+          st.progress = Math.min(def.target, st.progress + 1);
+          this.priorityDirty = true;
+        }
+      } else if (def.condition === 'trinity_waves') {
+        if (synergy.trinityActive) {
+          st.progress = Math.min(def.target, st.progress + 1);
+          this.priorityDirty = true;
+        }
+      }
+
+      if (st.progress >= def.target) {
+        this.completeContract(st);
+      } else if (nextWaveNum > st.deadlineWave) {
+        st.status = 'failed';
+        this.priorityDirty = true;
+        this.events.emit('contract:failed', {
+          contractId: def.id,
+          name: def.name,
+          tick: this.currentTick,
+        });
+      }
+    }
+
+    if (CONTRACT_OFFER_WAVES.includes(nextWaveNum)) {
+      this.offerContracts(nextWaveNum);
+    }
+  }
+
+  private handleWaveBossSlainForContracts(elapsedTicks: number): void {
+    for (let i = 0; i < this.activeContracts.length; i++) {
+      const st = this.activeContracts[i]!;
+      if (st.status !== 'active') continue;
+      const def = CONTRACTS_BY_ID.get(st.contractId);
+      if (!def || def.condition !== 'fast_boss_kill') continue;
+      const maxTicks = (def.maxBossKillSec ?? 28) * 30;
+      if (elapsedTicks <= maxTicks) {
+        st.progress = Math.min(def.target, st.progress + 1);
+        if (st.progress >= def.target) {
+          this.completeContract(st);
+        }
+      }
+    }
+  }
+
+  private evaluateContracts(): void {
+    for (let i = 0; i < this.activeContracts.length; i++) {
+      const st = this.activeContracts[i]!;
+      if (st.status !== 'active') continue;
+      const def = CONTRACTS_BY_ID.get(st.contractId);
+      if (!def) continue;
+
+      let prog = st.progress;
+      if (def.condition === 'held_coin_reach') {
+        prog = Math.max(prog, this.coin);
+      } else if (def.condition === 'bounty_kills_delta') {
+        prog = Math.max(0, this.bountiesSlain - st.baseline);
+      } else if (def.condition === 'gamble_wins_delta') {
+        prog = Math.max(0, this.gambleWins - st.baseline);
+      } else if (def.condition === 'awaken_count_delta') {
+        prog = Math.max(0, this.awakenCount - st.baseline);
+      }
+      st.progress = Math.min(def.target, prog);
+      if (st.progress >= def.target) {
+        this.completeContract(st);
+      }
+    }
+  }
+
   private rollSummonUnit(): UnitId {
     let totalWeight = 0;
     for (let i = 0; i < this.summonableGrades.length; i++) {
@@ -1990,6 +2403,7 @@ export class Simulation {
       grade: def.grade,
       slot,
       locked: false,
+      starLevel: 0,
       spawnTick: this.currentTick,
       moveFromX: center.x,
       moveFromY: center.y,
@@ -2044,13 +2458,17 @@ export class Simulation {
     return oldSlot;
   }
 
-  private offerBossBoons(wave: number): void {
+  private rollBoonOptions(wave: number, excludeIds?: readonly BoonId[]): BoonId[] {
     const eligible = this.data.boons.filter(
       (b) => (this.activeBoons[b.id] ?? 0) < b.maxStacks,
     );
-    if (eligible.length === 0) return;
+    if (eligible.length === 0) return [];
 
-    const pool = eligible.slice();
+    const preferred =
+      excludeIds && excludeIds.length > 0
+        ? eligible.filter((b) => !excludeIds.includes(b.id))
+        : eligible;
+    const pool = preferred.length >= 3 ? preferred.slice() : eligible.slice();
     const picked: BoonId[] = [];
     const targetCount = Math.min(3, pool.length);
 
@@ -2089,11 +2507,18 @@ export class Simulation {
       const chosen = pool.splice(chosenIdx, 1)[0]!;
       picked.push(chosen.id);
     }
+    return picked;
+  }
+
+  private offerBossBoons(wave: number): void {
+    const picked = this.rollBoonOptions(wave);
+    if (picked.length === 0) return;
 
     const offer: BoonOfferSnapshot = {
       seq: ++this.boonOfferSeq,
       wave,
       options: picked,
+      rerollsUsed: 0,
     };
     this.pendingBoonOffers.push(offer);
     this.priorityDirty = true;
@@ -2115,12 +2540,13 @@ export class Simulation {
   public buildSnapshot(speed: Speed, paused: boolean): UISnapshot {
     const synergy = this.computeFieldSynergy();
     const tileBuffs = this.computeFieldTileBuffs();
+    const benchPassives = this.computeBenchPassives();
 
     const fieldViews: Array<SlotView | null> = [];
     for (let i = 0; i < this.board.field.capacity; i++) {
       const uid = this.board.field.getUidAt(i);
       const buff = tileBuffs[i] ?? { atkPct: 0, speedPct: 0 };
-      fieldViews.push(uid !== null ? this.toSlotView(uid, synergy, buff) : null);
+      fieldViews.push(uid !== null ? this.toSlotView(uid, synergy, buff, benchPassives) : null);
     }
 
     const zeroBuff: TileAuraBuff = { atkPct: 0, speedPct: 0 };
@@ -2128,7 +2554,7 @@ export class Simulation {
     let benchSurplusCommonCount = 0;
     for (let i = 0; i < this.board.bench.capacity; i++) {
       const uid = this.board.bench.getUidAt(i);
-      const view = uid !== null ? this.toSlotView(uid, synergy, zeroBuff) : null;
+      const view = uid !== null ? this.toSlotView(uid, synergy, zeroBuff, benchPassives) : null;
       if (view && !view.locked && this.data.gradesById.get(view.grade)?.isSurplusCleanupTarget) {
         benchSurplusCommonCount++;
       }
@@ -2146,19 +2572,23 @@ export class Simulation {
     const activeBoss = waveBoss ?? bountyBoss;
 
     const unlockedBounty = this.waveNumber >= 2;
+    const eliteUnlocked = this.waveNumber >= ELITE_BOUNTY_MIN_WAVE;
     const bountyActiveTicksLeft =
       bountyBoss && bountyBoss.expireTick !== undefined
         ? Math.max(0, bountyBoss.expireTick - this.currentTick)
         : 0;
     const bountyCooldownLeft = Math.max(0, this.bountyReadyTick - this.currentTick);
+    const canCallBase =
+      !bountyBoss &&
+      bountyCooldownLeft === 0 &&
+      !this.gameOver &&
+      !this.victoryHold &&
+      this.monsters.length + 1 < this.data.board.path.monsterCap;
     const bountySnap: BountySnapshot = {
-      canCall:
-        unlockedBounty &&
-        !bountyBoss &&
-        bountyCooldownLeft === 0 &&
-        !this.gameOver &&
-        !this.victoryHold &&
-        this.monsters.length + 1 < this.data.board.path.monsterCap,
+      canCall: unlockedBounty && canCallBase,
+      canCallElite: eliteUnlocked && canCallBase && this.coin >= ELITE_BOUNTY_COST,
+      eliteUnlocked,
+      eliteCost: ELITE_BOUNTY_COST,
       unlocked: unlockedBounty,
       active: Boolean(bountyBoss),
       activeTicksLeft: bountyActiveTicksLeft,
@@ -2181,6 +2611,29 @@ export class Simulation {
         rewardWispGrade: mDef.rewardWispGrade,
       };
     });
+
+    const contractItems: ContractItemSnapshot[] = [];
+    for (let i = 0; i < this.activeContracts.length; i++) {
+      const st = this.activeContracts[i]!;
+      const cDef = CONTRACTS_BY_ID.get(st.contractId);
+      if (!cDef) continue;
+      contractItems.push({
+        contractId: st.contractId,
+        name: cDef.name,
+        tag: cDef.tag,
+        desc: cDef.desc,
+        acceptedWave: st.acceptedWave,
+        deadlineWave: st.deadlineWave,
+        progress: st.progress,
+        target: cDef.target,
+        status: st.status,
+        rewardCoin: cDef.rewardCoin,
+        rewardLuck: cDef.rewardLuck,
+        ...(cDef.rewardWispGrade !== undefined ? { rewardWispGrade: cDef.rewardWispGrade } : {}),
+        ...(cDef.rewardWispCount !== undefined ? { rewardWispCount: cDef.rewardWispCount } : {}),
+        ...(cDef.rewardUpgradeAll !== undefined ? { rewardUpgradeAll: cDef.rewardUpgradeAll } : {}),
+      });
+    }
 
     const defaultGradeId = this.data.grades[0]!.id;
     const dmgEntries: DamageEntrySnapshot[] = [...this.damageByUnit.entries()]
@@ -2231,7 +2684,9 @@ export class Simulation {
 
     const patternHint = activeBoss
       ? activeBoss.isBounty
-        ? '현상수배 도주 주의'
+        ? activeBoss.isEliteBounty
+          ? '정예 현상수배! 2배 보상+일류기연'
+          : '현상수배 도주 주의'
         : this.waveNumber >= 35 && this.waveNumber % 5 === 0
           ? '무한 이중권능: 독갑 + 혈옥주박 + 광풍!'
           : activeBoss.kind === 'white_tiger'
@@ -2285,6 +2740,15 @@ export class Simulation {
       pendingBoonOffer: this.pendingBoonOffers[0] ?? null,
       activeBoons: { ...this.activeBoons },
       totalBoonStacks,
+      pendingContractOffer: this.pendingContractOffer
+        ? {
+            seq: this.pendingContractOffer.seq,
+            wave: this.pendingContractOffer.wave,
+            options: [...this.pendingContractOffer.options],
+          }
+        : null,
+      contracts: contractItems,
+      benchPassives,
       missions: missionItems,
       missionsCompletedCount: this.completedMissions.size,
       damageMeter: {
@@ -2329,14 +2793,17 @@ export class Simulation {
     uid: number,
     synergy: FactionSynergySnapshot,
     tileBuff: TileAuraBuff,
+    benchPassives: BenchPassiveSummary,
   ): SlotView | null {
     const u = this.unitsByUid.get(uid);
     if (!u) return null;
     const def = this.data.unitsById.get(u.unitId);
+    const starLevel = u.starLevel ?? 0;
     const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
       u.unitId,
       synergy,
       tileBuff.atkPct,
+      starLevel,
     );
     const isField = u.slot.area === 'field';
     const harmonyRange = this.getBoonStacks('b_trinity_harmony') * 25;
@@ -2359,6 +2826,8 @@ export class Simulation {
       faction: def?.faction ?? 'orthodox',
       grade: u.grade,
       locked: u.locked,
+      starLevel,
+      awakenCost: getUnitAwakenCost(gradeDef?.rank ?? 1, starLevel),
       sellCoin: this.getUnitSellCoin(def?.sellCoin ?? 10),
       sellLuck: refundSpec.guaranteedLuck,
       sellLuckChancePct: refundSpec.chancePct,
@@ -2366,9 +2835,11 @@ export class Simulation {
       bonusAtk,
       range: (def?.range ?? 150) + harmonyRange + rangeMirrorBonus,
       skillName: def?.skill.name ?? '기본 초식',
-      armorShred: (def?.armorShred ?? 0) + crusherShred + trialShred + relicShred,
+      armorShred:
+        (def?.armorShred ?? 0) + crusherShred + trialShred + relicShred + benchPassives.armorShred,
       supportAura: def?.supportAura,
       passiveTrait: def?.passiveTrait,
+      benchPassive: def?.benchPassive,
       tileBuffAtkPct: tileBuff.atkPct,
       tileBuffSpeedPct: tileBuff.speedPct,
       sealed: isField ? this.isFieldSlotSealed(u.slot.index) : false,
@@ -2389,6 +2860,7 @@ export class Simulation {
       nextProjectileId: this.nextProjectileId,
       gambleSeq: this.gambleSeq,
       gambleWins: this.gambleWins,
+      awakenCount: this.awakenCount,
       coin: this.coin,
       luckStone: this.luckStone,
       summonCount: this.summonCount,
@@ -2401,7 +2873,17 @@ export class Simulation {
         seq: o.seq,
         wave: o.wave,
         options: [...o.options],
+        rerollsUsed: o.rerollsUsed ?? 0,
       })),
+      contractOfferSeq: this.contractOfferSeq,
+      pendingContractOffer: this.pendingContractOffer
+        ? {
+            seq: this.pendingContractOffer.seq,
+            wave: this.pendingContractOffer.wave,
+            options: [...this.pendingContractOffer.options],
+          }
+        : null,
+      activeContracts: this.activeContracts.map((c) => ({ ...c })),
       appliedStartCoinBonus: this.appliedStartCoinBonus,
       appliedStartLuckBonus: this.appliedStartLuckBonus,
       appliedStartWisps: { ...this.appliedStartWisps },
@@ -2450,6 +2932,7 @@ export class Simulation {
     this.nextProjectileId = Math.max(1, Math.floor(save.nextProjectileId));
     this.gambleSeq = Math.max(0, Math.floor(save.gambleSeq));
     this.gambleWins = Math.max(0, Math.floor(save.gambleWins));
+    this.awakenCount = Math.max(0, Math.floor(save.awakenCount ?? 0));
     this.coin = Math.max(0, Math.floor(save.coin));
     this.luckStone = Math.max(0, Math.floor(save.luckStone));
     this.summonCount = Math.max(0, Math.floor(save.summonCount));
@@ -2489,7 +2972,25 @@ export class Simulation {
           seq: o.seq,
           wave: o.wave,
           options: [...o.options],
+          rerollsUsed: typeof o.rerollsUsed === 'number' ? Math.max(0, Math.floor(o.rerollsUsed)) : 0,
         });
+      }
+    }
+
+    this.contractOfferSeq = Math.max(0, Math.floor(save.contractOfferSeq ?? 0));
+    this.pendingContractOffer = save.pendingContractOffer
+      ? {
+          seq: save.pendingContractOffer.seq,
+          wave: save.pendingContractOffer.wave,
+          options: [...save.pendingContractOffer.options],
+        }
+      : null;
+    this.activeContracts.length = 0;
+    if (Array.isArray(save.activeContracts)) {
+      for (const c of save.activeContracts) {
+        if (CONTRACTS_BY_ID.has(c.contractId)) {
+          this.activeContracts.push({ ...c });
+        }
       }
     }
 
@@ -2555,6 +3056,10 @@ export class Simulation {
       const src = save.units[i]!;
       const clone: UnitEntity = {
         ...src,
+        starLevel:
+          typeof src.starLevel === 'number'
+            ? Math.max(0, Math.min(MAX_UNIT_STAR_LEVEL, Math.floor(src.starLevel)))
+            : 0,
         slot: { area: src.slot.area, index: src.slot.index },
         attackDirX: typeof src.attackDirX === 'number' ? src.attackDirX : 0,
         attackDirY: typeof src.attackDirY === 'number' ? src.attackDirY : 1,

@@ -1255,7 +1255,7 @@ export class MetaStore {
     readonly bonusKeys: number;
     readonly bonusSilk: number;
   } {
-    const profile = this.getProfile();
+    const profile = this.getProfile(this.dailyDate);
     const unlockedIds: TitleId[] = [];
     let bonusGold = 0;
     let bonusKeys = 0;

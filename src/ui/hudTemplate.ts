@@ -72,7 +72,8 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
 
       <nav id="tactical-strip" class="tactical-strip" aria-label="강호 전술 지휘">
         <button id="btn-bounty" type="button" class="tac-pill bounty interactive" title="강호 현상수배범 호출 (30초 내 처치 시 영단·은자 획득)">📜 수배 (2장~)</button>
-        <button id="btn-mission" type="button" class="tac-pill mission interactive" title="강호 의뢰 목록">📋 의뢰 0/10</button>
+        <button id="btn-bounty-elite" type="button" class="tac-pill bounty-elite interactive" style="display:none" title="은자 300 투자로 정예 수배범 호출 (보상 2배 + 일류 기연 1개)">🔥 정예수배</button>
+        <button id="btn-mission" type="button" class="tac-pill mission interactive" title="강호 의뢰 · 밀명 계약 목록">📋 의뢰 0/10</button>
         <button id="btn-dps" type="button" class="tac-pill dps interactive" title="실시간 협객 딜량 순위표">⚔ 딜량표</button>
         <button id="btn-wardrobe" type="button" class="tac-pill wardrobe interactive" title="금수화장각 — 의복·검기 스킨 뽑기 및 비무대 테마">👘 화장각 1/${totalSkins}</button>
         <button id="btn-codex" type="button" class="tac-pill codex interactive" title="무림 명숙록 · 난이도 · 비경 시련">📖 명숙록 0/${totalUnits}</button>
@@ -147,6 +148,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
         </div>
         <div class="unit-select-actions">
           <button id="btn-unit-ascend" type="button" class="mini-3d-btn ascend-btn interactive">⚡ 등선</button>
+          <button id="btn-unit-awaken" type="button" class="mini-3d-btn awaken-btn interactive">⭐ 각성</button>
           <button id="btn-unit-lock" type="button" class="mini-3d-btn interactive">잠금</button>
           <button id="btn-unit-sell" type="button" class="mini-3d-btn sell-btn interactive">🗑 버리기</button>
         </div>
@@ -226,6 +228,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           </div>
           <div id="boon-cards" class="boon-cards"></div>
           <div class="boon-footer">
+            <button id="btn-boon-reroll" type="button" class="boon-reroll-btn interactive">🎲 비급 다시 뽑기 (150은자)</button>
             <button id="btn-boon-peek" type="button" class="boon-peek-btn interactive">👁 비무대 전황 살펴보기</button>
           </div>
         </div>

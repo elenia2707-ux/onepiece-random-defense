@@ -108,6 +108,11 @@
       "slowPct": 0,
       "slowSec": 0,
       "vfxTrack": "golden_palm"
+    },
+    "benchPassive": {
+      "name": "개방 정보망",
+      "desc": "대기석 배치 시 처치 은자 +8%",
+      "killCoinPct": 8
     }
   },
   {
@@ -184,6 +189,12 @@
       "slowPct": 0,
       "slowSec": 0,
       "vfxTrack": "blood_slash"
+    },
+    "benchPassive": {
+      "name": "하오문 상단",
+      "desc": "대기석 배치 시 복리 이자 +2%p · 한도 +60",
+      "interestPct": 2,
+      "interestCap": 60
     }
   },
   {
@@ -209,6 +220,11 @@
       "slowPct": 0,
       "slowSec": 0,
       "vfxTrack": "heavenly_demon"
+    },
+    "benchPassive": {
+      "name": "마교 단전술",
+      "desc": "대기석 배치 시 영약 성공률 +4%p",
+      "gambleBonusPct": 4
     }
   },
   {
@@ -340,6 +356,11 @@
       "slowPct": 0.3,
       "slowSec": 1.8,
       "vfxTrack": "emperor_thunder"
+    },
+    "benchPassive": {
+      "name": "남궁 검심",
+      "desc": "대기석 배치 시 전 협객 치명타율 +5%",
+      "critChancePct": 5
     }
   },
   {
@@ -396,6 +417,11 @@
       "slowPct": 0,
       "slowSec": 0,
       "vfxTrack": "blood_slash"
+    },
+    "benchPassive": {
+      "name": "혈도 파갑진",
+      "desc": "대기석 배치 시 전 협객 기본 파갑 +7",
+      "armorShred": 7
     }
   },
   {
@@ -421,6 +447,11 @@
       "slowPct": 0,
       "slowSec": 0,
       "vfxTrack": "heavenly_demon"
+    },
+    "benchPassive": {
+      "name": "흑풍 살기",
+      "desc": "대기석 배치 시 보스·수배 피해 +8%",
+      "bossDamagePct": 8
     }
   },
   {
@@ -476,6 +507,11 @@
       "slowPct": 0.3,
       "slowSec": 1.8,
       "vfxTrack": "plum_blossom"
+    },
+    "benchPassive": {
+      "name": "화산 검리",
+      "desc": "대기석 배치 시 전 협객 절기 피해 +10%",
+      "skillDamagePct": 10
     }
   },
   {
@@ -533,6 +569,13 @@
       "slowPct": 0,
       "slowSec": 0,
       "vfxTrack": "blood_slash"
+    },
+    "benchPassive": {
+      "name": "녹림 약탈령",
+      "desc": "대기석 배치 시 처치 은자 +12% · 이자 +2%p",
+      "killCoinPct": 12,
+      "interestPct": 2,
+      "interestCap": 60
     }
   },
   {
@@ -594,6 +637,12 @@
       "slowPct": 0.35,
       "slowSec": 2.0,
       "vfxTrack": "demonic_flame"
+    },
+    "benchPassive": {
+      "name": "천마 비전진",
+      "desc": "대기석 배치 시 치명피해 +0.22x · 보스 피해 +8%",
+      "critMultBonus": 0.22,
+      "bossDamagePct": 8
     }
   },
   {
@@ -1327,6 +1376,3 @@
     }
   }
 ]
-
-
-

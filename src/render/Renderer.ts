@@ -1308,6 +1308,54 @@ export class Renderer {
         });
       }
 
+      // 6b. Awakening star pips (★ / ★★ / ★★★)
+      const starLv = u.starLevel ?? 0;
+      if (starLv > 0 && !isDraggedOrigin) {
+        this.buckets[RenderLayer.WorldUI]!.push({
+          layer: RenderLayer.WorldUI,
+          sortY: drawY + 3,
+          render: (ctx) => {
+            const stars = '★'.repeat(Math.min(3, starLv));
+            const sy = drawFootY - spriteSize * 0.88;
+            ctx.save();
+            ctx.font = '900 15px "Pretendard", "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = 4;
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.strokeText(stars, drawX, sy);
+            ctx.fillStyle = starLv >= 3 ? '#fef08a' : '#facc15';
+            ctx.fillText(stars, drawX, sy);
+            ctx.restore();
+          },
+        });
+      }
+
+      // 6c. Bench passive active jade emblem ('진')
+      if (!isField && def.benchPassive && !isDraggedOrigin) {
+        this.buckets[RenderLayer.WorldUI]!.push({
+          layer: RenderLayer.WorldUI,
+          sortY: drawY + 3,
+          render: (ctx) => {
+            const bx = drawX - spriteSize * 0.32;
+            const by = drawFootY - spriteSize * 0.76;
+            ctx.beginPath();
+            ctx.arc(bx, by, 10.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#0d9488';
+            ctx.fill();
+            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.fillStyle = '#fefce8';
+            ctx.font = '900 11px "Pretendard", "Noto Sans KR", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('진', bx, by + 0.5);
+          },
+        });
+      }
+
       // 7. Drag Ghost (crisp nearest-neighbor)
       if (isDraggedOrigin) {
         const ghostSize = 118;

@@ -40,6 +40,104 @@ export interface TileAuraBuff {
   readonly speedPct: number;
 }
 
+export interface BenchPassiveActiveEntry {
+  readonly unitId: UnitId;
+  readonly name: string;
+  readonly passiveName: string;
+  readonly desc: string;
+}
+
+export interface BenchPassiveSummary {
+  readonly activeUnits: readonly BenchPassiveActiveEntry[];
+  readonly interestPct: number;
+  readonly interestCap: number;
+  readonly killCoinPct: number;
+  readonly gambleBonusPct: number;
+  readonly critChancePct: number;
+  readonly critMultBonus: number;
+  readonly armorShred: number;
+  readonly skillDamagePct: number;
+  readonly bossDamagePct: number;
+}
+
+export const MAX_UNIT_STAR_LEVEL = 3;
+
+export function getUnitAwakenCost(gradeRank: number, currentStar: number): number | null {
+  if (currentStar >= MAX_UNIT_STAR_LEVEL || currentStar < 0) return null;
+  const baseCosts = [300, 650, 1200] as const;
+  const rankSteps = [80, 150, 250] as const;
+  const idx = Math.min(2, Math.max(0, Math.floor(currentStar)));
+  const rankDelta = Math.max(0, gradeRank - 3);
+  return baseCosts[idx]! + rankDelta * rankSteps[idx]!;
+}
+
+export function getStarAtkBps(starLevel: number): number {
+  if (starLevel <= 0) return 0;
+  if (starLevel === 1) return 1800;
+  if (starLevel === 2) return 3800;
+  return 6200;
+}
+
+export function getStarSpeedPct(starLevel: number): number {
+  if (starLevel <= 0) return 0;
+  return Math.min(MAX_UNIT_STAR_LEVEL, starLevel) * 6;
+}
+
+export function computeBenchPassiveSummary(
+  units: readonly UnitEntity[],
+  unitsById: ReadonlyMap<UnitId, UnitDef>,
+): BenchPassiveSummary {
+  const seen = new Set<UnitId>();
+  const activeUnits: BenchPassiveActiveEntry[] = [];
+  let interestPct = 0;
+  let interestCap = 0;
+  let killCoinPct = 0;
+  let gambleBonusPct = 0;
+  let critChancePct = 0;
+  let critMultBonus = 0;
+  let armorShred = 0;
+  let skillDamagePct = 0;
+  let bossDamagePct = 0;
+
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i]!;
+    if (u.slot.area !== 'bench') continue;
+    if (seen.has(u.unitId)) continue;
+    const def = unitsById.get(u.unitId);
+    const bp = def?.benchPassive;
+    if (!def || !bp) continue;
+    seen.add(u.unitId);
+    activeUnits.push({
+      unitId: u.unitId,
+      name: def.name,
+      passiveName: bp.name,
+      desc: bp.desc,
+    });
+    interestPct += bp.interestPct ?? 0;
+    interestCap += bp.interestCap ?? 0;
+    killCoinPct += bp.killCoinPct ?? 0;
+    gambleBonusPct += bp.gambleBonusPct ?? 0;
+    critChancePct += bp.critChancePct ?? 0;
+    critMultBonus += bp.critMultBonus ?? 0;
+    armorShred += bp.armorShred ?? 0;
+    skillDamagePct += bp.skillDamagePct ?? 0;
+    bossDamagePct += bp.bossDamagePct ?? 0;
+  }
+
+  return {
+    activeUnits,
+    interestPct,
+    interestCap,
+    killCoinPct,
+    gambleBonusPct,
+    critChancePct,
+    critMultBonus,
+    armorShred,
+    skillDamagePct,
+    bossDamagePct,
+  };
+}
+
 export interface FactionSynergySnapshot {
   readonly counts: Readonly<Record<FactionId, number>>;
   readonly orthodoxTier: 0 | 1 | 2;
@@ -199,13 +297,14 @@ export interface CombatSystemContext {
     unitId: UnitId,
     synergy: FactionSynergySnapshot,
     tileBuffAtkPct: number,
+    starLevel?: number,
   ): { readonly baseAtk: number; readonly bonusAtk: number };
   allocateProjectileId(): number;
   recordDamage(unitId: UnitId, amount: number): void;
   addCoin(delta: number, isPilfer?: boolean): void;
   addLuckStone(delta: number): void;
   grantBossWisp(gradeId: GradeId): void;
-  onMonsterSlain(isWaveBoss: boolean, isBounty: boolean): void;
+  onMonsterSlain(isWaveBoss: boolean, isBounty: boolean, spawnTick?: number): void;
   triggerVictory(): void;
   offerBossBoons(wave: number): void;
   markPriorityDirty(): void;
@@ -213,6 +312,7 @@ export interface CombatSystemContext {
 
 export function stepCombat(ctx: CombatSystemContext): void {
   const synergy = computeFieldSynergy(ctx.units, ctx.data.unitsById);
+  const benchPassive = computeBenchPassiveSummary(ctx.units, ctx.data.unitsById);
   const swiftStacks = ctx.getBoonStacks('b_swift_formation');
   const setBonus = computeRelicSetBonuses(ctx.relicLv);
   const trigramAuraPct = getTrigramMirrorAuraPct(ctx.relicLv.eight_trigram_mirror ?? 0);
@@ -315,6 +415,10 @@ export function stepCombat(ctx: CombatSystemContext): void {
         if (tileBuff.speedPct > 0) {
           speedMult *= 1 + tileBuff.speedPct / 100;
         }
+        const starSpeedPct = getStarSpeedPct(u.starLevel ?? 0);
+        if (starSpeedPct > 0) {
+          speedMult *= 1 + starSpeedPct / 100;
+        }
         u.cooldownTicks = Math.max(1, Math.round(def.attackIntervalTicks / speedMult));
         u.attackCount++;
         u.lastAttackTick = ctx.currentTick;
@@ -334,16 +438,28 @@ export function stepCombat(ctx: CombatSystemContext): void {
           u.unitId,
           synergy,
           tileBuff.atkPct,
+          u.starLevel ?? 0,
         );
         const totalAtk = baseAtk + bonusAtk;
         const effectiveEveryN = Math.max(2, def.skill.everyN - acupointStacks);
         const isSkill = u.attackCount % effectiveEveryN === 0;
 
         const critBladeLv = ctx.relicLv.crimson_crit_blade ?? 0;
-        let critChance = Math.min(0.95, def.critChance + getCritBladeChanceBps(critBladeLv) / 10000);
-        let critMult = def.critMult + getCritBladeMultBonus(critBladeLv) + setBonus.critMultBonus;
+        let critChance = Math.min(
+          0.95,
+          def.critChance +
+            getCritBladeChanceBps(critBladeLv) / 10000 +
+            benchPassive.critChancePct / 100,
+        );
+        let critMult =
+          def.critMult +
+          getCritBladeMultBonus(critBladeLv) +
+          setBonus.critMultBonus +
+          benchPassive.critMultBonus;
         const skillJadePct =
-          getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) + setBonus.skillDamagePct;
+          getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) +
+          setBonus.skillDamagePct +
+          benchPassive.skillDamagePct;
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult =
           (1 + 0.35 * acupointStacks) *
@@ -395,7 +511,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
           def.faction === 'unorthodox' && trialCfg ? trialCfg.unorthodoxBonusShred : 0;
         const relicShred =
           getArmorGauntletShred(ctx.relicLv.armor_break_gauntlet ?? 0) + setBonus.armorShred;
-        const unitBaseShred = def.armorShred + crusherStacks * 6 + trialShred + relicShred;
+        const unitBaseShred =
+          def.armorShred + crusherStacks * 6 + trialShred + relicShred + benchPassive.armorShred;
         const echoBonusShred =
           isSkill && piercingEchoStacks > 0 ? (piercingEchoStacks >= 2 ? 34 : 18) : 0;
         const projectileShred =
@@ -501,10 +618,10 @@ export function stepCombat(ctx: CombatSystemContext): void {
           const m = victims[v]!;
           const dealt =
             m.entityId === p.targetEntityId ? p.damage : Math.max(1, Math.round(p.damage * 0.75));
-          applyHitToMonster(ctx, m, dealt, p, synergy, setBonus);
+          applyHitToMonster(ctx, m, dealt, p, synergy, setBonus, benchPassive);
         }
       } else if (target) {
-        applyHitToMonster(ctx, target, p.damage, p, synergy, setBonus);
+        applyHitToMonster(ctx, target, p.damage, p, synergy, setBonus, benchPassive);
       }
 
       // Boon: 구천연쇄뢰 (b_chain_thunder) — deterministic chain lightning arcs on skill impact
@@ -527,7 +644,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
           )
           .slice(0, maxChainTargets);
         for (let c = 0; c < chainCandidates.length; c++) {
-          applyHitToMonster(ctx, chainCandidates[c]!, chainDmg, p, synergy, setBonus);
+          applyHitToMonster(ctx, chainCandidates[c]!, chainDmg, p, synergy, setBonus, benchPassive);
         }
       }
 
@@ -543,6 +660,7 @@ function applyHitToMonster(
   p: ProjectileEntity,
   synergy: FactionSynergySnapshot,
   setBonus: ReturnType<typeof computeRelicSetBonuses>,
+  benchPassive: BenchPassiveSummary,
 ): void {
   const idx = ctx.monsters.indexOf(m);
   if (idx === -1) return;
@@ -571,7 +689,9 @@ function applyHitToMonster(
     effectiveRaw = Math.round(effectiveRaw * (1 + 0.28 * hunterStacks));
   }
   const slayerBannerPct =
-    getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0) + setBonus.bossDamagePct;
+    getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0) +
+    setBonus.bossDamagePct +
+    benchPassive.bossDamagePct;
   if (m.isBoss && slayerBannerPct > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + slayerBannerPct / 100));
   }
@@ -726,7 +846,9 @@ function applyHitToMonster(
       }
     }
     const abacusCoinPct =
-      getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0) + setBonus.killCoinPct;
+      getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0) +
+      setBonus.killCoinPct +
+      benchPassive.killCoinPct;
     const bountyBannerCoinPct = m.isBounty
       ? getSlayerBannerBountyCoinPct(ctx.relicLv.demon_slayer_banner ?? 0)
       : 0;
@@ -740,18 +862,23 @@ function applyHitToMonster(
 
     if (m.isBoss) {
       if (m.isBounty) {
-        ctx.onMonsterSlain(false, true);
+        ctx.onMonsterSlain(false, true, m.spawnTick);
         const rewardLuck = m.bountyRewardLuck ?? 2;
         ctx.addLuckStone(rewardLuck);
+        if (m.bountyRewardWispGrade) {
+          ctx.grantBossWisp(m.bountyRewardWispGrade);
+        }
         ctx.markPriorityDirty();
         ctx.events.emit('bounty:slain', {
           bossName: m.bossName ?? '현상수배범',
           rewardCoin: scaledRewardCoin,
           rewardLuck,
+          rewardWispGrade: m.bountyRewardWispGrade,
+          isElite: Boolean(m.isEliteBounty),
           tick: ctx.currentTick,
         });
       } else {
-        ctx.onMonsterSlain(true, false);
+        ctx.onMonsterSlain(true, false, m.spawnTick);
         ctx.tileHazards.length = 0;
         const endlessBonusLuck = ctx.waveNumber >= 35 && ctx.waveNumber % 5 === 0 ? 2 : 0;
         const rewardLuck =

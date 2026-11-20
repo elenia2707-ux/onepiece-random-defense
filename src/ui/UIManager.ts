@@ -5,7 +5,12 @@ import {
   TITLES_BY_ID,
   TRIAL_CONFIGS,
 } from '../core/relicFormulas';
-import type { SlotView, UISnapshot } from '../core/Simulation';
+import {
+  type ContractId,
+  getBoonRerollCost,
+  type SlotView,
+  type UISnapshot,
+} from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
@@ -167,6 +172,7 @@ export class UIManager {
 
   private tacticalStripEl!: HTMLElement;
   private bountyBtnEl!: HTMLButtonElement;
+  private bountyEliteBtnEl!: HTMLButtonElement;
   private missionBtnEl!: HTMLButtonElement;
   private dpsBtnEl!: HTMLButtonElement;
   private wardrobeBtnEl!: HTMLButtonElement;
@@ -192,6 +198,7 @@ export class UIManager {
   private unitStatEl!: HTMLElement;
   private unitShortcutsEl!: HTMLElement;
   private unitAscendBtnEl!: HTMLButtonElement;
+  private unitAwakenBtnEl!: HTMLButtonElement;
   private unitLockBtnEl!: HTMLButtonElement;
   private unitSellBtnEl!: HTMLButtonElement;
   private selectedBestAscendRecipe: { readonly recipeId: string; readonly chain: boolean } | null =
@@ -268,6 +275,7 @@ export class UIManager {
   private boonModalEl!: HTMLElement;
   private boonTitleEl!: HTMLElement;
   private boonCardsEl!: HTMLElement;
+  private boonRerollBtnEl!: HTMLButtonElement;
   private boonPeekBtnEl!: HTMLButtonElement;
   private boonMinimized = false;
   private lastBoonOfferSeq = -1;
@@ -464,6 +472,7 @@ export class UIManager {
 
     this.tacticalStripEl = this.mustGet('tactical-strip');
     this.bountyBtnEl = this.mustGet('btn-bounty') as HTMLButtonElement;
+    this.bountyEliteBtnEl = this.mustGet('btn-bounty-elite') as HTMLButtonElement;
     this.missionBtnEl = this.mustGet('btn-mission') as HTMLButtonElement;
     this.dpsBtnEl = this.mustGet('btn-dps') as HTMLButtonElement;
     this.wardrobeBtnEl = this.mustGet('btn-wardrobe') as HTMLButtonElement;
@@ -495,6 +504,7 @@ export class UIManager {
     this.unitStatEl = this.mustGet('sel-unit-stat');
     this.unitShortcutsEl = this.mustGet('sel-unit-shortcuts');
     this.unitAscendBtnEl = this.mustGet('btn-unit-ascend') as HTMLButtonElement;
+    this.unitAwakenBtnEl = this.mustGet('btn-unit-awaken') as HTMLButtonElement;
     this.unitLockBtnEl = this.mustGet('btn-unit-lock') as HTMLButtonElement;
     this.unitSellBtnEl = this.mustGet('btn-unit-sell') as HTMLButtonElement;
 
@@ -545,6 +555,7 @@ export class UIManager {
     this.boonModalEl = this.mustGet('boon-modal');
     this.boonTitleEl = this.mustGet('boon-title');
     this.boonCardsEl = this.mustGet('boon-cards');
+    this.boonRerollBtnEl = this.mustGet('btn-boon-reroll') as HTMLButtonElement;
     this.boonPeekBtnEl = this.mustGet('btn-boon-peek') as HTMLButtonElement;
 
     this.gameOverModalEl = this.mustGet('gameover-modal');
@@ -586,6 +597,9 @@ export class UIManager {
       const boonId = btn?.dataset.boonId as BoonId | undefined;
       if (!boonId) return;
       this.handlers.onPickBoon(boonId);
+    });
+    this.boonRerollBtnEl.addEventListener('click', () => {
+      this.handlers.onDispatch({ type: 'rerollBoon' });
     });
     this.boonPeekBtnEl.addEventListener('click', () => {
       this.boonMinimized = true;
@@ -653,6 +667,11 @@ export class UIManager {
         this.handlers.onDispatch({ type: 'craftAll' });
       } else if (act === 'open-craft') {
         this.openSheet('craft');
+      } else if (act === 'pick-contract') {
+        const contractId = btn.dataset.contractId as ContractId | undefined;
+        if (contractId) {
+          this.handlers.onDispatch({ type: 'pickContract', contractId });
+        }
       } else if (act === 'claim-daily') {
         const questId = btn.dataset.questId as DailyQuestId | undefined;
         if (questId) {
@@ -685,6 +704,9 @@ export class UIManager {
 
     this.bountyBtnEl.addEventListener('click', () => {
       this.handlers.onDispatch({ type: 'callBounty' });
+    });
+    this.bountyEliteBtnEl.addEventListener('click', () => {
+      this.handlers.onDispatch({ type: 'callBounty', elite: true });
     });
     this.missionBtnEl.addEventListener('click', () => this.toggleSheet('mission'));
     this.dpsBtnEl.addEventListener('click', () => {
@@ -785,6 +807,12 @@ export class UIManager {
         chain: this.selectedBestAscendRecipe.chain,
       });
       this.handlers.clearSelection();
+    });
+
+    this.unitAwakenBtnEl.addEventListener('click', () => {
+      const slotView = this.getSelectedSlotView(this.lastSnapshot);
+      if (!slotView) return;
+      this.handlers.onDispatch({ type: 'awaken', uid: slotView.uid });
     });
 
     this.unitLockBtnEl.addEventListener('click', () => {
@@ -980,6 +1008,15 @@ export class UIManager {
         this.craftSearchQuery = '';
         this.prevSheetSignature = '';
         if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'pick-contract') {
+        const contractId = btn.dataset.contractId as ContractId | undefined;
+        if (contractId) {
+          this.handlers.onDispatch({ type: 'pickContract', contractId });
+        }
+      } else if (action === 'call-bounty') {
+        this.handlers.onDispatch({ type: 'callBounty' });
+      } else if (action === 'call-bounty-elite') {
+        this.handlers.onDispatch({ type: 'callBounty', elite: true });
       } else if (action === 'claim-daily') {
         const questId = btn.dataset.questId as DailyQuestId | undefined;
         if (questId) {
@@ -1481,15 +1518,32 @@ export class UIManager {
     this.bountyBtnEl.classList.toggle('ready', bnt.canCall);
     this.bountyBtnEl.classList.toggle('active-chase', bnt.active);
 
+    if (bnt.eliteUnlocked && !bnt.active) {
+      this.bountyEliteBtnEl.style.display = 'inline-flex';
+      const eliteText =
+        bnt.cooldownTicksLeft > 0
+          ? `🔥 정비 ${Math.ceil(bnt.cooldownTicksLeft / 30)}s`
+          : `🔥 정예 (${bnt.eliteCost})`;
+      this.setText(this.bountyEliteBtnEl, eliteText);
+      this.bountyEliteBtnEl.classList.toggle('ready', bnt.canCallElite);
+    } else {
+      this.bountyEliteBtnEl.style.display = 'none';
+    }
+
+    const hasPendingContract = snapshot.pendingContractOffer !== null;
     const dailyGiftSuffix = meta.claimableDailyCount > 0 ? ` 🎁${meta.claimableDailyCount}` : '';
-    this.setText(
-      this.missionBtnEl,
-      `📋 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length}${dailyGiftSuffix}`,
-    );
+    const missionLabel = hasPendingContract
+      ? `📜 밀명 3택!${dailyGiftSuffix}`
+      : `📋 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length}${dailyGiftSuffix}`;
+    this.setText(this.missionBtnEl, missionLabel);
     this.missionBtnEl.classList.toggle('active', this.activeSheet === 'mission');
     this.missionBtnEl.classList.toggle(
+      'has-contract',
+      hasPendingContract && this.activeSheet !== 'mission',
+    );
+    this.missionBtnEl.classList.toggle(
       'draw-ready',
-      meta.claimableDailyCount > 0 && this.activeSheet !== 'mission',
+      (hasPendingContract || meta.claimableDailyCount > 0) && this.activeSheet !== 'mission',
     );
 
     const totalSkinCount = this.data.heroSkins.length + this.data.courtSkins.length;
@@ -1655,7 +1709,10 @@ export class UIManager {
       }
     }
 
-    const sig = `${offer.seq}:${offer.wave}:${this.boonMinimized ? 1 : 0}:${offer.options.map((id) => `${id}=${snapshot.activeBoons[id] ?? 0}`).join(',')}`;
+    const rerollsUsed = offer.rerollsUsed ?? 0;
+    const rerollCost = getBoonRerollCost(rerollsUsed);
+    const canReroll = snapshot.coin >= rerollCost;
+    const sig = `${offer.seq}:${offer.wave}:${rerollsUsed}:${canReroll ? 1 : 0}:${this.boonMinimized ? 1 : 0}:${offer.options.map((id) => `${id}=${snapshot.activeBoons[id] ?? 0}`).join(',')}`;
     if (sig === this.prevBoonModalSig) {
       return;
     }
@@ -1666,6 +1723,13 @@ export class UIManager {
     this.setText(
       this.boonPeekPillEl,
       `☯ 제 ${offerWaveStr} 장 강호 기연 선택 대기중 — 비급 펼치기`,
+    );
+
+    this.boonRerollBtnEl.disabled = !canReroll;
+    this.boonRerollBtnEl.classList.toggle('is-affordable', canReroll);
+    this.setText(
+      this.boonRerollBtnEl,
+      `🎲 비급 다시 뽑기 (은자 ${rerollCost.toLocaleString('ko-KR')})`,
     );
 
     if (this.boonMinimized) {
@@ -1963,7 +2027,9 @@ export class UIManager {
     const rec = this.pickRecommendedRecipe(snapshot);
     const dm = snapshot.damageMeter;
     const syn = snapshot.synergy;
-    const sig = `${meta.rev}:${meta.claimableDailyCount}:${dm.totalDamage}:${dm.entries.length}:${syn.orthodoxTier}:${syn.unorthodoxTier}:${syn.demonicTier}:${syn.trinityActive ? 1 : 0}:${snapshot.totalBoonStacks}:${snapshot.craft.rev}:${this.pinnedRecipeId ?? ''}:${rec?.id ?? ''}:${snapshot.missionsCompletedCount}:${snapshot.monstersSlain}:${snapshot.wave}`;
+    const benchSig = snapshot.benchPassives.activeUnits.map((b) => b.unitId).join(',');
+    const contractSig = `${snapshot.pendingContractOffer?.seq ?? 0}:${snapshot.contracts.map((c) => `${c.contractId}=${c.progress}/${c.status}`).join(',')}`;
+    const sig = `${meta.rev}:${meta.claimableDailyCount}:${dm.totalDamage}:${dm.entries.length}:${syn.orthodoxTier}:${syn.unorthodoxTier}:${syn.demonicTier}:${syn.trinityActive ? 1 : 0}:${snapshot.totalBoonStacks}:${benchSig}:${contractSig}:${snapshot.craft.rev}:${this.pinnedRecipeId ?? ''}:${rec?.id ?? ''}:${snapshot.missionsCompletedCount}:${snapshot.monstersSlain}:${snapshot.wave}`;
     if (sig === this.prevDesktopWingSig) return;
     this.prevDesktopWingSig = sig;
 
@@ -2126,7 +2192,9 @@ export class UIManager {
     }
 
     const meta = this.handlers.getMetaProfile();
-    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
+    const canAffordAwaken =
+      slotView.awakenCost !== null && snapshot.coin >= slotView.awakenCost;
+    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
     if (sig === this.prevSelectSignature) {
       return;
     }
@@ -2151,7 +2219,8 @@ export class UIManager {
     this.unitGradePillEl.style.backgroundColor = gradeDef.color;
     this.unitFactionPillEl.textContent = fMeta.label;
     this.unitFactionPillEl.style.backgroundColor = fMeta.color;
-    this.unitNameEl.textContent = slotView.name;
+    const starSuffix = slotView.starLevel > 0 ? ` ${'★'.repeat(slotView.starLevel)}` : '';
+    this.unitNameEl.textContent = `${slotView.name}${starSuffix}`;
 
     const atkText =
       slotView.bonusAtk > 0
@@ -2183,6 +2252,16 @@ export class UIManager {
       warnChip.className = 'shortcut-chip hazard-chip warn';
       warnChip.textContent = '🚨 주박 예고! 다른 칸으로 드래그 회피';
       this.unitShortcutsEl.appendChild(warnChip);
+    }
+
+    if (slotView.benchPassive) {
+      const benchChip = document.createElement('span');
+      const isBenchNow = sel.area === 'bench';
+      benchChip.className = `shortcut-chip bench-chip${isBenchNow ? ' active' : ''}`;
+      benchChip.textContent = isBenchNow
+        ? `🏯 대기진 활성 · ${slotView.benchPassive.name} (${slotView.benchPassive.desc})`
+        : `🏯 대기진 · ${slotView.benchPassive.name} (대기석 배치 시 발동)`;
+      this.unitShortcutsEl.appendChild(benchChip);
     }
 
     if (slotView.passiveTrait) {
@@ -2257,6 +2336,18 @@ export class UIManager {
       this.unitAscendBtnEl.style.display = 'none';
     }
 
+    if (slotView.awakenCost !== null) {
+      this.unitAwakenBtnEl.disabled = !canAffordAwaken;
+      this.unitAwakenBtnEl.classList.toggle('ready', canAffordAwaken);
+      this.unitAwakenBtnEl.classList.remove('maxed');
+      this.unitAwakenBtnEl.innerHTML = `<span>⭐ ${slotView.starLevel + 1}성</span><span class="mini-price">${ICON.coin}${slotView.awakenCost}</span>`;
+    } else {
+      this.unitAwakenBtnEl.disabled = true;
+      this.unitAwakenBtnEl.classList.remove('ready');
+      this.unitAwakenBtnEl.classList.add('maxed');
+      this.unitAwakenBtnEl.innerHTML = '<span>★★★</span><span class="mini-price">극성</span>';
+    }
+
     this.unitLockBtnEl.classList.toggle('lock-on', slotView.locked);
     this.unitLockBtnEl.innerHTML = slotView.locked
       ? '<span>🔒</span><span>해제</span>'
@@ -2303,7 +2394,10 @@ export class UIManager {
       const dailySig = meta.dailyQuests
         .map((q) => `${q.def.id}=${q.progress}/${q.claimed ? 1 : 0}`)
         .join(',');
-      sig = `mission:${meta.rev}:${dailySig}:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
+      const contractSig = `${snapshot.pendingContractOffer?.seq ?? 0}:${snapshot.contracts.map((c) => `${c.contractId}=${c.progress}/${c.status}`).join(',')}`;
+      const bnt = snapshot.bounty;
+      const bountySig = `${bnt.canCall ? 1 : 0}:${bnt.canCallElite ? 1 : 0}:${bnt.active ? 1 : 0}:${Math.ceil(bnt.cooldownTicksLeft / 30)}:${Math.ceil(bnt.activeTicksLeft / 30)}`;
+      sig = `mission:${meta.rev}:${snapshot.wave}:${contractSig}:${bountySig}:${dailySig}:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
     } else {
       sig = `relic:${this.relicFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
     }

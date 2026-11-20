@@ -4,6 +4,7 @@ import {
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
 import type { RecipeGraph } from '../../craft/RecipeGraph';
+import { CONTRACTS_BY_ID } from '../../data/contracts';
 import type { GameDataBundle, GradeId, RecipeDef, UnitId, UpgradeGroupId } from '../../data/types';
 import type { MetaProfile } from '../../platform/MetaStore';
 import type { SpriteCache } from '../../render/SpriteCache';
@@ -698,7 +699,154 @@ export function buildMissionSheetView(
   const dailyDone = meta.dailyQuests.filter((q) => q.claimed).length;
   const claimableNote =
     meta.claimableDailyCount > 0 ? ` · 🎁 일일 보상 ${meta.claimableDailyCount}건 수령 가능!` : '';
-  const subtitle = `출정 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length} · 일일 과제 ${dailyDone}/3${claimableNote}`;
+  const contractNote = snapshot.pendingContractOffer ? ' · 📜 밀명 3택 도착!' : '';
+  const subtitle = `출정 의뢰 ${snapshot.missionsCompletedCount}/${snapshot.missions.length} · 일일 과제 ${dailyDone}/3${contractNote}${claimableNote}`;
+
+  const formatContractRewards = (c: {
+    readonly rewardCoin: number;
+    readonly rewardLuck: number;
+    readonly rewardWispGrade?: GradeId;
+    readonly rewardWispCount?: number;
+    readonly rewardUpgradeAll?: number;
+  }): string => {
+    const out: string[] = [];
+    if (c.rewardCoin > 0) {
+      out.push(`<span class="mission-reward-pill coin">${ICON.coin}+${c.rewardCoin}</span>`);
+    }
+    if (c.rewardLuck > 0) {
+      out.push(`<span class="mission-reward-pill luck">${ICON.elixir}+${c.rewardLuck}</span>`);
+    }
+    if (c.rewardWispGrade) {
+      const gName = data.gradesById.get(c.rewardWispGrade)?.name ?? c.rewardWispGrade;
+      out.push(
+        `<span class="mission-reward-pill wisp">${ICON.wisp}${escapeHtml(gName)} ×${c.rewardWispCount ?? 1}</span>`,
+      );
+    }
+    if (c.rewardUpgradeAll && c.rewardUpgradeAll > 0) {
+      out.push(
+        `<span class="mission-reward-pill gold">☯ 전 문파 내공 +${c.rewardUpgradeAll}Lv</span>`,
+      );
+    }
+    return out.join('');
+  };
+
+  let contractSectionHtml = '';
+  const pendingOffer = snapshot.pendingContractOffer;
+  if (pendingOffer) {
+    const offerCards = pendingOffer.options
+      .map((cid) => {
+        const def = CONTRACTS_BY_ID.get(cid);
+        if (!def) return '';
+        return `
+          <div class="sheet-card contract-offer-card">
+            <div class="mission-main">
+              <div class="card-name-row">
+                <span class="grade-pill contract-tag-pill">${escapeHtml(def.tag)}</span>
+                <span class="card-name">${escapeHtml(def.name)}</span>
+                <div class="mission-rewards">${formatContractRewards(def)}</div>
+              </div>
+              <div class="card-sub">${escapeHtml(def.desc)} · 기한 ${def.durationWaves}장</div>
+            </div>
+            <button
+              type="button"
+              class="card-cta-btn cta-gold interactive"
+              data-sheet-action="pick-contract"
+              data-contract-id="${def.id}"
+            >
+              <span>밀명 수락</span>
+            </button>
+          </div>
+        `;
+      })
+      .join('');
+    contractSectionHtml += `
+      <div class="sheet-section-label contract-section-label">📜 제 ${String(pendingOffer.wave).padStart(2, '0')} 장 강호 밀명 · 3택 1 고위험 계약</div>
+      ${offerCards}
+    `;
+  }
+
+  if (snapshot.contracts.length > 0) {
+    const activeCards = snapshot.contracts
+      .map((c) => {
+        const pct = Math.min(100, Math.round((c.progress / Math.max(1, c.target)) * 100));
+        const remWaves = Math.max(0, c.deadlineWave - snapshot.wave);
+        const statusStamp =
+          c.status === 'completed'
+            ? '<span class="mission-stamp done">완수 ✓</span>'
+            : c.status === 'failed'
+              ? '<span class="mission-stamp failed">기한 만료</span>'
+              : `<span class="mission-stamp">${c.progress}/${c.target} · 잔여 ${remWaves}장</span>`;
+        return `
+          <div class="sheet-card mission-card contract-active-card${c.status === 'completed' ? ' mission-done' : c.status === 'failed' ? ' contract-failed' : ''}">
+            <div class="mission-main">
+              <div class="card-name-row">
+                <span class="grade-pill contract-tag-pill">${escapeHtml(c.tag)}</span>
+                <span class="card-name">${escapeHtml(c.name)}</span>
+                <div class="mission-rewards">${formatContractRewards(c)}</div>
+              </div>
+              <div class="card-sub">${escapeHtml(c.desc)}</div>
+              <div class="mission-prog-track">
+                <div class="mission-prog-fill contract" style="width:${pct}%"></div>
+              </div>
+            </div>
+            ${statusStamp}
+          </div>
+        `;
+      })
+      .join('');
+    contractSectionHtml += `
+      <div class="sheet-section-label contract-section-label">⚔ 진행 · 완료된 강호 밀명 계약</div>
+      ${activeCards}
+    `;
+  } else if (!pendingOffer) {
+    contractSectionHtml = `
+      <div class="boon-owned-empty">
+        📜 제 05 장 · 제 15 장 도달 시 고위험·고보상 <b>『강호 밀명 3택 1 계약』</b>이 도착합니다.
+      </div>
+    `;
+  }
+
+  const bnt = snapshot.bounty;
+  const bountyStatusText = bnt.active
+    ? `🎯 현상수배범 추격 중 (${Math.ceil(bnt.activeTicksLeft / 30)}초 남음)`
+    : bnt.cooldownTicksLeft > 0
+      ? `재정비 중 (${Math.ceil(bnt.cooldownTicksLeft / 30)}초 남음)`
+      : bnt.unlocked
+        ? '즉시 호출 가능'
+        : '제 02 장부터 해금';
+  const bountyStripHtml = `
+    <div class="sheet-card bounty-sheet-bar">
+      <div class="mission-main">
+        <div class="card-name-row">
+          <span class="grade-pill" style="background:#b91c1c">현상수배령</span>
+          <span class="card-name">강호 수배범 호출 (${bountyStatusText})</span>
+        </div>
+        <div class="card-sub">
+          일반 수배(무료 · 2장~) 또는 <b>🔥 정예 수배(은자 ${bnt.eliteCost} · 8장~ · 2.2배 체력 / 2배 보상 + 일류 기연 +1)</b>
+        </div>
+      </div>
+      <div class="upgrade-cta-row">
+        <button
+          type="button"
+          class="card-cta-btn ${bnt.canCall ? 'interactive' : 'cta-disabled'}"
+          data-sheet-action="call-bounty"
+          ${bnt.canCall ? '' : 'disabled'}
+        >
+          <span>일반 수배</span>
+          <span class="mini-price">무료</span>
+        </button>
+        <button
+          type="button"
+          class="card-cta-btn ${bnt.canCallElite ? 'cta-crimson interactive' : 'cta-disabled'}"
+          data-sheet-action="call-bounty-elite"
+          ${bnt.canCallElite ? '' : 'disabled'}
+        >
+          <span>🔥 정예</span>
+          <span class="mini-price">${ICON.coin}${bnt.eliteCost}</span>
+        </button>
+      </div>
+    </div>
+  `;
 
   const dailyCardsHtml = meta.dailyQuests
     .map((dq) => {
@@ -792,6 +940,8 @@ export function buildMissionSheetView(
     .join('');
 
   const bodyHtml = `
+    ${contractSectionHtml}
+    ${bountyStripHtml}
     <div class="sheet-section-label daily-section-label">📅 일일 강호 수련 과제 (${escapeHtml(meta.dailyDate)} · 영구 재화 지급 · 누적 완료 ${meta.totalDailyClaimed}회)</div>
     ${dailyCardsHtml}
     <div class="sheet-section-label">📜 이번 출정 강호 의뢰 (${snapshot.missionsCompletedCount}/${snapshot.missions.length} · 달성 시 즉시 자동 지급)</div>

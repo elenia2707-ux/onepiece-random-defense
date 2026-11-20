@@ -482,6 +482,24 @@
   animation: chipGlow 0.75s ease-in-out infinite alternate;
 }
 
+.mini-3d-btn.awaken-btn {
+  min-width: 66px;
+  background: linear-gradient(180deg, #475569 0%, #334155 100%);
+  opacity: 0.78;
+}
+
+.mini-3d-btn.awaken-btn.ready {
+  background: linear-gradient(180deg, #fbbf24 0%, #b45309 100%);
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 1.5px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  opacity: 1;
+}
+
+.mini-3d-btn.awaken-btn.maxed {
+  background: linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%);
+  color: #fef08a;
+  opacity: 0.92;
+}
+
 .mini-3d-btn.lock-on {
   background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
 }

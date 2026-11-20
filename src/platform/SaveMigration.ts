@@ -1,4 +1,9 @@
-import type { BoonOfferSnapshot, GambleResultSnapshot } from '../core/Simulation';
+import type {
+  ActiveContractState,
+  BoonOfferSnapshot,
+  ContractOfferSnapshot,
+  GambleResultSnapshot,
+} from '../core/Simulation';
 import type {
   BoonId,
   DifficultyId,
@@ -35,6 +40,11 @@ export interface RunSaveData {
   readonly activeBoons: Readonly<Record<BoonId, number>>;
   readonly boonOfferSeq: number;
   readonly pendingBoonOffers: readonly BoonOfferSnapshot[];
+  readonly contractOfferSeq?: number;
+  readonly pendingContractOffer?: ContractOfferSnapshot | null;
+  readonly activeContracts?: readonly ActiveContractState[];
+  readonly bossSpawnTick?: number;
+  readonly awakenCount?: number;
   readonly appliedStartCoinBonus: number;
   readonly appliedStartLuckBonus?: number;
   readonly appliedStartWisps: Readonly<Record<GradeId, number>>;

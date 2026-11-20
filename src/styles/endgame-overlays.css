@@ -352,6 +352,34 @@
 .boon-footer {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.boon-reroll-btn {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(180deg, #475569 0%, #334155 100%);
+  box-shadow: 0 3px 0 var(--ink), inset 0 1.5px 0 rgba(255, 255, 255, 0.22);
+  color: #cbd5e1;
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  text-shadow: var(--outline-1);
+  opacity: 0.72;
+}
+
+.boon-reroll-btn.is-affordable {
+  background: linear-gradient(180deg, #fde047 0%, #d97706 100%);
+  color: #fffbeb;
+  opacity: 1;
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 1.5px #fef08a, inset 0 2px 0 rgba(255, 255, 255, 0.5);
+}
+
+.boon-reroll-btn.is-affordable:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink);
 }
 
 .boon-peek-btn {

@@ -4,6 +4,7 @@ import {
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
 import type { RecipeGraph } from '../../craft/RecipeGraph';
+import { CONTRACTS_BY_ID } from '../../data/contracts';
 import type { GameDataBundle, RecipeDef } from '../../data/types';
 import type { MetaProfile } from '../../platform/MetaStore';
 import type { SpriteCache } from '../../render/SpriteCache';
@@ -48,6 +49,14 @@ export function buildDesktopLeftWingHtml(params: {
     synBadges.push('<span class="wing-chip chip-trinity">✦ 삼재합진 활성</span>');
   }
 
+  // Active Bench Passives
+  const benchChipsHtml = snapshot.benchPassives.activeUnits
+    .map(
+      (bp) =>
+        `<span class="wing-chip chip-bench" title="${escapeHtml(bp.name)}: ${escapeHtml(bp.desc)}">🏯 ${escapeHtml(bp.passiveName)}</span>`,
+    )
+    .join('');
+
   // Active Relic Set Resonances
   const sets = computeRelicSetStatuses(snapshot.relics).filter((s) => s.tier > 0);
   const setHtml = sets
@@ -82,6 +91,9 @@ export function buildDesktopLeftWingHtml(params: {
       `
       : '';
 
+  const hasAnyChip =
+    synBadges.length > 0 || benchChipsHtml.length > 0 || setHtml.length > 0 || boonHtml.length > 0;
+
   return `
     <section class="wing-card wing-dps-card">
       <div class="wing-head">
@@ -94,14 +106,15 @@ export function buildDesktopLeftWingHtml(params: {
 
     <section class="wing-card wing-buff-card">
       <div class="wing-head">
-        <span class="wing-title">☯ 진법 · 신물 공명 · 비급</span>
-        <span class="wing-meta">비급 ${snapshot.totalBoonStacks}중첩</span>
+        <span class="wing-title">☯ 진법 · 대기진 · 비급</span>
+        <span class="wing-meta">비급 ${snapshot.totalBoonStacks} · 대기진 ${snapshot.benchPassives.activeUnits.length}</span>
       </div>
       <div class="wing-chip-wrap">
         ${synBadges.join('')}
+        ${benchChipsHtml}
         ${setHtml}
         ${boonHtml}
-        ${synBadges.length === 0 && setHtml.length === 0 && boonHtml.length === 0 ? '<div class="wing-empty">협객 배치 및 영물 토벌 시 활성 진법·신물 세트·기연 비급이 표시됩니다.</div>' : ''}
+        ${hasAnyChip ? '' : '<div class="wing-empty">협객 배치·대기석 진법 및 영물 토벌 시 활성 버프가 표시됩니다.</div>'}
       </div>
     </section>
   `;
@@ -171,6 +184,52 @@ export function buildDesktopRightWingHtml(params: {
     }
   }
 
+  // Pending 3-choice contract or active contract tracker
+  let contractWingHtml = '';
+  if (snapshot.pendingContractOffer) {
+    const opts = snapshot.pendingContractOffer.options
+      .map((cid) => {
+        const def = CONTRACTS_BY_ID.get(cid);
+        if (!def) return '';
+        return `
+          <button type="button" class="wing-contract-pick interactive" data-wing-action="pick-contract" data-contract-id="${def.id}" title="${escapeHtml(def.desc)}">
+            <b>📜 ${escapeHtml(def.name)}</b>
+            <span>${escapeHtml(def.desc)}</span>
+          </button>
+        `;
+      })
+      .join('');
+    contractWingHtml = `
+      <div class="wing-contract-box">
+        <div class="wing-contract-title">📜 밀명 3택 도착! (1개 수락)</div>
+        ${opts}
+      </div>
+      <div class="wing-divider"></div>
+    `;
+  } else if (snapshot.contracts.length > 0) {
+    contractWingHtml =
+      snapshot.contracts
+        .map((c) => {
+          const pct = Math.min(100, Math.round((c.progress / Math.max(1, c.target)) * 100));
+          const tag =
+            c.status === 'completed'
+              ? '<span class="wing-done-tag">완수</span>'
+              : c.status === 'failed'
+                ? '<span class="wing-prog-tag">만료</span>'
+                : `<span class="wing-prog-tag">${c.progress}/${c.target}</span>`;
+          return `
+            <div class="wing-mission-row wing-contract-row${c.status === 'completed' ? ' is-done' : ''}">
+              <div class="wing-mission-top">
+                <span class="wing-mission-name">📜 ${escapeHtml(c.name)}</span>
+                ${tag}
+              </div>
+              <div class="wing-bar"><span style="width:${pct}%"></span></div>
+            </div>
+          `;
+        })
+        .join('') + '<div class="wing-divider"></div>';
+  }
+
   // Daily Martial Quests (claimable first)
   const dailyHtml = meta.dailyQuests
     .map((dq) => {
@@ -228,10 +287,11 @@ export function buildDesktopRightWingHtml(params: {
 
     <section class="wing-card wing-mission-card">
       <div class="wing-head">
-        <span class="wing-title">📋 일일 수련 · 강호 의뢰</span>
+        <span class="wing-title">📋 밀명 · 일일 수련 · 의뢰</span>
         <span class="wing-meta">${snapshot.missionsCompletedCount}/${snapshot.missions.length}</span>
       </div>
       <div class="wing-mission-scroll">
+        ${contractWingHtml}
         ${dailyHtml}
         <div class="wing-divider"></div>
         ${missionHtml}
