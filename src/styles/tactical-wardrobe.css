@@ -1592,6 +1592,145 @@
   animation: chipGlow 0.9s ease-in-out infinite alternate;
 }
 
+/* v3.0: Haptic Tactile Micro-Kick (iOS/Desktop fallback, zero layout shift) */
+@keyframes hapticKickImpact {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.006); }
+  100% { transform: scale(1); }
+}
+
+@keyframes hapticKickWarn {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  65% { transform: translateX(2px); }
+}
+
+#app.haptic-kick-impact {
+  animation: hapticKickImpact 120ms ease-out;
+}
+
+#app.haptic-kick-warn {
+  animation: hapticKickWarn 140ms ease-out;
+}
+
+/* v3.0: Mythic Relic Engraving & 강호 경지 단련 Mastery Panel */
+.mastery-panel {
+  background: linear-gradient(180deg, rgba(16, 48, 46, 0.92) 0%, rgba(7, 25, 24, 0.96) 100%);
+  border: 2.5px solid var(--ink);
+  border-radius: 14px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.mastery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.mastery-card {
+  background: rgba(11, 31, 32, 0.92);
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-radius: 11px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mastery-card.active {
+  border-color: rgba(250, 204, 21, 0.7);
+}
+
+.mastery-card-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mastery-name {
+  font-size: 13px;
+  color: #fff;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mastery-lv {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: #fde047;
+  font-variant-numeric: tabular-nums;
+}
+
+.mastery-desc {
+  font-size: 11.5px;
+  color: #cbd5e1;
+  line-height: 1.3;
+}
+
+.mastery-btn {
+  width: 100%;
+  min-height: 30px !important;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+}
+
+.relic-engrave-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ca8a04, #ea580c);
+  color: #fef9c3;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid #fde047;
+}
+
+.relic-card.relic-engraved {
+  box-shadow: 0 0 0 2px #facc15, inset 0 0 18px rgba(250, 204, 21, 0.14);
+}
+
+/* v3.0: Tactical Arena Theme Rule badges */
+.arena-rule-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0369a1, #7e22ce);
+  color: #f0f9ff;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(186, 230, 253, 0.7);
+}
+
+.arena-rule-desc {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: #fde047;
+  font-weight: 600;
+}
+
+.skin-card.court-tactical {
+  border-color: rgba(56, 189, 248, 0.65);
+}
+
+.relic-buff-pill.arena-rule-pill {
+  background: linear-gradient(180deg, #0369a1 0%, #312e81 100%);
+  border-color: #7dd3fc;
+  color: #e0f2fe;
+}
+
+.hud-btn.bgm-btn.muted {
+  opacity: 0.65;
+  filter: grayscale(0.45);
+}
+
+
 
 
 

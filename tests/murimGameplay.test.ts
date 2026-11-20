@@ -35,6 +35,7 @@ import {
   type StorageLike,
 } from '../src/platform/MetaStore';
 import { migrateRunSave, RUN_SAVE_SCHEMA_VERSION } from '../src/platform/SaveMigration';
+import { HapticsController } from '../src/platform/Haptics';
 import { SoundSynthesizer } from '../src/platform/SoundSynthesizer';
 import {
   UNIT_COMBAT_PROFILES,
@@ -172,7 +173,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const data = loadGameData();
     expect(data.units.length).toBe(44);
     expect(data.heroSkins.length).toBe(16);
-    expect(data.courtSkins.length).toBe(5);
+    expect(data.courtSkins.length).toBe(8);
 
     const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
     const spriteSet = new Set(
@@ -3320,6 +3321,126 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(boostedCheonma.baseAtk + boostedCheonma.bonusAtk).toBeGreaterThan(
       baseCheonma.baseAtk + baseCheonma.bonusAtk,
     );
+  });
+
+  it('v3.0: supports dynamic BGM/SFX & Haptics, Mythic Relic Engraving, 강호 경지 단련 Mastery, and 3 Arena Theme hazard rules', () => {
+    const data = loadGameData();
+    const backing = new Map<string, string>();
+    const storage: StorageLike = {
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+      removeItem: (k) => {
+        backing.delete(k);
+      },
+    };
+
+    // 1. SoundSynthesizer BGM state + toggle persistence + new SFX + HapticsController
+    const sfx = new SoundSynthesizer(storage);
+    expect(sfx.isBgmEnabled()).toBe(true);
+    expect(sfx.toggleBgm()).toBe(false);
+    sfx.setBgmState('boss');
+    expect(sfx.getBgmState()).toBe('boss');
+    sfx.playAwaken(3);
+    sfx.playComboSkill();
+    sfx.playBossRetry();
+    sfx.playMilestone();
+    const sfxReloaded = new SoundSynthesizer(storage);
+    expect(sfxReloaded.isBgmEnabled()).toBe(false);
+
+    const hap = new HapticsController(storage);
+    expect(hap.isEnabled()).toBe(true);
+    hap.trigger('heavy');
+    expect(hap.toggle()).toBe(false);
+    expect(new HapticsController(storage).isEnabled()).toBe(false);
+
+    // 2. Mythic Relic Engraving (Lv.15 sink) & 강호 경지 단련 Mastery (gold+silk sink) + persistence
+    const meta = new MetaStore(storage);
+    const jadeDef = data.relicsById.get('founding_jade_seal')!;
+    // Cannot engrave below Lv.15
+    expect(meta.engraveRelic(jadeDef).ok).toBe(false);
+
+    // Grant resources to max jade seal to Lv.15 + engrave + upgrade mastery
+    meta.grantDevMeta(50000, 10);
+    // Earn silk via Boss Rush clear + endless 50 clear
+    meta.settleRun({
+      wave: 10,
+      monstersSlain: 10,
+      bossesSlain: 10,
+      runMode: 'boss_rush',
+      victory: true,
+      elapsedTicks: 5000,
+    });
+    for (let i = 0; i < 15; i++) {
+      const up = meta.upgradeRelic(jadeDef);
+      expect(up.ok).toBe(true);
+    }
+    expect(meta.getRelicLevels().founding_jade_seal).toBe(15);
+
+    const eng = meta.engraveRelic(jadeDef);
+    expect(eng.ok).toBe(true);
+    if (eng.ok) {
+      expect(eng.engravedCount).toBe(1);
+      expect(eng.endgameBonuses.atkPct).toBe(2);
+      expect(eng.endgameBonuses.skillDamagePct).toBe(2);
+    }
+    // No double engrave
+    expect(meta.engraveRelic(jadeDef).ok).toBe(false);
+
+    // Upgrade Mastery pillars (atk + econ + crit + boss)
+    const mAtk = meta.upgradeMastery('atk');
+    const mEcon = meta.upgradeMastery('econ');
+    const mCrit = meta.upgradeMastery('crit');
+    const mBoss = meta.upgradeMastery('boss');
+    expect(mAtk.ok && mEcon.ok && mCrit.ok && mBoss.ok).toBe(true);
+
+    // Reload from storage and verify persistence + MRD1 backup round-trip
+    const metaReloaded = new MetaStore(storage);
+    const prof = metaReloaded.getProfile();
+    expect(prof.engravedCount).toBe(1);
+    expect(prof.engravedRelics.founding_jade_seal).toBe(true);
+    expect(prof.masteryLevels).toEqual({ atk: 1, econ: 1, crit: 1, boss: 1 });
+    expect(prof.endgameBonuses.startCoin).toBe(5);
+    expect(prof.endgameBonuses.atkPct).toBe(4); // round(1.5)=2 + 2 engraved = 4
+
+    const backupCode = metaReloaded.exportBackupCode();
+    const metaFresh = new MetaStore(null);
+    expect(metaFresh.importBackupCode(backupCode).ok).toBe(true);
+    expect(metaFresh.getProfile().engravedCount).toBe(1);
+    expect(metaFresh.getProfile().masteryLevels.atk).toBe(1);
+
+    // 3. 3 new Arena Themes with tactical rules (frost_chill / sandstorm_crit / bloodflame_forge)
+    expect(data.courtSkinsById.get('court_frost_palace')?.arenaRule).toBe('frost_chill');
+    expect(data.courtSkinsById.get('court_western_desert')?.arenaRule).toBe('sandstorm_crit');
+    expect(data.courtSkinsById.get('court_demonic_citadel')?.arenaRule).toBe('bloodflame_forge');
+
+    // Frost Chill slows monsters by 10% compared to default arena
+    const simBase = new Simulation(data, 0x30300001, {}, 'normal', null, false, {
+      arenaRule: null,
+    });
+    const simFrost = new Simulation(data, 0x30300001, {}, 'normal', null, false, {
+      arenaRule: 'frost_chill',
+    });
+    for (let t = 0; t < 120; t++) {
+      simBase.tick();
+      simFrost.tick();
+    }
+    const baseDist = simBase.getMonsters()[0]?.currDistance ?? 0;
+    const frostDist = simFrost.getMonsters()[0]?.currDistance ?? 0;
+    expect(baseDist).toBeGreaterThan(0);
+    expect(frostDist).toBeLessThan(baseDist * 0.94);
+
+    // Bloodflame Forge gives base +5% ATK and Mastery startCoin boosts starting coin
+    const simForge = new Simulation(data, 0x30300002, {}, 'normal', null, false, {
+      arenaRule: 'bloodflame_forge',
+      endgameBonuses: prof.endgameBonuses,
+    });
+    expect(simForge.buildSnapshot(1, false).arenaRule).toBe('bloodflame_forge');
+    expect(simForge.buildSnapshot(1, false).coin).toBe(data.board.economy.initialCoin + 5);
+    const baseAtk = simBase.getUnitEffectiveAtk('cheonma');
+    const forgeAtk = simForge.getUnitEffectiveAtk('cheonma');
+    expect(forgeAtk.baseAtk + forgeAtk.bonusAtk).toBeGreaterThan(baseAtk.baseAtk + baseAtk.bonusAtk);
   });
 });
 

@@ -370,12 +370,17 @@ export type SkinUnlockCond =
   | 'wave_55'
   | 'all_trials_clear';
 export type SkinCrestKind = 'halo' | 'crown' | 'blades' | 'orbs';
+export type ArenaRuleId = 'frost_chill' | 'sandstorm_crit' | 'bloodflame_forge';
+
 export type CourtSkinId =
   | 'court_bamboo_dawn'
   | 'court_crimson_sunset'
   | 'court_blood_moon'
   | 'court_golden_palace'
-  | 'court_snow_sword_pavilion';
+  | 'court_snow_sword_pavilion'
+  | 'court_frost_palace'
+  | 'court_western_desert'
+  | 'court_demonic_citadel';
 
 export interface HeroSkinDef {
   readonly id: string;
@@ -405,6 +410,9 @@ export interface CourtSkinDef {
   readonly lanternColor: string;
   readonly petalPrimary: string;
   readonly petalSecondary: string;
+  readonly arenaRule?: ArenaRuleId;
+  readonly arenaRuleLabel?: string;
+  readonly arenaRuleDesc?: string;
 }
 
 export type TitleId = string;

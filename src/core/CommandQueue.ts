@@ -1,5 +1,14 @@
+import type { EndgameMetaBonuses } from './relicFormulas';
 import type { ContractId } from '../data/contracts';
-import type { BoonId, GradeId, RecipeId, RelicId, UnitId, UpgradeGroupId } from '../data/types';
+import type {
+  ArenaRuleId,
+  BoonId,
+  GradeId,
+  RecipeId,
+  RelicId,
+  UnitId,
+  UpgradeGroupId,
+} from '../data/types';
 
 export type SlotArea = 'field' | 'bench';
 
@@ -32,6 +41,8 @@ export type GameCommand =
   | {
       readonly type: 'syncMetaBonuses';
       readonly codexAtkBonusPct?: number;
+      readonly endgameBonuses?: EndgameMetaBonuses;
+      readonly arenaRule?: ArenaRuleId | null;
     }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {

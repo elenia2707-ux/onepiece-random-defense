@@ -292,6 +292,51 @@
       "lanternColor": "#7dd3fc",
       "petalPrimary": "#f0f9ff",
       "petalSecondary": "#7dd3fc"
+    },
+    {
+      "id": "court_frost_palace",
+      "name": "북해 설산 빙궁",
+      "rarity": "legendary",
+      "silkCost": 55,
+      "desc": "만년 빙벽과 설풍이 감도는 북해빙궁 비무대 · 특화 규칙 【빙결 한파】 발동",
+      "tintColor": "#0369a1",
+      "tintAlpha": 0.22,
+      "lanternColor": "#38bdf8",
+      "petalPrimary": "#e0f2fe",
+      "petalSecondary": "#7dd3fc",
+      "arenaRule": "frost_chill",
+      "arenaRuleLabel": "❄ 빙결 한파",
+      "arenaRuleDesc": "전장 모든 마물 이동속도 -10% · 위험 지대 발동 시 영물 추가 감속!"
+    },
+    {
+      "id": "court_western_desert",
+      "name": "서역 황사 유적",
+      "rarity": "legendary",
+      "silkCost": 55,
+      "desc": "황금 모래폭풍과 고대 사막 유적이 펼쳐진 서역 비무대 · 특화 규칙 【모래폭풍】 발동",
+      "tintColor": "#b45309",
+      "tintAlpha": 0.21,
+      "lanternColor": "#fbbf24",
+      "petalPrimary": "#fde68a",
+      "petalSecondary": "#f59e0b",
+      "arenaRule": "sandstorm_crit",
+      "arenaRuleLabel": "🏜 모래폭풍",
+      "arenaRuleDesc": "전장 모든 협객 치명타율 +6%p · 보스 주박진 경고 시간 +0.4초 여유!"
+    },
+    {
+      "id": "court_demonic_citadel",
+      "name": "천마 총단 혈화전",
+      "rarity": "mythic",
+      "silkCost": 75,
+      "desc": "흑요석 제단과 붉은 업화가 타오르는 천마 총단 비무대 · 특화 규칙 【혈마 화진】 발동",
+      "tintColor": "#7f1d1d",
+      "tintAlpha": 0.26,
+      "lanternColor": "#ef4444",
+      "petalPrimary": "#fb7185",
+      "petalSecondary": "#f97316",
+      "arenaRule": "bloodflame_forge",
+      "arenaRuleLabel": "🔥 혈마 화진",
+      "arenaRuleDesc": "전 협객 공+5% · 위험·주박 지대 상하좌우 인접 협객 공+18% (고위험 고화력)!"
     }
   ]
 }

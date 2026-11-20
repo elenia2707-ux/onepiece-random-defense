@@ -3,8 +3,10 @@ import type { StorageLike } from './MetaStore';
 
 const MUTE_STORAGE_KEY = 'murim_sound_muted_v1';
 const VOLUME_STORAGE_KEY = 'murim_sound_vol_v2';
+const BGM_STORAGE_KEY = 'murim_bgm_enabled_v1';
 
 export type SoundVolumeLevel = 0 | 0.5 | 1;
+export type BgmState = 'idle' | 'normal' | 'boss';
 
 function resolveDefaultStorage(): StorageLike | null {
   try {
@@ -18,7 +20,7 @@ function resolveDefaultStorage(): StorageLike | null {
 }
 
 /**
- * Zero-asset procedural Web Audio synthesizer for Wuxia combat, gacha, and UI cues.
+ * Zero-asset procedural Web Audio synthesizer for Wuxia combat, gacha, BGM, and UI cues.
  * Strictly presentation-only (zero effect on Simulation state or RNG) and unlocks
  * AudioContext on first user gesture for iOS Safari / mobile PWA compliance (AGENTS.md §6).
  */
@@ -27,6 +29,11 @@ export class SoundSynthesizer {
   private ctx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private volumeLevel: SoundVolumeLevel = 1;
+  private bgmEnabled = true;
+  private bgmState: BgmState = 'idle';
+  private bgmTimer: number | null = null;
+  private bgmStep = 0;
+  private tabHidden = false;
   private unlocked = false;
 
   private lastHitAt = 0;
@@ -43,6 +50,9 @@ export class SoundSynthesizer {
         } else if (this.storage.getItem(MUTE_STORAGE_KEY) === '1') {
           this.volumeLevel = 0;
         }
+        if (this.storage.getItem(BGM_STORAGE_KEY) === '0') {
+          this.bgmEnabled = false;
+        }
       } catch {
         this.volumeLevel = 1;
       }
@@ -55,6 +65,38 @@ export class SoundSynthesizer {
 
   public getVolumeLevel(): SoundVolumeLevel {
     return this.volumeLevel;
+  }
+
+  public isBgmEnabled(): boolean {
+    return this.bgmEnabled;
+  }
+
+  public getBgmState(): BgmState {
+    return this.bgmState;
+  }
+
+  public toggleBgm(): boolean {
+    this.bgmEnabled = !this.bgmEnabled;
+    if (this.storage) {
+      try {
+        this.storage.setItem(BGM_STORAGE_KEY, this.bgmEnabled ? '1' : '0');
+      } catch {
+        // Ignore quota errors
+      }
+    }
+    this.syncBgmLoop();
+    if (this.bgmEnabled && this.volumeLevel > 0) {
+      this.ensureContext();
+      this.playUiTap();
+    }
+    return this.bgmEnabled;
+  }
+
+  public setBgmState(next: BgmState): void {
+    if (this.bgmState === next) return;
+    this.bgmState = next;
+    this.bgmStep = 0;
+    this.syncBgmLoop();
   }
 
   private persistVolume(): void {
@@ -70,6 +112,7 @@ export class SoundSynthesizer {
   public cycleVolume(): SoundVolumeLevel {
     this.volumeLevel = this.volumeLevel === 1 ? 0.5 : this.volumeLevel === 0.5 ? 0 : 1;
     this.persistVolume();
+    this.syncBgmLoop();
     if (this.volumeLevel > 0) {
       this.ensureContext();
       this.playUiTap();
@@ -80,6 +123,7 @@ export class SoundSynthesizer {
   public toggleMute(): boolean {
     this.volumeLevel = this.volumeLevel === 0 ? 1 : 0;
     this.persistVolume();
+    this.syncBgmLoop();
     if (this.volumeLevel > 0) {
       this.ensureContext();
       this.playUiTap();
@@ -97,6 +141,7 @@ export class SoundSynthesizer {
         void this.ctx.resume();
       }
       this.unlocked = true;
+      this.syncBgmLoop();
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('pointerup', unlock);
       window.removeEventListener('touchend', unlock);
@@ -107,6 +152,72 @@ export class SoundSynthesizer {
     window.addEventListener('pointerup', unlock, { passive: true });
     window.addEventListener('touchend', unlock, { passive: true });
     window.addEventListener('keydown', unlock, { passive: true });
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        this.tabHidden = document.hidden;
+        this.syncBgmLoop();
+      });
+    }
+  }
+
+  private stopBgmTimer(): void {
+    if (this.bgmTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.bgmTimer);
+      this.bgmTimer = null;
+    }
+  }
+
+  private syncBgmLoop(): void {
+    this.stopBgmTimer();
+    if (
+      typeof window === 'undefined' ||
+      !this.unlocked ||
+      !this.bgmEnabled ||
+      this.volumeLevel <= 0 ||
+      this.tabHidden ||
+      this.bgmState === 'idle'
+    ) {
+      return;
+    }
+    const intervalMs = this.bgmState === 'boss' ? 350 : 780;
+    this.bgmTimer = window.setInterval(() => {
+      this.tickBgmStep();
+    }, intervalMs);
+  }
+
+  private tickBgmStep(): void {
+    if (!this.bgmEnabled || this.volumeLevel <= 0 || this.tabHidden || this.bgmState === 'idle') {
+      this.stopBgmTimer();
+      return;
+    }
+    const ctx = this.ensureContext();
+    if (!ctx || ctx.state !== 'running') return;
+
+    const s = this.bgmStep++;
+    if (this.bgmState === 'boss') {
+      // Intense Wuxia Boss Battle: war drum pulse + driving D minor pentatonic phrase
+      const bossMelody = [587.33, 0, 698.46, 783.99, 880, 0, 783.99, 698.46, 587.33, 523.25, 587.33, 0, 880, 1046.5, 880, 783.99];
+      const note = bossMelody[s % bossMelody.length] ?? 0;
+      if (s % 2 === 0) {
+        this.playTone(s % 4 === 0 ? 116 : 98, 52, 0.14, 'sine', 0.048, 0);
+      }
+      if (s % 8 === 0) {
+        this.playTone(146.83, 110, 0.3, 'sawtooth', 0.028, 0);
+      }
+      if (note > 0) {
+        this.playTone(note, note * 0.996, 0.22, 'triangle', 0.026, 0);
+      }
+    } else {
+      // Calm Eastern Pentatonic Guzheng / Bamboo motif (D4 - E4 - F#4 - A4 - B4 - D5)
+      const calmMelody = [293.66, 369.99, 440, 587.33, 493.88, 440, 369.99, 329.63, 293.66, 440, 493.88, 587.33, 659.25, 587.33, 440, 0];
+      const note = calmMelody[s % calmMelody.length] ?? 0;
+      if (note > 0) {
+        this.playTone(note, note * 1.002, 0.42, 'sine', 0.018, 0);
+      }
+      if (s % 4 === 0) {
+        this.playTone(146.83, 146.83, 0.55, 'triangle', 0.014, 0);
+      }
+    }
   }
 
   private ensureContext(): AudioContext | null {
@@ -417,6 +528,43 @@ export class SoundSynthesizer {
     for (let i = 0; i < steps; i++) {
       const freq = scale[i % scale.length]!;
       this.playTone(freq, freq * 1.04, 0.13, 'triangle', 0.072, i * 0.048);
+    }
+  }
+
+  public playAwaken(starLevel: number): void {
+    // Ascending celestial chime scaled by star level (★1 -> ★3)
+    const base = starLevel >= 3 ? 659.25 : starLevel === 2 ? 587.33 : 523.25;
+    const ratios = [1, 1.25, 1.5, 2];
+    for (let i = 0; i < ratios.length; i++) {
+      const f = base * ratios[i]!;
+      this.playTone(f, f * 1.015, 0.24, 'triangle', 0.082, i * 0.05);
+    }
+    this.playTone(base * 0.5, base, 0.28, 'sine', 0.065, 0);
+  }
+
+  public playComboSkill(): void {
+    // Dual-hero resonant strike + bronze gong + sweeping pentatonic flourish
+    this.playTone(130.81, 82.41, 0.36, 'sawtooth', 0.09, 0);
+    this.playNoiseSwish(2600, 0.15, 0.075, 0.02);
+    const notes = [587.33, 783.99, 987.77, 1318.5];
+    for (let i = 0; i < notes.length; i++) {
+      this.playTone(notes[i]!, notes[i]! * 1.02, 0.2, 'triangle', 0.085, 0.03 + i * 0.045);
+    }
+  }
+
+  public playBossRetry(): void {
+    // Dramatic second-wind heartbeat war drum + heroic ascending horn
+    this.playTone(110, 58, 0.16, 'sine', 0.1, 0);
+    this.playTone(118, 58, 0.16, 'sine', 0.1, 0.12);
+    this.playTone(293.66, 440, 0.28, 'sawtooth', 0.075, 0.2);
+    this.playTone(440, 587.33, 0.34, 'triangle', 0.085, 0.32);
+  }
+
+  public playMilestone(): void {
+    // Celebratory jade bell resonance for Codex / Endless milestones & Relic Engraving
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1567.98];
+    for (let i = 0; i < notes.length; i++) {
+      this.playTone(notes[i]!, notes[i]! * 1.006, 0.26, 'sine', 0.08, i * 0.048);
     }
   }
 }

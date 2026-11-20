@@ -1,6 +1,7 @@
 import type { EventBus } from '../core/EventBus';
 import {
   computeRelicSetBonuses,
+  type EndgameMetaBonuses,
   getAbacusKillCoinPct,
   getArmorGauntletShred,
   getBanditPilferCoin,
@@ -26,6 +27,7 @@ import {
   type RunModeId,
 } from '../data/specialModes';
 import type {
+  ArenaRuleId,
   BoonId,
   DifficultyId,
   FactionId,
@@ -194,6 +196,7 @@ export function computeFieldTileBuffs(
   unitsById: ReadonlyMap<UnitId, UnitDef>,
   swiftStacks: number,
   trigramAuraPct = 0,
+  bloodflameHazardIndices?: ReadonlySet<number>,
 ): readonly TileAuraBuff[] {
   const cap = board.field.capacity;
   const cols = board.config.field.cols;
@@ -208,8 +211,12 @@ export function computeFieldTileBuffs(
     const row = Math.floor(idx / cols);
     let atkPct = 0;
     let speedPct = 0;
+    let bloodflameAdj = false;
 
     const checkNeighbor = (nIdx: number): void => {
+      if (bloodflameHazardIndices?.has(nIdx)) {
+        bloodflameAdj = true;
+      }
       const nUid = board.field.getUidAt(nIdx);
       if (nUid === null) return;
       const nUnit = unitsByUid.get(nUid);
@@ -226,7 +233,7 @@ export function computeFieldTileBuffs(
     if (row < rows - 1) checkNeighbor(idx + cols);
 
     out[idx] = {
-      atkPct: Math.min(atkCap, atkPct),
+      atkPct: Math.min(atkCap, atkPct) + (bloodflameAdj ? 18 : 0),
       speedPct: Math.min(speedCap, speedPct),
     };
   }
@@ -289,6 +296,8 @@ export interface CombatSystemContext {
   readonly trialId: TrialId | null;
   readonly runMode?: RunModeId;
   readonly dailyRule?: DailyRuleDef | null;
+  readonly arenaRule?: ArenaRuleId | null;
+  readonly endgameBonuses?: EndgameMetaBonuses;
   readonly clearTargetWave: number;
   readonly board: Board;
   readonly rng: Rng;
@@ -334,12 +343,17 @@ export function stepCombat(ctx: CombatSystemContext): void {
   const swiftStacks = ctx.getBoonStacks('b_swift_formation');
   const setBonus = computeRelicSetBonuses(ctx.relicLv);
   const trigramAuraPct = getTrigramMirrorAuraPct(ctx.relicLv.eight_trigram_mirror ?? 0);
+  const bloodflameHazards =
+    ctx.arenaRule === 'bloodflame_forge' && ctx.tileHazards.length > 0
+      ? new Set(ctx.tileHazards.map((h) => h.fieldIndex))
+      : undefined;
   const tileBuffs = computeFieldTileBuffs(
     ctx.board,
     ctx.unitsByUid,
     ctx.data.unitsById,
     swiftStacks,
     trigramAuraPct,
+    bloodflameHazards,
   );
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
   const harmonyStacks = ctx.getBoonStacks('b_trinity_harmony');
@@ -471,17 +485,21 @@ export function stepCombat(ctx: CombatSystemContext): void {
           0.95,
           def.critChance +
             getCritBladeChanceBps(critBladeLv) / 10000 +
-            benchPassive.critChancePct / 100,
+            benchPassive.critChancePct / 100 +
+            (ctx.endgameBonuses?.critChanceBps ?? 0) / 10000 +
+            (ctx.arenaRule === 'sandstorm_crit' ? 0.06 : 0),
         );
         let critMult =
           def.critMult +
           getCritBladeMultBonus(critBladeLv) +
           setBonus.critMultBonus +
-          benchPassive.critMultBonus;
+          benchPassive.critMultBonus +
+          (ctx.endgameBonuses?.critMultBonus ?? 0);
         const skillJadePct =
           getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) +
           setBonus.skillDamagePct +
-          benchPassive.skillDamagePct;
+          benchPassive.skillDamagePct +
+          (ctx.endgameBonuses?.skillDamagePct ?? 0);
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult =
           (1 + 0.35 * acupointStacks) *
@@ -864,7 +882,8 @@ function applyHitToMonster(
   const slayerBannerPct =
     getSlayerBannerBossPct(ctx.relicLv.demon_slayer_banner ?? 0) +
     setBonus.bossDamagePct +
-    benchPassive.bossDamagePct;
+    benchPassive.bossDamagePct +
+    (ctx.endgameBonuses?.bossDamagePct ?? 0);
   if (m.isBoss && slayerBannerPct > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + slayerBannerPct / 100));
   }
@@ -1022,7 +1041,8 @@ function applyHitToMonster(
       getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0) +
       setBonus.killCoinPct +
       benchPassive.killCoinPct +
-      (ctx.dailyRule?.modifiers.killCoinPctBonus ?? 0);
+      (ctx.dailyRule?.modifiers.killCoinPctBonus ?? 0) +
+      (ctx.endgameBonuses?.killCoinPct ?? 0);
     const bountyBannerCoinPct = m.isBounty
       ? getSlayerBannerBountyCoinPct(ctx.relicLv.demon_slayer_banner ?? 0)
       : 0;

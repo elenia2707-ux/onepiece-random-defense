@@ -3,6 +3,7 @@ import { escapeHtml, ICON } from './uiShared';
 
 export interface HudShellTemplateInput {
   readonly mutedInit: boolean;
+  readonly bgmEnabledInit?: boolean;
   readonly totalSkins: number;
   readonly totalUnits: number;
   readonly devEnabled: boolean;
@@ -10,7 +11,7 @@ export interface HudShellTemplateInput {
 }
 
 export function buildHudShellMarkup(input: HudShellTemplateInput): string {
-  const { mutedInit, totalSkins, totalUnits, devEnabled, devWispTabs } = input;
+  const { mutedInit, bgmEnabledInit = true, totalSkins, totalUnits, devEnabled, devWispTabs } = input;
   const devWispBtnsHtml = devWispTabs
     .map(
       (t) =>
@@ -43,6 +44,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           <button id="btn-speed" type="button" class="hud-btn interactive active" aria-label="배속">1x</button>
           <button id="btn-pause" type="button" class="hud-btn interactive" aria-label="일시정지">⏸</button>
           <button id="btn-mute" type="button" class="hud-btn mute-btn interactive${mutedInit ? ' muted' : ''}" aria-label="효과음 전환">${mutedInit ? '🔇' : '🔊'}</button>
+          <button id="btn-bgm" type="button" class="hud-btn bgm-btn interactive${bgmEnabledInit ? '' : ' muted'}" title="배경음악(BGM) 전환 (일반/보스 동적 곡)" aria-label="배경음악 전환">${bgmEnabledInit ? '🎵' : '🔕'}</button>
           <button id="btn-vfx-mode" type="button" class="hud-btn vfx-btn interactive" title="절기 이펙트 밀도 전환 (화려함 / 가독성)" aria-label="이펙트 가독성 전환">✨</button>
           <button id="btn-help" type="button" class="hud-btn help-btn interactive" title="강호 입문 교범 보기" aria-label="강호 입문 교범">?</button>
           <button id="btn-dev" type="button" class="hud-btn dev-btn interactive" aria-label="개발자 메뉴"${devEnabled ? '' : ' hidden style="display:none"'}>DEV</button>

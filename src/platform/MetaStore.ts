@@ -3,9 +3,19 @@ import {
   CODEX_MILESTONES,
   CODEX_MILESTONES_BY_TARGET,
   computeCodexAtkBonusPct,
+  computeEndgameMetaBonuses,
   computeRelicSetBonuses,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
+  type EndgameMetaBonuses,
+  getMasteryUpgradeCost,
+  MASTERY_DEFS,
+  type MasteryId,
+  type MasteryLevels,
+  MASTERY_MAX_LEVEL,
+  MASTERY_ORDER,
+  RELIC_ENGRAVE_GOLD_COST,
+  RELIC_ENGRAVE_SILK_COST,
   RELIC_MAX_LEVEL,
   RELIC_STANDARD_CAP,
   TITLE_DEFS,
@@ -87,6 +97,9 @@ const VALID_COURT_SKIN_SET: ReadonlySet<string> = new Set<CourtSkinId>([
   'court_blood_moon',
   'court_golden_palace',
   'court_snow_sword_pavilion',
+  'court_frost_palace',
+  'court_western_desert',
+  'court_demonic_citadel',
 ]);
 
 export interface StorageLike {
@@ -168,11 +181,45 @@ export type CodexMilestoneClaimResult =
       readonly reason: string;
     };
 
+export type RelicEngraveResult =
+  | {
+      readonly ok: true;
+      readonly relicId: RelicId;
+      readonly relicName: string;
+      readonly goldCost: number;
+      readonly silkCost: number;
+      readonly engravedCount: number;
+      readonly endgameBonuses: EndgameMetaBonuses;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type MasteryUpgradeResult =
+  | {
+      readonly ok: true;
+      readonly masteryId: MasteryId;
+      readonly name: string;
+      readonly newLevel: number;
+      readonly goldCost: number;
+      readonly silkCost: number;
+      readonly endgameBonuses: EndgameMetaBonuses;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
 export interface MetaProfile {
   readonly gold: number;
   readonly keys: number;
   readonly silk: number;
   readonly relics: Readonly<Record<RelicId, number>>;
+  readonly engravedRelics: Readonly<Partial<Record<RelicId, boolean>>>;
+  readonly engravedCount: number;
+  readonly masteryLevels: MasteryLevels;
+  readonly endgameBonuses: EndgameMetaBonuses;
   readonly totalRuns: number;
   readonly bestWave: number;
   readonly selectedRunMode: RunModeId;
@@ -645,6 +692,8 @@ export class MetaStore {
   private bossRushRecord: BossRushRecord = { clears: 0, bestStage: 0, bestTicks: null };
   private readonly endlessMilestonesCleared = new Set<number>();
   private readonly claimedCodexMilestones = new Set<number>();
+  private readonly engravedRelics: Partial<Record<RelicId, boolean>> = {};
+  private masteryLevels: Record<MasteryId, number> = { atk: 0, econ: 0, crit: 0, boss: 0 };
   private hallOfFame: HallOfFameEntry[] = [];
   private readonly unlockedTitles: Record<TitleId, boolean> = createEmptyUnlockedTitles();
   private equippedTitle: TitleId | null = null;
@@ -780,6 +829,8 @@ export class MetaStore {
       (m) => discoveredCount >= m.target && !this.claimedCodexMilestones.has(m.target),
     ).length;
     const codexAtkBonusPct = computeCodexAtkBonusPct(this.claimedCodexMilestones);
+    const engravedCount = Object.values(this.engravedRelics).filter(Boolean).length;
+    const endgameBonuses = computeEndgameMetaBonuses(this.masteryLevels, engravedCount);
     const trialRecordsCopy: Record<TrialId, TrialRecord> = {
       trial_venom_gale: { ...this.trialRecords.trial_venom_gale },
       trial_sword_tomb: { ...this.trialRecords.trial_sword_tomb },
@@ -793,6 +844,10 @@ export class MetaStore {
       keys: this.keys,
       silk: this.silk,
       relics: { ...this.relics },
+      engravedRelics: { ...this.engravedRelics },
+      engravedCount,
+      masteryLevels: { ...this.masteryLevels },
+      endgameBonuses,
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
       selectedRunMode: this.selectedRunMode,
@@ -1156,6 +1211,77 @@ export class MetaStore {
       roll -= w;
     }
     return candidates[0]!;
+  }
+
+  public getEndgameMetaBonuses(): EndgameMetaBonuses {
+    const engravedCount = Object.values(this.engravedRelics).filter(Boolean).length;
+    return computeEndgameMetaBonuses(this.masteryLevels, engravedCount);
+  }
+
+  public engraveRelic(def: RelicDef): RelicEngraveResult {
+    const lv = this.relics[def.id] ?? 0;
+    if (lv < def.maxLevel) {
+      return {
+        ok: false,
+        reason: `Lv.${def.maxLevel} 태극신화 달성 후 각인할 수 있습니다 (현재 Lv.${lv})`,
+      };
+    }
+    if (this.engravedRelics[def.id]) {
+      return { ok: false, reason: '이미 신화 각인이 완료된 신물입니다.' };
+    }
+    if (this.gold < RELIC_ENGRAVE_GOLD_COST) {
+      return { ok: false, reason: `천하주화가 부족합니다 (${RELIC_ENGRAVE_GOLD_COST} 필요)` };
+    }
+    if (this.silk < RELIC_ENGRAVE_SILK_COST) {
+      return { ok: false, reason: `운금비단이 부족합니다 (${RELIC_ENGRAVE_SILK_COST}필 필요)` };
+    }
+    this.gold -= RELIC_ENGRAVE_GOLD_COST;
+    this.silk -= RELIC_ENGRAVE_SILK_COST;
+    this.engravedRelics[def.id] = true;
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      relicId: def.id,
+      relicName: def.name,
+      goldCost: RELIC_ENGRAVE_GOLD_COST,
+      silkCost: RELIC_ENGRAVE_SILK_COST,
+      engravedCount: Object.values(this.engravedRelics).filter(Boolean).length,
+      endgameBonuses: this.getEndgameMetaBonuses(),
+    };
+  }
+
+  public upgradeMastery(id: MasteryId): MasteryUpgradeResult {
+    const def = MASTERY_DEFS.find((m) => m.id === id);
+    if (!def) {
+      return { ok: false, reason: '존재하지 않는 경지 단련 항목입니다.' };
+    }
+    const prevLevel = this.masteryLevels[id] ?? 0;
+    if (prevLevel >= MASTERY_MAX_LEVEL) {
+      return { ok: false, reason: `이미 최고 경지(Lv.${MASTERY_MAX_LEVEL})에 도달했습니다.` };
+    }
+    const cost = getMasteryUpgradeCost(prevLevel);
+    if (this.gold < cost.gold) {
+      return { ok: false, reason: `천하주화가 부족합니다 (${cost.gold} 필요)` };
+    }
+    if (this.silk < cost.silk) {
+      return { ok: false, reason: `운금비단이 부족합니다 (${cost.silk}필 필요)` };
+    }
+    this.gold -= cost.gold;
+    this.silk -= cost.silk;
+    const newLevel = prevLevel + 1;
+    this.masteryLevels[id] = newLevel;
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      masteryId: id,
+      name: def.name,
+      newLevel,
+      goldCost: cost.gold,
+      silkCost: cost.silk,
+      endgameBonuses: this.getEndgameMetaBonuses(),
+    };
   }
 
   public upgradeRelic(def: RelicDef): RelicUpgradeResult {
@@ -2282,6 +2408,26 @@ export class MetaStore {
         }
       }
     }
+    for (const k of Object.keys(this.engravedRelics)) {
+      delete this.engravedRelics[k as RelicId];
+    }
+    if (typeof rec.engravedRelics === 'object' && rec.engravedRelics !== null) {
+      for (const [k, v] of Object.entries(rec.engravedRelics as Record<string, unknown>)) {
+        if (v === true && k in this.relics) {
+          this.engravedRelics[k as RelicId] = true;
+        }
+      }
+    }
+    this.masteryLevels = { atk: 0, econ: 0, crit: 0, boss: 0 };
+    if (typeof rec.masteryLevels === 'object' && rec.masteryLevels !== null) {
+      const m = rec.masteryLevels as Record<string, unknown>;
+      for (const id of MASTERY_ORDER) {
+        const raw = m[id];
+        if (typeof raw === 'number' && Number.isFinite(raw)) {
+          this.masteryLevels[id] = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(raw)));
+        }
+      }
+    }
     this.hallOfFame = [];
     if (Array.isArray(rec.hallOfFame)) {
       for (const rawH of rec.hallOfFame.slice(0, 12)) {
@@ -2336,6 +2482,8 @@ export class MetaStore {
       keys: this.keys,
       silk: this.silk,
       relics: this.relics,
+      engravedRelics: this.engravedRelics,
+      masteryLevels: this.masteryLevels,
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
       selectedRunMode: this.selectedRunMode,

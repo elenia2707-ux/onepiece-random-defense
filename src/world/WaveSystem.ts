@@ -8,6 +8,7 @@ import {
   type RunModeId,
 } from '../data/specialModes';
 import type {
+  ArenaRuleId,
   DifficultyId,
   GameDataBundle,
   GameOverReason,
@@ -205,6 +206,7 @@ export interface WaveSystemContext {
   readonly trialId: TrialId | null;
   readonly runMode?: RunModeId;
   readonly dailyRule?: DailyRuleDef | null;
+  readonly arenaRule?: ArenaRuleId | null;
   readonly rookieMode?: boolean;
   readonly clearTargetWave: number;
   readonly board: Board;
@@ -641,7 +643,13 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
 
     const slowMult = ctx.currentTick < m.slowUntilTick ? m.slowFactor : 1;
     const hasteMult = ctx.currentTick < m.hasteUntilTick ? 1.55 : 1;
-    m.currDistance += m.speedPerTick * slowMult * hasteMult;
+    const frostMult =
+      ctx.arenaRule === 'frost_chill'
+        ? m.isBoss && ctx.tileHazards.length > 0
+          ? 0.81
+          : 0.9
+        : 1;
+    m.currDistance += m.speedPerTick * slowMult * hasteMult * frostMult;
     const pos = ctx.path.sample(m.currDistance);
     m.currX = pos.x;
     m.currY = pos.y;
@@ -659,12 +667,14 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
           m.shieldExpireTick = Math.max(m.shieldExpireTick, ctx.currentTick + 150);
           m.hasteUntilTick = Math.max(m.hasteUntilTick, ctx.currentTick + 75);
           const dualTiles = pickHazardTiles(ctx, 2);
+          const dualWarn =
+            HAZARD_WARNING_TICKS + (ctx.arenaRule === 'sandstorm_crit' ? 12 : 0);
           for (let c = 0; c < dualTiles.length; c++) {
             ctx.tileHazards.push({
               fieldIndex: dualTiles[c]!,
               startTick: ctx.currentTick,
-              activateTick: ctx.currentTick + HAZARD_WARNING_TICKS,
-              expireTick: ctx.currentTick + HAZARD_WARNING_TICKS + HAZARD_SEAL_TICKS,
+              activateTick: ctx.currentTick + dualWarn,
+              expireTick: ctx.currentTick + dualWarn + HAZARD_SEAL_TICKS,
             });
           }
           ctx.markPriorityDirty();
@@ -794,12 +804,14 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
           const sealCount = waveNumber >= ctx.clearTargetWave ? 3 : 2;
           const chosenTiles = pickHazardTiles(ctx, sealCount);
           if (chosenTiles.length > 0) {
+            const warnTicks =
+              HAZARD_WARNING_TICKS + (ctx.arenaRule === 'sandstorm_crit' ? 12 : 0);
             for (let c = 0; c < chosenTiles.length; c++) {
               ctx.tileHazards.push({
                 fieldIndex: chosenTiles[c]!,
                 startTick: ctx.currentTick,
-                activateTick: ctx.currentTick + HAZARD_WARNING_TICKS,
-                expireTick: ctx.currentTick + HAZARD_WARNING_TICKS + HAZARD_SEAL_TICKS,
+                activateTick: ctx.currentTick + warnTicks,
+                expireTick: ctx.currentTick + warnTicks + HAZARD_SEAL_TICKS,
               });
             }
             ctx.markPriorityDirty();

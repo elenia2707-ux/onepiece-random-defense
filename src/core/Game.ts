@@ -6,6 +6,7 @@ import { loadGameData } from '../data/loader';
 import type { CourtSkinId, GameDataBundle, HeroSkinDef, TitleId, UnitId } from '../data/types';
 import { DragController } from '../input/DragController';
 import { InputManager } from '../input/InputManager';
+import { HapticsController } from '../platform/Haptics';
 import { Lifecycle } from '../platform/Lifecycle';
 import { MetaStore, type SettlementRecord } from '../platform/MetaStore';
 import { SoundSynthesizer } from '../platform/SoundSynthesizer';
@@ -34,6 +35,7 @@ export class Game {
   private readonly viewport: Viewport;
   private readonly lifecycle: Lifecycle;
   private readonly sound: SoundSynthesizer;
+  private readonly haptics: HapticsController;
   private readonly equippedHeroSkinsMap = new Map<UnitId, HeroSkinDef>();
   private readonly seenCutInUnits = new Set<UnitId>();
 
@@ -59,11 +61,13 @@ export class Game {
 
     this.meta = new MetaStore();
     this.sound = new SoundSynthesizer();
+    this.haptics = new HapticsController();
     const runSeed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 0x20261118;
     const selRunMode = this.meta.getSelectedRunMode();
     const selDiff = this.meta.getSelectedDifficulty();
     const selTrial = selRunMode === 'standard' ? this.meta.getSelectedTrialId() : null;
     const metaProf = this.meta.getProfile();
+    const initialCourtDef = data.courtSkinsById.get(metaProf.equippedCourtSkin) ?? null;
     const rookieMode =
       selRunMode === 'standard' &&
       metaProf.totalRuns < 3 &&
@@ -80,6 +84,8 @@ export class Game {
         runMode: selRunMode,
         dailyDateKey: metaProf.dailyDate,
         codexAtkBonusPct: metaProf.codexAtkBonusPct,
+        endgameBonuses: metaProf.endgameBonuses,
+        arenaRule: initialCourtDef?.arenaRule ?? null,
       },
     );
 
@@ -178,6 +184,8 @@ export class Game {
       getSoundVolume: () => this.sound.getVolumeLevel(),
       onToggleMute: () => this.sound.toggleMute(),
       onCycleSoundVolume: () => this.sound.cycleVolume(),
+      isBgmEnabled: () => this.sound.isBgmEnabled(),
+      onToggleBgm: () => this.sound.toggleBgm(),
       getVfxDensityMode: () => this.vfx.getDensityMode(),
       onToggleVfxDensityMode: () => {
         this.sound.playUiTap();
@@ -346,6 +354,44 @@ export class Game {
         );
         return res;
       },
+      onEngraveRelic: (relicId) => {
+        const def = data.relicsById.get(relicId);
+        if (!def) {
+          return { ok: false, reason: '존재하지 않는 신물입니다.' };
+        }
+        const res = this.meta.engraveRelic(def);
+        if (res.ok) {
+          this.sound.playMilestone();
+          this.haptics.trigger('success');
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            endgameBonuses: res.endgameBonuses,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onUpgradeMastery: (masteryId) => {
+        const res = this.meta.upgradeMastery(masteryId);
+        if (res.ok) {
+          this.sound.playCoinReward();
+          this.haptics.trigger('light');
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            endgameBonuses: res.endgameBonuses,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
       onDrawSkin: (count, payWith) => {
         const res = this.meta.drawSkinGacha(data.heroSkins, data.courtSkins, count, payWith);
         if (res.ok) {
@@ -401,6 +447,11 @@ export class Game {
         if (ok) {
           this.sound.playUiTap();
           this.syncCosmetics(true);
+          const courtDef = this.data.courtSkinsById.get(courtId) ?? null;
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            arenaRule: courtDef?.arenaRule ?? null,
+          });
           this.ui.sync(
             this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
             performance.now(),
@@ -489,6 +540,13 @@ export class Game {
             this.flushActiveRunSave();
           }
         }
+        this.sound.setBgmState(
+          snap.paused || snap.gameOver || snap.victoryHold
+            ? 'idle'
+            : snap.isBossWave
+              ? 'boss'
+              : 'normal',
+        );
         this.ui.sync(snap, nowMs, forcePriority);
       },
       onFrameCostMs: (frameMs) => {
@@ -670,6 +728,9 @@ export class Game {
       const unitName = unitDef?.name ?? ev.outputUnitId;
 
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
+      if (rank >= 4) {
+        this.haptics.trigger(rank >= 6 ? 'heavy' : 'medium');
+      }
       const starPart =
         ev.inheritedStarLevel && ev.inheritedStarLevel > 0
           ? ` (⭐ ${'★'.repeat(ev.inheritedStarLevel)} 계승 · 자동잠금!)`
@@ -796,6 +857,7 @@ export class Game {
 
     this.sim.events.on('wave:boss', (ev) => {
       this.sound.playBossHorn();
+      this.haptics.trigger('heavy');
       this.vfx.showBossWaveBanner(ev.wave, ev.bossName, performance.now());
       this.vfx.triggerScreenFlash('#dc2626', 0.14, 0.24, ev.tick);
     });
@@ -864,7 +926,8 @@ export class Game {
     });
 
     this.sim.events.on('unit:awakened', (ev) => {
-      this.sound.playCraft(5);
+      this.sound.playAwaken(ev.starLevel);
+      this.haptics.trigger('success');
       const uDef = this.sim.data.unitsById.get(ev.unitId);
       const stars = '★'.repeat(ev.starLevel);
       const lockTxt = ev.autoLocked ? ' · 🔒 자동잠금 보호' : '';
@@ -914,7 +977,8 @@ export class Game {
     });
 
     this.sim.events.on('boss:retry', (ev) => {
-      this.sound.playBossPhaseDrum();
+      this.sound.playBossRetry();
+      this.haptics.trigger('warning');
       this.vfx.triggerScreenFlash('#f97316', 0.2, 0.28, ev.tick);
       this.ui.showToast(
         `🔥 강호 혈전 1회 발동! [${ev.bossName}] 체력 유지 · +${ev.bonusSec}초 연장! (내공 수련·합공으로 마무리하세요!)`,
@@ -968,6 +1032,7 @@ export class Game {
 
     this.sim.events.on('run:victory', (ev) => {
       this.sound.playVictory();
+      this.haptics.trigger('success');
       const bannerTag =
         this.sim.runMode === 'boss_rush'
           ? '보스러시 제패'
@@ -991,7 +1056,8 @@ export class Game {
     });
 
     this.sim.events.on('endless:milestone', (ev) => {
-      this.sound.playVictory();
+      this.sound.playMilestone();
+      this.haptics.trigger('success');
       this.vfx.triggerScreenFlash('#fde047', 0.16, 0.25, ev.tick);
       this.vfx.showCraftCelebrationBanner(
         `무한 ${ev.wave}장 돌파`,
@@ -1005,7 +1071,8 @@ export class Game {
     });
 
     this.sim.events.on('combo:triggered', (ev) => {
-      this.sound.playCraft(6);
+      this.sound.playComboSkill();
+      this.haptics.trigger('heavy');
       const uDef = this.sim.data.unitsById.get(ev.unitIds[0]);
       this.vfx.spawnSkillTrack(
         uDef?.skill.vfxTrack ?? 'im_cheonma',

@@ -6,6 +6,7 @@ import {
   getArmorGauntletShred,
   getCritBladeChanceBps,
   getLuckPouchSellCoinPct,
+  getMasteryUpgradeCost,
   getRangeMirrorRangeBonus,
   getSkillJadeDamagePct,
   getSlayerBannerBossPct,
@@ -14,7 +15,13 @@ import {
   getTrigramMirrorAtkBps,
   getVaultInterestCap,
   getVaultInterestPct,
+  MASTERY_DEFS,
+  MASTERY_MAX_LEVEL,
   RELIC_CATEGORY_MAP,
+  RELIC_ENGRAVE_ATK_PCT_EACH,
+  RELIC_ENGRAVE_GOLD_COST,
+  RELIC_ENGRAVE_SILK_COST,
+  RELIC_ENGRAVE_SKILL_PCT_EACH,
   RELIC_STANDARD_CAP,
   TRIAL_CONFIGS,
 } from '../../core/relicFormulas';
@@ -283,8 +290,51 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
         return `<span class="relic-lv-pip${pipCls}"></span>`;
       }).join('');
 
+      const isEngraved = Boolean(meta.engravedRelics[def.id]);
+      const canEngrave =
+        isMax &&
+        !isEngraved &&
+        meta.gold >= RELIC_ENGRAVE_GOLD_COST &&
+        meta.silk >= RELIC_ENGRAVE_SILK_COST;
+      const engraveBadgeHtml = isEngraved
+        ? `<span class="relic-engrave-badge">★ 신화각인 (공+${RELIC_ENGRAVE_ATK_PCT_EACH}%·절기+${RELIC_ENGRAVE_SKILL_PCT_EACH}%)</span>`
+        : '';
+
+      const actionBtnHtml = isMax
+        ? isEngraved
+          ? `
+            <button type="button" class="card-cta-btn cta-gold cta-disabled" disabled>
+              <span>★ 각인완료</span>
+            </button>
+          `
+          : `
+            <button
+              type="button"
+              class="card-cta-btn ${canEngrave ? 'cta-gold interactive' : 'cta-disabled'}"
+              data-sheet-action="relic-engrave"
+              data-relic-id="${def.id}"
+              title="Lv.15 신물 신화 각인: 영구 공격력 +${RELIC_ENGRAVE_ATK_PCT_EACH}% · 절기 피해 +${RELIC_ENGRAVE_SKILL_PCT_EACH}%"
+              ${canEngrave ? '' : 'disabled'}
+            >
+              <span>✦ 신화 각인</span>
+              <span class="mini-price">${ICON.goldCoin}${RELIC_ENGRAVE_GOLD_COST}·${ICON.silk}${RELIC_ENGRAVE_SILK_COST}</span>
+            </button>
+          `
+        : `
+          <button
+            type="button"
+            class="card-cta-btn ${affordable ? (lv >= RELIC_STANDARD_CAP ? 'cta-violet interactive' : isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
+            data-sheet-action="relic-upgrade"
+            data-relic-id="${def.id}"
+            ${affordable ? '' : 'disabled'}
+          >
+            <span>${ctaLabel}</span>
+            <span class="mini-price">${ICON.goldCoin}${cost}</span>
+          </button>
+        `;
+
       return `
-        <div class="sheet-card relic-card${cardTierCls}">
+        <div class="sheet-card relic-card${cardTierCls}${isEngraved ? ' relic-engraved' : ''}">
           <div class="card-left">
             <div class="card-avatar relic-avatar">
               <img src="${portraitUrl}" alt="${escapeHtml(def.name)}" />
@@ -294,22 +344,14 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
                 <span class="grade-pill" style="background:${lvBadgeBg}">${lvBadgeTxt}</span>
                 <span class="grade-pill relic-tag-pill">${escapeHtml(def.tag)}</span>
                 <span class="card-name">${escapeHtml(def.name)}</span>
+                ${engraveBadgeHtml}
                 ${liveBadgeHtml}
               </div>
               <div class="card-sub">${statLine}</div>
               <div class="relic-lv-track" aria-hidden="true">${pipsHtml}</div>
             </div>
           </div>
-          <button
-            type="button"
-            class="card-cta-btn ${affordable ? (lv >= RELIC_STANDARD_CAP ? 'cta-violet interactive' : isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
-            data-sheet-action="relic-upgrade"
-            data-relic-id="${def.id}"
-            ${affordable ? '' : 'disabled'}
-          >
-            <span>${ctaLabel}</span>
-            ${isMax ? '' : `<span class="mini-price">${ICON.goldCoin}${cost}</span>`}
-          </button>
+          ${actionBtnHtml}
         </div>
       `;
     })
@@ -494,12 +536,64 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     </div>
   `;
 
+  const masteryCardsHtml = MASTERY_DEFS.map((m) => {
+    const lv = meta.masteryLevels[m.id] ?? 0;
+    const isMaxM = lv >= MASTERY_MAX_LEVEL;
+    const cost = getMasteryUpgradeCost(lv);
+    const canAfford = !isMaxM && meta.gold >= cost.gold && meta.silk >= cost.silk;
+    const priceTxt =
+      cost.silk > 0 ? `${ICON.goldCoin}${cost.gold} · ${ICON.silk}${cost.silk}` : `${ICON.goldCoin}${cost.gold}`;
+    return `
+      <div class="mastery-card${lv > 0 ? ' active' : ''}">
+        <div class="mastery-card-top">
+          <span class="grade-pill" style="background:${m.color}">${escapeHtml(m.badge)}</span>
+          <strong class="mastery-name">${escapeHtml(m.name)}</strong>
+          <span class="mastery-lv">Lv.${lv}/${MASTERY_MAX_LEVEL}</span>
+        </div>
+        <div class="mastery-desc">${escapeHtml(m.descPerLv)}</div>
+        <button
+          type="button"
+          class="card-cta-btn mastery-btn ${canAfford ? 'cta-gold interactive' : 'cta-disabled'}"
+          data-sheet-action="mastery-upgrade"
+          data-mastery-id="${m.id}"
+          ${canAfford ? '' : 'disabled'}
+        >
+          <span>${isMaxM ? '극의 달성 ✓' : '경지 수련'}</span>
+          ${isMaxM ? '' : `<span class="mini-price">${priceTxt}</span>`}
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  const eb = meta.endgameBonuses;
+  const endgameSummaryParts: string[] = [];
+  if (eb.atkPct > 0) endgameSummaryParts.push(`공+${eb.atkPct}%`);
+  if (eb.skillDamagePct > 0) endgameSummaryParts.push(`절기+${eb.skillDamagePct}%`);
+  if (eb.startCoin > 0) endgameSummaryParts.push(`시작+${eb.startCoin}은자·처치+${eb.killCoinPct}%`);
+  if (eb.critChanceBps > 0) endgameSummaryParts.push(`치명+${(eb.critChanceBps / 100).toFixed(1)}%`);
+  if (eb.bossDamagePct > 0) endgameSummaryParts.push(`보스+${eb.bossDamagePct}%`);
+  const endgameSummaryTxt =
+    endgameSummaryParts.length > 0
+      ? endgameSummaryParts.join(' · ')
+      : 'Lv.15 신화 각인 및 경지 단련으로 영구 능력치를 확장하세요';
+
+  const masterySectionHtml = `
+    <div class="mastery-panel">
+      <div class="relic-set-head">
+        <span>🏔 강호 경지 단련 &amp; 신화 각인 (${meta.engravedCount}/${data.relics.length})</span>
+        <span class="relic-set-hint">${escapeHtml(endgameSummaryTxt)}</span>
+      </div>
+      <div class="mastery-grid">${masteryCardsHtml}</div>
+    </div>
+  `;
+
   const bodyHtml = `
     <div class="relic-gacha-panel">
       <div class="relic-wallet-row">
         <div class="relic-wallet-pills">
           <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
-          <span class="relic-wallet-pill key">${ICON.key}<span>기보함 열쇠</span><b>${meta.keys}</b></span>
+          <span class="relic-wallet-pill key">${ICON.key}<span>열쇠</span><b>${meta.keys}</b></span>
+          <span class="relic-wallet-pill silk">${ICON.silk}<span>비단</span><b>${meta.silk}필</b></span>
         </div>
         <div class="relic-draw-btns relic-draw-grid">
           <button
@@ -551,6 +645,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       ${noticeHtml}
     </div>
     ${relicSetSectionHtml}
+    ${masterySectionHtml}
     ${filterBarHtml}
     ${cardsHtml}
     ${settleFooterHtml}
@@ -769,20 +864,29 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
           `;
         }
 
+        const arenaRuleBadge = court.arenaRuleLabel
+          ? `<span class="arena-rule-tag">${escapeHtml(court.arenaRuleLabel)}</span>`
+          : '';
+        const arenaRuleSub = court.arenaRuleDesc
+          ? `<div class="arena-rule-desc">⚡ 전장 규칙: ${escapeHtml(court.arenaRuleDesc)}</div>`
+          : '';
+
         return `
-          <div class="sheet-card skin-card${isEquipped ? ' skin-equipped' : isOwned ? ' skin-owned' : ' skin-locked'}">
+          <div class="sheet-card skin-card${isEquipped ? ' skin-equipped' : isOwned ? ' skin-owned' : ' skin-locked'}${court.arenaRule ? ' court-tactical' : ''}">
             <div class="card-left">
               <div class="card-avatar court-avatar"><img src="${previewUrl}" alt="${escapeHtml(court.name)}" /></div>
               <div class="card-info">
                 <div class="card-name-row">
                   <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label}</span>
                   <span class="card-name">${escapeHtml(court.name)}</span>
+                  ${arenaRuleBadge}
                   <span class="skin-swatches" title="등불·꽃잎 분위기 색상">
                     <i style="background:${court.lanternColor}"></i>
                     <i style="background:${court.petalPrimary}"></i>
                   </span>
                 </div>
                 <div class="card-sub">${escapeHtml(court.desc)}${condText}</div>
+                ${arenaRuleSub}
               </div>
             </div>
             ${ctaHtml}

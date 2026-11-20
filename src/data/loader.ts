@@ -199,6 +199,15 @@ const VALID_COURT_IDS: ReadonlySet<string> = new Set<CourtSkinId>([
   'court_blood_moon',
   'court_golden_palace',
   'court_snow_sword_pavilion',
+  'court_frost_palace',
+  'court_western_desert',
+  'court_demonic_citadel',
+]);
+
+const VALID_ARENA_RULES: ReadonlySet<string> = new Set([
+  'frost_chill',
+  'sandstorm_crit',
+  'bloodflame_forge',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -1121,6 +1130,23 @@ export function validateSkins(
       `skins.courtSkins[${i}].petalSecondary`,
     );
 
+    let arenaRule: CourtSkinDef['arenaRule'];
+    if (r.arenaRule !== undefined) {
+      const arStr = assertNonEmptyString(r.arenaRule, `skins.courtSkins[${i}].arenaRule`);
+      if (!VALID_ARENA_RULES.has(arStr)) {
+        throw new Error(`[DataValidation] skins.courtSkins[${i}].arenaRule invalid: ${arStr}`);
+      }
+      arenaRule = arStr as CourtSkinDef['arenaRule'];
+    }
+    const arenaRuleLabel =
+      r.arenaRuleLabel !== undefined
+        ? assertNonEmptyString(r.arenaRuleLabel, `skins.courtSkins[${i}].arenaRuleLabel`)
+        : undefined;
+    const arenaRuleDesc =
+      r.arenaRuleDesc !== undefined
+        ? assertNonEmptyString(r.arenaRuleDesc, `skins.courtSkins[${i}].arenaRuleDesc`)
+        : undefined;
+
     return {
       id: idStr as CourtSkinId,
       name,
@@ -1133,6 +1159,9 @@ export function validateSkins(
       lanternColor,
       petalPrimary,
       petalSecondary,
+      ...(arenaRule ? { arenaRule } : {}),
+      ...(arenaRuleLabel ? { arenaRuleLabel } : {}),
+      ...(arenaRuleDesc ? { arenaRuleDesc } : {}),
     };
   });
 

@@ -2,6 +2,7 @@ import type { GameCommand, SlotRef } from '../core/CommandQueue';
 import {
   DIFFICULTY_CONFIGS,
   formatCompactNumber,
+  type MasteryId,
   TITLES_BY_ID,
   TRIAL_CONFIGS,
 } from '../core/relicFormulas';
@@ -35,10 +36,12 @@ import {
   type CodexMilestoneClaimResult,
   type DailyQuestClaimResult,
   type DailyQuestId,
+  type MasteryUpgradeResult,
   type MetaProfile,
   RELIC_CHEST_GOLD_COST,
   type RelicBatchDrawResult,
   type RelicDrawResult,
+  type RelicEngraveResult,
   type RelicUpgradeResult,
   type SettlementRecord,
   SKIN_SINGLE_GOLD_COST,
@@ -97,6 +100,8 @@ export interface UIControlHandlers {
   getSoundVolume(): SoundVolumeLevel;
   onToggleMute(): boolean;
   onCycleSoundVolume(): SoundVolumeLevel;
+  isBgmEnabled(): boolean;
+  onToggleBgm(): boolean;
   getVfxDensityMode(): VfxDensityMode;
   onToggleVfxDensityMode(): VfxDensityMode;
   onClaimDailyQuest(questId: DailyQuestId): DailyQuestClaimResult;
@@ -115,6 +120,8 @@ export interface UIControlHandlers {
   onDrawRelic(payWith: 'key' | 'gold'): RelicDrawResult;
   onDrawRelicBatch(maxCount: number, payWith: 'key' | 'gold'): RelicBatchDrawResult;
   onUpgradeRelic(relicId: RelicId): RelicUpgradeResult;
+  onEngraveRelic(relicId: RelicId): RelicEngraveResult;
+  onUpgradeMastery(masteryId: MasteryId): MasteryUpgradeResult;
   onDrawSkin(count: 1 | 5, payWith: 'gold' | 'key'): SkinGachaResult;
   onCraftSkin(skinId: string): SkinCraftResult;
   onEquipHeroSkin(unitId: UnitId, skinId: string | null): boolean;
@@ -159,6 +166,7 @@ export class UIManager {
   private speedBtnEl!: HTMLButtonElement;
   private pauseBtnEl!: HTMLButtonElement;
   private muteBtnEl!: HTMLButtonElement;
+  private bgmBtnEl!: HTMLButtonElement;
   private helpBtnEl!: HTMLButtonElement;
   private devBtnEl!: HTMLButtonElement;
   private devPopoverEl!: HTMLElement;
@@ -416,6 +424,14 @@ export class UIManager {
       vol === 0 ? '효과음 음소거 (터치: 100%)' : vol === 0.5 ? '효과음 50% (터치: 음소거)' : '효과음 100% (터치: 50%)';
   }
 
+  private applyBgmButtonVisual(enabled: boolean): void {
+    this.bgmBtnEl.classList.toggle('muted', !enabled);
+    this.setText(this.bgmBtnEl, enabled ? '🎵' : '🔕');
+    this.bgmBtnEl.title = enabled
+      ? '배경음악 켜짐 (일반/보스 동적 곡) — 터치: 끄기'
+      : '배경음악 꺼짐 — 터치: 켜기';
+  }
+
   private applyVfxButtonVisual(mode: VfxDensityMode): void {
     const clean = mode === 'clean';
     this.vfxModeBtnEl.classList.toggle('clean-mode', clean);
@@ -442,6 +458,7 @@ export class UIManager {
 
     this.root.innerHTML = buildHudShellMarkup({
       mutedInit: this.handlers.isSoundMuted(),
+      bgmEnabledInit: this.handlers.isBgmEnabled(),
       totalSkins: this.data.heroSkins.length + this.data.courtSkins.length,
       totalUnits: this.data.units.length,
       devEnabled: this.devEnabled,
@@ -468,6 +485,8 @@ export class UIManager {
     this.pauseBtnEl = this.mustGet('btn-pause') as HTMLButtonElement;
     this.muteBtnEl = this.mustGet('btn-mute') as HTMLButtonElement;
     this.applyVolumeButtonVisual(this.handlers.getSoundVolume());
+    this.bgmBtnEl = this.mustGet('btn-bgm') as HTMLButtonElement;
+    this.applyBgmButtonVisual(this.handlers.isBgmEnabled());
     this.vfxModeBtnEl = this.mustGet('btn-vfx-mode') as HTMLButtonElement;
     this.applyVfxButtonVisual(this.handlers.getVfxDensityMode());
     this.helpBtnEl = this.mustGet('btn-help') as HTMLButtonElement;
@@ -668,6 +687,15 @@ export class UIManager {
       this.applyVolumeButtonVisual(vol);
       this.showToast(
         vol === 0 ? '🔇 효과음 음소거' : vol === 0.5 ? '🔉 효과음 50%' : '🔊 효과음 100%',
+      );
+    });
+    this.bgmBtnEl.addEventListener('click', () => {
+      const enabled = this.handlers.onToggleBgm();
+      this.applyBgmButtonVisual(enabled);
+      this.showToast(
+        enabled
+          ? '🎵 배경음악(BGM) 켜짐 (일반/영물 보스 동적 BGM)'
+          : '🔕 배경음악(BGM) 꺼짐',
       );
     });
     this.vfxModeBtnEl.addEventListener('click', () => {
@@ -1187,6 +1215,30 @@ export class UIManager {
           this.prevSheetSignature = '';
           if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
           this.showToast(msg);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'relic-engrave') {
+        const relicId = btn.dataset.relicId as RelicId | undefined;
+        if (!relicId) return;
+        const res = this.handlers.onEngraveRelic(relicId);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(
+            `✦ 신화 각인 완료! [${res.relicName}] (영구 공+2% · 절기+2%, 누적 ${res.engravedCount}종)`,
+          );
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'mastery-upgrade') {
+        const masteryId = btn.dataset.masteryId as MasteryId | undefined;
+        if (!masteryId) return;
+        const res = this.handlers.onUpgradeMastery(masteryId);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(`🏔 강호 경지 단련! [${res.name}] Lv.${res.newLevel} 달성!`);
         } else {
           this.showToast(res.reason, true);
         }
@@ -2080,7 +2132,8 @@ export class UIManager {
     const equippedTitleId = meta.equippedTitle ?? '';
     const comboCount = snapshot.activeCombos.length;
     const codexAtk = snapshot.codexAtkBonusPct;
-    const sig = `${equippedTitleId}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${activeRelicCount}:${meta.keys}`;
+    const arenaRule = snapshot.arenaRule ?? '';
+    const sig = `${equippedTitleId}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
@@ -2092,6 +2145,20 @@ export class UIManager {
           `<span class="relic-buff-pill hud-title-pill" data-open-titles="1" style="background:${titleDef.color}" title="장착 중인 강호 칭호: ${escapeHtml(titleDef.name)}">🏅 ${escapeHtml(titleDef.badge)}</span>`,
         );
       }
+    }
+    if (snapshot.arenaRule) {
+      const courtDef = this.data.courtSkinsById.get(meta.equippedCourtSkin);
+      const rLabel =
+        courtDef?.arenaRuleLabel ??
+        (snapshot.arenaRule === 'frost_chill'
+          ? '❄ 빙결 한파'
+          : snapshot.arenaRule === 'sandstorm_crit'
+            ? '🏜 모래폭풍'
+            : '🔥 혈마 화진');
+      const rDesc = courtDef?.arenaRuleDesc ?? '비무대 테마 특수 규칙 활성 중';
+      pills.push(
+        `<span class="relic-buff-pill arena-rule-pill" title="${escapeHtml(rDesc)}">${escapeHtml(rLabel)}</span>`,
+      );
     }
     if (comboCount > 0) {
       const comboNames = snapshot.activeCombos.map((c) => c.name).join(', ');

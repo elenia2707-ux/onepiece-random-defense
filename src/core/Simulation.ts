@@ -8,6 +8,7 @@ import { EventBus } from './EventBus';
 import {
   CLEAR_TARGET_WAVE,
   computeRelicSetBonuses,
+  type EndgameMetaBonuses,
   getAbacusSummonDiscount,
   getArmorGauntletShred,
   getFurnaceChanceBonusPct,
@@ -27,6 +28,7 @@ import {
   getWealthBonusBps,
   RELIC_IDS_ORDERED,
   TRIAL_CONFIGS,
+  ZERO_ENDGAME_META_BONUSES,
 } from './relicFormulas';
 import { Rng } from './Rng';
 import type { Speed } from './time';
@@ -55,6 +57,7 @@ import {
   type RunModeId,
 } from '../data/specialModes';
 import type {
+  ArenaRuleId,
   BenchPassiveDef,
   BoonId,
   DifficultyId,
@@ -585,6 +588,8 @@ export interface SimulationModeOptions {
   readonly runMode?: RunModeId;
   readonly dailyDateKey?: string;
   readonly codexAtkBonusPct?: number;
+  readonly endgameBonuses?: EndgameMetaBonuses;
+  readonly arenaRule?: ArenaRuleId | null;
 }
 
 export interface UISnapshot {
@@ -598,6 +603,7 @@ export interface UISnapshot {
   readonly endlessMilestonesReached: readonly number[];
   readonly activeCombos: readonly ActiveComboView[];
   readonly codexAtkBonusPct: number;
+  readonly arenaRule: ArenaRuleId | null;
   readonly clearTargetWave: number;
   readonly gameOver: boolean;
   readonly gameOverReason: GameOverReason;
@@ -694,6 +700,8 @@ export class Simulation {
   private readonly comboCooldowns = new Map<ComboSkillId, number>();
   private readonly comboTriggerCounts = new Map<ComboSkillId, number>();
   private codexAtkBonusPct = 0;
+  private endgameBonuses: EndgameMetaBonuses = ZERO_ENDGAME_META_BONUSES;
+  private arenaRule: ArenaRuleId | null = null;
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
@@ -814,6 +822,10 @@ export class Simulation {
     this.data = data;
     this.runMode = options?.runMode ?? 'standard';
     this.codexAtkBonusPct = Math.max(0, Math.min(50, Math.round(options?.codexAtkBonusPct ?? 0)));
+    this.endgameBonuses = options?.endgameBonuses
+      ? { ...options.endgameBonuses }
+      : ZERO_ENDGAME_META_BONUSES;
+    this.arenaRule = options?.arenaRule ?? null;
     if (this.runMode === 'daily_challenge') {
       const spec = getDailyChallengeSpec(options?.dailyDateKey ?? '2026-11-19');
       this.dailyChallengeSpec = spec;
@@ -845,7 +857,8 @@ export class Simulation {
     const dailyMod = this.dailyChallengeSpec?.rule.modifiers;
     this.coin =
       (this.runMode === 'boss_rush' ? 420 : data.board.economy.initialCoin) +
-      (dailyMod?.startCoinBonus ?? 0);
+      (dailyMod?.startCoinBonus ?? 0) +
+      this.endgameBonuses.startCoin;
     this.luckStone =
       (this.runMode === 'boss_rush' ? 6 : data.board.economy.initialLuckStone) +
       (dailyMod?.startLuckBonus ?? 0);
@@ -1113,12 +1126,17 @@ export class Simulation {
   }
 
   public computeFieldTileBuffs(): readonly TileAuraBuff[] {
+    const bloodflameHazards =
+      this.arenaRule === 'bloodflame_forge' && this.tileHazards.length > 0
+        ? new Set(this.tileHazards.map((h) => h.fieldIndex))
+        : undefined;
     return computeFieldTileBuffs(
       this.board,
       this.unitsByUid,
       this.data.unitsById,
       this.getBoonStacks('b_swift_formation'),
       getTrigramMirrorAuraPct(this.relicLv.eight_trigram_mirror ?? 0),
+      bloodflameHazards,
     );
   }
 
@@ -1155,6 +1173,12 @@ export class Simulation {
     }
     if (this.codexAtkBonusPct > 0) {
       extraTraitPct += this.codexAtkBonusPct;
+    }
+    if (this.endgameBonuses.atkPct > 0) {
+      extraTraitPct += this.endgameBonuses.atkPct;
+    }
+    if (this.arenaRule === 'bloodflame_forge') {
+      extraTraitPct += 5;
     }
 
     const baseResult = computeUnitEffectiveAtk(
@@ -1304,6 +1328,7 @@ export class Simulation {
       trialId: this.trialId,
       runMode: this.runMode,
       dailyRule: this.dailyChallengeSpec?.rule ?? null,
+      arenaRule: this.arenaRule,
       rookieMode: this.rookieMode,
       clearTargetWave: this.clearTargetWave,
       board: this.board,
@@ -1396,6 +1421,8 @@ export class Simulation {
       trialId: this.trialId,
       runMode: this.runMode,
       dailyRule: this.dailyChallengeSpec?.rule ?? null,
+      arenaRule: this.arenaRule,
+      endgameBonuses: this.endgameBonuses,
       clearTargetWave: this.clearTargetWave,
       board: this.board,
       rng: this.rng,
@@ -1478,6 +1505,21 @@ export class Simulation {
     if (cmd.type === 'syncMetaBonuses') {
       if (typeof cmd.codexAtkBonusPct === 'number' && Number.isFinite(cmd.codexAtkBonusPct)) {
         this.codexAtkBonusPct = Math.max(0, Math.min(50, Math.round(cmd.codexAtkBonusPct)));
+        this.priorityDirty = true;
+      }
+      if (cmd.endgameBonuses) {
+        const deltaStartCoin = Math.max(
+          0,
+          cmd.endgameBonuses.startCoin - this.endgameBonuses.startCoin,
+        );
+        if (deltaStartCoin > 0 && this.waveNumber <= 2) {
+          this.coin += deltaStartCoin;
+        }
+        this.endgameBonuses = { ...cmd.endgameBonuses };
+        this.priorityDirty = true;
+      }
+      if (cmd.arenaRule !== undefined) {
+        this.arenaRule = cmd.arenaRule;
         this.priorityDirty = true;
       }
       return;
@@ -3072,6 +3114,7 @@ export class Simulation {
       endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
       activeCombos,
       codexAtkBonusPct: this.codexAtkBonusPct,
+      arenaRule: this.arenaRule,
       clearTargetWave: this.clearTargetWave,
       gameOver: this.gameOver,
       gameOverReason: this.gameOverReason,

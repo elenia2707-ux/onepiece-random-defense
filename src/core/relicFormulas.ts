@@ -585,3 +585,108 @@ export function computeCodexAtkBonusPct(claimedTargets: ReadonlySet<number> | re
   return total;
 }
 
+// =========================================================
+// v3.0 Post-Max Endgame Sinks: Mythic Relic Engraving & 강호 경지 단련
+// =========================================================
+export const RELIC_ENGRAVE_GOLD_COST = 600;
+export const RELIC_ENGRAVE_SILK_COST = 40;
+export const RELIC_ENGRAVE_ATK_PCT_EACH = 2;
+export const RELIC_ENGRAVE_SKILL_PCT_EACH = 2;
+
+export type MasteryId = 'atk' | 'econ' | 'crit' | 'boss';
+
+export const MASTERY_MAX_LEVEL = 20;
+
+export interface MasteryDef {
+  readonly id: MasteryId;
+  readonly name: string;
+  readonly badge: string;
+  readonly color: string;
+  readonly descPerLv: string;
+}
+
+export const MASTERY_DEFS: readonly MasteryDef[] = [
+  {
+    id: 'atk',
+    name: '무극 내공 단련',
+    badge: '공격',
+    color: '#ef4444',
+    descPerLv: 'Lv당 전 협객 공격력 +1.5%',
+  },
+  {
+    id: 'econ',
+    name: '만금 상단 수련',
+    badge: '경제',
+    color: '#f59e0b',
+    descPerLv: 'Lv당 처치 은자 +2% · 시작 은자 +5',
+  },
+  {
+    id: 'crit',
+    name: '파천 회심 수련',
+    badge: '치명',
+    color: '#a855f7',
+    descPerLv: 'Lv당 치명타율 +0.5%p · 치명피해 +0.04x',
+  },
+  {
+    id: 'boss',
+    name: '영물 토벌 비결',
+    badge: '토벌',
+    color: '#0ea5e9',
+    descPerLv: 'Lv당 영물·수배범 피해 +2.5%',
+  },
+];
+
+export const MASTERY_ORDER: readonly MasteryId[] = ['atk', 'econ', 'crit', 'boss'];
+
+export type MasteryLevels = Readonly<Record<MasteryId, number>>;
+
+export interface EndgameMetaBonuses {
+  readonly atkPct: number;
+  readonly skillDamagePct: number;
+  readonly startCoin: number;
+  readonly killCoinPct: number;
+  readonly critChanceBps: number;
+  readonly critMultBonus: number;
+  readonly bossDamagePct: number;
+}
+
+export const ZERO_ENDGAME_META_BONUSES: EndgameMetaBonuses = {
+  atkPct: 0,
+  skillDamagePct: 0,
+  startCoin: 0,
+  killCoinPct: 0,
+  critChanceBps: 0,
+  critMultBonus: 0,
+  bossDamagePct: 0,
+};
+
+export function getMasteryUpgradeCost(currentLv: number): { readonly gold: number; readonly silk: number } {
+  const lv = Math.max(0, Math.floor(currentLv));
+  return {
+    gold: 180 + lv * 95,
+    silk: lv >= 5 ? (lv - 4) * 4 : 0,
+  };
+}
+
+export function computeEndgameMetaBonuses(
+  masteryLevels: Partial<Record<MasteryId, number>>,
+  engravedRelicCount: number,
+): EndgameMetaBonuses {
+  const atkLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.atk ?? 0)));
+  const econLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.econ ?? 0)));
+  const critLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.crit ?? 0)));
+  const bossLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.boss ?? 0)));
+  const eng = Math.max(0, Math.floor(engravedRelicCount));
+
+  return {
+    atkPct: Math.round(atkLv * 1.5) + eng * RELIC_ENGRAVE_ATK_PCT_EACH,
+    skillDamagePct: eng * RELIC_ENGRAVE_SKILL_PCT_EACH,
+    startCoin: econLv * 5,
+    killCoinPct: econLv * 2,
+    critChanceBps: critLv * 50,
+    critMultBonus: Number((critLv * 0.04).toFixed(2)),
+    bossDamagePct: Math.round(bossLv * 2.5),
+  };
+}
+
+
