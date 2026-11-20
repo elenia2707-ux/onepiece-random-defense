@@ -744,12 +744,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .currency-group {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .currency-pill {
@@ -781,6 +784,8 @@
 }
 
 .slot-occupancy {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 16px;
   color: #fef08a;
   text-shadow: var(--outline-1);

@@ -674,7 +674,7 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
   const ownedHeroCount = data.heroSkins.filter((s) => Boolean(meta.ownedSkins[s.id])).length;
   const ownedCourtCount = data.courtSkins.filter((c) => Boolean(meta.ownedSkins[c.id])).length;
 
-  const subtitle = `수집 ${meta.ownedSkinCount}/${totalSkins}종 · 의복·검기·절기 이펙트 영구 변모 (전투 능력치 변동 없음)`;
+  const subtitle = `수집 ${meta.ownedSkinCount}/${totalSkins}종 · 협객 의복은 외형·이펙트 변모 · 전술 비무대 3종은 특수 전장 규칙 적용`;
 
   const canDrawKey1 = meta.keys >= 1;
   const canDrawGold1 = meta.gold >= SKIN_SINGLE_GOLD_COST;
