@@ -3,14 +3,18 @@ import {
   CULTIVATION_MILESTONE_REALMS,
   DIFFICULTY_CONFIGS,
   formatRelicStatSummary,
+  formatSoulAffixSlot,
   getAbacusSummonDiscount,
   getArmorGauntletShred,
+  getBlessedEffectiveRelicLevel,
   getCritBladeChanceBps,
   getLuckPouchSellCoinPct,
   getMasteryUpgradeCost,
   getRangeMirrorRangeBonus,
+  getRelicChaosUpgradeCost,
   getSkillJadeDamagePct,
   getSlayerBannerBossPct,
+  getSoulRerollCost,
   getSwiftBootsSpeedPct,
   getTrainingManualCostDiscountPct,
   getTrigramMirrorAtkBps,
@@ -18,14 +22,21 @@ import {
   getVaultInterestPct,
   MASTERY_DEFS,
   MASTERY_MAX_LEVEL,
+  MAX_BLESSED_RELICS,
   MERIDIAN_DEFS,
   MERIDIAN_MAX_LEVEL,
+  REINCARNATION_DAO_BONUS_PER_STACK,
+  REINCARNATION_REWARD,
   RELIC_CATEGORY_MAP,
+  RELIC_CHAOS_SET_TIER4_LV,
   RELIC_ENGRAVE_ATK_PCT_EACH,
   RELIC_ENGRAVE_GOLD_COST,
   RELIC_ENGRAVE_SILK_COST,
   RELIC_ENGRAVE_SKILL_PCT_EACH,
+  RELIC_MAX_LEVEL,
   RELIC_STANDARD_CAP,
+  SOUL_RARITY_META,
+  SOUL_SLOT_COUNT,
   TRIAL_CONFIGS,
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
@@ -83,17 +94,40 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   } = params;
 
   const ownedCount = data.relics.filter((d) => (meta.relics[d.id] ?? 0) > 0).length;
-  const transcendedCount = data.relics.filter((d) => (meta.relics[d.id] ?? 0) > RELIC_STANDARD_CAP).length;
-  const allMaxed = data.relics.every((d) => (meta.relics[d.id] ?? 0) >= d.maxLevel);
+  const transcendedCount = data.relics.filter(
+    (d) => (meta.relics[d.id] ?? 0) > RELIC_STANDARD_CAP,
+  ).length;
+  const chaosCount = data.relics.filter((d) => (meta.relics[d.id] ?? 0) > d.maxLevel).length;
+  const allBaseMaxed = data.relics.every((d) => (meta.relics[d.id] ?? 0) >= d.maxLevel);
+  const allChaosMaxed = data.relics.every((d) => (meta.relics[d.id] ?? 0) >= RELIC_MAX_LEVEL);
   const bestWaveStr = String(meta.bestWave).padStart(2, '0');
-  const transSuffix = transcendedCount > 0 ? ` · 초월 ${transcendedCount}` : '';
+  const transSuffix =
+    chaosCount > 0
+      ? ` · 혼원초월 ${chaosCount}`
+      : transcendedCount > 0
+        ? ` · 초월 ${transcendedCount}`
+        : '';
   const subtitle = `해금 ${ownedCount}/${data.relics.length}${transSuffix} · 최고 제 ${bestWaveStr} 장 · 영구 계승`;
 
-  const canDrawKey = !allMaxed && meta.keys >= 1;
+  // Keys and Gold are NEVER locked out after Lv.15: draws automatically open Chaos Transcendence Chest!
+  const canDrawKey = meta.keys >= 1;
   const bulkKeyCount = Math.min(10, meta.keys);
-  const canDrawBulkKey = !allMaxed && meta.keys >= 2;
-  const canDrawGold = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST;
-  const canDrawGold5 = !allMaxed && meta.gold >= RELIC_CHEST_GOLD_COST * 5;
+  const canDrawBulkKey = meta.keys >= 2;
+  const canDrawGold = meta.gold >= RELIC_CHEST_GOLD_COST;
+  const canDrawGold5 = meta.gold >= RELIC_CHEST_GOLD_COST * 5;
+
+  const chaosChestBannerHtml = allBaseMaxed
+    ? `
+      <div class="chaos-chest-banner${allChaosMaxed ? ' max-essence' : ''}">
+        <span class="chaos-chest-tag">${allChaosMaxed ? '✦ 영혼 세공 정수함' : '🌌 태고 초월 기보함 가동'}</span>
+        <span class="chaos-chest-desc">${
+          allChaosMaxed
+            ? '전 신물 Lv.30 태고불멸 완성! 기보함 개봉 시마다 [🧵비단 +25필 · 🪙주화 +60] 영혼 세공 정수로 즉시 환원됩니다.'
+            : '전 신물 Lv.15 신화 달성! 남는 열쇠·주화 개봉 시 [🔮초월 파편 +3 · 🧵비단 +5필] 확정 획득 (🌟본명 신물 파편 확률 2.5배!)'
+        }</span>
+      </div>
+    `
+    : '';
 
   let noticeHtml = '';
   if (lastRelicNotice?.batchItems && lastRelicNotice.batchItems.length > 0) {
@@ -101,11 +135,18 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       .map((entry) => {
         const rDef = data.relicsById.get(entry.relicId);
         const rPortrait = sprites.relicPortraitUrl(entry.relicId, entry.newLevel);
-        const deltaTxt = entry.isNew
-          ? `NEW Lv.${entry.newLevel}`
-          : `Lv.${entry.prevLevel}→${entry.newLevel}`;
+        const hasShardDrop = (entry.shardsGranted ?? 0) > 0;
+        const hasEssenceDrop =
+          !hasShardDrop && ((entry.silkGranted ?? 0) > 0 || (entry.goldRefunded ?? 0) > 0);
+        const deltaTxt = hasShardDrop
+          ? `🔮파편 +${entry.shardsGranted}${entry.silkGranted ? ` · 🧵+${entry.silkGranted}` : ''}`
+          : hasEssenceDrop
+            ? `🧵+${entry.silkGranted ?? 0} · 🪙+${entry.goldRefunded ?? 0}`
+            : entry.isNew
+              ? `NEW Lv.${entry.newLevel}`
+              : `Lv.${entry.prevLevel}→${entry.newLevel}`;
         const cls =
-          entry.newLevel >= (rDef?.maxLevel ?? 15)
+          hasShardDrop || entry.newLevel >= (rDef?.maxLevel ?? 15)
             ? ' batch-mythic'
             : entry.newLevel > RELIC_STANDARD_CAP
               ? ' batch-transcend'
@@ -117,7 +158,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
             <img src="${rPortrait}" alt="${escapeHtml(rDef?.name ?? '')}" />
             <div class="relic-batch-chip-meta">
               <span class="relic-batch-chip-name">${escapeHtml(rDef?.name ?? entry.relicId)}</span>
-              <span class="relic-batch-chip-lv">${deltaTxt}${entry.pulls > 1 ? ` (×${entry.pulls})` : ''}</span>
+              <span class="relic-batch-chip-lv">${deltaTxt}${!hasShardDrop && !hasEssenceDrop && entry.pulls > 1 ? ` (×${entry.pulls})` : ''}</span>
             </div>
           </div>
         `;
@@ -136,21 +177,35 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     const rPrev = n.prevLevel ?? 0;
     const rPortrait = sprites.relicPortraitUrl(n.relicId!, rLv);
     const maxLv = rDef?.maxLevel ?? 15;
-    const badgeLabel = n.isNew
-      ? '✨ NEW 신물 해금'
-      : rLv >= maxLv
-        ? '👑 태극신화 달성!'
-        : rLv > RELIC_STANDARD_CAP
-          ? `🌌 초월 제련 Lv.${rPrev} → Lv.${rLv}`
-          : `⬆️ 제련 승급 Lv.${rPrev} → Lv.${rLv}`;
+    const shardDrop = n.shardsGranted ?? 0;
+    const essenceDrop = shardDrop <= 0 && ((n.silkGranted ?? 0) > 0 || (n.goldRefunded ?? 0) > 0);
+    const badgeLabel =
+      shardDrop > 0
+        ? `🔮 초월 파편 +${shardDrop} · 🧵비단 +${n.silkGranted ?? 0}필`
+        : essenceDrop
+          ? `✦ 영혼 정수 🧵+${n.silkGranted ?? 0}필 · 🪙+${n.goldRefunded ?? 0}`
+          : n.isNew
+            ? '✨ NEW 신물 해금'
+            : rLv > maxLv
+              ? `🌌 혼원초월 Lv.${rPrev} → Lv.${rLv}`
+              : rLv >= maxLv
+                ? '👑 태극신화 달성!'
+                : rLv > RELIC_STANDARD_CAP
+                  ? `🌌 초월 제련 Lv.${rPrev} → Lv.${rLv}`
+                  : `⬆️ 제련 승급 Lv.${rPrev} → Lv.${rLv}`;
     const tierCls =
-      rLv >= maxLv
+      shardDrop > 0 || rLv >= maxLv
         ? ' tier-mythic'
         : rLv > RELIC_STANDARD_CAP
           ? ' tier-transcend'
           : rLv >= 5
             ? ' tier-master'
             : '';
+    const curShards = meta.relicShards[n.relicId!] ?? 0;
+    const subStatLine =
+      shardDrop > 0
+        ? `보유 파편 ${curShards}개 · ${formatRelicStatSummary(n.relicId!, rLv)}`
+        : formatRelicStatSummary(n.relicId!, rLv);
     noticeHtml = `
       <div id="relic-notice-banner" class="relic-pull-showcase${tierCls}">
         <div class="relic-pull-avatar">
@@ -162,17 +217,64 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
             ${rDef ? `<span class="grade-pill relic-tag-pill">${escapeHtml(rDef.tag)}</span>` : ''}
           </div>
           <div class="relic-pull-title">${escapeHtml(rDef?.name ?? n.text)}</div>
-          <div class="relic-pull-stat">${escapeHtml(formatRelicStatSummary(n.relicId!, rLv))}</div>
+          <div class="relic-pull-stat">${escapeHtml(subStatLine)}</div>
         </div>
       </div>
     `;
   } else {
     const noticeText = lastRelicNotice
       ? lastRelicNotice.text
-      : '🏺 기보함을 개봉해 무림 16대 신물을 해금하고 Lv.15 초월 신화 경지까지 제련하세요!';
+      : allBaseMaxed
+        ? '🌌 태고 초월 기보함이 열렸습니다! 기보함 열쇠로 초월 파편과 비단을 모아 Lv.30 혼원초월과 3슬롯 영혼 세공을 완성하세요!'
+        : '🏺 기보함을 개봉해 무림 16대 신물을 해금하고 Lv.15 태극신화 · Lv.30 혼원초월 경지까지 제련하세요!';
     const noticeClass = lastRelicNotice ? 'relic-notice-banner win' : 'relic-notice-banner';
     noticeHtml = `<div id="relic-notice-banner" class="${noticeClass}">${escapeHtml(noticeText)}</div>`;
   }
+
+  const blessedSlotsHtml = Array.from({ length: MAX_BLESSED_RELICS }, (_, idx) => {
+    const rid = meta.blessedRelics[idx];
+    if (!rid) {
+      return `
+        <div class="blessed-slot empty">
+          <span class="blessed-slot-empty-ico">🌟</span>
+          <div class="blessed-slot-meta">
+            <strong>본명 공명석 #${idx + 1} 비어있음</strong>
+            <span>아래 신물 카드의 [🌟본명] 버튼으로 지정</span>
+          </div>
+        </div>
+      `;
+    }
+    const rDef = data.relicsById.get(rid);
+    const rawLv = meta.relics[rid] ?? 1;
+    const effLv = getBlessedEffectiveRelicLevel(rawLv, true);
+    const portrait = sprites.relicPortraitUrl(rid, rawLv);
+    return `
+      <div class="blessed-slot active">
+        <img class="blessed-slot-img" src="${portrait}" alt="${escapeHtml(rDef?.name ?? rid)}" />
+        <div class="blessed-slot-meta">
+          <strong>${escapeHtml(rDef?.name ?? rid)}</strong>
+          <span>Lv.${rawLv} → <b>✦유효 Lv.${effLv} (1.5x)</b></span>
+        </div>
+        <button
+          type="button"
+          class="blessed-unequip-btn interactive"
+          data-sheet-action="relic-bless-toggle"
+          data-relic-id="${rid}"
+          title="본명 호법신물 장착 해제"
+        >해제</button>
+      </div>
+    `;
+  }).join('');
+
+  const blessedAltarHtml = `
+    <div class="blessed-relic-strip">
+      <div class="relic-set-head">
+        <span>🌟 본명 호법신물 3슬롯 공명대 (${meta.blessedRelics.length}/${MAX_BLESSED_RELICS})</span>
+        <span class="relic-set-hint">장착 신물 능력치 유효 레벨 1.5배 증폭 (최대 Lv.45) · 초월 파편 픽업 확률 2.5배!</span>
+      </div>
+      <div class="blessed-slot-grid">${blessedSlotsHtml}</div>
+    </div>
+  `;
 
   const econCount = data.relics.filter((d) => RELIC_CATEGORY_MAP[d.id] === 'economy').length;
   const combatCount = data.relics.filter((d) => RELIC_CATEGORY_MAP[d.id] === 'combat').length;
@@ -193,15 +295,24 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     .map((def) => {
       const lv = meta.relics[def.id] ?? 0;
       const isOwned = lv > 0;
+      const isBlessed = isOwned && meta.blessedRelics.includes(def.id);
+      const effLv = getBlessedEffectiveRelicLevel(lv, isBlessed);
       const isTranscend = lv > RELIC_STANDARD_CAP && lv < def.maxLevel;
-      const isMax = lv >= def.maxLevel;
+      const isBaseMax = lv >= def.maxLevel;
+      const isChaos = lv > def.maxLevel;
+      const isChaosMax = lv >= RELIC_MAX_LEVEL;
       const cost = getRelicUpgradeGoldCost(def, lv);
-      const affordable = !isMax && meta.gold >= cost;
+      const affordable = !isBaseMax && meta.gold >= cost;
+
+      const curShards = meta.relicShards[def.id] ?? 0;
+      const chaosCost = getRelicChaosUpgradeCost(Math.max(def.maxLevel, lv));
+      const canTranscendChaos =
+        isBaseMax && !isChaosMax && curShards >= chaosCost.shards && meta.gold >= chaosCost.gold;
 
       let liveBadgeHtml = '';
       if (def.id === 'golden_vault' && isOwned) {
-        const pct = getVaultInterestPct(lv);
-        const cap = getVaultInterestCap(lv);
+        const pct = getVaultInterestPct(effLv);
+        const cap = getVaultInterestCap(effLv);
         const est = Math.min(cap, Math.floor((snapshot.coin * pct) / 100));
         liveBadgeHtml = `<span class="relic-live-chip">예상 이자 +${est} 은자</span>`;
       } else if (def.id === 'million_sword_seal' && isOwned) {
@@ -210,120 +321,135 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       } else if (def.id === 'bandit_dagger' && snapshot.relicBonus.pilferedCoinTotal > 0) {
         liveBadgeHtml = `<span class="relic-live-chip">강탈 +${snapshot.relicBonus.pilferedCoinTotal} 은자</span>`;
       } else if (def.id === 'wind_swift_boots' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">공속 +${getSwiftBootsSpeedPct(lv)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">공속 +${getSwiftBootsSpeedPct(effLv)}%</span>`;
       } else if (def.id === 'crimson_crit_blade' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">회심 +${(getCritBladeChanceBps(lv) / 100).toFixed(1)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">회심 +${(getCritBladeChanceBps(effLv) / 100).toFixed(1)}%</span>`;
       } else if (def.id === 'armor_break_gauntlet' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">파갑 +${getArmorGauntletShred(lv)}</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">파갑 +${getArmorGauntletShred(effLv)}</span>`;
       } else if (def.id === 'celestial_skill_jade' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">절기 +${getSkillJadeDamagePct(lv)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">절기 +${getSkillJadeDamagePct(effLv)}%</span>`;
       } else if (def.id === 'demon_slayer_banner' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">보스 +${getSlayerBannerBossPct(lv)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">보스 +${getSlayerBannerBossPct(effLv)}%</span>`;
       } else if (def.id === 'merchant_abacus' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">소환 -${getAbacusSummonDiscount(lv)} 은자</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">소환 -${getAbacusSummonDiscount(effLv)} 은자</span>`;
       } else if (def.id === 'jade_training_manual' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">수련 -${getTrainingManualCostDiscountPct(lv)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">수련 -${getTrainingManualCostDiscountPct(effLv)}%</span>`;
       } else if (def.id === 'phoenix_luck_pouch' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">방출 +${getLuckPouchSellCoinPct(lv)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">방출 +${getLuckPouchSellCoinPct(effLv)}%</span>`;
       } else if (def.id === 'dragon_range_mirror' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">사거리 +${getRangeMirrorRangeBonus(lv)}</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">사거리 +${getRangeMirrorRangeBonus(effLv)}</span>`;
       } else if (def.id === 'eight_trigram_mirror' && isOwned) {
-        liveBadgeHtml = `<span class="relic-live-chip">공증 +${(getTrigramMirrorAtkBps(lv) / 100).toFixed(1)}%</span>`;
+        liveBadgeHtml = `<span class="relic-live-chip">공증 +${(getTrigramMirrorAtkBps(effLv) / 100).toFixed(1)}%</span>`;
       }
 
       let statLine = '';
       if (!isOwned) {
         statLine = `<span class="relic-lore">${escapeHtml(def.desc)}</span> · 해금(Lv.1): <b class="up-next">${escapeHtml(formatRelicStatSummary(def.id, 1))}</b>`;
-      } else if (isMax) {
-        statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, lv))}</b> <span class="relic-max-note">(태극신화 Lv.${def.maxLevel} 달성)</span>`;
+      } else if (isChaosMax) {
+        statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, effLv))}</b> <span class="relic-max-note">(태고불멸 Lv.${RELIC_MAX_LEVEL}${isBlessed ? ` · 본명 유효 Lv.${effLv}` : ''} 완성!)</span>`;
+      } else if (isBaseMax) {
+        const nextEffLv = getBlessedEffectiveRelicLevel(lv + 1, isBlessed);
+        statLine = `<b>${escapeHtml(formatRelicStatSummary(def.id, effLv))}</b> → <b class="up-next">혼원 Lv.${lv + 1}${isBlessed ? `(유효${nextEffLv})` : ''}: ${escapeHtml(formatRelicStatSummary(def.id, nextEffLv))}</b>`;
       } else {
+        const nextEffLv = getBlessedEffectiveRelicLevel(lv + 1, isBlessed);
         const nextPrefix = lv >= RELIC_STANDARD_CAP ? `초월 Lv.${lv + 1}` : `Lv.${lv + 1}`;
-        statLine = `${escapeHtml(formatRelicStatSummary(def.id, lv))} → <b class="up-next">${nextPrefix}: ${escapeHtml(formatRelicStatSummary(def.id, lv + 1))}</b>`;
+        statLine = `${escapeHtml(formatRelicStatSummary(def.id, effLv))} → <b class="up-next">${nextPrefix}: ${escapeHtml(formatRelicStatSummary(def.id, nextEffLv))}</b>`;
       }
 
-      const lvBadgeBg = isMax
-        ? '#9333ea'
-        : isTranscend
-          ? '#7c3aed'
-          : lv >= RELIC_STANDARD_CAP
-            ? '#dc2626'
-            : lv >= 5
-              ? '#b45309'
+      const lvBadgeBg = isChaosMax
+        ? '#be185d'
+        : isChaos
+          ? '#c026d3'
+          : isBaseMax
+            ? '#9333ea'
+            : isTranscend
+              ? '#7c3aed'
+              : lv >= RELIC_STANDARD_CAP
+                ? '#dc2626'
+                : lv >= 5
+                  ? '#b45309'
+                  : isOwned
+                    ? '#d97706'
+                    : '#334155';
+      const lvBadgeTxt = isChaosMax
+        ? `태고불멸 Lv.${lv}`
+        : isChaos
+          ? `혼원 Lv.${lv}/${RELIC_MAX_LEVEL}`
+          : isBaseMax
+            ? `신화 Lv.${lv}`
+            : isTranscend
+              ? `초월 Lv.${lv}/${def.maxLevel}`
               : isOwned
-                ? '#d97706'
-                : '#334155';
-      const lvBadgeTxt = isMax
-        ? `신화 Lv.${lv}`
-        : isTranscend
-          ? `초월 Lv.${lv}/${def.maxLevel}`
-          : isOwned
-            ? `Lv.${lv}/${def.maxLevel}`
-            : '봉인됨';
-      const ctaLabel = isMax
-        ? '신화'
-        : lv >= RELIC_STANDARD_CAP
-          ? '초월 제련'
-          : isOwned
-            ? '제련'
-            : '지정 해금';
-      const cardTierCls = isMax
-        ? ' relic-owned relic-mythic'
-        : isTranscend
-          ? ' relic-owned relic-transcend'
-          : lv >= 5
-            ? ' relic-owned relic-master'
-            : isOwned
-              ? ' relic-owned'
-              : ' relic-locked';
+                ? `Lv.${lv}/${def.maxLevel}`
+                : '봉인됨';
+      const ctaLabel =
+        lv >= RELIC_STANDARD_CAP ? '초월 제련' : isOwned ? '제련' : '지정 해금';
+      const cardTierCls = isChaos
+        ? ' relic-owned relic-mythic relic-chaos'
+        : isBaseMax
+          ? ' relic-owned relic-mythic'
+          : isTranscend
+            ? ' relic-owned relic-transcend'
+            : lv >= 5
+              ? ' relic-owned relic-master'
+              : isOwned
+                ? ' relic-owned'
+                : ' relic-locked';
       const portraitUrl = sprites.relicPortraitUrl(def.id, lv);
       const pipsHtml = Array.from({ length: def.maxLevel }, (_, idx) => {
-        const filled = idx < lv;
+        const chaosFilled = isBaseMax && idx < lv - def.maxLevel;
+        const filled = idx < Math.min(lv, def.maxLevel);
         const isOverPip = idx >= RELIC_STANDARD_CAP;
-        const pipCls = !filled
-          ? isOverPip
-            ? ' over-empty'
-            : ''
-          : isMax
-            ? ' max'
-            : isOverPip
-              ? ' trans'
-              : lv >= 5
-                ? ' high'
-                : ' on';
+        const pipCls = chaosFilled
+          ? ' chaos'
+          : !filled
+            ? isOverPip
+              ? ' over-empty'
+              : ''
+            : isBaseMax
+              ? ' max'
+              : isOverPip
+                ? ' trans'
+                : lv >= 5
+                  ? ' high'
+                  : ' on';
         return `<span class="relic-lv-pip${pipCls}"></span>`;
       }).join('');
 
       const isEngraved = Boolean(meta.engravedRelics[def.id]);
       const canEngrave =
-        isMax &&
+        isBaseMax &&
         !isEngraved &&
         meta.gold >= RELIC_ENGRAVE_GOLD_COST &&
         meta.silk >= RELIC_ENGRAVE_SILK_COST;
       const engraveBadgeHtml = isEngraved
         ? `<span class="relic-engrave-badge">★ 신화각인 (공+${RELIC_ENGRAVE_ATK_PCT_EACH}%·절기+${RELIC_ENGRAVE_SKILL_PCT_EACH}%)</span>`
         : '';
+      const blessedBadgeHtml = isBlessed
+        ? `<span class="blessed-eff-pill">🌟본명 1.5x (유효 Lv.${effLv})</span>`
+        : '';
+      const shardBadgeHtml =
+        (isBaseMax && !isChaosMax) || curShards > 0
+          ? `<span class="relic-shard-pill${curShards >= chaosCost.shards && !isChaosMax ? ' ready' : ''}">🔮파편 ${curShards}${!isChaosMax ? `/${chaosCost.shards}` : ''}</span>`
+          : '';
 
-      const actionBtnHtml = isMax
-        ? isEngraved
-          ? `
-            <button type="button" class="card-cta-btn cta-gold cta-disabled" disabled>
-              <span>★ 각인완료</span>
-            </button>
-          `
-          : `
-            <button
-              type="button"
-              class="card-cta-btn ${canEngrave ? 'cta-gold interactive' : 'cta-disabled'}"
-              data-sheet-action="relic-engrave"
-              data-relic-id="${def.id}"
-              title="Lv.15 신물 신화 각인: 영구 공격력 +${RELIC_ENGRAVE_ATK_PCT_EACH}% · 절기 피해 +${RELIC_ENGRAVE_SKILL_PCT_EACH}%"
-              ${canEngrave ? '' : 'disabled'}
-            >
-              <span>✦ 신화 각인</span>
-              <span class="mini-price">${ICON.goldCoin}${RELIC_ENGRAVE_GOLD_COST}·${ICON.silk}${RELIC_ENGRAVE_SILK_COST}</span>
-            </button>
-          `
-        : `
+      const blessBtnHtml = isOwned
+        ? `
+          <button
+            type="button"
+            class="relic-bless-btn${isBlessed ? ' active' : ''} interactive"
+            data-sheet-action="relic-bless-toggle"
+            data-relic-id="${def.id}"
+            title="본명 호법신물 장착/해제 (능력치 레벨 1.5배 증폭 + 초월 파편 픽업 2.5배)"
+          >
+            ${isBlessed ? '🌟 본명 중' : '☆ 본명 지정'}
+          </button>
+        `
+        : '';
+
+      let primaryActionHtml = '';
+      if (!isBaseMax) {
+        primaryActionHtml = `
           <button
             type="button"
             class="card-cta-btn ${affordable ? (lv >= RELIC_STANDARD_CAP ? 'cta-violet interactive' : isOwned ? 'interactive' : 'cta-sky interactive') : 'cta-disabled'}"
@@ -335,26 +461,122 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
             <span class="mini-price">${ICON.goldCoin}${cost}</span>
           </button>
         `;
+      } else {
+        const engraveBtnPart = !isEngraved
+          ? `
+            <button
+              type="button"
+              class="card-cta-btn ${canEngrave ? 'cta-gold interactive' : 'cta-disabled'}"
+              data-sheet-action="relic-engrave"
+              data-relic-id="${def.id}"
+              title="Lv.15 신물 신화 각인 개방: 영구 공격력 +${RELIC_ENGRAVE_ATK_PCT_EACH}% · 절기 피해 +${RELIC_ENGRAVE_SKILL_PCT_EACH}% + 삼재 영혼 세공 3슬롯 해금!"
+              ${canEngrave ? '' : 'disabled'}
+            >
+              <span>✦ 신화 각인</span>
+              <span class="mini-price">${ICON.goldCoin}${RELIC_ENGRAVE_GOLD_COST}·${ICON.silk}${RELIC_ENGRAVE_SILK_COST}</span>
+            </button>
+          `
+          : '';
+        const transcendBtnPart = isChaosMax
+          ? `
+            <button type="button" class="card-cta-btn cta-gold cta-disabled" disabled>
+              <span>👑 태고완성</span>
+            </button>
+          `
+          : `
+            <button
+              type="button"
+              class="card-cta-btn ${canTranscendChaos ? 'cta-violet interactive' : 'cta-disabled'}"
+              data-sheet-action="relic-transcend"
+              data-relic-id="${def.id}"
+              title="초월 파편 제련: 혼원초월 Lv.${lv + 1}/${RELIC_MAX_LEVEL} 승급"
+              ${canTranscendChaos ? '' : 'disabled'}
+            >
+              <span>🔮 혼원초월</span>
+              <span class="mini-price">🔮${chaosCost.shards}·${ICON.goldCoin}${chaosCost.gold}</span>
+            </button>
+          `;
+        primaryActionHtml = `${engraveBtnPart}${transcendBtnPart}`;
+      }
+
+      let soulForgeHtml = '';
+      if (isEngraved) {
+        const soulSlots = meta.relicSoulSlots[def.id];
+        const lockedCnt = soulSlots ? soulSlots.filter((s) => s.locked).length : 0;
+        const soulCost = getSoulRerollCost(Math.min(SOUL_SLOT_COUNT - 1, lockedCnt));
+        const canReroll =
+          lockedCnt < SOUL_SLOT_COUNT &&
+          meta.gold >= soulCost.gold &&
+          meta.silk >= soulCost.silk;
+
+        const slotsChipsHtml =
+          soulSlots && soulSlots.length === SOUL_SLOT_COUNT
+            ? soulSlots
+                .map((slot, sIdx) => {
+                  const rMeta = SOUL_RARITY_META[slot.rarity];
+                  return `
+                    <button
+                      type="button"
+                      class="soul-slot-chip${slot.locked ? ' locked' : ''} interactive"
+                      style="--soul-color:${rMeta.color}"
+                      data-sheet-action="relic-soul-lock"
+                      data-relic-id="${def.id}"
+                      data-slot-index="${sIdx}"
+                      title="터치하여 슬롯 잠금/해제 (최대 2줄 잠금 가능)"
+                    >
+                      <span class="soul-rarity-tag" style="background:${rMeta.color}">${escapeHtml(rMeta.badge)}</span>
+                      <span class="soul-stat-txt">${escapeHtml(formatSoulAffixSlot(slot))}</span>
+                      <span class="soul-lock-ico">${slot.locked ? '🔒' : '🔓'}</span>
+                    </button>
+                  `;
+                })
+                .join('')
+            : `<span class="soul-unrolled-hint">⚒️ 삼재 영혼 3슬롯 미감정 — 초회 감정 시 B ~ ✦태고(SSS) 영구 부옵션 3줄 개방!</span>`;
+
+        soulForgeHtml = `
+          <div class="relic-soul-box">
+            <div class="relic-soul-slots">${slotsChipsHtml}</div>
+            <button
+              type="button"
+              class="soul-reroll-btn ${canReroll ? 'interactive' : 'disabled'}"
+              data-sheet-action="relic-soul-reroll"
+              data-relic-id="${def.id}"
+              ${canReroll ? '' : 'disabled'}
+            >
+              <span>⚒️ ${soulSlots ? (lockedCnt > 0 ? `잠금(${lockedCnt}) 연마` : '영혼 재연마') : '초회 감정'}</span>
+              <span class="mini-price">${ICON.goldCoin}${soulCost.gold}·${ICON.silk}${soulCost.silk}</span>
+            </button>
+          </div>
+        `;
+      }
 
       return `
-        <div class="sheet-card relic-card${cardTierCls}${isEngraved ? ' relic-engraved' : ''}">
-          <div class="card-left">
-            <div class="card-avatar relic-avatar">
-              <img src="${portraitUrl}" alt="${escapeHtml(def.name)}" />
-            </div>
-            <div class="card-info">
-              <div class="card-name-row">
-                <span class="grade-pill" style="background:${lvBadgeBg}">${lvBadgeTxt}</span>
-                <span class="grade-pill relic-tag-pill">${escapeHtml(def.tag)}</span>
-                <span class="card-name">${escapeHtml(def.name)}</span>
-                ${engraveBadgeHtml}
-                ${liveBadgeHtml}
+        <div class="sheet-card relic-card${cardTierCls}${isEngraved ? ' relic-engraved' : ''}${isBlessed ? ' relic-blessed' : ''}">
+          <div class="relic-card-main">
+            <div class="card-left">
+              <div class="card-avatar relic-avatar">
+                <img src="${portraitUrl}" alt="${escapeHtml(def.name)}" />
               </div>
-              <div class="card-sub">${statLine}</div>
-              <div class="relic-lv-track" aria-hidden="true">${pipsHtml}</div>
+              <div class="card-info">
+                <div class="card-name-row">
+                  <span class="grade-pill" style="background:${lvBadgeBg}">${lvBadgeTxt}</span>
+                  <span class="grade-pill relic-tag-pill">${escapeHtml(def.tag)}</span>
+                  <span class="card-name">${escapeHtml(def.name)}</span>
+                  ${blessedBadgeHtml}
+                  ${shardBadgeHtml}
+                  ${engraveBadgeHtml}
+                  ${liveBadgeHtml}
+                </div>
+                <div class="card-sub">${statLine}</div>
+                <div class="relic-lv-track" aria-hidden="true">${pipsHtml}</div>
+              </div>
+            </div>
+            <div class="relic-card-actions">
+              ${blessBtnHtml}
+              ${primaryActionHtml}
             </div>
           </div>
-          ${actionBtnHtml}
+          ${soulForgeHtml}
         </div>
       `;
     })
@@ -362,7 +584,11 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
 
   const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
   const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
-  const modeBadge = trialCfg ? `${trialCfg.badge} ${trialCfg.rewardMult}x` : diffCfg.badge;
+  const modeBadge = trialCfg
+    ? `${trialCfg.badge} ${trialCfg.rewardMult}x`
+    : snapshot.ascensionLevel > 0
+      ? `🏯 등선 ${snapshot.ascensionLevel}중천`
+      : diffCfg.badge;
   const preview = computeSettlementReward({
     wave: snapshot.wave,
     monstersSlain: snapshot.monstersSlain,
@@ -370,6 +596,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     bountiesSlain: snapshot.bounty.bountiesSlain,
     difficulty: snapshot.difficulty,
     trialId: snapshot.trialId,
+    ascensionLevel: snapshot.ascensionLevel,
     victory: snapshot.victoryAchieved,
   });
   const canEarlySettle = !snapshot.gameOver && !snapshot.victoryHold && snapshot.wave >= 2;
@@ -380,7 +607,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     settleFooterHtml = `
       <div class="settlement-preview-bar victory-bar">
         <div class="settlement-preview-info">
-          <span class="settlement-preview-title">🏆 제 ${targetWaveStr} 장 ${trialCfg ? '비경 제패' : '천하통일'} 정산 완료!</span>
+          <span class="settlement-preview-title">🏆 제 ${targetWaveStr} 장 ${trialCfg ? '비경 제패' : snapshot.ascensionLevel > 0 ? `등선 ${snapshot.ascensionLevel}중천 제패` : '천하통일'} 정산 완료!</span>
           <span class="settlement-preview-sub">신물을 제련한 뒤 즉시 ${snapshot.clearTargetWave + 1}장 무한 혈투에 돌입하거나 금의환향할 수 있습니다!</span>
         </div>
         <div class="relic-draw-btns">
@@ -398,7 +625,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       <div class="settlement-preview-bar">
         <div class="settlement-preview-info">
           <span class="settlement-preview-title">이번 출정 정산 완료!</span>
-          <span class="settlement-preview-sub">획득 보상: 천하주화 +${settledRec?.goldEarned ?? preview.goldEarned} · 열쇠 +${settledRec?.keysEarned ?? preview.keysEarned}</span>
+          <span class="settlement-preview-sub">획득 보상: 천하주화 +${settledRec?.goldEarned ?? preview.goldEarned} · 열쇠 +${settledRec?.keysEarned ?? preview.keysEarned}${settledRec?.shardsEarned ? ` · 🔮파편 +${settledRec.shardsEarned}` : ''}</span>
         </div>
         <button type="button" class="card-cta-btn cta-green interactive" data-sheet-action="restart-run">
           <span>재출정</span>
@@ -474,42 +701,65 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     .map((st) => {
       const def = st.def;
       const tierBadge =
-        st.tier === 3
-          ? '태극신화 Lv.15 ★'
-          : st.tier === 2
-            ? '절정공명 Lv.10+'
-            : st.tier === 1
-              ? '세트해금 4/4'
-              : `수집 ${st.ownedCount}/4`;
+        st.tier === 5
+          ? `태고창세 Lv.${RELIC_MAX_LEVEL} 👑`
+          : st.tier === 4
+            ? `혼원초월 Lv.${RELIC_CHAOS_SET_TIER4_LV}+ ✦`
+            : st.tier === 3
+              ? '태극신화 Lv.15 ★'
+              : st.tier === 2
+                ? '절정공명 Lv.10+'
+                : st.tier === 1
+                  ? '세트해금 4/4'
+                  : `수집 ${st.ownedCount}/4`;
       const tierCls =
-        st.tier === 3
-          ? ' set-t3'
-          : st.tier === 2
-            ? ' set-t2'
-            : st.tier === 1
-              ? ' set-t1'
-              : ' set-t0';
+        st.tier >= 4
+          ? ' set-t3 set-chaos'
+          : st.tier === 3
+            ? ' set-t3'
+            : st.tier === 2
+              ? ' set-t2'
+              : st.tier === 1
+                ? ' set-t1'
+                : ' set-t0';
       const activeDesc =
-        st.tier === 3
-          ? def.tier3Desc
-          : st.tier === 2
-            ? def.tier2Desc
-            : st.tier === 1
-              ? def.tier1Desc
-              : `4종 해금 시: ${def.tier1Desc}`;
+        st.tier === 5
+          ? def.tier5Desc
+          : st.tier === 4
+            ? def.tier4Desc
+            : st.tier === 3
+              ? def.tier3Desc
+              : st.tier === 2
+                ? def.tier2Desc
+                : st.tier === 1
+                  ? def.tier1Desc
+                  : `4종 해금 시: ${def.tier1Desc}`;
       const nextHint =
         st.tier === 1
           ? `다음(전원 Lv.10): ${def.tier2Desc}`
           : st.tier === 2
-            ? `극의(전원 Lv.15): ${def.tier3Desc}`
+            ? `다음(전원 Lv.15): ${def.tier3Desc}`
             : st.tier === 3
-              ? '최고 단계 공명 발동 중!'
-              : '';
+              ? `초월(전원 Lv.${RELIC_CHAOS_SET_TIER4_LV}): ${def.tier4Desc}`
+              : st.tier === 4
+                ? `창세(전원 Lv.${RELIC_MAX_LEVEL}): ${def.tier5Desc}`
+                : st.tier === 5
+                  ? '👑 태고창세 최고 공명 완성!'
+                  : '';
       const membersHtml = def.members
         .map((rid) => {
           const lv = meta.relics[rid] ?? 0;
           const rDef = data.relicsById.get(rid);
-          const cls = lv >= 15 ? ' m-t3' : lv >= 10 ? ' m-t2' : lv > 0 ? ' m-t1' : ' m-t0';
+          const cls =
+            lv >= RELIC_CHAOS_SET_TIER4_LV
+              ? ' m-t3 m-chaos'
+              : lv >= 15
+                ? ' m-t3'
+                : lv >= 10
+                  ? ' m-t2'
+                  : lv > 0
+                    ? ' m-t1'
+                    : ' m-t0';
           return `<span class="relic-set-member${cls}" title="${escapeHtml(rDef?.name ?? rid)} Lv.${lv}"><img src="${sprites.relicPortraitUrl(rid, lv)}" alt="" /><b>${lv > 0 ? lv : '·'}</b></span>`;
         })
         .join('');
@@ -533,7 +783,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     <div class="relic-set-section">
       <div class="relic-set-head">
         <span>☯ 4대 신물 세트 공명 (${activeSetsCount}/4 발동)</span>
-        <span class="relic-set-hint">4종 해금 · 전원 Lv.10 · 전원 Lv.15 단계별 누적</span>
+        <span class="relic-set-hint">해금 · Lv.10 · Lv.15(신화) · Lv.${RELIC_CHAOS_SET_TIER4_LV}(혼원) · Lv.${RELIC_MAX_LEVEL}(창세) 5단계</span>
       </div>
       <div class="relic-set-grid">${setCardsHtml}</div>
     </div>
@@ -545,7 +795,9 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
     const cost = getMasteryUpgradeCost(lv);
     const canAfford = !isMaxM && meta.gold >= cost.gold && meta.silk >= cost.silk;
     const priceTxt =
-      cost.silk > 0 ? `${ICON.goldCoin}${cost.gold} · ${ICON.silk}${cost.silk}` : `${ICON.goldCoin}${cost.gold}`;
+      cost.silk > 0
+        ? `${ICON.goldCoin}${cost.gold} · ${ICON.silk}${cost.silk}`
+        : `${ICON.goldCoin}${cost.gold}`;
     return `
       <div class="mastery-card${lv > 0 ? ' active' : ''}">
         <div class="mastery-card-top">
@@ -574,19 +826,25 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   if (eb.skillDamagePct > 0) endgameSummaryParts.push(`절기+${eb.skillDamagePct}%`);
   if ((eb.speedPct ?? 0) > 0) endgameSummaryParts.push(`공속+${eb.speedPct}%`);
   if (eb.startCoin > 0) endgameSummaryParts.push(`시작+${eb.startCoin}은자·처치+${eb.killCoinPct}%`);
-  if (eb.critChanceBps > 0) endgameSummaryParts.push(`치명+${(eb.critChanceBps / 100).toFixed(1)}%`);
+  if (eb.critChanceBps > 0)
+    endgameSummaryParts.push(`치명+${(eb.critChanceBps / 100).toFixed(1)}%`);
+  if ((eb.critMultBonus ?? 0) > 0)
+    endgameSummaryParts.push(`회심배율+${Math.round((eb.critMultBonus ?? 0) * 100)}%p`);
   if ((eb.armorShred ?? 0) > 0) endgameSummaryParts.push(`파갑+${eb.armorShred}`);
   if (eb.bossDamagePct > 0) endgameSummaryParts.push(`보스+${eb.bossDamagePct}%`);
   if ((eb.gambleBonusPct ?? 0) > 0) endgameSummaryParts.push(`영약+${eb.gambleBonusPct}%`);
   const endgameSummaryTxt =
     endgameSummaryParts.length > 0
       ? endgameSummaryParts.join(' · ')
-      : '기경팔맥 타통 · Lv.15 신화 각인 · 경지 단련으로 영구 능력치를 확장하세요';
+      : '기경팔맥 · 영혼 세공 · 선천 도과 · 경지 단련으로 영구 능력치를 확장하세요';
 
   const cult = meta.cultivation;
   const cultFillPct = cult.isMaxLevel
     ? 100
-    : Math.min(100, Math.max(0, Math.round((cult.currentLevelXp / Math.max(1, cult.nextLevelXp)) * 100)));
+    : Math.min(
+        100,
+        Math.max(0, Math.round((cult.currentLevelXp / Math.max(1, cult.nextLevelXp)) * 100)),
+      );
   const cycleTier = eb.meridianCycleTier ?? 0;
   const cycleBadgeHtml =
     cycleTier === 2
@@ -594,6 +852,38 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       : cycleTier === 1
         ? '<span class="meridian-cycle-badge open">☯ 소주천 개통 (공+4%·은자+15)</span>'
         : '<span class="meridian-cycle-hint">8맥 모두 Lv.1 개통 시 소주천 · 전원 Lv.5 시 대주천 발동!</span>';
+
+  const rc = meta.reincarnationCount;
+  const daoBonus = REINCARNATION_DAO_BONUS_PER_STACK;
+  const reincarnationBannerHtml =
+    rc > 0 || cult.isMaxLevel
+      ? `
+        <div class="reincarnate-banner${cult.isMaxLevel ? ' ready' : ''}">
+          <div class="reincarnate-info">
+            <span class="reincarnate-badge">${rc > 0 ? `☯ 제 ${rc} 차 전생 · 선천 도과` : '☯ 무극태상 도달 · 전생 개방!'}</span>
+            <span class="reincarnate-desc">${
+              rc > 0
+                ? `누적 선천 도과: 공+${rc * daoBonus.atkPct}% · 절기+${rc * daoBonus.skillDamagePct}% · 보스+${rc * daoBonus.bossDamagePct}% · 시작은자+${rc * daoBonus.startCoin} · 선천진기+${rc * daoBonus.innateMeridianPoints}혈`
+                : `전생 시 내공 경지 보상을 다시 수령하며 영구 [선천 도과](공+${daoBonus.atkPct}%·절기+${daoBonus.skillDamagePct}%·보스+${daoBonus.bossDamagePct}%·진기+${daoBonus.innateMeridianPoints}혈)가 무한 중첩됩니다!`
+            }</span>
+          </div>
+          ${
+            cult.isMaxLevel
+              ? `
+                <button
+                  type="button"
+                  class="reincarnate-cta-btn interactive"
+                  data-sheet-action="cultivation-reincarnate"
+                >
+                  <span>☯ 무극 전생 돌파</span>
+                  <span class="mini-price">+🪙${REINCARNATION_REWARD.gold}·🔑${REINCARNATION_REWARD.keys}·🔮${REINCARNATION_REWARD.shards}</span>
+                </button>
+              `
+              : ''
+          }
+        </div>
+      `
+      : '';
 
   const claimedRealmSet = new Set(meta.claimedRealmMilestones);
   const realmMilestoneHtml = CULTIVATION_MILESTONE_REALMS.map((rm) => {
@@ -658,7 +948,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       <div class="meridian-realm-banner">
         <div class="meridian-realm-top">
           <div class="meridian-realm-title-wrap">
-            <span class="grade-pill" style="background:${cult.realmColor}">☯ 단전 Lv.${cult.level}</span>
+            <span class="grade-pill" style="background:${cult.realmColor}">☯ 단전 Lv.${cult.level}${rc > 0 ? ` · ${rc}전생` : ''}</span>
             <strong class="meridian-realm-name">${escapeHtml(cult.realmName)}</strong>
             <span class="meridian-qi-pill${meta.unspentMeridianPoints > 0 ? ' has-pts' : ''}">🔥 미사용 진기 ${meta.unspentMeridianPoints}혈</span>
           </div>
@@ -668,9 +958,10 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
           <div class="meridian-xp-track">
             <div class="meridian-xp-fill" style="width:${cultFillPct}%;background:linear-gradient(90deg, ${cult.realmColor}, #fde047)"></div>
           </div>
-          <span class="meridian-xp-txt">${cult.isMaxLevel ? '무극 완성 (MAX)' : `내공 ${cult.currentLevelXp}/${cult.nextLevelXp} XP (승급 시 진기+1혈)`}</span>
+          <span class="meridian-xp-txt">${cult.isMaxLevel ? '무극 완성 (MAX · 전생 가능!)' : `내공 ${cult.currentLevelXp}/${cult.nextLevelXp} XP (승급 시 진기+1혈 · Lv.41 무극 전생)`}</span>
         </div>
         <div class="meridian-cycle-row">${cycleBadgeHtml}</div>
+        ${reincarnationBannerHtml}
       </div>
       <div class="codex-milestone-strip realm-milestone-strip">${realmMilestoneHtml}</div>
       <div class="mastery-grid meridian-grid">${meridianCardsHtml}</div>
@@ -680,7 +971,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   const masterySectionHtml = `
     <div class="mastery-panel">
       <div class="relic-set-head">
-        <span>🏔 강호 경지 단련 &amp; 신화 각인 (${meta.engravedCount}/${data.relics.length})</span>
+        <span>🏔 강호 경지 단련 &amp; 영혼 각인 (${meta.engravedCount}/${data.relics.length})</span>
         <span class="relic-set-hint">${escapeHtml(endgameSummaryTxt)}</span>
       </div>
       <div class="mastery-grid">${masteryCardsHtml}</div>
@@ -694,6 +985,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
           <span class="relic-wallet-pill">${ICON.goldCoin}<span>천하주화</span><b>${meta.gold.toLocaleString('ko-KR')}</b></span>
           <span class="relic-wallet-pill key">${ICON.key}<span>열쇠</span><b>${meta.keys}</b></span>
           <span class="relic-wallet-pill silk">${ICON.silk}<span>비단</span><b>${meta.silk}필</b></span>
+          <span class="relic-wallet-pill shard">🔮<span>초월파편</span><b>${meta.totalRelicShards}</b></span>
         </div>
         <div class="relic-draw-btns relic-draw-grid">
           <button
@@ -704,7 +996,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
             data-count="1"
             ${canDrawKey ? '' : 'disabled'}
           >
-            <span>열쇠 ×1</span>
+            <span>${allBaseMaxed ? '파편 ×1' : '열쇠 ×1'}</span>
             <span class="mini-price">${ICON.key}1</span>
           </button>
           <button
@@ -742,8 +1034,10 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
           </button>
         </div>
       </div>
+      ${chaosChestBannerHtml}
       ${noticeHtml}
     </div>
+    ${blessedAltarHtml}
     ${meridianSectionHtml}
     ${relicSetSectionHtml}
     ${masterySectionHtml}

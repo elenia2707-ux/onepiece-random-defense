@@ -6,11 +6,14 @@ import {
 } from './CommandQueue';
 import { EventBus } from './EventBus';
 import {
+  ASCENSION_MAX_LEVEL,
   CLEAR_TARGET_WAVE,
+  computeAscensionModifiers,
   computeRelicSetBonuses,
   type EndgameMetaBonuses,
   getAbacusSummonDiscount,
   getArmorGauntletShred,
+  getBlessedEffectiveRelicLevel,
   getFurnaceChanceBonusPct,
   getFurnaceRefundPct,
   getJadeSealStartCoin,
@@ -26,7 +29,9 @@ import {
   getVaultInterestCap,
   getVaultInterestPct,
   getWealthBonusBps,
+  MAX_BLESSED_RELICS,
   RELIC_IDS_ORDERED,
+  RELIC_MAX_LEVEL,
   TRIAL_CONFIGS,
   ZERO_ENDGAME_META_BONUSES,
 } from './relicFormulas';
@@ -697,6 +702,8 @@ export interface SectSnapshot {
 export interface SimulationModeOptions {
   readonly runMode?: RunModeId;
   readonly dailyDateKey?: string;
+  readonly ascensionLevel?: number;
+  readonly blessedRelics?: readonly RelicId[];
   readonly codexAtkBonusPct?: number;
   readonly endgameBonuses?: EndgameMetaBonuses;
   readonly arenaRule?: ArenaRuleId | null;
@@ -709,6 +716,7 @@ export interface UISnapshot {
   readonly paused: boolean;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly ascensionLevel: number;
   readonly runMode: RunModeId;
   readonly dailyChallenge: DailyChallengeSpec | null;
   readonly endlessMilestonesReached: readonly number[];
@@ -779,6 +787,7 @@ export interface UISnapshot {
   readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
   readonly upgradeCosts: Readonly<Record<UpgradeGroupId, number>>;
   readonly relics: Readonly<Record<RelicId, number>>;
+  readonly blessedRelics: readonly RelicId[];
   readonly relicBonus: RelicBonusSnapshot;
   readonly synergy: FactionSynergySnapshot;
   readonly lastGambleResult: GambleResultSnapshot | null;
@@ -798,6 +807,7 @@ export class Simulation {
   public readonly data: GameDataBundle;
   public readonly difficulty: DifficultyId;
   public readonly trialId: TrialId | null;
+  public readonly ascensionLevel: number;
   public readonly runMode: RunModeId;
   public readonly dailyChallengeSpec: DailyChallengeSpec | null;
   public readonly rookieMode: boolean;
@@ -817,6 +827,7 @@ export class Simulation {
   private endgameBonuses: EndgameMetaBonuses = ZERO_ENDGAME_META_BONUSES;
   private arenaRule: ArenaRuleId | null = null;
   private heroMasteryAtkPct: Readonly<Partial<Record<UnitId, number>>> = {};
+  private readonly blessedRelics: RelicId[] = [];
   private readonly armory: ArmamentSlotState[] = [];
   private pledgedSect: SectId | null = null;
   private sectVowCompleted = false;
@@ -951,18 +962,24 @@ export class Simulation {
       this.dailyChallengeSpec = spec;
       this.difficulty = 'hard';
       this.trialId = null;
+      this.ascensionLevel = 0;
       this.rookieMode = false;
       this.rng = new Rng(spec.seed);
     } else if (this.runMode === 'boss_rush') {
       this.dailyChallengeSpec = null;
       this.difficulty = 'hard';
       this.trialId = null;
+      this.ascensionLevel = 0;
       this.rookieMode = false;
       this.rng = new Rng(seed);
     } else {
       this.dailyChallengeSpec = null;
       this.difficulty = difficulty;
       this.trialId = trialId;
+      this.ascensionLevel =
+        difficulty === 'abyss' && trialId === null
+          ? Math.max(0, Math.min(ASCENSION_MAX_LEVEL, Math.floor(options?.ascensionLevel ?? 0)))
+          : 0;
       this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
       this.rng = new Rng(seed);
     }
@@ -1015,43 +1032,72 @@ export class Simulation {
       byGrade.set(u.grade, list);
     }
     this.unitsByGrade = byGrade;
-    if (initialRelics) {
-      this.syncRelicsInternal(initialRelics, false);
+    if (initialRelics || options?.blessedRelics) {
+      this.syncRelicsInternal(initialRelics ?? {}, false, options?.blessedRelics);
     }
     this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+  }
+
+  public getEffectiveRelicLv(id: RelicId): number {
+    const raw = this.relicLv[id] ?? 0;
+    return getBlessedEffectiveRelicLevel(raw, this.blessedRelics.includes(id));
+  }
+
+  private buildEffectiveRelicMap(): Record<RelicId, number> {
+    const out = { ...this.relicLv };
+    for (let i = 0; i < this.blessedRelics.length; i++) {
+      const id = this.blessedRelics[i]!;
+      out[id] = this.getEffectiveRelicLv(id);
+    }
+    return out;
   }
 
   private syncRelicsInternal(
     incoming: Readonly<Partial<Record<RelicId, number>>>,
     recomputeHints = true,
+    incomingBlessed?: readonly RelicId[],
   ): void {
     for (let i = 0; i < RELIC_IDS_ORDERED.length; i++) {
       const id = RELIC_IDS_ORDERED[i]!;
       const raw = incoming[id];
       if (typeof raw === 'number' && Number.isFinite(raw)) {
-        const maxLv = this.data.relicsById.get(id)?.maxLevel ?? 15;
-        this.relicLv[id] = Math.max(0, Math.min(maxLv, Math.floor(raw)));
+        this.relicLv[id] = Math.max(0, Math.min(RELIC_MAX_LEVEL, Math.floor(raw)));
+      }
+    }
+    if (incomingBlessed !== undefined) {
+      this.blessedRelics.length = 0;
+      for (let i = 0; i < incomingBlessed.length; i++) {
+        const id = incomingBlessed[i]!;
+        if (
+          (RELIC_IDS_ORDERED as readonly string[]).includes(id) &&
+          (this.relicLv[id] ?? 0) > 0 &&
+          !this.blessedRelics.includes(id) &&
+          this.blessedRelics.length < MAX_BLESSED_RELICS
+        ) {
+          this.blessedRelics.push(id);
+        }
       }
     }
 
     const setBonus = computeRelicSetBonuses(this.relicLv);
-    const targetCoinBonus = getJadeSealStartCoin(this.relicLv.founding_jade_seal);
+    const targetCoinBonus = getJadeSealStartCoin(this.getEffectiveRelicLv('founding_jade_seal'));
     if (targetCoinBonus > this.appliedStartCoinBonus) {
       this.coin += targetCoinBonus - this.appliedStartCoinBonus;
       this.appliedStartCoinBonus = targetCoinBonus;
     }
 
     const targetLuckBonus =
-      getLuckPouchStartLuck(this.relicLv.phoenix_luck_pouch) + setBonus.startLuck;
+      getLuckPouchStartLuck(this.getEffectiveRelicLv('phoenix_luck_pouch')) + setBonus.startLuck;
     if (targetLuckBonus > this.appliedStartLuckBonus) {
       this.luckStone += targetLuckBonus - this.appliedStartLuckBonus;
       this.appliedStartLuckBonus = targetLuckBonus;
     }
 
     let wispChanged = false;
+    const effScrollLv = this.getEffectiveRelicLv('heavenly_scroll_chest');
     for (let i = 0; i < this.data.grades.length; i++) {
       const g = this.data.grades[i]!;
-      const targetCnt = getScrollChestGradeBonusCount(this.relicLv.heavenly_scroll_chest, g);
+      const targetCnt = getScrollChestGradeBonusCount(effScrollLv, g);
       const prevApplied = this.appliedStartWisps[g.id] ?? 0;
       if (targetCnt > prevApplied) {
         this.wisps[g.id] = (this.wisps[g.id] ?? 0) + (targetCnt - prevApplied);
@@ -1163,7 +1209,8 @@ export class Simulation {
     const dailyMod = this.dailyChallengeSpec?.rule.modifiers;
     const sectDef = this.getPledgedSectDef();
     const sectCapBonus = sectDef?.perk.interestCapBonus ?? 0;
-    const basePct = getVaultInterestPct(this.relicLv.golden_vault);
+    const effVaultLv = this.getEffectiveRelicLv('golden_vault');
+    const basePct = getVaultInterestPct(effVaultLv);
     const pct =
       basePct +
       usuryStacks * 3 +
@@ -1174,8 +1221,7 @@ export class Simulation {
     if (pct <= 0) {
       return { pct: 0, cap: 0 };
     }
-    const baseCap =
-      this.relicLv.golden_vault > 0 ? getVaultInterestCap(this.relicLv.golden_vault) : 120;
+    const baseCap = effVaultLv > 0 ? getVaultInterestCap(effVaultLv) : 120;
     return {
       pct,
       cap:
@@ -1189,7 +1235,7 @@ export class Simulation {
   }
 
   public getEffectiveWealthBps(): number {
-    const baseBps = getWealthBonusBps(this.relicLv.million_sword_seal, this.coin);
+    const baseBps = getWealthBonusBps(this.getEffectiveRelicLv('million_sword_seal'), this.coin);
     const bladeStacks = this.getBoonStacks('b_wealth_blade');
     if (bladeStacks <= 0 || this.coin < 100) {
       return baseBps;
@@ -1204,23 +1250,29 @@ export class Simulation {
     const trialBonus = this.trialId ? TRIAL_CONFIGS[this.trialId].gambleBonusPct : 0;
     const dailyBonus = this.dailyChallengeSpec?.rule.modifiers.gambleBonusPct ?? 0;
     const sectBonus = this.getPledgedSectDef()?.perk.gambleChancePct ?? 0;
+    const ascPenalty =
+      this.ascensionLevel > 0 ? computeAscensionModifiers(this.ascensionLevel).gamblePenaltyPct : 0;
     return (
-      getFurnaceChanceBonusPct(this.relicLv.immortal_furnace) +
+      getFurnaceChanceBonusPct(this.getEffectiveRelicLv('immortal_furnace')) +
       this.getBoonStacks('b_elixir_jackpot') * 12 +
       setBonus.gambleBonusPct +
       benchBonus.gambleBonusPct +
       trialBonus +
       dailyBonus +
       sectBonus +
-      (this.endgameBonuses.gambleBonusPct ?? 0)
+      (this.endgameBonuses.gambleBonusPct ?? 0) -
+      ascPenalty
     );
   }
 
   public getSummonCost(): number {
     const econ = this.data.board.economy;
-    const raw = econ.baseSummonCost + this.summonCount * econ.summonCostStep;
+    const ascSurcharge =
+      this.ascensionLevel > 0 ? computeAscensionModifiers(this.ascensionLevel).summonSurcharge : 0;
+    const raw = econ.baseSummonCost + ascSurcharge + this.summonCount * econ.summonCostStep;
     const setBonus = computeRelicSetBonuses(this.relicLv);
-    const discount = getAbacusSummonDiscount(this.relicLv.merchant_abacus ?? 0) + setBonus.summonDiscount;
+    const discount =
+      getAbacusSummonDiscount(this.getEffectiveRelicLv('merchant_abacus')) + setBonus.summonDiscount;
     return Math.max(10, raw - discount);
   }
 
@@ -1231,7 +1283,9 @@ export class Simulation {
     const raw = def.baseCost + lv * def.costStep;
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const harmonyStacks = this.getBoonStacks('b_trinity_harmony');
-    const manualDiscountPct = getTrainingManualCostDiscountPct(this.relicLv.jade_training_manual ?? 0);
+    const manualDiscountPct = getTrainingManualCostDiscountPct(
+      this.getEffectiveRelicLv('jade_training_manual'),
+    );
     const totalDiscountPct = Math.min(
       65,
       harmonyStacks * 25 + manualDiscountPct + setBonus.upgradeDiscountPct,
@@ -1268,7 +1322,7 @@ export class Simulation {
       this.unitsByUid,
       this.data.unitsById,
       this.getBoonStacks('b_swift_formation'),
-      getTrigramMirrorAuraPct(this.relicLv.eight_trigram_mirror ?? 0),
+      getTrigramMirrorAuraPct(this.getEffectiveRelicLv('eight_trigram_mirror')),
       bloodflameHazards,
     );
   }
@@ -1281,6 +1335,7 @@ export class Simulation {
       waveNum,
       isBoss,
       isBounty,
+      this.ascensionLevel,
     );
   }
 
@@ -1391,7 +1446,7 @@ export class Simulation {
       this.getBoonStacks('b_trinity_harmony'),
       this.getBoonStacks('b_demonic_overdrive'),
       this.trialId,
-      getTrigramMirrorAtkBps(this.relicLv.eight_trigram_mirror ?? 0) +
+      getTrigramMirrorAtkBps(this.getEffectiveRelicLv('eight_trigram_mirror')) +
         setBonus.atkBps +
         getStarAtkBps(starLevel),
       extraTraitPct,
@@ -1415,7 +1470,7 @@ export class Simulation {
   public getUnitSellCoin(baseSellCoin: number): number {
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const sellPct =
-      getLuckPouchSellCoinPct(this.relicLv.phoenix_luck_pouch ?? 0) + setBonus.sellCoinPct;
+      getLuckPouchSellCoinPct(this.getEffectiveRelicLv('phoenix_luck_pouch')) + setBonus.sellCoinPct;
     if (sellPct <= 0) return baseSellCoin;
     return Math.round((baseSellCoin * (100 + sellPct)) / 100);
   }
@@ -1527,6 +1582,7 @@ export class Simulation {
       data: this.data,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      ascensionLevel: this.ascensionLevel,
       runMode: this.runMode,
       dailyRule: this.dailyChallengeSpec?.rule ?? null,
       arenaRule: this.arenaRule,
@@ -1572,7 +1628,7 @@ export class Simulation {
       },
       getEffectiveInterestConfig: () => this.getEffectiveInterestConfig(),
       getWaveClearCoinBonusPct: () =>
-        getTrainingManualWaveCoinPct(this.relicLv.jade_training_manual ?? 0),
+        getTrainingManualWaveCoinPct(this.getEffectiveRelicLv('jade_training_manual')),
       hasFieldHazard: (fieldIndex) => this.hasFieldHazard(fieldIndex),
       tryConsumeBossRetry: (waveNumber, boss) => {
         if (this.bossRetryUsed) return false;
@@ -1634,7 +1690,8 @@ export class Simulation {
       monsters: this.monsters,
       projectiles: this.projectiles,
       tileHazards: this.tileHazards,
-      relicLv: this.relicLv,
+      relicLv: this.buildEffectiveRelicMap(),
+      rawRelicLv: this.relicLv,
       comboCooldowns: this.comboCooldowns,
       comboTriggerCounts: this.comboTriggerCounts,
       currentTick: this.currentTick,
@@ -1701,7 +1758,7 @@ export class Simulation {
 
   private applyCommand(cmd: GameCommand): void {
     if (cmd.type === 'syncRelics') {
-      this.syncRelicsInternal(cmd.relics, true);
+      this.syncRelicsInternal(cmd.relics, true, cmd.blessedRelics);
       return;
     }
 
@@ -2015,7 +2072,7 @@ export class Simulation {
             tick: this.currentTick,
           });
         } else {
-          const refundPct = getFurnaceRefundPct(this.relicLv.immortal_furnace);
+          const refundPct = getFurnaceRefundPct(this.getEffectiveRelicLv('immortal_furnace'));
           let refundedLuck = false;
           if (refundPct > 0 && this.rng.nextInt(100) < refundPct) {
             this.luckStone += 1;
@@ -3588,7 +3645,7 @@ export class Simulation {
       interestCap: effInterestCap,
       wealthAtkBps: this.getEffectiveWealthBps(),
       gambleBonusPct: this.getEffectiveGambleBonusPct(),
-      gambleRefundPct: getFurnaceRefundPct(this.relicLv.immortal_furnace),
+      gambleRefundPct: getFurnaceRefundPct(this.getEffectiveRelicLv('immortal_furnace')),
       lastWaveInterest: this.lastWaveInterest,
       pilferedCoinTotal: this.pilferedCoinTotal,
     };
@@ -3740,6 +3797,7 @@ export class Simulation {
       paused,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      ascensionLevel: this.ascensionLevel,
       runMode: this.runMode,
       dailyChallenge: this.dailyChallengeSpec,
       endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
@@ -3835,6 +3893,7 @@ export class Simulation {
         demonic: this.getUpgradeCost('demonic'),
       },
       relics: { ...this.relicLv },
+      blessedRelics: [...this.blessedRelics],
       relicBonus,
       synergy,
       lastGambleResult: this.lastGambleResult,
@@ -3885,9 +3944,11 @@ export class Simulation {
     const refundSpec = getUnitSellLuckRefund(gradeDef);
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const rangeMirrorBonus =
-      getRangeMirrorRangeBonus(this.relicLv.dragon_range_mirror ?? 0) + setBonus.rangeBonus;
+      getRangeMirrorRangeBonus(this.getEffectiveRelicLv('dragon_range_mirror')) +
+      setBonus.rangeBonus;
     const relicShred =
-      getArmorGauntletShred(this.relicLv.armor_break_gauntlet ?? 0) + setBonus.armorShred;
+      getArmorGauntletShred(this.getEffectiveRelicLv('armor_break_gauntlet')) +
+      setBonus.armorShred;
     return {
       uid: u.uid,
       unitId: u.unitId,
@@ -3966,6 +4027,7 @@ export class Simulation {
       savedAtMs,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      ascensionLevel: this.ascensionLevel,
       runMode: this.runMode,
       dailyDateKey: this.dailyChallengeSpec?.dateKey ?? null,
       endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
@@ -3983,6 +4045,7 @@ export class Simulation {
       wisps: { ...this.wisps },
       upgradeLv: { ...this.upgradeLv },
       relicLv: { ...this.relicLv },
+      blessedRelics: [...this.blessedRelics],
       activeBoons: { ...this.activeBoons },
       boonOfferSeq: this.boonOfferSeq,
       pendingBoonOffers: this.pendingBoonOffers.map((o) => ({
@@ -4053,6 +4116,7 @@ export class Simulation {
     if (
       save.difficulty !== this.difficulty ||
       (save.trialId ?? null) !== this.trialId ||
+      (save.ascensionLevel ?? 0) !== this.ascensionLevel ||
       (save.runMode ?? 'standard') !== this.runMode ||
       (save.dailyDateKey ?? null) !== (this.dailyChallengeSpec?.dateKey ?? null)
     ) {
@@ -4116,6 +4180,21 @@ export class Simulation {
     for (const rid of RELIC_IDS_ORDERED) {
       const v = save.relicLv?.[rid];
       this.relicLv[rid] = typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    }
+
+    if (Array.isArray(save.blessedRelics)) {
+      this.blessedRelics.length = 0;
+      for (const rid of save.blessedRelics) {
+        if (
+          typeof rid === 'string' &&
+          (RELIC_IDS_ORDERED as readonly string[]).includes(rid) &&
+          (this.relicLv[rid as RelicId] ?? 0) > 0 &&
+          !this.blessedRelics.includes(rid as RelicId) &&
+          this.blessedRelics.length < MAX_BLESSED_RELICS
+        ) {
+          this.blessedRelics.push(rid as RelicId);
+        }
+      }
     }
 
     for (const bid of BOON_IDS_ORDERED) {
@@ -4333,6 +4412,7 @@ export class Simulation {
 
     feedInt(this.currentTick);
     feedStr(this.trialId ?? 'std');
+    feedInt(this.ascensionLevel);
     feedStr(this.pledgedSect ?? 'none');
     feedInt(this.sectVowCompleted ? 1 : 0);
     feedInt(this.primordialUnlocked ? 1 : 0);
@@ -4372,6 +4452,11 @@ export class Simulation {
 
     for (const rid of RELIC_IDS_ORDERED) {
       feedInt(this.relicLv[rid] ?? 0);
+    }
+
+    feedInt(this.blessedRelics.length);
+    for (let i = 0; i < this.blessedRelics.length; i++) {
+      feedStr(this.blessedRelics[i]!);
     }
 
     for (const bid of BOON_IDS_ORDERED) {

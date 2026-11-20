@@ -3,8 +3,11 @@ import {
   computeHeroProficiencyInfo,
   DIFFICULTY_CONFIGS,
   formatCompactNumber,
+  formatSoulAffixSlot,
   type MasteryId,
   type MeridianId,
+  RELIC_MAX_LEVEL,
+  SOUL_RARITY_META,
   TITLES_BY_ID,
   TRIAL_CONFIGS,
 } from '../core/relicFormulas';
@@ -36,6 +39,7 @@ import type {
 import type { DragDiscardView } from '../input/DragController';
 import {
   type BackupImportResult,
+  type BlessedRelicToggleResult,
   type CodexMilestoneClaimResult,
   type DailyQuestClaimResult,
   type DailyQuestId,
@@ -44,10 +48,14 @@ import {
   type MeridianUpgradeResult,
   type MetaProfile,
   type RealmMilestoneClaimResult,
+  type ReincarnateResult,
   RELIC_CHEST_GOLD_COST,
   type RelicBatchDrawResult,
   type RelicDrawResult,
   type RelicEngraveResult,
+  type RelicSoulLockResult,
+  type RelicSoulRerollResult,
+  type RelicTranscendResult,
   type RelicUpgradeResult,
   type SettlementRecord,
   SKIN_SINGLE_GOLD_COST,
@@ -114,6 +122,7 @@ export interface UIControlHandlers {
   onClaimCodexMilestone(target: number): CodexMilestoneClaimResult;
   onSelectDifficulty(diff: DifficultyId): boolean;
   onSelectTrial(trialId: TrialId | null): boolean;
+  onSelectAscensionLevel(level: number): boolean;
   onSelectRunMode(mode: RunModeId): boolean;
   onEnterEndless(): void;
   onRestart(): void;
@@ -126,7 +135,12 @@ export interface UIControlHandlers {
   onDrawRelic(payWith: 'key' | 'gold'): RelicDrawResult;
   onDrawRelicBatch(maxCount: number, payWith: 'key' | 'gold'): RelicBatchDrawResult;
   onUpgradeRelic(relicId: RelicId): RelicUpgradeResult;
+  onTranscendRelic(relicId: RelicId): RelicTranscendResult;
   onEngraveRelic(relicId: RelicId): RelicEngraveResult;
+  onRerollRelicSoul(relicId: RelicId): RelicSoulRerollResult;
+  onToggleRelicSoulLock(relicId: RelicId, slotIndex: number): RelicSoulLockResult;
+  onToggleBlessedRelic(relicId: RelicId): BlessedRelicToggleResult;
+  onReincarnate(): ReincarnateResult;
   onUpgradeMastery(masteryId: MasteryId): MasteryUpgradeResult;
   onUpgradeMeridian(meridianId: MeridianId): MeridianUpgradeResult;
   onResetMeridians(): MeridianResetResult;
@@ -1104,7 +1118,9 @@ export class UIManager {
       const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>(
         '[data-sheet-action]',
       );
-      if (!btn || btn.classList.contains('cta-disabled')) return;
+      if (!btn || btn.classList.contains('cta-disabled') || btn.classList.contains('disabled')) {
+        return;
+      }
 
       const action = btn.dataset.sheetAction;
       if (action === 'craft') {
@@ -1226,12 +1242,14 @@ export class UIManager {
             for (const item of res.items) {
               const prev = aggMap.get(item.relicId);
               if (prev) {
+                const sumShards = (prev.shardsGranted ?? 0) + (item.shardsGranted ?? 0);
                 aggMap.set(item.relicId, {
                   relicId: item.relicId,
                   prevLevel: prev.prevLevel,
                   newLevel: item.newLevel,
                   pulls: prev.pulls + 1,
                   isNew: prev.isNew || item.isNew,
+                  ...(sumShards > 0 ? { shardsGranted: sumShards } : {}),
                 });
               } else {
                 aggMap.set(item.relicId, {
@@ -1240,18 +1258,29 @@ export class UIManager {
                   newLevel: item.newLevel,
                   pulls: 1,
                   isNew: item.isNew,
+                  ...(item.shardsGranted ? { shardsGranted: item.shardsGranted } : {}),
                 });
               }
             }
             const batchItems = Array.from(aggMap.values());
             const newCount = batchItems.filter((x) => x.isNew).length;
-            const msg = `🏺 기보함 ${res.spentCount}연 개봉 완료! (${batchItems.length}종 승급${newCount > 0 ? ` · 신규 ${newCount}종` : ''})`;
+            const totalShards = res.totalShardsGranted ?? 0;
+            const totalSilk = res.totalSilkGranted ?? 0;
+            const totalGoldRef = res.totalGoldRefunded ?? 0;
+            const msg =
+              totalShards > 0
+                ? `🌌 태고 초월 기보함 ${res.spentCount}연 개봉! (🔮초월 파편 +${totalShards} · 🧵비단 +${totalSilk}필)`
+                : totalSilk > 0 && batchItems.every((b) => b.prevLevel === b.newLevel)
+                  ? `✦ 영혼 세공 정수 ${res.spentCount}연 환원! (🧵비단 +${totalSilk}필${totalGoldRef > 0 ? ` · 🪙주화 +${totalGoldRef}` : ''})`
+                  : `🏺 기보함 ${res.spentCount}연 개봉 완료! (${batchItems.length}종 승급${newCount > 0 ? ` · 신규 ${newCount}종` : ''})`;
             this.lastRelicNotice = {
               seq: ++this.relicNoticeSeq,
               isWin: true,
               text: msg,
               batchItems,
               totalPulls: res.spentCount,
+              ...(totalShards > 0 ? { totalShardsGranted: totalShards } : {}),
+              ...(totalSilk > 0 ? { totalSilkGranted: totalSilk } : {}),
             };
             this.prevSheetSignature = '';
             if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
@@ -1264,9 +1293,17 @@ export class UIManager {
           if (res.ok) {
             const def = this.data.relicsById.get(res.relicId);
             const rName = def?.name ?? res.relicId;
-            const msg = res.isNew
-              ? `✨ 신규 신물 해금! [${rName}] Lv.1`
-              : `⬆️ 신물 승급! [${rName}] Lv.${res.prevLevel} → Lv.${res.newLevel}`;
+            const shards = res.shardsGranted ?? 0;
+            const silk = res.silkGranted ?? 0;
+            const goldRef = res.goldRefunded ?? 0;
+            const msg =
+              shards > 0
+                ? `🌌 태고 초월 기보함! [${rName}] 🔮초월 파편 +${shards} · 🧵비단 +${silk}필`
+                : silk > 0 || goldRef > 0
+                  ? `✦ 영혼 세공 정수 환원! 🧵비단 +${silk}필 · 🪙주화 +${goldRef}`
+                  : res.isNew
+                    ? `✨ 신규 신물 해금! [${rName}] Lv.1`
+                    : `⬆️ 신물 승급! [${rName}] Lv.${res.prevLevel} → Lv.${res.newLevel}`;
             this.lastRelicNotice = {
               seq: ++this.relicNoticeSeq,
               isWin: true,
@@ -1275,6 +1312,9 @@ export class UIManager {
               prevLevel: res.prevLevel,
               newLevel: res.newLevel,
               isNew: res.isNew,
+              ...(shards > 0 ? { shardsGranted: shards } : {}),
+              ...(silk > 0 ? { silkGranted: silk } : {}),
+              ...(goldRef > 0 ? { goldRefunded: goldRef } : {}),
             };
             this.prevSheetSignature = '';
             if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
@@ -1308,6 +1348,27 @@ export class UIManager {
         } else {
           this.showToast(res.reason, true);
         }
+      } else if (action === 'relic-transcend') {
+        const relicId = btn.dataset.relicId as RelicId | undefined;
+        if (!relicId) return;
+        const res = this.handlers.onTranscendRelic(relicId);
+        if (res.ok) {
+          const msg = `🌌 혼원초월 성공! [${res.relicName}] Lv.${res.prevLevel} → Lv.${res.newLevel}!`;
+          this.lastRelicNotice = {
+            seq: ++this.relicNoticeSeq,
+            isWin: true,
+            text: msg,
+            relicId: res.relicId,
+            prevLevel: res.prevLevel,
+            newLevel: res.newLevel,
+            isNew: false,
+          };
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(msg);
+        } else {
+          this.showToast(res.reason, true);
+        }
       } else if (action === 'relic-engrave') {
         const relicId = btn.dataset.relicId as RelicId | undefined;
         if (!relicId) return;
@@ -1316,7 +1377,63 @@ export class UIManager {
           this.prevSheetSignature = '';
           if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
           this.showToast(
-            `✦ 신화 각인 완료! [${res.relicName}] (영구 공+2% · 절기+2%, 누적 ${res.engravedCount}종)`,
+            `✦ 신화 각인 개방! [${res.relicName}] (공+2%·절기+2% + 삼재 영혼 세공 3슬롯 해금!)`,
+          );
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'relic-soul-reroll') {
+        const relicId = btn.dataset.relicId as RelicId | undefined;
+        if (!relicId) return;
+        const res = this.handlers.onRerollRelicSoul(relicId);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          const affixTxt = res.slots
+            .map((s) => `[${SOUL_RARITY_META[s.rarity].badge}]${formatSoulAffixSlot(s)}`)
+            .join(' · ');
+          this.showToast(`⚒️ [${res.relicName}] 영혼 세공: ${affixTxt}`);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'relic-soul-lock') {
+        const relicId = btn.dataset.relicId as RelicId | undefined;
+        const slotIdx = Number(btn.dataset.slotIndex ?? '-1');
+        if (!relicId || slotIdx < 0) return;
+        const res = this.handlers.onToggleRelicSoulLock(relicId, slotIdx);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(
+            res.locked
+              ? `🔒 영혼 슬롯 #${res.slotIndex + 1} 잠금 고정! (재연마 시 옵션 보존)`
+              : `🔓 영혼 슬롯 #${res.slotIndex + 1} 잠금을 해제했습니다.`,
+          );
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'relic-bless-toggle') {
+        const relicId = btn.dataset.relicId as RelicId | undefined;
+        if (!relicId) return;
+        const res = this.handlers.onToggleBlessedRelic(relicId);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(
+            res.equipped
+              ? `🌟 [${res.relicName}] 본명 호법신물 장착! (유효 레벨 1.5배 · 초월 파편 픽업 2.5배)`
+              : `🌟 [${res.relicName}] 본명 장착을 해제했습니다.`,
+          );
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'cultivation-reincarnate') {
+        const res = this.handlers.onReincarnate();
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(
+            `☯ 제 ${res.reincarnationCount} 차 무극 전생 달성! [선천 도과] 영구 각인 + 🪙${res.rewardGold}·🔑${res.rewardKeys}·🧵${res.rewardSilk}·🔮파편${res.rewardShards}!`,
           );
         } else {
           this.showToast(res.reason, true);
@@ -1439,14 +1556,39 @@ export class UIManager {
           this.lastSnapshot &&
           this.lastSnapshot.runMode === 'standard' &&
           this.lastSnapshot.trialId === null &&
-          diff === this.lastSnapshot.difficulty
+          diff === this.lastSnapshot.difficulty &&
+          (diff !== 'abyss' || this.lastSnapshot.ascensionLevel === 0)
         ) {
           this.showToast(`현재 [${DIFFICULTY_CONFIGS[diff].name}] 난이도로 출정 중입니다.`);
+          return;
+        }
+        if (diff === 'abyss' && this.lastSnapshot && this.lastSnapshot.ascensionLevel > 0) {
+          this.handlers.onSelectAscensionLevel(0);
           return;
         }
         const ok = this.handlers.onSelectDifficulty(diff);
         if (!ok) {
           this.showToast('이전 난이도 제 30 장을 먼저 제패해야 해금됩니다!', true);
+        }
+      } else if (action === 'select-ascension') {
+        const level = Math.max(0, Math.floor(Number(btn.dataset.ascensionLevel ?? '0') || 0));
+        if (
+          this.lastSnapshot &&
+          this.lastSnapshot.runMode === 'standard' &&
+          this.lastSnapshot.trialId === null &&
+          this.lastSnapshot.difficulty === 'abyss' &&
+          this.lastSnapshot.ascensionLevel === level
+        ) {
+          this.showToast(
+            level > 0
+              ? `현재 [구천등선 ${level}중천]으로 출정 중입니다.`
+              : '현재 일반 천마강림 난이도로 출정 중입니다.',
+          );
+          return;
+        }
+        const ok = this.handlers.onSelectAscensionLevel(level);
+        if (!ok) {
+          this.showToast('먼저 이전 등선 단계(또는 천마강림 제 30 장)를 제패해야 해금됩니다!', true);
         }
       } else if (action === 'select-trial') {
         const rawTrial = btn.dataset.trialId ?? '';
@@ -1684,7 +1826,10 @@ export class UIManager {
       const rightTag = snapshot.waveMutant ? snapshot.waveMutant.badge : trialCfg.badge;
       this.setText(this.waveBadgeEl, `${prefix} ${waveNumLabel} · ${rightTag}`);
     } else {
-      const shortDiff = diffCfg.badge.split(' ')[0] ?? diffCfg.badge;
+      const shortDiff =
+        snapshot.ascensionLevel > 0
+          ? `${snapshot.ascensionLevel}중천`
+          : (diffCfg.badge.split(' ')[0] ?? diffCfg.badge);
       const waveRight = snapshot.waveMutant ? snapshot.waveMutant.badge : shortDiff;
       this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${waveRight}`);
     }
@@ -1718,7 +1863,7 @@ export class UIManager {
     }
     this.setText(
       this.devSimMetaEl,
-      `30Hz · Tick ${snapshot.tick} · ${trialCfg ? trialCfg.badge : diffCfg.badge}`,
+      `30Hz · Tick ${snapshot.tick} · ${trialCfg ? trialCfg.badge : snapshot.ascensionLevel > 0 ? `등선 ${snapshot.ascensionLevel}중천` : diffCfg.badge}`,
     );
 
     this.setText(
@@ -1861,8 +2006,11 @@ export class UIManager {
 
     const canDrawGold =
       meta.gold >= RELIC_CHEST_GOLD_COST &&
-      this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel);
-    const hasMeridianNotif = meta.unspentMeridianPoints > 0 || meta.claimableRealmCount > 0;
+      this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < RELIC_MAX_LEVEL);
+    const hasMeridianNotif =
+      meta.unspentMeridianPoints > 0 ||
+      meta.claimableRealmCount > 0 ||
+      meta.cultivation.isMaxLevel;
     const relicBadgeNum =
       meta.keys > 0
         ? String(meta.keys)
@@ -3125,7 +3273,7 @@ export class UIManager {
     } else if (kind === 'wardrobe') {
       sig = `wardrobe:${this.wardrobeSubTab}:${meta.rev}:${this.lastSkinPull?.seq ?? 0}`;
     } else if (kind === 'codex') {
-      sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.craft.rev}`;
+      sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.ascensionLevel}:${snapshot.craft.rev}`;
     } else if (kind === 'mission') {
       const dailySig = meta.dailyQuests
         .map((q) => `${q.def.id}=${q.progress}/${q.claimed ? 1 : 0}`)
@@ -3136,7 +3284,7 @@ export class UIManager {
       const bountySig = `${bnt.canCall ? 1 : 0}:${bnt.canCallElite ? 1 : 0}:${bnt.active ? 1 : 0}:${Math.ceil(bnt.cooldownTicksLeft / 30)}:${Math.ceil(bnt.activeTicksLeft / 30)}`;
       sig = `mission:${meta.rev}:${snapshot.wave}:${sectMissionSig}:${contractSig}:${bountySig}:${dailySig}:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
     } else {
-      sig = `relic:${this.relicFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
+      sig = `relic:${this.relicFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.ascensionLevel}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
     }
 
     if (sig === this.prevSheetSignature) {
@@ -3234,8 +3382,9 @@ export class UIManager {
       meta.keys > 0 ||
       meta.unspentMeridianPoints > 0 ||
       meta.claimableRealmCount > 0 ||
+      meta.cultivation.isMaxLevel ||
       (meta.gold >= RELIC_CHEST_GOLD_COST &&
-        this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel));
+        this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < RELIC_MAX_LEVEL));
     const relicDot = hasRelicNotif ? '<span class="sheet-tab-dot"></span>' : '';
     const totalSkins = this.data.heroSkins.length + this.data.courtSkins.length;
     const hasWardrobeNotif =

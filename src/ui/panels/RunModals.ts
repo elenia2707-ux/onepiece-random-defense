@@ -109,21 +109,35 @@ export function buildSettlementLootHtml(
   const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
   const multBadge = trialCfg
     ? ` <span class="settlement-mult-badge">${escapeHtml(trialCfg.badge)} ${trialCfg.rewardMult}x</span>`
-    : diffCfg.rewardMult > 1
-      ? ` <span class="settlement-mult-badge">${escapeHtml(diffCfg.badge)}</span>`
-      : '';
+    : (rec.ascensionLevel ?? snapshot.ascensionLevel) > 0
+      ? ` <span class="settlement-mult-badge">🏯 등선 ${rec.ascensionLevel ?? snapshot.ascensionLevel}중천</span>`
+      : diffCfg.rewardMult > 1
+        ? ` <span class="settlement-mult-badge">${escapeHtml(diffCfg.badge)}</span>`
+        : '';
 
   let firstClearBanner = '';
-  if (rec.firstClearBonusGold > 0) {
+  if (rec.firstClearBonusGold > 0 || (rec.shardsEarned ?? 0) > 0) {
     const silkPart =
       rec.firstClearBonusSilk > 0 ? ` · 운금비단 +${rec.firstClearBonusSilk}필` : '';
+    const shardPart =
+      (rec.shardsEarned ?? 0) > 0 ? ` · 🔮초월 파편 +${rec.shardsEarned}개` : '';
     const nextDiffName = rec.unlockedNextDifficulty
       ? ` · [${DIFFICULTY_CONFIGS[rec.unlockedNextDifficulty].name}] 해금!`
-      : '';
-    const clearKind = rec.trialId ? '초회 비경 제패' : '초회 천하통일';
+      : rec.unlockedNextAscensionLevel
+        ? ` · [구천등선 ${rec.unlockedNextAscensionLevel}중천] 해금!`
+        : '';
+    const clearKind = rec.trialId
+      ? '초회 비경 제패'
+      : (rec.ascensionLevel ?? 0) > 0
+        ? `구천등선 ${rec.ascensionLevel}중천 제패`
+        : '초회 천하통일';
+    const goldKeyPart =
+      rec.firstClearBonusGold > 0
+        ? `+${rec.firstClearBonusGold} 주화 · 열쇠 +${rec.firstClearBonusKeys}`
+        : '등선 토벌 보너스';
     firstClearBanner = `
           <div class="first-clear-banner">
-            🎉 ${clearKind} 보너스 포함! (+${rec.firstClearBonusGold} 주화 · 열쇠 +${rec.firstClearBonusKeys}${silkPart}${escapeHtml(nextDiffName)})
+            🎉 ${clearKind} 보너스! (${goldKeyPart}${silkPart}${shardPart}${escapeHtml(nextDiffName)})
           </div>
         `;
   }

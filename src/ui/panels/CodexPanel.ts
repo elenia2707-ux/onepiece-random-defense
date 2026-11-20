@@ -1,5 +1,7 @@
 import {
+  ASCENSION_MAX_LEVEL,
   CODEX_MILESTONES,
+  computeAscensionModifiers,
   computeHeroProficiencyInfo,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
@@ -66,14 +68,19 @@ const TRIAL_ACCENT: Readonly<Record<TrialId, string>> = {
 export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult {
   const { data, recipeGraph, sprites, snapshot, meta, codexFilter } = params;
 
-  const subtitle = `등재 협객 ${meta.discoveredCount}/${data.units.length}인 · 칭호 ${meta.unlockedTitleCount}/${TITLE_DEFS.length} · 비경 제패 ${meta.clearedTrialCount}/${TRIAL_ORDER.length}`;
+  const ascSuffix =
+    meta.clearedAscensionLevel > 0 ? ` · 등선 ${meta.clearedAscensionLevel}중천` : '';
+  const subtitle = `등재 협객 ${meta.discoveredCount}/${data.units.length}인 · 칭호 ${meta.unlockedTitleCount}/${TITLE_DEFS.length} · 비경 ${meta.clearedTrialCount}/${TRIAL_ORDER.length}${ascSuffix}`;
 
   const diffCards = DIFFICULTY_ORDER.map((diff) => {
     const cfg = DIFFICULTY_CONFIGS[diff];
     const unlocked = meta.unlockedDifficulties[diff];
     const cleared = meta.clearedDifficulties[diff];
     const active =
-      snapshot.runMode === 'standard' && snapshot.trialId === null && snapshot.difficulty === diff;
+      snapshot.runMode === 'standard' &&
+      snapshot.trialId === null &&
+      snapshot.difficulty === diff &&
+      (diff !== 'abyss' || snapshot.ascensionLevel === 0);
     const bestDiffWave = meta.difficultyBestWave[diff] ?? 0;
 
     const clearBadge = cleared
@@ -88,7 +95,9 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     const btnLabel = active
       ? '출정 중 ✓'
       : unlocked
-        ? snapshot.trialId !== null || snapshot.runMode !== 'standard'
+        ? snapshot.trialId !== null ||
+          snapshot.runMode !== 'standard' ||
+          (diff === 'abyss' && snapshot.ascensionLevel > 0)
           ? '표준 복귀'
           : '출정 전환'
         : '🔒 미해금';
@@ -121,6 +130,80 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
       </div>
     `;
   }).join('');
+
+  const ascUnlocked = meta.unlockedDifficulties.abyss && meta.unlockedAscensionLevel >= 1;
+  const activeAscLv =
+    snapshot.runMode === 'standard' &&
+    snapshot.trialId === null &&
+    snapshot.difficulty === 'abyss'
+      ? snapshot.ascensionLevel
+      : 0;
+  const previewAscLv =
+    activeAscLv > 0 ? activeAscLv : Math.max(1, meta.unlockedAscensionLevel || 1);
+  const ascMod = computeAscensionModifiers(previewAscLv);
+  const totalAscRewardMult = DIFFICULTY_CONFIGS.abyss.rewardMult + ascMod.rewardMultBonus;
+  const fcr = ascMod.firstClearReward;
+
+  const tribulationTags: string[] = [];
+  if (ascMod.summonSurcharge > 0) {
+    tribulationTags.push(`💸 소환할증 +${ascMod.summonSurcharge}은자 (3중천+)`);
+  }
+  if (ascMod.speedMult > 1) {
+    tribulationTags.push(`💨 경공마군 ×${ascMod.speedMult.toFixed(2)} (5중천+)`);
+  }
+  if (ascMod.bossArmorRegenPerSec > 0) {
+    tribulationTags.push(`🛡 보스강기재생 +${ascMod.bossArmorRegenPerSec}/초 (8중천+)`);
+  }
+  if (ascMod.gamblePenaltyPct > 0) {
+    tribulationTags.push(`🔥 단로역풍 -${ascMod.gamblePenaltyPct}%p (12중천+)`);
+  }
+  if (ascMod.twinBossAtLateWaves) {
+    tribulationTags.push(`👹 15장+ 쌍두호법 보스 2기 동시강림 (15중천+)`);
+  }
+  if (tribulationTags.length === 0) {
+    tribulationTags.push('⚡ 3중천부터 단계별 천겁 패널티가 누적 개방됩니다');
+  }
+
+  const maxShownTier = Math.min(ASCENSION_MAX_LEVEL, Math.max(5, meta.unlockedAscensionLevel + 1));
+  const ascTierBtnsHtml = ascUnlocked
+    ? [
+        `<button type="button" class="asc-step-btn${activeAscLv === 0 ? ' active' : ''} interactive" data-sheet-action="select-ascension" data-ascension-level="0">일반 무극</button>`,
+        ...Array.from({ length: maxShownTier }, (_, idx) => {
+          const lv = idx + 1;
+          const canPick = lv <= meta.unlockedAscensionLevel;
+          const isCleared = lv <= meta.clearedAscensionLevel;
+          const isCur = activeAscLv === lv;
+          return `<button type="button" class="asc-step-btn${isCur ? ' active' : ''}${isCleared ? ' cleared' : ''}${canPick ? ' interactive' : ' locked'}" data-sheet-action="select-ascension" data-ascension-level="${lv}" ${canPick ? '' : 'disabled'}>${canPick ? '' : '🔒 '}${lv}중천${isCleared ? ' ✓' : ''}</button>`;
+        }),
+      ].join('')
+    : '';
+
+  const ascRewardDesc =
+    previewAscLv > meta.clearedAscensionLevel
+      ? `🏆 ${previewAscLv}중천 초회 제패 보상: 🔮초월 파편 +${fcr.shards} · 🪙주화 +${fcr.gold} · 🔑열쇠 +${fcr.keys} · 🧵비단 +${fcr.silk}필`
+      : `✓ ${previewAscLv}중천 제패 완료! 반복 토벌 시 정산 ×${totalAscRewardMult.toFixed(2)} + 🔮초월 파편 +${Math.max(2, Math.ceil(previewAscLv / 3))} 확정 획득`;
+
+  const ascensionCardHtml = `
+    <div class="ascension-ladder-card${activeAscLv > 0 ? ' active' : ''}${!ascUnlocked ? ' locked' : ''}">
+      <div class="ascension-head">
+        <div class="card-name-row">
+          <span class="grade-pill" style="background:#9333ea">🏯 구천등선록</span>
+          <span class="card-name">${ascUnlocked ? `고행 제 ${previewAscLv} 중천 (${escapeHtml(ascMod.badge)})` : '고행 1중천 ~ 20중천 (천마강림 제패 시 해금)'}</span>
+          <span class="diff-bonus-pill">정산 ×${totalAscRewardMult.toFixed(2)} · 🔮파편 드랍</span>
+          ${meta.clearedAscensionLevel > 0 ? `<span class="diff-clear-pill">최고 ${meta.clearedAscensionLevel}중천 제패</span>` : ''}
+        </div>
+        ${
+          ascUnlocked
+            ? `<button type="button" class="card-cta-btn ${activeAscLv === previewAscLv ? 'cta-green' : 'cta-violet'} interactive" data-sheet-action="select-ascension" data-ascension-level="${activeAscLv === previewAscLv ? 0 : previewAscLv}"><span>${activeAscLv === previewAscLv ? `${previewAscLv}중천 출정 중 · 해제` : `${previewAscLv}중천 출정`}</span></button>`
+            : `<button type="button" class="card-cta-btn cta-disabled" disabled><span>🔒 천마강림 30장 제패 필요</span></button>`
+        }
+      </div>
+      <div class="card-sub">마물 체력 ×${ascMod.hpMult.toFixed(2)} · 영물 체력 ×${ascMod.bossHpMult.toFixed(2)} · 추가 호신강기 +${ascMod.bonusArmor} (천마강림 기반 위에 중첩)</div>
+      <div class="asc-tribulation-row">${tribulationTags.map((t) => `<span class="asc-trib-chip">${escapeHtml(t)}</span>`).join('')}</div>
+      <div class="trial-record-line">${escapeHtml(ascRewardDesc)}</div>
+      ${ascUnlocked ? `<div class="asc-step-grid">${ascTierBtnsHtml}</div>` : ''}
+    </div>
+  `;
 
   const trialCards = TRIAL_ORDER.map((tid) => {
     const cfg = TRIAL_CONFIGS[tid];
@@ -540,6 +623,8 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     <div class="combo-encyclopedia-grid">${comboCardsHtml}</div>
     <div class="sheet-section-label">⚔ 표준 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
     <div class="diff-list">${diffCards}</div>
+    <div class="sheet-section-label">🏯 구천등선록 — 천마강림 초월 20단 고행 (해금 ${meta.unlockedAscensionLevel}/${ASCENSION_MAX_LEVEL} · 제패 ${meta.clearedAscensionLevel}/${ASCENSION_MAX_LEVEL})</div>
+    ${ascensionCardHtml}
     <div class="sheet-section-label">🌀 무림 비경 — 특수 규칙 엔드게임 시련 (${meta.clearedTrialCount}/${TRIAL_ORDER.length} 제패)</div>
     <div class="diff-list trial-list">${trialCards}</div>
     <div class="sheet-section-label">🏅 강호 칭호 · 업적 보상 사다리 (${meta.unlockedTitleCount}/${TITLE_DEFS.length} 해금)</div>

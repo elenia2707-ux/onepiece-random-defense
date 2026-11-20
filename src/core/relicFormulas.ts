@@ -60,7 +60,29 @@ export function formatCompactNumber(val: number): string {
 }
 
 export const RELIC_STANDARD_CAP = 10;
-export const RELIC_MAX_LEVEL = 15;
+export const RELIC_MYTHIC_CAP = 15;
+export const RELIC_CHAOS_SET_TIER4_LV = 22;
+export const RELIC_MAX_LEVEL = 30;
+export const RELIC_EFFECTIVE_MAX_LEVEL = 45;
+export const MAX_BLESSED_RELICS = 3;
+
+export function getBlessedEffectiveRelicLevel(lv: number, isBlessed: boolean): number {
+  const safeLv = Math.max(0, Math.min(RELIC_MAX_LEVEL, Math.floor(lv)));
+  if (safeLv <= 0 || !isBlessed) return safeLv;
+  return Math.min(RELIC_EFFECTIVE_MAX_LEVEL, Math.ceil(safeLv * 1.5));
+}
+
+export function getRelicChaosUpgradeCost(currentLv: number): {
+  readonly shards: number;
+  readonly gold: number;
+} {
+  const lv = Math.max(RELIC_MYTHIC_CAP, Math.floor(currentLv));
+  const step = lv - RELIC_MYTHIC_CAP; // 0 for Lv.15 -> 16, 14 for Lv.29 -> 30
+  return {
+    shards: 3 + step,
+    gold: 380 + step * 85,
+  };
+}
 
 export type RelicCategoryId = 'economy' | 'combat';
 
@@ -102,39 +124,44 @@ export const RELIC_IDS_ORDERED: readonly RelicId[] = [
   'eight_trigram_mirror',
 ];
 
-function splitRelicTier(lv: number): { readonly base: number; readonly over: number } {
-  if (lv <= 0) return { base: 0, over: 0 };
-  const clamped = Math.min(RELIC_MAX_LEVEL, Math.floor(lv));
+function splitRelicTier(lv: number): {
+  readonly base: number;
+  readonly over: number;
+  readonly chaos: number;
+} {
+  if (lv <= 0) return { base: 0, over: 0, chaos: 0 };
+  const clamped = Math.min(RELIC_EFFECTIVE_MAX_LEVEL, Math.floor(lv));
   return {
     base: Math.min(RELIC_STANDARD_CAP, clamped),
-    over: Math.max(0, clamped - RELIC_STANDARD_CAP),
+    over: Math.max(0, Math.min(RELIC_MYTHIC_CAP, clamped) - RELIC_STANDARD_CAP),
+    chaos: Math.max(0, clamped - RELIC_MYTHIC_CAP),
   };
 }
 
 export function getVaultInterestPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return 4 + base + Math.ceil(over * 0.6);
+  const { base, over, chaos } = splitRelicTier(lv);
+  return 4 + base + Math.ceil(over * 0.6) + Math.floor(chaos * 0.4);
 }
 
 export function getVaultInterestCap(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return 120 + base * 80 + over * 120;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return 120 + base * 80 + over * 120 + chaos * 70;
 }
 
 /** Basis points (100 bps = 1.0%) per 100 currently held coin. */
 export function getWealthBpsPer100Coin(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return 50 + base * 20 + over * 10;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return 50 + base * 20 + over * 10 + chaos * 6;
 }
 
-/** Total wealth ATK bonus in basis points (capped at 120 stacks for Lv.1..10, up to 160 stacks at Lv.15). */
+/** Total wealth ATK bonus in basis points (capped at 120 stacks for Lv.1..10, 160 at Lv.15, up to 250+ in Chaos). */
 export function getWealthBonusBps(lv: number, coin: number): number {
   if (lv <= 0 || coin < 100) return 0;
-  const { over } = splitRelicTier(lv);
-  const maxStacks = 120 + over * 8;
+  const { over, chaos } = splitRelicTier(lv);
+  const maxStacks = 120 + over * 8 + chaos * 6;
   const stacks = Math.min(maxStacks, Math.floor(coin / 100));
   return stacks * getWealthBpsPer100Coin(lv);
 }
@@ -142,32 +169,35 @@ export function getWealthBonusBps(lv: number, coin: number): number {
 /** Proc threshold out of 1000 on basic (non-skill) hit. */
 export function getBanditProcPer1000(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return 65 + base * 15 + over * 8;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return Math.min(480, 65 + base * 15 + over * 8 + chaos * 5);
 }
 
 export function getBanditPilferCoin(lv: number): number {
   if (lv <= 0) return 0;
+  if (lv >= 28) return 7;
+  if (lv >= 22) return 6;
+  if (lv >= 17) return 5;
   if (lv >= 13) return 4;
   return 1 + Math.floor((lv - 1) / 4);
 }
 
 export function getFurnaceChanceBonusPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base + Math.ceil(over * 0.6);
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base + Math.ceil(over * 0.6) + Math.floor(chaos * 0.4);
 }
 
 export function getFurnaceRefundPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return 16 + base * 4 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return Math.min(90, 16 + base * 4 + over * 2 + Math.floor(chaos * 1.2));
 }
 
 export function getJadeSealStartCoin(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return 40 + base * 30 + over * 20;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return 40 + base * 30 + over * 20 + chaos * 15;
 }
 
 export function getScrollChestGradeBonusCount(lv: number, grade: GradeDef): number {
@@ -178,137 +208,151 @@ export function getScrollChestGradeBonusCount(lv: number, grade: GradeDef): numb
   if (grade.scrollChestBonusLv > 0 && lv >= grade.scrollChestBonusLv) {
     count += 1;
   }
+  if (lv >= 24 && grade.rank <= 2) {
+    count += 1;
+  }
+  if (lv >= 30 && grade.rank === 3) {
+    count += 1;
+  }
   return count;
 }
 
 export function getScrollChestBossLuckBonus(lv: number): number {
   if (lv <= 0) return 0;
+  if (lv >= 28) return 5;
+  if (lv >= 20) return 4;
   if (lv >= 12) return 3;
   return lv >= 6 ? 2 : 1;
 }
 
-/** 신행백보화: global attack speed bonus (+3%/lv up to Lv.10 = +30%, +2%/lv for Lv.11..15 = +40%). */
+/** 신행백보화: global attack speed bonus (+3%/lv up to Lv.10 = +30%, +2%/lv for Lv.11..15 = +40%, +1.2%/lv Chaos). */
 export function getSwiftBootsSpeedPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 3 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 3 + over * 2 + Math.round(chaos * 1.2);
 }
 
-/** 혈영회심검: global crit chance bonus in bps (+1.5%/lv to Lv.10 = +15%, +0.8%/lv Lv.11..15 = +19%). */
+/** 혈영회심검: global crit chance bonus in bps (+1.5%/lv to Lv.10 = +15%, +0.8%/lv Lv.11..15 = +19%, +0.5%/lv Chaos). */
 export function getCritBladeChanceBps(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 150 + over * 80;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 150 + over * 80 + chaos * 50;
 }
 
-/** 혈영회심검: global crit damage multiplier bonus (+0.08x/lv to Lv.10 = +0.80x, +0.05x/lv Lv.11..15 = +1.05x). */
+/** 혈영회심검: global crit damage multiplier bonus (+0.08x/lv to Lv.10 = +0.80x, +0.05x/lv Lv.11..15 = +1.05x, +0.03x/lv Chaos). */
 export function getCritBladeMultBonus(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return Number((base * 0.08 + over * 0.05).toFixed(2));
+  const { base, over, chaos } = splitRelicTier(lv);
+  return Number((base * 0.08 + over * 0.05 + chaos * 0.03).toFixed(2));
 }
 
-/** 파갑금강수: global flat armor shred bonus (+3/lv to Lv.10 = +30, +2/lv Lv.11..15 = +40). */
+/** 파갑금강수: global flat armor shred bonus (+3/lv to Lv.10 = +30, +2/lv Lv.11..15 = +40, +1.5/lv Chaos). */
 export function getArmorGauntletShred(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 3 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 3 + over * 2 + Math.round(chaos * 1.5);
 }
 
-/** 태극절기옥: multiplicative martial art skill damage (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%). */
+/** 태극절기옥: multiplicative martial art skill damage (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%, +1.5%/lv Chaos). */
 export function getSkillJadeDamagePct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 4 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 4 + over * 2 + Math.round(chaos * 1.5);
 }
 
-/** 토벌패왕기: bonus damage vs Wave Bosses & Active Bounties (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
+/** 토벌패왕기: bonus damage vs Wave Bosses & Active Bounties (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%, +2%/lv Chaos). */
 export function getSlayerBannerBossPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 5 + over * 3;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 5 + over * 3 + chaos * 2;
 }
 
-/** 토벌패왕기: bonus silver coin reward on Active Bounty kills (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
+/** 토벌패왕기: bonus silver coin reward on Active Bounty kills (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%, +2%/lv Chaos). */
 export function getSlayerBannerBountyCoinPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 5 + over * 3;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 5 + over * 3 + chaos * 2;
 }
 
-/** 만상금주판: flat silver discount on every summon (min summon cost 10; reaches -5 at Lv.13..15). */
+/** 만상금주판: flat silver discount on every summon (min summon cost 10; reaches -5 at Lv.13..15, up to -8 in Chaos). */
 export function getAbacusSummonDiscount(lv: number): number {
   if (lv <= 0) return 0;
   if (lv <= 3) return 1;
   if (lv <= 6) return 2;
   if (lv <= 9) return 3;
   if (lv <= 12) return 4;
-  return 5;
+  if (lv <= 17) return 5;
+  if (lv <= 23) return 6;
+  if (lv <= 29) return 7;
+  return 8;
 }
 
-/** 만상금주판: percentage bonus silver coin from slain monsters (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%). */
+/** 만상금주판: percentage bonus silver coin from slain monsters (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%, +1.5%/lv Chaos). */
 export function getAbacusKillCoinPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 4 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 4 + over * 2 + Math.round(chaos * 1.5);
 }
 
-/** 무림비전 수련서: faction upgrade cost discount (-3%/lv to Lv.10 = -30%, -2%/lv Lv.11..15 = -40%). */
+/** 무림비전 수련서: faction upgrade cost discount (-3%/lv to Lv.10 = -30%, -2%/lv Lv.11..15 = -40%, up to -52% in Chaos). */
 export function getTrainingManualCostDiscountPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 3 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return Math.min(55, base * 3 + over * 2 + Math.floor(chaos * 0.8));
 }
 
-/** 무림비전 수련서: wave-clear base silver coin bonus (+3%/lv to Lv.10 = +30%, +2%/lv Lv.11..15 = +40%). */
+/** 무림비전 수련서: wave-clear base silver coin bonus (+3%/lv to Lv.10 = +30%, +2%/lv Lv.11..15 = +40%, +1.5%/lv Chaos). */
 export function getTrainingManualWaveCoinPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 3 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 3 + over * 2 + Math.round(chaos * 1.5);
 }
 
-/** 봉황기연낭: bonus starter luck stones at run start (+1..+4 across Lv.1..15). */
+/** 봉황기연낭: bonus starter luck stones at run start (+1..+4 across Lv.1..15, up to +7 in Chaos). */
 export function getLuckPouchStartLuck(lv: number): number {
   if (lv <= 0) return 0;
   if (lv <= 4) return 1;
   if (lv <= 8) return 2;
   if (lv <= 12) return 3;
-  return 4;
+  if (lv <= 18) return 4;
+  if (lv <= 24) return 5;
+  if (lv <= 29) return 6;
+  return 7;
 }
 
-/** 봉황기연낭: percentage bonus silver coin when selling/dismissing heroes (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
+/** 봉황기연낭: percentage bonus silver coin when selling/dismissing heroes (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%, +2%/lv Chaos). */
 export function getLuckPouchSellCoinPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 5 + over * 3;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 5 + over * 3 + chaos * 2;
 }
 
-/** 천리안 영경: global flat attack range bonus (+4/lv to Lv.10 = +40, +3/lv Lv.11..15 = +55). */
+/** 천리안 영경: global flat attack range bonus (+4/lv to Lv.10 = +40, +3/lv Lv.11..15 = +55, +2/lv Chaos). */
 export function getRangeMirrorRangeBonus(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 4 + over * 3;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 4 + over * 3 + chaos * 2;
 }
 
-/** 천리안 영경: global stun & slow CC duration bonus (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%). */
+/** 천리안 영경: global stun & slow CC duration bonus (+4%/lv to Lv.10 = +40%, +2%/lv Lv.11..15 = +50%, +1.5%/lv Chaos). */
 export function getRangeMirrorCcPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 4 + over * 2;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 4 + over * 2 + Math.round(chaos * 1.5);
 }
 
-/** 팔괘진법경: global final ATK bonus in bps (+2.5%/lv to Lv.10 = +25%, +1.5%/lv Lv.11..15 = +32.5%). */
+/** 팔괘진법경: global final ATK bonus in bps (+2.5%/lv to Lv.10 = +25%, +1.5%/lv Lv.11..15 = +32.5%, +1.0%/lv Chaos). */
 export function getTrigramMirrorAtkBps(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 250 + over * 150;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 250 + over * 150 + chaos * 100;
 }
 
-/** 팔괘진법경: support totem tile aura boost (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%). */
+/** 팔괘진법경: support totem tile aura boost (+5%/lv to Lv.10 = +50%, +3%/lv Lv.11..15 = +65%, +2%/lv Chaos). */
 export function getTrigramMirrorAuraPct(lv: number): number {
   if (lv <= 0) return 0;
-  const { base, over } = splitRelicTier(lv);
-  return base * 5 + over * 3;
+  const { base, over, chaos } = splitRelicTier(lv);
+  return base * 5 + over * 3 + chaos * 2;
 }
 
 export function formatRelicStatSummary(id: RelicId, lv: number): string {
@@ -318,8 +362,9 @@ export function formatRelicStatSummary(id: RelicId, lv: number): string {
       return `복리 이자 +${getVaultInterestPct(effLv)}% (장당 한도 ${getVaultInterestCap(effLv)})`;
     case 'million_sword_seal': {
       const pctPer100 = (getWealthBpsPer100Coin(effLv) / 100).toFixed(1);
-      const { over } = splitRelicTier(effLv);
-      const capStr = over > 0 ? ` · 상한 ${(120 + over * 8) * 100}은자` : '';
+      const { over, chaos } = splitRelicTier(effLv);
+      const capStr =
+        over > 0 || chaos > 0 ? ` · 상한 ${(120 + over * 8 + chaos * 6) * 100}은자` : '';
       return `보유 은자 100당 전 협객 최종공격력 +${pctPer100}%${capStr}`;
     }
     case 'bandit_dagger': {
@@ -384,13 +429,15 @@ export interface RelicSetDef {
   readonly tier1Desc: string;
   readonly tier2Desc: string;
   readonly tier3Desc: string;
+  readonly tier4Desc: string;
+  readonly tier5Desc: string;
 }
 
 export interface RelicSetStatus {
   readonly def: RelicSetDef;
   readonly ownedCount: number;
   readonly minLevel: number;
-  readonly tier: 0 | 1 | 2 | 3;
+  readonly tier: 0 | 1 | 2 | 3 | 4 | 5;
 }
 
 export interface RelicSetBonuses {
@@ -424,6 +471,8 @@ export const RELIC_SETS: readonly RelicSetDef[] = [
     tier1Desc: '이자 +2%p · 한도 +80',
     tier2Desc: '이자 +4%p · 한도 +200 · 처치은자 +12%',
     tier3Desc: '이자 +6%p · 한도 +400 · 처치은자 +25% · 소환 -1',
+    tier4Desc: '이자 +8%p · 한도 +650 · 처치은자 +36% · 소환 -2',
+    tier5Desc: '이자 +10%p · 한도 +950 · 처치은자 +50% · 소환 -3',
   },
   {
     id: 'set_elixir_fortune',
@@ -434,6 +483,8 @@ export const RELIC_SETS: readonly RelicSetDef[] = [
     tier1Desc: '영약 +4%p · 수련비 -5%',
     tier2Desc: '영약 +8%p · 수련비 -10% · 초기영단 +1',
     tier3Desc: '영약 +12%p · 수련비 -15% · 초기영단 +2 · 방출 +20%',
+    tier4Desc: '영약 +15%p · 수련비 -20% · 초기영단 +3 · 방출 +30%',
+    tier5Desc: '영약 +18%p · 수련비 -25% · 초기영단 +4 · 방출 +45%',
   },
   {
     id: 'set_martial_god',
@@ -444,6 +495,8 @@ export const RELIC_SETS: readonly RelicSetDef[] = [
     tier1Desc: '공속 +6% · 최종공 +6%',
     tier2Desc: '공속 +12% · 최종공 +14% · 절기 +12%',
     tier3Desc: '공속 +18% · 최종공 +24% · 절기 +22% · 치명 +0.25x',
+    tier4Desc: '공속 +24% · 최종공 +34% · 절기 +32% · 치명 +0.38x',
+    tier5Desc: '공속 +32% · 최종공 +48% · 절기 +45% · 치명 +0.55x',
   },
   {
     id: 'set_demon_slayer',
@@ -454,6 +507,8 @@ export const RELIC_SETS: readonly RelicSetDef[] = [
     tier1Desc: '보스피해 +10% · 파갑 +6',
     tier2Desc: '보스피해 +22% · 파갑 +14 · 사거리 +15',
     tier3Desc: '보스피해 +38% · 파갑 +24 · 사거리 +30 · 제어 +18%',
+    tier4Desc: '보스피해 +52% · 파갑 +34 · 사거리 +42 · 제어 +26%',
+    tier5Desc: '보스피해 +70% · 파갑 +46 · 사거리 +55 · 제어 +36%',
   },
 ];
 
@@ -468,8 +523,18 @@ export function computeRelicSetStatuses(
       if (lv > 0) ownedCount++;
       if (lv < minLevel) minLevel = lv;
     }
-    const tier: 0 | 1 | 2 | 3 =
-      ownedCount < 4 ? 0 : minLevel >= RELIC_MAX_LEVEL ? 3 : minLevel >= RELIC_STANDARD_CAP ? 2 : 1;
+    const tier: 0 | 1 | 2 | 3 | 4 | 5 =
+      ownedCount < 4
+        ? 0
+        : minLevel >= RELIC_MAX_LEVEL
+          ? 5
+          : minLevel >= RELIC_CHAOS_SET_TIER4_LV
+            ? 4
+            : minLevel >= RELIC_MYTHIC_CAP
+              ? 3
+              : minLevel >= RELIC_STANDARD_CAP
+                ? 2
+                : 1;
     return { def, ownedCount, minLevel, tier };
   });
 }
@@ -505,28 +570,28 @@ export function computeRelicSetBonuses(
 
     switch (st.def.id) {
       case 'set_merchant_tycoon':
-        interestPct += st.tier === 3 ? 6 : st.tier === 2 ? 4 : 2;
-        interestCap += st.tier === 3 ? 400 : st.tier === 2 ? 200 : 80;
-        killCoinPct += st.tier === 3 ? 25 : st.tier === 2 ? 12 : 0;
-        summonDiscount += st.tier === 3 ? 1 : 0;
+        interestPct += st.tier === 5 ? 10 : st.tier === 4 ? 8 : st.tier === 3 ? 6 : st.tier === 2 ? 4 : 2;
+        interestCap += st.tier === 5 ? 950 : st.tier === 4 ? 650 : st.tier === 3 ? 400 : st.tier === 2 ? 200 : 80;
+        killCoinPct += st.tier === 5 ? 50 : st.tier === 4 ? 36 : st.tier === 3 ? 25 : st.tier === 2 ? 12 : 0;
+        summonDiscount += st.tier === 5 ? 3 : st.tier === 4 ? 2 : st.tier === 3 ? 1 : 0;
         break;
       case 'set_elixir_fortune':
-        gambleBonusPct += st.tier === 3 ? 12 : st.tier === 2 ? 8 : 4;
-        upgradeDiscountPct += st.tier === 3 ? 15 : st.tier === 2 ? 10 : 5;
-        startLuck += st.tier === 3 ? 2 : st.tier === 2 ? 1 : 0;
-        sellCoinPct += st.tier === 3 ? 20 : 0;
+        gambleBonusPct += st.tier === 5 ? 18 : st.tier === 4 ? 15 : st.tier === 3 ? 12 : st.tier === 2 ? 8 : 4;
+        upgradeDiscountPct += st.tier === 5 ? 25 : st.tier === 4 ? 20 : st.tier === 3 ? 15 : st.tier === 2 ? 10 : 5;
+        startLuck += st.tier === 5 ? 4 : st.tier === 4 ? 3 : st.tier === 3 ? 2 : st.tier === 2 ? 1 : 0;
+        sellCoinPct += st.tier === 5 ? 45 : st.tier === 4 ? 30 : st.tier === 3 ? 20 : 0;
         break;
       case 'set_martial_god':
-        speedPct += st.tier === 3 ? 18 : st.tier === 2 ? 12 : 6;
-        atkBps += st.tier === 3 ? 2400 : st.tier === 2 ? 1400 : 600;
-        skillDamagePct += st.tier === 3 ? 22 : st.tier === 2 ? 12 : 0;
-        critMultBonus += st.tier === 3 ? 0.25 : 0;
+        speedPct += st.tier === 5 ? 32 : st.tier === 4 ? 24 : st.tier === 3 ? 18 : st.tier === 2 ? 12 : 6;
+        atkBps += st.tier === 5 ? 4800 : st.tier === 4 ? 3400 : st.tier === 3 ? 2400 : st.tier === 2 ? 1400 : 600;
+        skillDamagePct += st.tier === 5 ? 45 : st.tier === 4 ? 32 : st.tier === 3 ? 22 : st.tier === 2 ? 12 : 0;
+        critMultBonus += st.tier === 5 ? 0.55 : st.tier === 4 ? 0.38 : st.tier === 3 ? 0.25 : 0;
         break;
       case 'set_demon_slayer':
-        bossDamagePct += st.tier === 3 ? 38 : st.tier === 2 ? 22 : 10;
-        armorShred += st.tier === 3 ? 24 : st.tier === 2 ? 14 : 6;
-        rangeBonus += st.tier === 3 ? 30 : st.tier === 2 ? 15 : 0;
-        ccPct += st.tier === 3 ? 18 : 0;
+        bossDamagePct += st.tier === 5 ? 70 : st.tier === 4 ? 52 : st.tier === 3 ? 38 : st.tier === 2 ? 22 : 10;
+        armorShred += st.tier === 5 ? 46 : st.tier === 4 ? 34 : st.tier === 3 ? 24 : st.tier === 2 ? 14 : 6;
+        rangeBonus += st.tier === 5 ? 55 : st.tier === 4 ? 42 : st.tier === 3 ? 30 : st.tier === 2 ? 15 : 0;
+        ccPct += st.tier === 5 ? 36 : st.tier === 4 ? 26 : st.tier === 3 ? 18 : 0;
         break;
     }
   }
@@ -812,8 +877,12 @@ export function getCultivationStepXp(level: number): number {
   return 120 + (lv - 1) * 45;
 }
 
-export function computeCultivationProgress(rawTotalXp: number): CultivationProgress {
+export function computeCultivationProgress(
+  rawTotalXp: number,
+  reincarnationCount = 0,
+): CultivationProgress {
   const totalXp = Math.max(0, Math.floor(rawTotalXp));
+  const reinc = Math.max(0, Math.floor(reincarnationCount));
   let level = 1;
   let rem = totalXp;
   while (level < CULTIVATION_MAX_LEVEL) {
@@ -823,7 +892,9 @@ export function computeCultivationProgress(rawTotalXp: number): CultivationProgr
     level++;
   }
   const isMaxLevel = level >= CULTIVATION_MAX_LEVEL;
-  const nextLevelXp = isMaxLevel ? getCultivationStepXp(CULTIVATION_MAX_LEVEL - 1) : getCultivationStepXp(level);
+  const nextLevelXp = isMaxLevel
+    ? getCultivationStepXp(CULTIVATION_MAX_LEVEL - 1)
+    : getCultivationStepXp(level);
   const currentLevelXp = isMaxLevel ? nextLevelXp : rem;
 
   let realm = CULTIVATION_REALMS[0]!;
@@ -832,6 +903,9 @@ export function computeCultivationProgress(rawTotalXp: number): CultivationProgr
       realm = CULTIVATION_REALMS[i]!;
     }
   }
+
+  const maxTotalPoints = MERIDIAN_ORDER.length * MERIDIAN_MAX_LEVEL;
+  const totalMeridianPoints = Math.min(maxTotalPoints, Math.max(0, level - 1) + reinc * 4);
 
   return {
     level,
@@ -842,7 +916,7 @@ export function computeCultivationProgress(rawTotalXp: number): CultivationProgr
     realmName: realm.name,
     realmBadge: realm.badge,
     realmColor: realm.color,
-    totalMeridianPoints: Math.max(0, level - 1),
+    totalMeridianPoints,
   };
 }
 
@@ -925,6 +999,217 @@ export function computeHeroProficiencyRankUpRewards(
   return { gold, keys, silk };
 }
 
+// =========================================================
+// v3.7 Step 2: 3-Slot Relic Soul Engraving (삼재 영혼 세공 · 잠금 재연마)
+// =========================================================
+export const SOUL_SLOT_COUNT = 3;
+
+export type SoulAffixRarity = 'B' | 'A' | 'S' | 'SS' | 'SSS';
+
+export type SoulAffixKind =
+  | 'atk_pct'
+  | 'skill_pct'
+  | 'boss_pct'
+  | 'crit_chance'
+  | 'crit_mult'
+  | 'armor_shred'
+  | 'speed_pct'
+  | 'kill_coin';
+
+export interface RelicSoulSlot {
+  readonly kind: SoulAffixKind;
+  readonly rarity: SoulAffixRarity;
+  readonly value: number;
+  readonly locked: boolean;
+}
+
+export const SOUL_RARITY_META: Readonly<
+  Record<SoulAffixRarity, { readonly badge: string; readonly color: string; readonly rank: number }>
+> = {
+  B: { badge: '청강', color: '#475569', rank: 1 },
+  A: { badge: '자하', color: '#0284c7', rank: 2 },
+  S: { badge: '진선', color: '#9333ea', rank: 3 },
+  SS: { badge: '신화', color: '#e11d48', rank: 4 },
+  SSS: { badge: '✦태고', color: '#d97706', rank: 5 },
+};
+
+export const SOUL_AFFIX_KINDS: readonly SoulAffixKind[] = [
+  'atk_pct',
+  'skill_pct',
+  'boss_pct',
+  'crit_chance',
+  'crit_mult',
+  'armor_shred',
+  'speed_pct',
+  'kill_coin',
+];
+
+const SOUL_AFFIX_TABLE: Readonly<
+  Record<SoulAffixKind, Readonly<Record<SoulAffixRarity, number>>>
+> = {
+  atk_pct: { B: 1, A: 2, S: 3, SS: 4, SSS: 6 },
+  skill_pct: { B: 2, A: 3, S: 5, SS: 7, SSS: 10 },
+  boss_pct: { B: 2, A: 4, S: 6, SS: 9, SSS: 13 },
+  crit_chance: { B: 50, A: 100, S: 150, SS: 220, SSS: 320 }, // bps
+  crit_mult: { B: 0.03, A: 0.06, S: 0.1, SS: 0.15, SSS: 0.24 },
+  armor_shred: { B: 1, A: 2, S: 3, SS: 5, SSS: 8 },
+  speed_pct: { B: 1, A: 1.8, S: 2.8, SS: 4, SSS: 6 },
+  kill_coin: { B: 1, A: 2, S: 4, SS: 6, SSS: 9 },
+};
+
+export function getSoulAffixValue(kind: SoulAffixKind, rarity: SoulAffixRarity): number {
+  return SOUL_AFFIX_TABLE[kind][rarity];
+}
+
+export function rollSoulAffixSlot(rngFn: () => number = Math.random): RelicSoulSlot {
+  const rRoll = Math.max(0, Math.min(0.999999, rngFn())) * 100;
+  const rarity: SoulAffixRarity =
+    rRoll < 5 ? 'SSS' : rRoll < 16 ? 'SS' : rRoll < 38 ? 'S' : rRoll < 68 ? 'A' : 'B';
+  const kIdx = Math.floor(Math.max(0, Math.min(0.999999, rngFn())) * SOUL_AFFIX_KINDS.length);
+  const kind = SOUL_AFFIX_KINDS[kIdx] ?? 'atk_pct';
+  return {
+    kind,
+    rarity,
+    value: getSoulAffixValue(kind, rarity),
+    locked: false,
+  };
+}
+
+export function formatSoulAffixSlot(slot: RelicSoulSlot): string {
+  switch (slot.kind) {
+    case 'atk_pct':
+      return `공격력 +${slot.value}%`;
+    case 'skill_pct':
+      return `절기피해 +${slot.value}%`;
+    case 'boss_pct':
+      return `영물피해 +${slot.value}%`;
+    case 'crit_chance':
+      return `회심률 +${(slot.value / 100).toFixed(1)}%`;
+    case 'crit_mult':
+      return `회심배율 +${slot.value.toFixed(2)}x`;
+    case 'armor_shred':
+      return `기본파갑 +${slot.value}`;
+    case 'speed_pct':
+      return `공격속도 +${slot.value}%`;
+    case 'kill_coin':
+      return `처치은자 +${slot.value}%`;
+  }
+}
+
+export function getSoulRerollCost(lockedCount: number): {
+  readonly gold: number;
+  readonly silk: number;
+} {
+  const lc = Math.max(0, Math.min(SOUL_SLOT_COUNT - 1, Math.floor(lockedCount)));
+  if (lc === 0) return { gold: 220, silk: 15 };
+  if (lc === 1) return { gold: 420, silk: 30 };
+  return { gold: 780, silk: 60 };
+}
+
+// =========================================================
+// v3.8 Step 3: 20-Tier Ascension Ladder (구천등선록 1중천 ~ 20중천)
+// =========================================================
+export const ASCENSION_MAX_LEVEL = 20;
+
+export interface AscensionModifiers {
+  readonly level: number;
+  readonly badge: string;
+  readonly hpMult: number;
+  readonly bossHpMult: number;
+  readonly speedMult: number;
+  readonly bonusArmor: number;
+  readonly summonSurcharge: number;
+  readonly bossArmorRegenPerSec: number;
+  readonly gamblePenaltyPct: number;
+  readonly twinBossAtLateWaves: boolean;
+  readonly rewardMultBonus: number;
+  readonly tribulationTags: readonly string[];
+  readonly firstClearReward: {
+    readonly gold: number;
+    readonly keys: number;
+    readonly silk: number;
+    readonly shards: number;
+  };
+}
+
+export function computeAscensionModifiers(rawLevel: number): AscensionModifiers {
+  const level = Math.max(0, Math.min(ASCENSION_MAX_LEVEL, Math.floor(rawLevel)));
+  if (level <= 0) {
+    return {
+      level: 0,
+      badge: '일반',
+      hpMult: 1,
+      bossHpMult: 1,
+      speedMult: 1,
+      bonusArmor: 0,
+      summonSurcharge: 0,
+      bossArmorRegenPerSec: 0,
+      gamblePenaltyPct: 0,
+      twinBossAtLateWaves: false,
+      rewardMultBonus: 0,
+      tribulationTags: [],
+      firstClearReward: { gold: 0, keys: 0, silk: 0, shards: 0 },
+    };
+  }
+
+  const hpMult = Number(Math.pow(1.14, level).toFixed(4));
+  const bossHpMult = Number(Math.pow(1.045, level).toFixed(4));
+  const bonusArmor = level * 3;
+  const summonSurcharge = level >= 3 ? 2 + Math.floor((level - 3) / 4) : 0;
+  const speedMult = level >= 15 ? 1.14 : level >= 5 ? 1.08 : 1.0;
+  const bossArmorRegenPerSec = level >= 8 ? 3 + Math.floor((level - 8) / 3) * 2 : 0;
+  const gamblePenaltyPct = level >= 12 ? 5 : 0;
+  const twinBossAtLateWaves = level >= 15;
+  const rewardMultBonus = Number((level * 0.16).toFixed(2));
+
+  const tags: string[] = [`체력×${hpMult.toFixed(2)}`, `강기+${bonusArmor}`];
+  if (summonSurcharge > 0) tags.push(`소환+${summonSurcharge}은자`);
+  if (speedMult > 1) tags.push(`경공마군+${Math.round((speedMult - 1) * 100)}%`);
+  if (bossArmorRegenPerSec > 0) tags.push(`영물강기재생+${bossArmorRegenPerSec}/초`);
+  if (gamblePenaltyPct > 0) tags.push(`단로역풍-${gamblePenaltyPct}%p`);
+  if (twinBossAtLateWaves) tags.push('15·20·25·30장 쌍두영물');
+
+  return {
+    level,
+    badge: `등선 ${level}중천`,
+    hpMult,
+    bossHpMult,
+    speedMult,
+    bonusArmor,
+    summonSurcharge,
+    bossArmorRegenPerSec,
+    gamblePenaltyPct,
+    twinBossAtLateWaves,
+    rewardMultBonus,
+    tribulationTags: tags,
+    firstClearReward: {
+      gold: 350 + level * 65,
+      keys: 2 + Math.floor(level / 5),
+      silk: 25 + level * 8,
+      shards: 4 + Math.floor(level / 2),
+    },
+  };
+}
+
+// =========================================================
+// v3.9 Step 4: Infinite Reincarnation (무극 전생 · 선천 도과)
+// =========================================================
+export const REINCARNATION_REWARD = {
+  gold: 1200,
+  keys: 5,
+  silk: 80,
+  shards: 10,
+} as const;
+
+export const REINCARNATION_DAO_BONUS_PER_STACK = {
+  atkPct: 5,
+  skillDamagePct: 5,
+  bossDamagePct: 6,
+  startCoin: 25,
+  killCoinPct: 4,
+  innateMeridianPoints: 4,
+} as const;
+
 export interface EndgameMetaBonuses {
   readonly atkPct: number;
   readonly skillDamagePct: number;
@@ -965,12 +1250,15 @@ export function computeEndgameMetaBonuses(
   masteryLevels: Partial<Record<MasteryId, number>>,
   engravedRelicCount: number,
   meridianLevels?: Partial<Record<MeridianId, number>>,
+  relicSoulSlots?: Readonly<Partial<Record<RelicId, readonly RelicSoulSlot[]>>>,
+  reincarnationCount = 0,
 ): EndgameMetaBonuses {
   const atkLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.atk ?? 0)));
   const econLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.econ ?? 0)));
   const critLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.crit ?? 0)));
   const bossLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.boss ?? 0)));
   const eng = Math.max(0, Math.floor(engravedRelicCount));
+  const reinc = Math.max(0, Math.floor(reincarnationCount));
 
   const clampMer = (id: MeridianId): number =>
     Math.max(0, Math.min(MERIDIAN_MAX_LEVEL, Math.floor(meridianLevels?.[id] ?? 0)));
@@ -1008,16 +1296,83 @@ export function computeEndgameMetaBonuses(
   const cycleSkillPct = meridianCycleTier === 2 ? 10 : 0;
   const cycleStartCoin = meridianCycleTier === 2 ? 40 : meridianCycleTier === 1 ? 15 : 0;
 
+  let soulAtkPct = 0;
+  let soulSkillPct = 0;
+  let soulBossPct = 0;
+  let soulCritBps = 0;
+  let soulCritMult = 0;
+  let soulShred = 0;
+  let soulSpeedPct = 0;
+  let soulKillCoinPct = 0;
+
+  if (relicSoulSlots) {
+    for (const rid of RELIC_IDS_ORDERED) {
+      const slots = relicSoulSlots[rid];
+      if (!slots) continue;
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i]!;
+        switch (s.kind) {
+          case 'atk_pct':
+            soulAtkPct += s.value;
+            break;
+          case 'skill_pct':
+            soulSkillPct += s.value;
+            break;
+          case 'boss_pct':
+            soulBossPct += s.value;
+            break;
+          case 'crit_chance':
+            soulCritBps += s.value;
+            break;
+          case 'crit_mult':
+            soulCritMult += s.value;
+            break;
+          case 'armor_shred':
+            soulShred += s.value;
+            break;
+          case 'speed_pct':
+            soulSpeedPct += s.value;
+            break;
+          case 'kill_coin':
+            soulKillCoinPct += s.value;
+            break;
+        }
+      }
+    }
+  }
+
   return {
-    atkPct: Math.round(atkLv * 1.5) + eng * RELIC_ENGRAVE_ATK_PCT_EACH + duLv * 2 + cycleAtkPct,
-    skillDamagePct: eng * RELIC_ENGRAVE_SKILL_PCT_EACH + daiLv * 4 + cycleSkillPct,
-    startCoin: econLv * 5 + renLv * 8 + cycleStartCoin,
-    killCoinPct: econLv * 2 + renLv * 2,
-    critChanceBps: critLv * 50 + yangqiaoLv * 100,
-    critMultBonus: Number((critLv * 0.04 + yangqiaoLv * 0.05).toFixed(2)),
-    bossDamagePct: Math.round(bossLv * 2.5 + yangweiLv * 3.5),
-    speedPct: Number((chongLv * 2.5).toFixed(1)),
-    armorShred: yinqiaoLv * 2,
+    atkPct:
+      Math.round(atkLv * 1.5) +
+      eng * RELIC_ENGRAVE_ATK_PCT_EACH +
+      duLv * 2 +
+      cycleAtkPct +
+      soulAtkPct +
+      reinc * REINCARNATION_DAO_BONUS_PER_STACK.atkPct,
+    skillDamagePct:
+      eng * RELIC_ENGRAVE_SKILL_PCT_EACH +
+      daiLv * 4 +
+      cycleSkillPct +
+      soulSkillPct +
+      reinc * REINCARNATION_DAO_BONUS_PER_STACK.skillDamagePct,
+    startCoin:
+      econLv * 5 +
+      renLv * 8 +
+      cycleStartCoin +
+      reinc * REINCARNATION_DAO_BONUS_PER_STACK.startCoin,
+    killCoinPct:
+      econLv * 2 +
+      renLv * 2 +
+      soulKillCoinPct +
+      reinc * REINCARNATION_DAO_BONUS_PER_STACK.killCoinPct,
+    critChanceBps: critLv * 50 + yangqiaoLv * 100 + soulCritBps,
+    critMultBonus: Number((critLv * 0.04 + yangqiaoLv * 0.05 + soulCritMult).toFixed(2)),
+    bossDamagePct:
+      Math.round(bossLv * 2.5 + yangweiLv * 3.5) +
+      soulBossPct +
+      reinc * REINCARNATION_DAO_BONUS_PER_STACK.bossDamagePct,
+    speedPct: Number((chongLv * 2.5 + soulSpeedPct).toFixed(1)),
+    armorShred: yinqiaoLv * 2 + soulShred,
     gambleBonusPct: Math.round(yinweiLv * 1.6),
     meridianCycleTier,
   };

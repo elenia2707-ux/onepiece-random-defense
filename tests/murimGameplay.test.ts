@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import atlasRaw from '../public/assets/sprites_atlas.json';
 import type { StampedCommand } from '../src/core/CommandQueue';
 import {
+  ASCENSION_MAX_LEVEL,
   computeRelicSetBonuses,
   computeRelicSetStatuses,
   DIFFICULTY_CONFIGS,
+  getBlessedEffectiveRelicLevel,
   getUnitSellLuckRefund,
+  RELIC_EFFECTIVE_MAX_LEVEL,
+  RELIC_MAX_LEVEL,
   RELIC_SETS,
+  SOUL_SLOT_COUNT,
   TITLE_DEFS,
   TRIAL_CONFIGS,
 } from '../src/core/relicFormulas';
@@ -3917,6 +3922,257 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       det3x.tick();
     }
     expect(det3x.hashState()).toBe(det1x.hashState());
+  });
+
+  it('supports v3.6~v3.9 Endgame Ceiling Expansion: Chaos Shards Lv.30, 3-Slot Soul Forge, 20-Tier Ascension, Blessed 1.5x Relics & Reincarnation', () => {
+    const data = loadGameData();
+    const storeMap = new Map<string, string>();
+    const memStorage: StorageLike = {
+      getItem: (k) => storeMap.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k) => {
+        storeMap.delete(k);
+      },
+    };
+    const meta = new MetaStore(memStorage);
+    meta.grantDevMeta(200000, 120);
+
+    // Max all 16 relics to base Lv.15 (태극신화)
+    for (const def of data.relics) {
+      while ((meta.getProfile().relics[def.id] ?? 0) < def.maxLevel) {
+        const up = meta.upgradeRelic(def);
+        expect(up.ok).toBe(true);
+      }
+    }
+    expect(computeRelicSetStatuses(meta.getRelicLevels()).every((s) => s.tier === 3)).toBe(true);
+
+    // 1. v3.6: Keys & Gold NEVER lock out at Lv.15 — opens Chaos Transcendence Chest (+3 shards, +5 silk)
+    const keysBefore = meta.getProfile().keys;
+    const silkBefore = meta.getProfile().silk;
+    const singleChaos = meta.drawRelic(data.relics, 'key', () => 0.1);
+    expect(singleChaos.ok).toBe(true);
+    if (singleChaos.ok) {
+      expect(singleChaos.shardsGranted).toBe(3);
+      expect(singleChaos.silkGranted).toBe(5);
+    }
+    expect(meta.getProfile().keys).toBe(keysBefore - 1);
+    expect(meta.getProfile().silk).toBe(silkBefore + 5);
+
+    const batchChaos = meta.drawRelicBatch(data.relics, 10, 'key', () => 0.0);
+    expect(batchChaos.ok).toBe(true);
+    if (batchChaos.ok) {
+      expect(batchChaos.spentCount).toBe(10);
+      expect(batchChaos.totalShardsGranted).toBe(30);
+      expect(batchChaos.totalSilkGranted).toBe(50);
+    }
+
+    // Draw gold batches to farm shards and transcend golden_vault & first set to Lv.22 -> Lv.30!
+    const firstSet = RELIC_SETS[0]!;
+    firstSet.members.forEach((rid, idx) => {
+      const rDef = data.relicsById.get(rid)!;
+      const blessRes = meta.toggleBlessedRelic(rDef);
+      expect(blessRes.ok).toBe(idx < 3);
+    });
+    for (let i = 0; i < 160; i++) {
+      meta.grantDevMeta(5000, 10);
+      meta.drawRelicBatch(data.relics, 10, 'key', () => (i % 16) / 16);
+    }
+    const vaultDef = data.relicsById.get('golden_vault')!;
+    while ((meta.getProfile().relics.golden_vault ?? 0) < RELIC_MAX_LEVEL) {
+      meta.grantDevMeta(5000, 10);
+      meta.drawRelicBatch(data.relics, 10, 'key', () => 0.0);
+      const tr = meta.transcendRelic(vaultDef);
+      if (!tr.ok) break;
+    }
+    expect(meta.getProfile().relics.golden_vault).toBe(RELIC_MAX_LEVEL);
+
+    // Verify Set Tier 4 (Lv.22) & Tier 5 (Lv.30)
+    const tier4Map = { ...meta.getRelicLevels() };
+    for (const rid of firstSet.members) tier4Map[rid] = 22;
+    expect(computeRelicSetStatuses(tier4Map)[0]!.tier).toBe(4);
+    const tier5Map = { ...meta.getRelicLevels() };
+    for (const rid of firstSet.members) tier5Map[rid] = RELIC_MAX_LEVEL;
+    expect(computeRelicSetStatuses(tier5Map)[0]!.tier).toBe(5);
+    expect(computeRelicSetBonuses(tier5Map).interestPct).toBeGreaterThan(
+      computeRelicSetBonuses(meta.getRelicLevels()).interestPct,
+    );
+
+    // 2. v3.7: 3-Slot Soul Forge (Engrave -> Initial Appraisal -> Lock 2 Slots -> Reroll 3rd Slot)
+    expect(meta.engraveRelic(vaultDef).ok).toBe(true);
+    const roll1 = meta.rerollRelicSoul(vaultDef, () => 0.01); // SSS rarity roll (< 0.05)
+    expect(roll1.ok).toBe(true);
+    if (roll1.ok) {
+      expect(roll1.slots).toHaveLength(SOUL_SLOT_COUNT);
+      expect(roll1.slots[0]!.rarity).toBe('SSS');
+    }
+    expect(meta.toggleRelicSoulLock('golden_vault', 0).ok).toBe(true);
+    expect(meta.toggleRelicSoulLock('golden_vault', 1).ok).toBe(true);
+    // Locking all 3 slots is prevented so at least 1 slot can be rerolled
+    expect(meta.toggleRelicSoulLock('golden_vault', 2).ok).toBe(false);
+
+    const lockedSlot0 = meta.getProfile().relicSoulSlots.golden_vault![0]!;
+    const roll2 = meta.rerollRelicSoul(vaultDef, () => 0.95); // B rarity roll for unlocked slot #2
+    expect(roll2.ok).toBe(true);
+    if (roll2.ok) {
+      expect(roll2.slots[0]).toEqual(lockedSlot0);
+      expect(roll2.slots[2]!.rarity).toBe('B');
+      expect(roll2.slots[2]!.locked).toBe(false);
+    }
+
+    // 3. v3.8: 20-Tier Ascension Ladder (구천등선록)
+    // On a clean MetaStore (without grantDevMeta dev unlock), clearing normal->hard->hell->abyss unlocks Ascension 1 -> clearing Ascension 1 unlocks Ascension 2 + drops shards!
+    const ascStore = new Map<string, string>();
+    const metaAsc = new MetaStore({
+      getItem: (k) => ascStore.get(k) ?? null,
+      setItem: (k, v) => {
+        ascStore.set(k, v);
+      },
+    });
+    expect(metaAsc.getProfile().unlockedAscensionLevel).toBe(0);
+    for (const d of ['normal', 'hard', 'hell', 'abyss'] as const) {
+      metaAsc.settleRun({ wave: 30, monstersSlain: 200, bossesSlain: 6, difficulty: d, victory: true });
+    }
+    expect(metaAsc.getProfile().unlockedAscensionLevel).toBe(1);
+    expect(metaAsc.setSelectedAscensionLevel(1)).toBe(true);
+    expect(metaAsc.setSelectedAscensionLevel(2)).toBe(false);
+
+    const asc1Settle = metaAsc.settleRun({
+      wave: 30,
+      monstersSlain: 220,
+      bossesSlain: 6,
+      difficulty: 'abyss',
+      ascensionLevel: 1,
+      victory: true,
+    });
+    expect(asc1Settle.shardsEarned).toBeGreaterThan(0);
+    expect(asc1Settle.unlockedNextAscensionLevel).toBe(2);
+    expect(metaAsc.getProfile().unlockedAscensionLevel).toBe(2);
+    expect(metaAsc.getProfile().clearedAscensionLevel).toBe(1);
+    // Also record Ascension 5 clear on main `meta` for MRD1 backup round-trip verification below
+    meta.settleRun({
+      wave: 30,
+      monstersSlain: 220,
+      bossesSlain: 6,
+      difficulty: 'abyss',
+      ascensionLevel: 5,
+      victory: true,
+    });
+
+    // Verify Ascension 15 tactical tribulations in Simulation (summon surcharge, gamble penalty, boss regen, Twin Boss on Wave 15)
+    const simAsc0 = new Simulation(data, 0x7777, {}, 'abyss', null, false, { ascensionLevel: 0 });
+    const simAsc15 = new Simulation(data, 0x7777, {}, 'abyss', null, false, {
+      ascensionLevel: 15,
+    });
+    expect(simAsc15.ascensionLevel).toBe(15);
+    expect(simAsc15.getSummonCost()).toBeGreaterThan(simAsc0.getSummonCost());
+    expect(simAsc15.getEffectiveGambleBonusPct()).toBeLessThan(simAsc0.getEffectiveGambleBonusPct());
+    expect(simAsc15.computeMonsterArmor(10, true, false)).toBeGreaterThan(
+      simAsc0.computeMonsterArmor(10, true, false),
+    );
+    expect(computeWaveHpScale(data, 'abyss', null, 15, true, 15)).toBeGreaterThan(
+      computeWaveHpScale(data, 'abyss', null, 15, true, 0),
+    );
+
+    // Advance simAsc15 to Wave 15 boss spawn and verify Twin Boss (2 bosses spawned) + armor shred regen!
+    (simAsc15 as unknown as { waveNumber: number; spawnedInWave: number; nextSpawnTick: number; waveTicksLeft: number }).waveNumber = 15;
+    (simAsc15 as unknown as { waveTicksLeft: number }).waveTicksLeft = 2400;
+    for (let t = 0; t < 45; t++) {
+      simAsc15.tick();
+    }
+    const wave15Bosses = simAsc15.getMonsters().filter((m) => m.isBoss && !m.isBounty);
+    expect(wave15Bosses.length).toBe(2);
+    expect(wave15Bosses.some((b) => (b.bossName ?? '').includes('쌍두호법'))).toBe(true);
+
+    // Apply shred and verify 8중천+ regenerates shred on tick % 30 === 0
+    wave15Bosses[0]!.armorShred = 30;
+    wave15Bosses[0]!.shredExpireTick = simAsc15.tickCount + 600;
+    for (let t = 0; t < 30; t++) {
+      simAsc15.tick();
+    }
+    expect(wave15Bosses[0]!.armorShred).toBeLessThan(30);
+
+    // 4. v3.9: Blessed 1.5x Effective Level in Simulation + Meridian Reincarnation + MRD1 Backup Round-trip
+    expect(getBlessedEffectiveRelicLevel(30, true)).toBe(RELIC_EFFECTIVE_MAX_LEVEL);
+    const relicsForBless = { ...meta.getRelicLevels(), dragon_range_mirror: 14 };
+    const simUnblessed = new Simulation(data, 0x9999, relicsForBless, 'abyss', null, false, {
+      ascensionLevel: 5,
+      blessedRelics: [],
+    });
+    const simBlessed = new Simulation(data, 0x9999, relicsForBless, 'abyss', null, false, {
+      ascensionLevel: 5,
+      blessedRelics: ['dragon_range_mirror'],
+    });
+    expect(simBlessed.getEffectiveRelicLv('dragon_range_mirror')).toBe(21);
+    simUnblessed.commands.enqueue({ type: 'summon' });
+    simBlessed.commands.enqueue({ type: 'summon' });
+    simUnblessed.tick();
+    simBlessed.tick();
+    const uUnblessed = simUnblessed.buildSnapshot(1, false).field.find((s) => s !== null)!;
+    const uBlessed = simBlessed.buildSnapshot(1, false).field.find((s) => s !== null)!;
+    expect(uBlessed.range).toBeGreaterThan(uUnblessed.range);
+
+    // Determinism 1x === 3x + RunSave round-trip with ascensionLevel & blessedRelics
+    const simDetB = new Simulation(data, 0x9999, relicsForBless, 'abyss', null, false, {
+      ascensionLevel: 5,
+      blessedRelics: ['dragon_range_mirror'],
+    });
+    simDetB.commands.enqueue({ type: 'summon' });
+    simDetB.tick();
+    for (let t = 0; t < 90; t++) simBlessed.tick();
+    for (let t = 0; t < 90; t += 3) {
+      simDetB.tick();
+      simDetB.tick();
+      simDetB.tick();
+    }
+    expect(simDetB.hashState()).toBe(simBlessed.hashState());
+
+    const runSaved = simBlessed.exportRunSave(12345);
+    const simRestored = new Simulation(data, 0x1111, {}, 'abyss', null, false, {
+      ascensionLevel: 5,
+    });
+    expect(simRestored.restoreRunSave(runSaved)).toBe(true);
+    expect(simRestored.hashState()).toBe(simBlessed.hashState());
+
+    // Account Cultivation Lv.41 -> Reincarnation (무극 전생 · 선천 도과)
+    expect(meta.reincarnateCultivation().ok).toBe(false);
+    meta.grantCultivationXp(100000);
+    expect(meta.getProfile().cultivation.isMaxLevel).toBe(true);
+    expect(meta.claimRealmMilestone(5).ok).toBe(true);
+
+    const atkBeforeReinc = meta.getProfile().endgameBonuses.atkPct;
+    const reincRes = meta.reincarnateCultivation(() => 0.25);
+    expect(reincRes.ok).toBe(true);
+    if (reincRes.ok) {
+      expect(reincRes.reincarnationCount).toBe(1);
+      expect(reincRes.rewardShards).toBe(10);
+      expect(reincRes.endgameBonuses.atkPct).toBe(atkBeforeReinc + 5);
+    }
+    // After reincarnation, level resets to 1 with +4 innate Meridian points and realm chests reset!
+    expect(meta.getProfile().cultivation.level).toBe(1);
+    expect(meta.getProfile().unspentMeridianPoints).toBe(4);
+    expect(meta.getProfile().claimedRealmMilestones).toHaveLength(0);
+
+    // Backup export/import preserves relicShards, Lv.30 relics, soul slots, blessedRelics, ascension, and reincarnationCount!
+    const code = meta.exportBackupCode();
+    expect(code.startsWith(BACKUP_CODE_PREFIX)).toBe(true);
+    const storeMap2 = new Map<string, string>();
+    const meta2 = new MetaStore({
+      getItem: (k) => storeMap2.get(k) ?? null,
+      setItem: (k, v) => {
+        storeMap2.set(k, v);
+      },
+    });
+    expect(meta2.importBackupCode(code).ok).toBe(true);
+    const prof2 = meta2.getProfile();
+    expect(prof2.relics.golden_vault).toBe(RELIC_MAX_LEVEL);
+    expect(prof2.reincarnationCount).toBe(1);
+    expect(prof2.clearedAscensionLevel).toBe(5);
+    expect(prof2.unlockedAscensionLevel).toBe(6);
+    expect(prof2.relicSoulSlots.golden_vault).toHaveLength(SOUL_SLOT_COUNT);
+    expect(prof2.blessedRelics.length).toBeGreaterThan(0);
+    expect(ASCENSION_MAX_LEVEL).toBe(20);
   });
 });
 

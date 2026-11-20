@@ -42,7 +42,11 @@ export type GameCommand =
   | { readonly type: 'forgeArmament' }
   | { readonly type: 'reforgeArmament'; readonly slotIndex: number }
   | { readonly type: 'equipArmament'; readonly slotIndex: number; readonly targetUid: number | null }
-  | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
+  | {
+      readonly type: 'syncRelics';
+      readonly relics: Readonly<Partial<Record<RelicId, number>>>;
+      readonly blessedRelics?: readonly RelicId[];
+    }
   | {
       readonly type: 'syncMetaBonuses';
       readonly codexAtkBonusPct?: number;

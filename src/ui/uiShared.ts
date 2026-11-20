@@ -24,6 +24,9 @@ export interface RelicBatchNoticeEntry {
   readonly newLevel: number;
   readonly pulls: number;
   readonly isNew: boolean;
+  readonly shardsGranted?: number;
+  readonly silkGranted?: number;
+  readonly goldRefunded?: number;
 }
 
 export interface RelicNoticeView {
@@ -34,8 +37,13 @@ export interface RelicNoticeView {
   readonly prevLevel?: number;
   readonly newLevel?: number;
   readonly isNew?: boolean;
+  readonly shardsGranted?: number;
+  readonly silkGranted?: number;
+  readonly goldRefunded?: number;
   readonly batchItems?: readonly RelicBatchNoticeEntry[];
   readonly totalPulls?: number;
+  readonly totalShardsGranted?: number;
+  readonly totalSilkGranted?: number;
 }
 
 export interface SkinPullView {

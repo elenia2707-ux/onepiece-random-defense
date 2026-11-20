@@ -358,6 +358,7 @@ export interface CombatSystemContext {
   readonly projectiles: ProjectileEntity[];
   readonly tileHazards: TileHazard[];
   readonly relicLv: Readonly<Record<RelicId, number>>;
+  readonly rawRelicLv?: Readonly<Record<RelicId, number>>;
   readonly comboCooldowns?: Map<ComboSkillId, number>;
   readonly comboTriggerCounts?: Map<ComboSkillId, number>;
   readonly currentTick: number;
@@ -393,7 +394,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
     ctx.dailyRule?.modifiers.benchPassiveMult ?? 1,
   );
   const swiftStacks = ctx.getBoonStacks('b_swift_formation');
-  const setBonus = computeRelicSetBonuses(ctx.relicLv);
+  const baseRelicMap = ctx.rawRelicLv ?? ctx.relicLv;
+  const setBonus = computeRelicSetBonuses(baseRelicMap);
   const trigramAuraPct = getTrigramMirrorAuraPct(ctx.relicLv.eight_trigram_mirror ?? 0);
   const bloodflameHazards =
     ctx.arenaRule === 'bloodflame_forge' && ctx.tileHazards.length > 0
@@ -422,7 +424,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
   let ownedRelicCount = 0;
   if (resonanceStacks > 0) {
     for (let k = 0; k < ctx.data.relics.length; k++) {
-      if ((ctx.relicLv[ctx.data.relics[k]!.id] ?? 0) > 0) {
+      if ((baseRelicMap[ctx.data.relics[k]!.id] ?? 0) > 0) {
         ownedRelicCount++;
       }
     }

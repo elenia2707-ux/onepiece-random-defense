@@ -66,6 +66,10 @@ export class Game {
     const selRunMode = this.meta.getSelectedRunMode();
     const selDiff = this.meta.getSelectedDifficulty();
     const selTrial = selRunMode === 'standard' ? this.meta.getSelectedTrialId() : null;
+    const selAscension =
+      selRunMode === 'standard' && selDiff === 'abyss' && selTrial === null
+        ? this.meta.getSelectedAscensionLevel()
+        : 0;
     const metaProf = this.meta.getProfile();
     const initialCourtDef = data.courtSkinsById.get(metaProf.equippedCourtSkin) ?? null;
     const rookieMode =
@@ -83,6 +87,8 @@ export class Game {
       {
         runMode: selRunMode,
         dailyDateKey: metaProf.dailyDate,
+        ascensionLevel: selAscension,
+        blessedRelics: this.meta.getBlessedRelics(),
         codexAtkBonusPct: metaProf.codexAtkBonusPct,
         endgameBonuses: metaProf.endgameBonuses,
         arenaRule: initialCourtDef?.arenaRule ?? null,
@@ -105,6 +111,7 @@ export class Game {
         (savedRun.dailyDateKey ?? null) === (this.sim.dailyChallengeSpec?.dateKey ?? null) &&
         savedRun.difficulty === this.sim.difficulty &&
         (savedRun.trialId ?? null) === this.sim.trialId &&
+        (savedRun.ascensionLevel ?? 0) === this.sim.ascensionLevel &&
         this.sim.restoreRunSave(savedRun)
       ) {
         this.lastSavedWave = savedRun.waveNumber;
@@ -247,6 +254,15 @@ export class Game {
         }
         return false;
       },
+      onSelectAscensionLevel: (level) => {
+        if (this.meta.setSelectedAscensionLevel(level)) {
+          this.suppressAutoSave = true;
+          this.meta.clearActiveRun();
+          window.location.reload();
+          return true;
+        }
+        return false;
+      },
       onSelectRunMode: (mode) => {
         if (this.meta.setSelectedRunMode(mode)) {
           this.suppressAutoSave = true;
@@ -299,12 +315,16 @@ export class Game {
       onDrawRelic: (payWith) => {
         const res = this.meta.drawRelic(data.relics, payWith);
         if (res.ok) {
-          if (res.newLevel > 10) {
+          if (res.newLevel > 10 || (res.shardsGranted ?? 0) > 0) {
             this.sound.playRelicTranscend();
           } else {
             this.sound.playCraft(res.isNew ? 4 : 3);
           }
-          this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.dispatchCommand({
+            type: 'syncRelics',
+            relics: this.meta.getRelicLevels(),
+            blessedRelics: this.meta.getBlessedRelics(),
+          });
           this.announceUnlockedTitles(res.unlockedTitleIds);
         }
         this.ui.sync(
@@ -317,13 +337,18 @@ export class Game {
       onDrawRelicBatch: (maxCount, payWith) => {
         const res = this.meta.drawRelicBatch(data.relics, maxCount, payWith);
         if (res.ok) {
-          const hasTranscend = res.items.some((x) => x.newLevel > 10);
+          const hasTranscend =
+            res.items.some((x) => x.newLevel > 10) || (res.totalShardsGranted ?? 0) > 0;
           if (hasTranscend) {
             this.sound.playRelicTranscend();
           } else {
             this.sound.playBatchChestCascade(res.items.length);
           }
-          this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.dispatchCommand({
+            type: 'syncRelics',
+            relics: this.meta.getRelicLevels(),
+            blessedRelics: this.meta.getBlessedRelics(),
+          });
           this.announceUnlockedTitles(res.unlockedTitleIds);
         }
         this.ui.sync(
@@ -345,8 +370,34 @@ export class Game {
           } else {
             this.sound.playCoinReward();
           }
-          this.dispatchCommand({ type: 'syncRelics', relics: this.meta.getRelicLevels() });
+          this.dispatchCommand({
+            type: 'syncRelics',
+            relics: this.meta.getRelicLevels(),
+            blessedRelics: this.meta.getBlessedRelics(),
+          });
           this.announceUnlockedTitles(res.unlockedTitleIds);
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onTranscendRelic: (relicId) => {
+        const def = data.relicsById.get(relicId);
+        if (!def) {
+          return { ok: false, reason: '존재하지 않는 신물입니다.' };
+        }
+        const res = this.meta.transcendRelic(def);
+        if (res.ok) {
+          this.sound.playRelicTranscend();
+          this.haptics.trigger('success');
+          this.dispatchCommand({
+            type: 'syncRelics',
+            relics: this.meta.getRelicLevels(),
+            blessedRelics: this.meta.getBlessedRelics(),
+          });
         }
         this.ui.sync(
           this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
@@ -364,6 +415,78 @@ export class Game {
         if (res.ok) {
           this.sound.playMilestone();
           this.haptics.trigger('success');
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            endgameBonuses: res.endgameBonuses,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onRerollRelicSoul: (relicId) => {
+        const def = data.relicsById.get(relicId);
+        if (!def) {
+          return { ok: false, reason: '존재하지 않는 신물입니다.' };
+        }
+        const res = this.meta.rerollRelicSoul(def);
+        if (res.ok) {
+          this.sound.playCraft(5);
+          this.haptics.trigger('medium');
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            endgameBonuses: res.endgameBonuses,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onToggleRelicSoulLock: (relicId, slotIndex) => {
+        const res = this.meta.toggleRelicSoulLock(relicId, slotIndex);
+        if (res.ok) {
+          this.sound.playUiTap();
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onToggleBlessedRelic: (relicId) => {
+        const def = data.relicsById.get(relicId);
+        if (!def) {
+          return { ok: false, reason: '존재하지 않는 신물입니다.' };
+        }
+        const res = this.meta.toggleBlessedRelic(def);
+        if (res.ok) {
+          this.sound.playRelicTranscend();
+          this.haptics.trigger('light');
+          this.dispatchCommand({
+            type: 'syncRelics',
+            relics: this.meta.getRelicLevels(),
+            blessedRelics: res.blessedRelics,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onReincarnate: () => {
+        const res = this.meta.reincarnateCultivation();
+        if (res.ok) {
+          this.sound.playVictory();
+          this.haptics.trigger('heavy');
           this.dispatchCommand({
             type: 'syncMetaBonuses',
             endgameBonuses: res.endgameBonuses,
@@ -573,6 +696,7 @@ export class Game {
             bountiesSlain: snap.bounty.bountiesSlain,
             difficulty: snap.difficulty,
             trialId: snap.trialId,
+            ascensionLevel: snap.ascensionLevel,
             runMode: snap.runMode,
             victory: snap.victoryAchieved,
             elapsedTicks: this.sim.tickCount,
@@ -717,6 +841,7 @@ export class Game {
         bountiesSlain: snap.bounty.bountiesSlain,
         difficulty: snap.difficulty,
         trialId: snap.trialId,
+        ascensionLevel: snap.ascensionLevel,
         runMode: snap.runMode,
         victory: snap.victoryAchieved,
         elapsedTicks: this.sim.tickCount,

@@ -1,4 +1,5 @@
 import type { EventBus } from '../core/EventBus';
+import { computeAscensionModifiers } from '../core/relicFormulas';
 import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
 import {
@@ -137,12 +138,20 @@ export function computeWaveHpScale(
   trialId: TrialId | null,
   waveNum: number,
   isBoss = false,
+  ascensionLevel = 0,
 ): number {
   const diffCfg = data.difficultiesById.get(difficulty) ?? data.difficulties[0]!;
   const trialCfg = trialId ? data.trialsById.get(trialId) : undefined;
-  const baseMult = diffCfg.hpMult * (trialCfg ? trialCfg.hpMult : 1);
+  const ascMod =
+    difficulty === 'abyss' && !trialCfg && ascensionLevel > 0
+      ? computeAscensionModifiers(ascensionLevel)
+      : null;
+  const baseMult =
+    diffCfg.hpMult * (trialCfg ? trialCfg.hpMult : 1) * (ascMod ? ascMod.hpMult : 1);
   const effLateRamp = diffCfg.lateWaveRamp * (trialCfg ? trialCfg.lateWaveRamp : 1);
-  const bossMult = isBoss ? diffCfg.bossHpMult * (trialCfg ? trialCfg.bossHpMult : 1) : 1;
+  const bossMult = isBoss
+    ? diffCfg.bossHpMult * (trialCfg ? trialCfg.bossHpMult : 1) * (ascMod ? ascMod.bossHpMult : 1)
+    : 1;
 
   const targetWave = trialCfg ? trialCfg.targetWave : data.waves.length;
   const rampSpan = Math.max(1, targetWave - 5);
@@ -166,26 +175,34 @@ export function computeMonsterArmor(
   waveNum: number,
   isBoss: boolean,
   isBounty: boolean,
+  ascensionLevel = 0,
 ): number {
   const diffCfg = data.difficultiesById.get(difficulty) ?? data.difficulties[0]!;
   const trialCfg = trialId ? data.trialsById.get(trialId) : undefined;
+  const ascArmor =
+    difficulty === 'abyss' && !trialCfg && ascensionLevel > 0
+      ? computeAscensionModifiers(ascensionLevel).bonusArmor
+      : 0;
   const trialArmor = trialCfg ? trialCfg.bonusMonsterArmor : 0;
   const diffArmor = diffCfg.armorBonus;
 
   if (waveNum <= 2 && !isBounty) {
-    return trialArmor + Math.floor(diffArmor * 0.5);
+    return trialArmor + Math.floor(diffArmor * 0.5) + Math.floor(ascArmor * 0.5);
   }
   const mutantKind = !isBoss && !isBounty ? getWaveMutantKind(waveNum, false) : null;
   const mutantArmor = mutantKind ? WAVE_MUTANT_META[mutantKind].bonusArmor : 0;
   const base =
     Math.max(0, waveNum - 2) * 2.8 +
     diffArmor +
+    ascArmor +
     (isBoss && !isBounty ? 20 : 0) +
     (isBounty ? 14 : 0) +
     mutantArmor +
     trialArmor;
   const armorCap =
-    difficulty === 'abyss' || trialId === 'trial_abyss_sanctum' ? 220 : 180;
+    difficulty === 'abyss' || trialId === 'trial_abyss_sanctum'
+      ? 220 + ascArmor
+      : 180;
   return Math.min(armorCap, Math.round(base));
 }
 
@@ -211,6 +228,7 @@ export interface WaveSystemContext {
   readonly data: GameDataBundle;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly ascensionLevel?: number;
   readonly runMode?: RunModeId;
   readonly dailyRule?: DailyRuleDef | null;
   readonly arenaRule?: ArenaRuleId | null;
@@ -258,7 +276,12 @@ export function spawnBountyOutlaw(
   const spec = BOUNTY_ROSTER[bountiesCalled % BOUNTY_ROSTER.length]!;
   const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
-  const trialSpdMult = trialCfg ? trialCfg.speedMult : 1;
+  const ascLv = ctx.ascensionLevel ?? 0;
+  const ascSpdMult =
+    ctx.difficulty === 'abyss' && !trialCfg && ascLv > 0
+      ? computeAscensionModifiers(ascLv).speedMult
+      : 1;
+  const trialSpdMult = (trialCfg ? trialCfg.speedMult : 1) * ascSpdMult;
 
   const waveDef =
     ctx.runMode === 'boss_rush'
@@ -268,7 +291,7 @@ export function spawnBountyOutlaw(
   const hpScale =
     ctx.runMode === 'boss_rush'
       ? 1
-      : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false);
+      : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false, ascLv);
   const baseBountyHp = Math.round(
     Math.max(1200, waveBaseHp * (waveDef.isBoss ? 0.35 : 5.2)) * hpScale,
   );
@@ -297,7 +320,7 @@ export function spawnBountyOutlaw(
     hp: bountyHp,
     maxHp: bountyHp,
     armor:
-      computeMonsterArmor(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false, true) +
+      computeMonsterArmor(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false, true, ascLv) +
       (elite ? 24 : 0),
     armorShred: 0,
     shredExpireTick: 0,
@@ -340,6 +363,22 @@ export function spawnBountyOutlaw(
 }
 
 export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
+  const ascLv = ctx.ascensionLevel ?? 0;
+  const ascMod =
+    ctx.runMode !== 'boss_rush' && ctx.difficulty === 'abyss' && !ctx.trialId && ascLv > 0
+      ? computeAscensionModifiers(ascLv)
+      : null;
+
+  // Ascension 8중천+: Boss Qi-Armor Regeneration every 1.0s (30 ticks)
+  if (ascMod && ascMod.bossArmorRegenPerSec > 0 && ctx.currentTick > 0 && ctx.currentTick % 30 === 0) {
+    for (let i = 0; i < ctx.monsters.length; i++) {
+      const m = ctx.monsters[i]!;
+      if (m.isBoss && !m.isBounty && m.armorShred > 0) {
+        m.armorShred = Math.max(0, m.armorShred - ascMod.bossArmorRegenPerSec);
+      }
+    }
+  }
+
   // 0. Check active bounty outlaw escape timer
   for (let i = ctx.monsters.length - 1; i >= 0; i--) {
     const m = ctx.monsters[i]!;
@@ -371,7 +410,7 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
   const dailyMod = ctx.dailyRule?.modifiers;
   const hpScale = isBossRush
     ? 1
-    : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, waveDef.isBoss);
+    : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, waveDef.isBoss, ascLv);
   const resolvedBossName = isBossRush
     ? waveDef.bossName
     : resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, waveNumber, waveDef);
@@ -392,7 +431,8 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     const speedMult =
       (mutantMeta ? mutantMeta.speedMult : 1) *
       (trialCfg ? trialCfg.speedMult : 1) *
-      (dailyMod?.monsterSpeedMult ?? 1);
+      (dailyMod?.monsterSpeedMult ?? 1) *
+      (ascMod ? ascMod.speedMult : 1);
     const bonusCoin = mutantMeta ? mutantMeta.bonusCoin : 0;
     const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale * hpMult));
 
@@ -426,6 +466,7 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
           waveNumber,
           waveDef.isBoss,
           false,
+          ascLv,
         ) + (waveDef.isBoss ? (dailyMod?.bonusBossArmor ?? 0) : 0);
 
     const monster: MonsterEntity = {
@@ -461,6 +502,53 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
       currY: startPos.y,
     };
     ctx.monsters.push(monster);
+
+    // Ascension 15중천+: Twin Lieutenant Boss accompanies Main Boss on Wave 15+!
+    if (
+      ascMod &&
+      ascMod.twinBossAtLateWaves &&
+      !isBossRush &&
+      waveDef.isBoss &&
+      waveNumber >= 15 &&
+      spawnedInWave === 0
+    ) {
+      const twinHp = Math.max(1, Math.round(scaledHp * 0.45));
+      const twinPos = ctx.path.sample(0);
+      const twinBoss: MonsterEntity = {
+        entityId: ctx.allocateMonsterId(),
+        kind: waveDef.monsterKind,
+        isBoss: true,
+        bossName: `【쌍두호법】 ${resolvedBossName ?? '마군부관'}`,
+        hp: twinHp,
+        maxHp: twinHp,
+        armor: Math.max(0, armorVal - 12),
+        armorShred: 0,
+        shredExpireTick: 0,
+        shieldHp: 0,
+        shieldMaxHp: 0,
+        shieldExpireTick: 0,
+        hasteUntilTick: 0,
+        nextBossSkillTick: ctx.currentTick + initialSkillDelay + 45,
+        phaseTriggered: false,
+        speedPerTick:
+          waveDef.monsterSpeedPerTick * diffCfg.speedMult * speedMult * 0.92,
+        radius: Math.max(18, waveDef.monsterRadius - 3),
+        rewardCoin: Math.max(20, Math.round(waveDef.rewardCoin * 0.6)),
+        spawnTick: ctx.currentTick,
+        stunUntilTick: 0,
+        slowUntilTick: 0,
+        slowFactor: 1,
+        lastHitTick: -100,
+        prevDistance: 0,
+        currDistance: 0,
+        prevX: twinPos.x,
+        prevY: twinPos.y,
+        currX: twinPos.x,
+        currY: twinPos.y,
+      };
+      ctx.monsters.push(twinBoss);
+    }
+
     ctx.setSpawnedInWave(spawnedInWave + 1);
     ctx.setNextSpawnTick(ctx.currentTick + effectiveSpawnInterval);
 

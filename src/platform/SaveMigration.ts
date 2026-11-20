@@ -27,6 +27,7 @@ export interface RunSaveData {
   readonly savedAtMs: number;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly ascensionLevel?: number;
   readonly runMode?: RunModeId;
   readonly dailyDateKey?: string | null;
   readonly endlessMilestonesReached?: readonly number[];
@@ -43,6 +44,7 @@ export interface RunSaveData {
   readonly wisps: Readonly<Record<GradeId, number>>;
   readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
   readonly relicLv: Readonly<Record<RelicId, number>>;
+  readonly blessedRelics?: readonly RelicId[];
   readonly activeBoons: Readonly<Record<BoonId, number>>;
   readonly boonOfferSeq: number;
   readonly pendingBoonOffers: readonly BoonOfferSnapshot[];

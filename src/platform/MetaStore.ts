@@ -1,7 +1,9 @@
 import {
+  ASCENSION_MAX_LEVEL,
   CLEAR_TARGET_WAVE,
   CODEX_MILESTONES,
   CODEX_MILESTONES_BY_TARGET,
+  computeAscensionModifiers,
   computeCodexAtkBonusPct,
   computeCultivationProgress,
   computeEndgameMetaBonuses,
@@ -9,6 +11,7 @@ import {
   computeHeroProficiencyRankUpRewards,
   computeRelicSetBonuses,
   createEmptyMeridianLevels,
+  CULTIVATION_MAX_LEVEL,
   CULTIVATION_MILESTONE_REALMS,
   CULTIVATION_REALMS_BY_LEVEL,
   type CultivationProgress,
@@ -16,20 +19,32 @@ import {
   DIFFICULTY_ORDER,
   type EndgameMetaBonuses,
   getMasteryUpgradeCost,
+  getRelicChaosUpgradeCost,
+  getSoulAffixValue,
+  getSoulRerollCost,
   MASTERY_DEFS,
   type MasteryId,
   type MasteryLevels,
   MASTERY_MAX_LEVEL,
   MASTERY_ORDER,
+  MAX_BLESSED_RELICS,
   MERIDIAN_DEFS,
   type MeridianId,
   type MeridianLevels,
   MERIDIAN_MAX_LEVEL,
   MERIDIAN_ORDER,
+  REINCARNATION_REWARD,
   RELIC_ENGRAVE_GOLD_COST,
   RELIC_ENGRAVE_SILK_COST,
   RELIC_MAX_LEVEL,
+  RELIC_MYTHIC_CAP,
+  type RelicSoulSlot,
   RELIC_STANDARD_CAP,
+  rollSoulAffixSlot,
+  SOUL_AFFIX_KINDS,
+  type SoulAffixKind,
+  type SoulAffixRarity,
+  SOUL_SLOT_COUNT,
   TITLE_DEFS,
   TITLES_BY_ID,
   TRIAL_CONFIGS,
@@ -147,6 +162,7 @@ export interface HallOfFameEntry {
   readonly runMode: RunModeId;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly ascensionLevel?: number;
   readonly wave: number;
   readonly victory: boolean;
   readonly totalDamage: number;
@@ -263,6 +279,77 @@ export type RelicEngraveResult =
       readonly reason: string;
     };
 
+export type RelicTranscendResult =
+  | {
+      readonly ok: true;
+      readonly relicId: RelicId;
+      readonly relicName: string;
+      readonly prevLevel: number;
+      readonly newLevel: number;
+      readonly spentShards: number;
+      readonly spentGold: number;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type RelicSoulRerollResult =
+  | {
+      readonly ok: true;
+      readonly relicId: RelicId;
+      readonly relicName: string;
+      readonly slots: readonly RelicSoulSlot[];
+      readonly spentGold: number;
+      readonly spentSilk: number;
+      readonly endgameBonuses: EndgameMetaBonuses;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type RelicSoulLockResult =
+  | {
+      readonly ok: true;
+      readonly relicId: RelicId;
+      readonly slotIndex: number;
+      readonly locked: boolean;
+      readonly slots: readonly RelicSoulSlot[];
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type BlessedRelicToggleResult =
+  | {
+      readonly ok: true;
+      readonly relicId: RelicId;
+      readonly relicName: string;
+      readonly equipped: boolean;
+      readonly blessedRelics: readonly RelicId[];
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type ReincarnateResult =
+  | {
+      readonly ok: true;
+      readonly reincarnationCount: number;
+      readonly rewardGold: number;
+      readonly rewardKeys: number;
+      readonly rewardSilk: number;
+      readonly rewardShards: number;
+      readonly endgameBonuses: EndgameMetaBonuses;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
 export type MasteryUpgradeResult =
   | {
       readonly ok: true;
@@ -283,10 +370,15 @@ export interface MetaProfile {
   readonly keys: number;
   readonly silk: number;
   readonly relics: Readonly<Record<RelicId, number>>;
+  readonly relicShards: Readonly<Record<RelicId, number>>;
+  readonly totalRelicShards: number;
+  readonly blessedRelics: readonly RelicId[];
   readonly engravedRelics: Readonly<Partial<Record<RelicId, boolean>>>;
   readonly engravedCount: number;
+  readonly relicSoulSlots: Readonly<Partial<Record<RelicId, readonly RelicSoulSlot[]>>>;
   readonly masteryLevels: MasteryLevels;
   readonly cultivation: CultivationProgress;
+  readonly reincarnationCount: number;
   readonly meridianLevels: MeridianLevels;
   readonly spentMeridianPoints: number;
   readonly unspentMeridianPoints: number;
@@ -301,6 +393,9 @@ export interface MetaProfile {
   readonly selectedRunMode: RunModeId;
   readonly selectedDifficulty: DifficultyId;
   readonly selectedTrialId: TrialId | null;
+  readonly unlockedAscensionLevel: number;
+  readonly selectedAscensionLevel: number;
+  readonly clearedAscensionLevel: number;
   readonly unlockedDifficulties: Readonly<Record<DifficultyId, boolean>>;
   readonly clearedDifficulties: Readonly<Record<DifficultyId, boolean>>;
   readonly difficultyBestWave: Readonly<Record<DifficultyId, number>>;
@@ -346,6 +441,7 @@ export interface SettlementInput {
   readonly difficulty?: DifficultyId;
   readonly trialId?: TrialId | null;
   readonly runMode?: RunModeId;
+  readonly ascensionLevel?: number;
   readonly victory?: boolean;
   readonly elapsedTicks?: number;
   readonly totalDamage?: number;
@@ -371,11 +467,14 @@ export interface SettlementRecord extends SettlementReward {
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
   readonly runMode: RunModeId;
+  readonly ascensionLevel?: number;
   readonly victory: boolean;
   readonly firstClearBonusGold: number;
   readonly firstClearBonusKeys: number;
   readonly firstClearBonusSilk: number;
   readonly unlockedNextDifficulty: DifficultyId | null;
+  readonly unlockedNextAscensionLevel?: number | null;
+  readonly shardsEarned?: number;
   readonly unlockedEndlessMilestones: readonly number[];
   readonly endlessBonusGold: number;
   readonly endlessBonusKeys: number;
@@ -430,6 +529,9 @@ export type RelicDrawResult =
       readonly prevLevel: number;
       readonly newLevel: number;
       readonly isNew: boolean;
+      readonly shardsGranted?: number;
+      readonly silkGranted?: number;
+      readonly goldRefunded?: number;
       readonly unlockedTitleIds?: readonly TitleId[];
     }
   | {
@@ -442,6 +544,7 @@ export interface RelicBatchPullItem {
   readonly prevLevel: number;
   readonly newLevel: number;
   readonly isNew: boolean;
+  readonly shardsGranted?: number;
 }
 
 export type RelicBatchDrawResult =
@@ -449,6 +552,9 @@ export type RelicBatchDrawResult =
       readonly ok: true;
       readonly items: readonly RelicBatchPullItem[];
       readonly spentCount: number;
+      readonly totalShardsGranted?: number;
+      readonly totalSilkGranted?: number;
+      readonly totalGoldRefunded?: number;
       readonly unlockedTitleIds?: readonly TitleId[];
     }
   | {
@@ -619,7 +725,13 @@ export function computeSettlementReward(input: SettlementInput): SettlementRewar
   const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
   const kills = Math.max(0, Math.floor(input.monstersSlain));
   const diff = input.difficulty ?? 'normal';
-  const mult = trialCfg ? trialCfg.rewardMult : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0);
+  const ascBonus =
+    !trialCfg && diff === 'abyss'
+      ? computeAscensionModifiers(input.ascensionLevel ?? 0).rewardMultBonus
+      : 0;
+  const mult = trialCfg
+    ? trialCfg.rewardMult
+    : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0) + ascBonus;
 
   const baseGold =
     30 +
@@ -657,6 +769,10 @@ export function computeSettlementCultivationXp(input: SettlementInput): number {
   const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
   const kills = Math.max(0, Math.floor(input.monstersSlain));
   const diff = input.difficulty ?? 'normal';
+  const ascBonus =
+    runMode === 'standard' && !trialCfg && diff === 'abyss'
+      ? computeAscensionModifiers(input.ascensionLevel ?? 0).rewardMultBonus
+      : 0;
   const mult =
     runMode === 'boss_rush'
       ? 1.4
@@ -664,7 +780,7 @@ export function computeSettlementCultivationXp(input: SettlementInput): number {
         ? 1.3
         : trialCfg
           ? trialCfg.rewardMult
-          : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0);
+          : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0) + ascBonus;
 
   const baseXp =
     20 +
@@ -790,10 +906,15 @@ export class MetaStore {
   private keys = STARTER_KEYS;
   private silk = STARTER_SILK;
   private readonly relics: Record<RelicId, number> = createEmptyRelicMap();
+  private readonly relicShards: Record<RelicId, number> = createEmptyRelicMap();
+  private blessedRelics: RelicId[] = [];
   private totalRuns = 0;
   private bestWave = 1;
   private selectedDifficulty: DifficultyId = 'normal';
   private selectedTrialId: TrialId | null = null;
+  private unlockedAscensionLevel = 0;
+  private selectedAscensionLevel = 0;
+  private clearedAscensionLevel = 0;
   private readonly unlockedDifficulties: Record<DifficultyId, boolean> = {
     normal: true,
     hard: false,
@@ -818,8 +939,10 @@ export class MetaStore {
   private readonly endlessMilestonesCleared = new Set<number>();
   private readonly claimedCodexMilestones = new Set<number>();
   private readonly engravedRelics: Partial<Record<RelicId, boolean>> = {};
+  private readonly relicSoulSlots: Partial<Record<RelicId, RelicSoulSlot[]>> = {};
   private masteryLevels: Record<MasteryId, number> = { atk: 0, econ: 0, crit: 0, boss: 0 };
   private cultivationXp = 0;
+  private reincarnationCount = 0;
   private meridianLevels: Record<MeridianId, number> = createEmptyMeridianLevels();
   private readonly claimedRealmMilestones = new Set<number>();
   private readonly heroProficiency: Record<UnitId, HeroProficiencyEntry> = {};
@@ -887,10 +1010,10 @@ export class MetaStore {
       return { ok: false, reason: `과제 목표를 아직 달성하지 못했습니다 (${progress}/${def.target}).` };
     }
 
-    const prevCultLv = computeCultivationProgress(this.cultivationXp).level;
+    const prevCultLv = computeCultivationProgress(this.cultivationXp, this.reincarnationCount).level;
     const questCultXp = 45;
     this.cultivationXp += questCultXp;
-    const newCultLv = computeCultivationProgress(this.cultivationXp).level;
+    const newCultLv = computeCultivationProgress(this.cultivationXp, this.reincarnationCount).level;
 
     this.dailyClaimed[questId] = true;
     this.totalDailyClaimed += 1;
@@ -985,7 +1108,7 @@ export class MetaStore {
     ).length;
     const codexAtkBonusPct = computeCodexAtkBonusPct(this.claimedCodexMilestones);
     const engravedCount = Object.values(this.engravedRelics).filter(Boolean).length;
-    const cultivation = computeCultivationProgress(this.cultivationXp);
+    const cultivation = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
     const spentMeridianPoints = this.getSpentMeridianPoints();
     const unspentMeridianPoints = Math.max(0, cultivation.totalMeridianPoints - spentMeridianPoints);
     const claimableRealmCount = CULTIVATION_MILESTONE_REALMS.filter(
@@ -1002,10 +1125,23 @@ export class MetaStore {
         heroMasteryAtkPct[uid] = info.atkBonusPct;
       }
     }
+    const soulSlotsCopy: Partial<Record<RelicId, readonly RelicSoulSlot[]>> = {};
+    for (const rid of RELIC_ORDER) {
+      const slots = this.relicSoulSlots[rid];
+      if (slots && slots.length > 0) {
+        soulSlotsCopy[rid] = slots.map((s) => ({ ...s }));
+      }
+    }
+    let totalRelicShards = 0;
+    for (let i = 0; i < RELIC_ORDER.length; i++) {
+      totalRelicShards += this.relicShards[RELIC_ORDER[i]!] ?? 0;
+    }
     const endgameBonuses = computeEndgameMetaBonuses(
       this.masteryLevels,
       engravedCount,
       this.meridianLevels,
+      this.relicSoulSlots,
+      this.reincarnationCount,
     );
     const trialRecordsCopy: Record<TrialId, TrialRecord> = {
       trial_venom_gale: { ...this.trialRecords.trial_venom_gale },
@@ -1020,10 +1156,15 @@ export class MetaStore {
       keys: this.keys,
       silk: this.silk,
       relics: { ...this.relics },
+      relicShards: { ...this.relicShards },
+      totalRelicShards,
+      blessedRelics: [...this.blessedRelics],
       engravedRelics: { ...this.engravedRelics },
       engravedCount,
+      relicSoulSlots: soulSlotsCopy,
       masteryLevels: { ...this.masteryLevels },
       cultivation,
+      reincarnationCount: this.reincarnationCount,
       meridianLevels: { ...this.meridianLevels },
       spentMeridianPoints,
       unspentMeridianPoints,
@@ -1038,6 +1179,9 @@ export class MetaStore {
       selectedRunMode: this.selectedRunMode,
       selectedDifficulty: this.selectedDifficulty,
       selectedTrialId: this.selectedTrialId,
+      unlockedAscensionLevel: this.unlockedAscensionLevel,
+      selectedAscensionLevel: this.selectedAscensionLevel,
+      clearedAscensionLevel: this.clearedAscensionLevel,
       unlockedDifficulties: { ...this.unlockedDifficulties },
       clearedDifficulties: { ...this.clearedDifficulties },
       difficultyBestWave: { ...this.difficultyBestWave },
@@ -1085,6 +1229,18 @@ export class MetaStore {
 
   public getRelicLevels(): Readonly<Record<RelicId, number>> {
     return { ...this.relics };
+  }
+
+  public getBlessedRelics(): readonly RelicId[] {
+    return [...this.blessedRelics];
+  }
+
+  public getSelectedAscensionLevel(): number {
+    return this.selectedRunMode === 'standard' &&
+      this.selectedDifficulty === 'abyss' &&
+      this.selectedTrialId === null
+      ? this.selectedAscensionLevel
+      : 0;
   }
 
   public getSelectedRunMode(): RunModeId {
@@ -1151,13 +1307,17 @@ export class MetaStore {
     if (
       this.selectedDifficulty !== diff ||
       this.selectedTrialId !== null ||
-      this.selectedRunMode !== 'standard'
+      this.selectedRunMode !== 'standard' ||
+      (diff !== 'abyss' && this.selectedAscensionLevel > 0)
     ) {
       this.clearActiveRun();
     }
     this.selectedRunMode = 'standard';
     this.selectedDifficulty = diff;
     this.selectedTrialId = null;
+    if (diff !== 'abyss') {
+      this.selectedAscensionLevel = 0;
+    }
     this.rev++;
     this.save();
     return true;
@@ -1172,6 +1332,31 @@ export class MetaStore {
     }
     this.selectedRunMode = 'standard';
     this.selectedTrialId = trialId;
+    this.rev++;
+    this.save();
+    return true;
+  }
+
+  public setSelectedAscensionLevel(rawLevel: number): boolean {
+    const lv = Math.max(0, Math.min(ASCENSION_MAX_LEVEL, Math.floor(rawLevel)));
+    if (lv > 0 && (!this.unlockedDifficulties.abyss || lv > this.unlockedAscensionLevel)) {
+      return false;
+    }
+    if (
+      this.selectedAscensionLevel !== lv ||
+      (lv > 0 &&
+        (this.selectedDifficulty !== 'abyss' ||
+          this.selectedTrialId !== null ||
+          this.selectedRunMode !== 'standard'))
+    ) {
+      this.clearActiveRun();
+    }
+    this.selectedAscensionLevel = lv;
+    if (lv > 0) {
+      this.selectedRunMode = 'standard';
+      this.selectedDifficulty = 'abyss';
+      this.selectedTrialId = null;
+    }
     this.rev++;
     this.save();
     return true;
@@ -1250,8 +1435,8 @@ export class MetaStore {
     if (this.keys > 0) {
       return this.keys;
     }
-    const allMaxed = relicDefs.every((d) => (this.relics[d.id] ?? 0) >= d.maxLevel);
-    if (!allMaxed && this.gold >= RELIC_CHEST_GOLD_COST) {
+    const anyBelowBaseMax = relicDefs.some((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
+    if (anyBelowBaseMax && this.gold >= RELIC_CHEST_GOLD_COST) {
       return 1;
     }
     for (let i = 0; i < relicDefs.length; i++) {
@@ -1260,6 +1445,15 @@ export class MetaStore {
       if (lv > 0 && lv < def.maxLevel && this.gold >= getRelicUpgradeGoldCost(def, lv)) {
         return 1;
       }
+      if (lv >= def.maxLevel && lv < RELIC_MAX_LEVEL) {
+        const cCost = getRelicChaosUpgradeCost(lv);
+        if ((this.relicShards[def.id] ?? 0) >= cCost.shards && this.gold >= cCost.gold) {
+          return 1;
+        }
+      }
+    }
+    if (computeCultivationProgress(this.cultivationXp, this.reincarnationCount).isMaxLevel) {
+      return 1;
     }
     return 0;
   }
@@ -1269,12 +1463,8 @@ export class MetaStore {
     payWith: 'key' | 'gold',
     rngFn: () => number = Math.random,
   ): RelicDrawResult {
-    const candidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
-    if (candidates.length === 0) {
-      return {
-        ok: false,
-        reason: `모든 무림 신물이 이미 태극신화(Lv.${RELIC_MAX_LEVEL})에 도달했습니다!`,
-      };
+    if (relicDefs.length === 0) {
+      return { ok: false, reason: '초빙 가능한 신물 목록이 없습니다.' };
     }
 
     if (payWith === 'key') {
@@ -1292,21 +1482,65 @@ export class MetaStore {
       this.gold -= RELIC_CHEST_GOLD_COST;
     }
 
-    const chosen = this.pickWeightedRelicCandidate(candidates, rngFn);
-    const prevLevel = this.relics[chosen.id] ?? 0;
-    const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
-    this.relics[chosen.id] = newLevel;
-    const titleRes = this.evaluateTitles(true);
+    const baseCandidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
+    if (baseCandidates.length > 0) {
+      const chosen = this.pickWeightedRelicCandidate(baseCandidates, rngFn);
+      const prevLevel = this.relics[chosen.id] ?? 0;
+      const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
+      this.relics[chosen.id] = newLevel;
+      const titleRes = this.evaluateTitles(true);
+      this.rev++;
+      this.save();
+
+      return {
+        ok: true,
+        relicId: chosen.id,
+        prevLevel,
+        newLevel,
+        isNew: prevLevel === 0,
+        unlockedTitleIds: titleRes.unlockedIds,
+      };
+    }
+
+    // All 16 relics reached Lv.15 Mythic -> automatically open Chaos Transcendence Chest (태고 초월 기보함)!
+    const chaosCandidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < RELIC_MAX_LEVEL);
+    if (chaosCandidates.length > 0) {
+      const chosen = this.pickWeightedChaosCandidate(chaosCandidates, rngFn);
+      const curLv = this.relics[chosen.id] ?? RELIC_MYTHIC_CAP;
+      const shardsGranted = 3;
+      const silkGranted = 5;
+      this.relicShards[chosen.id] = (this.relicShards[chosen.id] ?? 0) + shardsGranted;
+      this.silk += silkGranted;
+      this.rev++;
+      this.save();
+      return {
+        ok: true,
+        relicId: chosen.id,
+        prevLevel: curLv,
+        newLevel: curLv,
+        isNew: false,
+        shardsGranted,
+        silkGranted,
+      };
+    }
+
+    // All 16 relics reached Lv.30 Chaos Max -> convert into Soul Refining Essence (영혼 세공 정수)!
+    const fallbackDef = relicDefs[0]!;
+    const silkGranted = 25;
+    const goldRefunded = 60;
+    this.silk += silkGranted;
+    this.gold += goldRefunded;
     this.rev++;
     this.save();
-
     return {
       ok: true,
-      relicId: chosen.id,
-      prevLevel,
-      newLevel,
-      isNew: prevLevel === 0,
-      unlockedTitleIds: titleRes.unlockedIds,
+      relicId: fallbackDef.id,
+      prevLevel: RELIC_MAX_LEVEL,
+      newLevel: RELIC_MAX_LEVEL,
+      isNew: false,
+      shardsGranted: 0,
+      silkGranted,
+      goldRefunded,
     };
   }
 
@@ -1317,12 +1551,8 @@ export class MetaStore {
     rngFn: () => number = Math.random,
   ): RelicBatchDrawResult {
     const targetPulls = Math.max(1, Math.min(10, Math.floor(maxCount)));
-    const initialCandidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
-    if (initialCandidates.length === 0) {
-      return {
-        ok: false,
-        reason: `모든 무림 신물이 이미 태극신화(Lv.${RELIC_MAX_LEVEL})에 도달했습니다!`,
-      };
+    if (relicDefs.length === 0) {
+      return { ok: false, reason: '초빙 가능한 신물 목록이 없습니다.' };
     }
 
     const affordableCount =
@@ -1339,27 +1569,62 @@ export class MetaStore {
 
     const pullsToRun = Math.min(targetPulls, affordableCount);
     const items: RelicBatchPullItem[] = [];
+    let totalShardsGranted = 0;
+    let totalSilkGranted = 0;
+    let totalGoldRefunded = 0;
 
     for (let i = 0; i < pullsToRun; i++) {
-      const candidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
-      if (candidates.length === 0) break;
-
       if (payWith === 'key') {
         this.keys -= 1;
       } else {
         this.gold -= RELIC_CHEST_GOLD_COST;
       }
 
-      const chosen = this.pickWeightedRelicCandidate(candidates, rngFn);
-      const prevLevel = this.relics[chosen.id] ?? 0;
-      const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
-      this.relics[chosen.id] = newLevel;
-      items.push({
-        relicId: chosen.id,
-        prevLevel,
-        newLevel,
-        isNew: prevLevel === 0,
-      });
+      const candidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < d.maxLevel);
+      if (candidates.length > 0) {
+        const chosen = this.pickWeightedRelicCandidate(candidates, rngFn);
+        const prevLevel = this.relics[chosen.id] ?? 0;
+        const newLevel = Math.min(chosen.maxLevel, prevLevel + 1);
+        this.relics[chosen.id] = newLevel;
+        items.push({
+          relicId: chosen.id,
+          prevLevel,
+          newLevel,
+          isNew: prevLevel === 0,
+        });
+        continue;
+      }
+
+      const chaosCandidates = relicDefs.filter((d) => (this.relics[d.id] ?? 0) < RELIC_MAX_LEVEL);
+      if (chaosCandidates.length > 0) {
+        const chosen = this.pickWeightedChaosCandidate(chaosCandidates, rngFn);
+        const curLv = this.relics[chosen.id] ?? RELIC_MYTHIC_CAP;
+        const shardsGranted = 3;
+        this.relicShards[chosen.id] = (this.relicShards[chosen.id] ?? 0) + shardsGranted;
+        this.silk += 5;
+        totalShardsGranted += shardsGranted;
+        totalSilkGranted += 5;
+        items.push({
+          relicId: chosen.id,
+          prevLevel: curLv,
+          newLevel: curLv,
+          isNew: false,
+          shardsGranted,
+        });
+      } else {
+        const fallbackDef = relicDefs[i % relicDefs.length]!;
+        this.silk += 25;
+        this.gold += 60;
+        totalSilkGranted += 25;
+        totalGoldRefunded += 60;
+        items.push({
+          relicId: fallbackDef.id,
+          prevLevel: RELIC_MAX_LEVEL,
+          newLevel: RELIC_MAX_LEVEL,
+          isNew: false,
+          shardsGranted: 0,
+        });
+      }
     }
 
     const titleRes = this.evaluateTitles(true);
@@ -1370,6 +1635,9 @@ export class MetaStore {
       ok: true,
       items,
       spentCount: items.length,
+      ...(totalShardsGranted > 0 ? { totalShardsGranted } : {}),
+      ...(totalSilkGranted > 0 ? { totalSilkGranted } : {}),
+      ...(totalGoldRefunded > 0 ? { totalGoldRefunded } : {}),
       unlockedTitleIds: titleRes.unlockedIds,
     };
   }
@@ -1398,9 +1666,260 @@ export class MetaStore {
     return candidates[0]!;
   }
 
+  private pickWeightedChaosCandidate(
+    candidates: readonly RelicDef[],
+    rngFn: () => number,
+  ): RelicDef {
+    // Weight Blessed Signature Relics (본명 호법신물) 2.5x for targeted shard farming!
+    let totalWeight = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const isBlessed = this.blessedRelics.includes(candidates[i]!.id);
+      totalWeight += isBlessed ? 25 : 10;
+    }
+    const r = Math.max(0, Math.min(0.999999, rngFn()));
+    let roll = Math.floor(r * totalWeight);
+    for (let i = 0; i < candidates.length; i++) {
+      const cand = candidates[i]!;
+      const w = this.blessedRelics.includes(cand.id) ? 25 : 10;
+      if (roll < w) {
+        return cand;
+      }
+      roll -= w;
+    }
+    return candidates[0]!;
+  }
+
+  public grantRandomRelicShards(count: number, rngFn: () => number = Math.random): number {
+    const n = Math.max(0, Math.floor(count));
+    if (n <= 0) return 0;
+    for (let i = 0; i < n; i++) {
+      const underMax = RELIC_ORDER.filter((id) => (this.relics[id] ?? 0) < RELIC_MAX_LEVEL);
+      const pool = underMax.length > 0 ? underMax : RELIC_ORDER;
+      const idx = Math.floor(Math.max(0, Math.min(0.999999, rngFn())) * pool.length);
+      const picked = pool[idx] ?? pool[0]!;
+      this.relicShards[picked] = (this.relicShards[picked] ?? 0) + 1;
+    }
+    return n;
+  }
+
+  public transcendRelic(def: RelicDef): RelicTranscendResult {
+    const prevLevel = this.relics[def.id] ?? 0;
+    if (prevLevel < def.maxLevel) {
+      return {
+        ok: false,
+        reason: `먼저 태극신화(Lv.${def.maxLevel})를 달성해야 혼원초월 제련이 가능합니다 (현재 Lv.${prevLevel}).`,
+      };
+    }
+    if (prevLevel >= RELIC_MAX_LEVEL) {
+      return {
+        ok: false,
+        reason: `이미 최고 경지인 태고불멸(Lv.${RELIC_MAX_LEVEL})에 도달했습니다!`,
+      };
+    }
+    const cost = getRelicChaosUpgradeCost(prevLevel);
+    const curShards = this.relicShards[def.id] ?? 0;
+    if (curShards < cost.shards) {
+      return {
+        ok: false,
+        reason: `[${def.name}] 초월 파편이 부족합니다 (${curShards}/${cost.shards}개 · 태고 기보함에서 획득)`,
+      };
+    }
+    if (this.gold < cost.gold) {
+      return {
+        ok: false,
+        reason: `천하주화가 부족합니다 (${cost.gold} 필요)`,
+      };
+    }
+
+    this.relicShards[def.id] = curShards - cost.shards;
+    this.gold -= cost.gold;
+    const newLevel = prevLevel + 1;
+    this.relics[def.id] = newLevel;
+    this.rev++;
+    this.save();
+
+    return {
+      ok: true,
+      relicId: def.id,
+      relicName: def.name,
+      prevLevel,
+      newLevel,
+      spentShards: cost.shards,
+      spentGold: cost.gold,
+    };
+  }
+
+  public rerollRelicSoul(
+    def: RelicDef,
+    rngFn: () => number = Math.random,
+  ): RelicSoulRerollResult {
+    if (!this.engravedRelics[def.id]) {
+      return {
+        ok: false,
+        reason: '먼저 [✦ 신화 각인]을 개방해야 삼재 영혼 세공을 진행할 수 있습니다.',
+      };
+    }
+    const existing = this.relicSoulSlots[def.id];
+    const lockedCount = existing ? existing.filter((s) => s.locked).length : 0;
+    if (lockedCount >= SOUL_SLOT_COUNT) {
+      return {
+        ok: false,
+        reason: '모든 영혼 슬롯이 잠겨 있습니다. 최소 1줄의 잠금을 해제해 주세요.',
+      };
+    }
+    const cost = getSoulRerollCost(lockedCount);
+    if (this.gold < cost.gold) {
+      return {
+        ok: false,
+        reason: `영혼 세공에 천하주화가 부족합니다 (${cost.gold} 필요)`,
+      };
+    }
+    if (this.silk < cost.silk) {
+      return {
+        ok: false,
+        reason: `영혼 세공에 운금비단이 부족합니다 (${cost.silk}필 필요)`,
+      };
+    }
+
+    this.gold -= cost.gold;
+    this.silk -= cost.silk;
+
+    const nextSlots: RelicSoulSlot[] = [];
+    for (let i = 0; i < SOUL_SLOT_COUNT; i++) {
+      const prev = existing?.[i];
+      if (prev && prev.locked) {
+        nextSlots.push({ ...prev });
+      } else {
+        nextSlots.push(rollSoulAffixSlot(rngFn));
+      }
+    }
+    this.relicSoulSlots[def.id] = nextSlots;
+    this.rev++;
+    this.save();
+
+    return {
+      ok: true,
+      relicId: def.id,
+      relicName: def.name,
+      slots: nextSlots.map((s) => ({ ...s })),
+      spentGold: cost.gold,
+      spentSilk: cost.silk,
+      endgameBonuses: this.getEndgameMetaBonuses(),
+    };
+  }
+
+  public toggleRelicSoulLock(relicId: RelicId, slotIndex: number): RelicSoulLockResult {
+    const slots = this.relicSoulSlots[relicId];
+    if (!slots || slots.length !== SOUL_SLOT_COUNT) {
+      return { ok: false, reason: '먼저 영혼 세공(초회 감정)을 실행해 3슬롯을 개방하세요.' };
+    }
+    const idx = Math.floor(slotIndex);
+    const target = slots[idx];
+    if (!target) {
+      return { ok: false, reason: '유효하지 않은 영혼 슬롯 번호입니다.' };
+    }
+    const nextLocked = !target.locked;
+    if (nextLocked) {
+      const curLocked = slots.filter((s) => s.locked).length;
+      if (curLocked >= SOUL_SLOT_COUNT - 1) {
+        return {
+          ok: false,
+          reason: '최대 2줄까지만 잠글 수 있습니다 (최소 1줄은 연마 대상이어야 함).',
+        };
+      }
+    }
+    const updated = slots.map((s, i) => (i === idx ? { ...s, locked: nextLocked } : { ...s }));
+    this.relicSoulSlots[relicId] = updated;
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      relicId,
+      slotIndex: idx,
+      locked: nextLocked,
+      slots: updated.map((s) => ({ ...s })),
+    };
+  }
+
+  public toggleBlessedRelic(def: RelicDef): BlessedRelicToggleResult {
+    const lv = this.relics[def.id] ?? 0;
+    if (lv <= 0) {
+      return { ok: false, reason: '해금된 신물만 본명 호법신물로 지정할 수 있습니다.' };
+    }
+    const existingIdx = this.blessedRelics.indexOf(def.id);
+    if (existingIdx >= 0) {
+      this.blessedRelics.splice(existingIdx, 1);
+      this.rev++;
+      this.save();
+      return {
+        ok: true,
+        relicId: def.id,
+        relicName: def.name,
+        equipped: false,
+        blessedRelics: [...this.blessedRelics],
+      };
+    }
+    if (this.blessedRelics.length >= MAX_BLESSED_RELICS) {
+      return {
+        ok: false,
+        reason: `본명 호법신물은 최대 ${MAX_BLESSED_RELICS}종까지만 장착 가능합니다. 장착 중인 신물을 먼저 해제하세요.`,
+      };
+    }
+    this.blessedRelics.push(def.id);
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      relicId: def.id,
+      relicName: def.name,
+      equipped: true,
+      blessedRelics: [...this.blessedRelics],
+    };
+  }
+
+  public reincarnateCultivation(rngFn: () => number = Math.random): ReincarnateResult {
+    const cult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
+    if (!cult.isMaxLevel || cult.level < CULTIVATION_MAX_LEVEL) {
+      return {
+        ok: false,
+        reason: `단전 내공 최고 경지인 무극태상(Lv.${CULTIVATION_MAX_LEVEL}) 달성 후 전생할 수 있습니다 (현재 Lv.${cult.level}).`,
+      };
+    }
+
+    this.reincarnationCount += 1;
+    this.cultivationXp = 0;
+    this.claimedRealmMilestones.clear();
+    for (let i = 0; i < MERIDIAN_ORDER.length; i++) {
+      this.meridianLevels[MERIDIAN_ORDER[i]!] = 0;
+    }
+    this.gold += REINCARNATION_REWARD.gold;
+    this.keys += REINCARNATION_REWARD.keys;
+    this.silk += REINCARNATION_REWARD.silk;
+    this.grantRandomRelicShards(REINCARNATION_REWARD.shards, rngFn);
+
+    this.rev++;
+    this.save();
+
+    return {
+      ok: true,
+      reincarnationCount: this.reincarnationCount,
+      rewardGold: REINCARNATION_REWARD.gold,
+      rewardKeys: REINCARNATION_REWARD.keys,
+      rewardSilk: REINCARNATION_REWARD.silk,
+      rewardShards: REINCARNATION_REWARD.shards,
+      endgameBonuses: this.getEndgameMetaBonuses(),
+    };
+  }
+
   public getEndgameMetaBonuses(): EndgameMetaBonuses {
     const engravedCount = Object.values(this.engravedRelics).filter(Boolean).length;
-    return computeEndgameMetaBonuses(this.masteryLevels, engravedCount, this.meridianLevels);
+    return computeEndgameMetaBonuses(
+      this.masteryLevels,
+      engravedCount,
+      this.meridianLevels,
+      this.relicSoulSlots,
+      this.reincarnationCount,
+    );
   }
 
   public grantCultivationXp(amount: number): CultivationProgress {
@@ -1410,7 +1929,7 @@ export class MetaStore {
       this.rev++;
       this.save();
     }
-    return computeCultivationProgress(this.cultivationXp);
+    return computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
   }
 
   public upgradeMeridian(id: MeridianId): MeridianUpgradeResult {
@@ -1422,7 +1941,7 @@ export class MetaStore {
     if (prevLv >= MERIDIAN_MAX_LEVEL) {
       return { ok: false, reason: `이미 [${def.name}] 극의(Lv.${MERIDIAN_MAX_LEVEL})에 도달했습니다.` };
     }
-    const cult = computeCultivationProgress(this.cultivationXp);
+    const cult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
     const spent = this.getSpentMeridianPoints();
     const unspent = Math.max(0, cult.totalMeridianPoints - spent);
     if (unspent < 1) {
@@ -1471,7 +1990,7 @@ export class MetaStore {
     if (this.claimedRealmMilestones.has(targetLv)) {
       return { ok: false, reason: '이미 수령한 내공 경지 돌파 보상입니다.' };
     }
-    const cult = computeCultivationProgress(this.cultivationXp);
+    const cult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
     if (cult.level < targetLv) {
       return {
         ok: false,
@@ -1970,9 +2489,13 @@ export class MetaStore {
     const runMode: RunModeId = input.runMode ?? 'standard';
     const diff = input.difficulty ?? 'normal';
     const trialId = runMode === 'standard' ? (input.trialId ?? null) : null;
+    const ascLv =
+      runMode === 'standard' && diff === 'abyss' && trialId === null
+        ? Math.max(0, Math.min(ASCENSION_MAX_LEVEL, Math.floor(input.ascensionLevel ?? 0)))
+        : 0;
     const victory = Boolean(input.victory);
     const bountiesSlain = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
-    const reward = computeSettlementReward(input);
+    const reward = computeSettlementReward({ ...input, ascensionLevel: ascLv });
     const wave = Math.max(1, Math.floor(input.wave));
     const isNewBest = runMode === 'standard' && wave > this.bestWave;
     const elapsedTicks =
@@ -1987,6 +2510,8 @@ export class MetaStore {
     let firstClearBonusKeys = 0;
     let firstClearBonusSilk = 0;
     let unlockedNextDifficulty: DifficultyId | null = null;
+    let unlockedNextAscensionLevel: number | null = null;
+    let shardsEarned = 0;
     let dailyChallengeScore: number | undefined;
 
     if (runMode === 'daily_challenge') {
@@ -2092,6 +2617,28 @@ export class MetaStore {
           unlockedNextDifficulty = 'abyss';
         }
       }
+      if (victory && diff === 'abyss') {
+        if (this.unlockedAscensionLevel < 1) {
+          this.unlockedAscensionLevel = 1;
+          unlockedNextAscensionLevel = 1;
+        }
+        if (ascLv > 0) {
+          if (ascLv > this.clearedAscensionLevel) {
+            const fc = computeAscensionModifiers(ascLv).firstClearReward;
+            this.clearedAscensionLevel = ascLv;
+            firstClearBonusGold += fc.gold;
+            firstClearBonusKeys += fc.keys;
+            firstClearBonusSilk += fc.silk;
+            shardsEarned += this.grantRandomRelicShards(fc.shards);
+          } else {
+            shardsEarned += this.grantRandomRelicShards(1 + Math.floor(ascLv / 4));
+          }
+          if (ascLv >= this.unlockedAscensionLevel && ascLv < ASCENSION_MAX_LEVEL) {
+            this.unlockedAscensionLevel = ascLv + 1;
+            unlockedNextAscensionLevel = this.unlockedAscensionLevel;
+          }
+        }
+      }
     }
 
     const endlessMs =
@@ -2110,11 +2657,17 @@ export class MetaStore {
       this.bestWave = wave;
     }
 
-    const prevCult = computeCultivationProgress(this.cultivationXp);
-    const cultivationXpEarned = computeSettlementCultivationXp(input);
+    const prevCult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
+    const cultivationXpEarned = computeSettlementCultivationXp({
+      ...input,
+      ascensionLevel: ascLv,
+    });
     this.cultivationXp += cultivationXpEarned;
-    const nextCult = computeCultivationProgress(this.cultivationXp);
-    const meridianPointsEarned = Math.max(0, nextCult.totalMeridianPoints - prevCult.totalMeridianPoints);
+    const nextCult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
+    const meridianPointsEarned = Math.max(
+      0,
+      nextCult.totalMeridianPoints - prevCult.totalMeridianPoints,
+    );
 
     const totalDamage = Math.max(0, Math.floor(input.totalDamage ?? 0));
     const heroProfRes = this.advanceHeroProficiency(
@@ -2131,7 +2684,7 @@ export class MetaStore {
       (runMode === 'boss_rush'
         ? wave * 2500 + (victory ? 8000 : 0)
         : wave * 1000 +
-          (diff === 'abyss' ? 6000 : diff === 'hell' ? 3500 : diff === 'hard' ? 1500 : 0) +
+          (diff === 'abyss' ? 6000 + ascLv * 1200 : diff === 'hell' ? 3500 : diff === 'hard' ? 1500 : 0) +
           (trialId ? 4000 : 0) +
           (victory ? 3000 : 0));
     this.recordHallOfFame({
@@ -2140,6 +2693,7 @@ export class MetaStore {
       runMode,
       difficulty: diff,
       trialId,
+      ...(ascLv > 0 ? { ascensionLevel: ascLv } : {}),
       wave,
       victory,
       totalDamage,
@@ -2165,11 +2719,14 @@ export class MetaStore {
       difficulty: diff,
       trialId,
       runMode,
+      ...(ascLv > 0 ? { ascensionLevel: ascLv } : {}),
       victory,
       firstClearBonusGold,
       firstClearBonusKeys,
       firstClearBonusSilk,
       unlockedNextDifficulty,
+      ...(unlockedNextAscensionLevel !== null ? { unlockedNextAscensionLevel } : {}),
+      ...(shardsEarned > 0 ? { shardsEarned } : {}),
       unlockedEndlessMilestones: endlessMs.unlockedWaves,
       endlessBonusGold: endlessMs.bonusGold,
       endlessBonusKeys: endlessMs.bonusKeys,
@@ -2202,6 +2759,7 @@ export class MetaStore {
     prevRecord: SettlementRecord,
     finalInput: SettlementInput,
   ): SettlementRecord {
+    const ascLv = prevRecord.ascensionLevel ?? 0;
     const prevBase = computeSettlementReward({
       wave: prevRecord.wave,
       monstersSlain: prevRecord.monstersSlain,
@@ -2209,12 +2767,14 @@ export class MetaStore {
       bountiesSlain: prevRecord.bountiesSlain,
       difficulty: prevRecord.difficulty,
       trialId: prevRecord.trialId,
+      ascensionLevel: ascLv,
       victory: prevRecord.victory,
     });
     const finalBase = computeSettlementReward({
       ...finalInput,
       difficulty: prevRecord.difficulty,
       trialId: prevRecord.trialId,
+      ascensionLevel: ascLv,
       victory: prevRecord.victory,
     });
 
@@ -2248,6 +2808,7 @@ export class MetaStore {
       difficulty: prevRecord.difficulty,
       trialId: prevRecord.trialId,
       runMode: prevRecord.runMode,
+      ascensionLevel: ascLv,
       victory: prevRecord.victory,
     });
     const finalCultXpEst = computeSettlementCultivationXp({
@@ -2255,11 +2816,12 @@ export class MetaStore {
       difficulty: prevRecord.difficulty,
       trialId: prevRecord.trialId,
       runMode: prevRecord.runMode,
+      ascensionLevel: ascLv,
       victory: prevRecord.victory,
     });
     const deltaCultXp = Math.max(0, finalCultXpEst - prevCultXpEst);
     this.cultivationXp += deltaCultXp;
-    const nextCult = computeCultivationProgress(this.cultivationXp);
+    const nextCult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
     const prevStartCult = Math.max(1, prevRecord.prevCultivationLevel);
 
     const deltaWaves = Math.max(0, finalBase.clearedWaves - prevBase.clearedWaves);
@@ -2286,6 +2848,7 @@ export class MetaStore {
         runMode: prevRecord.runMode,
         difficulty: prevRecord.difficulty,
         trialId: prevRecord.trialId,
+        ...(ascLv > 0 ? { ascensionLevel: ascLv } : {}),
         wave,
         victory: true,
         totalDamage,
@@ -2296,7 +2859,7 @@ export class MetaStore {
         score:
           wave * 1000 +
           (prevRecord.difficulty === 'abyss'
-            ? 6000
+            ? 6000 + ascLv * 1200
             : prevRecord.difficulty === 'hell'
               ? 3500
               : prevRecord.difficulty === 'hard'
@@ -2543,6 +3106,7 @@ export class MetaStore {
     this.unlockedDifficulties.hard = true;
     this.unlockedDifficulties.hell = true;
     this.unlockedDifficulties.abyss = true;
+    this.unlockedAscensionLevel = Math.max(5, this.unlockedAscensionLevel);
     this.rev++;
     this.save();
   }
@@ -2553,11 +3117,16 @@ export class MetaStore {
     this.silk = STARTER_SILK;
     for (let i = 0; i < RELIC_ORDER.length; i++) {
       this.relics[RELIC_ORDER[i]!] = 0;
+      this.relicShards[RELIC_ORDER[i]!] = 0;
     }
+    this.blessedRelics = [];
     this.totalRuns = 0;
     this.bestWave = 1;
     this.selectedDifficulty = 'normal';
     this.selectedTrialId = null;
+    this.unlockedAscensionLevel = 0;
+    this.selectedAscensionLevel = 0;
+    this.clearedAscensionLevel = 0;
     this.unlockedDifficulties.normal = true;
     this.unlockedDifficulties.hard = false;
     this.unlockedDifficulties.hell = false;
@@ -2578,8 +3147,12 @@ export class MetaStore {
     for (const k of Object.keys(this.engravedRelics)) {
       delete this.engravedRelics[k as RelicId];
     }
+    for (const k of Object.keys(this.relicSoulSlots)) {
+      delete this.relicSoulSlots[k as RelicId];
+    }
     this.masteryLevels = { atk: 0, econ: 0, crit: 0, boss: 0 };
     this.cultivationXp = 0;
+    this.reincarnationCount = 0;
     this.meridianLevels = createEmptyMeridianLevels();
     this.claimedRealmMilestones.clear();
     for (const k of Object.keys(this.heroProficiency)) {
@@ -2634,6 +3207,31 @@ export class MetaStore {
         }
       }
     }
+    if (typeof rec.relicShards === 'object' && rec.relicShards !== null) {
+      const shObj = rec.relicShards as Record<string, unknown>;
+      for (let i = 0; i < RELIC_ORDER.length; i++) {
+        const id = RELIC_ORDER[i]!;
+        const sh = shObj[id];
+        if (typeof sh === 'number' && Number.isFinite(sh) && sh >= 0) {
+          this.relicShards[id] = Math.floor(sh);
+        }
+      }
+    }
+    this.blessedRelics = [];
+    if (Array.isArray(rec.blessedRelics)) {
+      for (let i = 0; i < rec.blessedRelics.length; i++) {
+        const id = rec.blessedRelics[i];
+        if (
+          typeof id === 'string' &&
+          (RELIC_ORDER as readonly string[]).includes(id) &&
+          (this.relics[id as RelicId] ?? 0) > 0 &&
+          !this.blessedRelics.includes(id as RelicId) &&
+          this.blessedRelics.length < MAX_BLESSED_RELICS
+        ) {
+          this.blessedRelics.push(id as RelicId);
+        }
+      }
+    }
     if (typeof rec.unlockedDifficulties === 'object' && rec.unlockedDifficulties !== null) {
       const uObj = rec.unlockedDifficulties as Record<string, unknown>;
       for (const d of DIFFICULTY_ORDER) {
@@ -2650,6 +3248,23 @@ export class MetaStore {
         }
       }
     }
+    this.clearedAscensionLevel =
+      typeof rec.clearedAscensionLevel === 'number' &&
+      Number.isFinite(rec.clearedAscensionLevel) &&
+      rec.clearedAscensionLevel >= 0
+        ? Math.min(ASCENSION_MAX_LEVEL, Math.floor(rec.clearedAscensionLevel))
+        : 0;
+    const rawUnlockedAsc =
+      typeof rec.unlockedAscensionLevel === 'number' &&
+      Number.isFinite(rec.unlockedAscensionLevel) &&
+      rec.unlockedAscensionLevel >= 0
+        ? Math.min(ASCENSION_MAX_LEVEL, Math.floor(rec.unlockedAscensionLevel))
+        : 0;
+    this.unlockedAscensionLevel = Math.max(
+      rawUnlockedAsc,
+      this.clearedDifficulties.abyss ? 1 : 0,
+      Math.min(ASCENSION_MAX_LEVEL, this.clearedAscensionLevel + (this.clearedAscensionLevel > 0 ? 1 : 0)),
+    );
     if (typeof rec.difficultyBestWave === 'object' && rec.difficultyBestWave !== null) {
       const dbObj = rec.difficultyBestWave as Record<string, unknown>;
       for (const d of DIFFICULTY_ORDER) {
@@ -2731,6 +3346,15 @@ export class MetaStore {
     } else if (rec.selectedTrialId === null) {
       this.selectedTrialId = null;
     }
+    if (
+      typeof rec.selectedAscensionLevel === 'number' &&
+      Number.isFinite(rec.selectedAscensionLevel) &&
+      rec.selectedAscensionLevel >= 0
+    ) {
+      const wantAsc = Math.min(this.unlockedAscensionLevel, Math.floor(rec.selectedAscensionLevel));
+      this.selectedAscensionLevel =
+        this.selectedDifficulty === 'abyss' && this.selectedTrialId === null ? wantAsc : 0;
+    }
     if (typeof rec.discoveredUnits === 'object' && rec.discoveredUnits !== null) {
       const dObj = rec.discoveredUnits as Record<string, unknown>;
       for (const [uid, val] of Object.entries(dObj)) {
@@ -2798,6 +3422,9 @@ export class MetaStore {
       rec.selectedRunMode === 'boss_rush'
     ) {
       this.selectedRunMode = rec.selectedRunMode;
+      if (this.selectedRunMode !== 'standard') {
+        this.selectedAscensionLevel = 0;
+      }
     }
     if (typeof rec.dailyChallengeStreak === 'number' && Number.isFinite(rec.dailyChallengeStreak) && rec.dailyChallengeStreak >= 0) {
       this.dailyChallengeStreak = Math.floor(rec.dailyChallengeStreak);
@@ -2854,6 +3481,53 @@ export class MetaStore {
         }
       }
     }
+    for (const k of Object.keys(this.relicSoulSlots)) {
+      delete this.relicSoulSlots[k as RelicId];
+    }
+    if (typeof rec.relicSoulSlots === 'object' && rec.relicSoulSlots !== null) {
+      const validRarities: ReadonlySet<string> = new Set<SoulAffixRarity>([
+        'B',
+        'A',
+        'S',
+        'SS',
+        'SSS',
+      ]);
+      const validKinds: ReadonlySet<string> = new Set<SoulAffixKind>(SOUL_AFFIX_KINDS);
+      for (const [rid, rawSlots] of Object.entries(rec.relicSoulSlots as Record<string, unknown>)) {
+        if (!(rid in this.relics) || !this.engravedRelics[rid as RelicId] || !Array.isArray(rawSlots)) {
+          continue;
+        }
+        if (rawSlots.length !== SOUL_SLOT_COUNT) continue;
+        const parsedSlots: RelicSoulSlot[] = [];
+        let lockedSoFar = 0;
+        for (let i = 0; i < SOUL_SLOT_COUNT; i++) {
+          const item = rawSlots[i] as Record<string, unknown> | undefined;
+          if (
+            !item ||
+            typeof item !== 'object' ||
+            typeof item.kind !== 'string' ||
+            !validKinds.has(item.kind) ||
+            typeof item.rarity !== 'string' ||
+            !validRarities.has(item.rarity)
+          ) {
+            break;
+          }
+          const kind = item.kind as SoulAffixKind;
+          const rarity = item.rarity as SoulAffixRarity;
+          const wantLock = item.locked === true && lockedSoFar < SOUL_SLOT_COUNT - 1;
+          if (wantLock) lockedSoFar++;
+          parsedSlots.push({
+            kind,
+            rarity,
+            value: getSoulAffixValue(kind, rarity),
+            locked: wantLock,
+          });
+        }
+        if (parsedSlots.length === SOUL_SLOT_COUNT) {
+          this.relicSoulSlots[rid as RelicId] = parsedSlots;
+        }
+      }
+    }
     this.masteryLevels = { atk: 0, econ: 0, crit: 0, boss: 0 };
     if (typeof rec.masteryLevels === 'object' && rec.masteryLevels !== null) {
       const m = rec.masteryLevels as Record<string, unknown>;
@@ -2868,10 +3542,21 @@ export class MetaStore {
     if (typeof rec.cultivationXp === 'number' && Number.isFinite(rec.cultivationXp) && rec.cultivationXp >= 0) {
       this.cultivationXp = Math.floor(rec.cultivationXp);
     }
+    this.reincarnationCount = 0;
+    if (
+      typeof rec.reincarnationCount === 'number' &&
+      Number.isFinite(rec.reincarnationCount) &&
+      rec.reincarnationCount >= 0
+    ) {
+      this.reincarnationCount = Math.floor(rec.reincarnationCount);
+    }
     this.meridianLevels = createEmptyMeridianLevels();
     if (typeof rec.meridianLevels === 'object' && rec.meridianLevels !== null) {
       const merObj = rec.meridianLevels as Record<string, unknown>;
-      const maxPts = computeCultivationProgress(this.cultivationXp).totalMeridianPoints;
+      const maxPts = computeCultivationProgress(
+        this.cultivationXp,
+        this.reincarnationCount,
+      ).totalMeridianPoints;
       let usedPts = 0;
       for (const id of MERIDIAN_ORDER) {
         const raw = merObj[id];
@@ -2932,6 +3617,9 @@ export class MetaStore {
                 typeof h.trialId === 'string' && (TRIAL_ORDER as readonly string[]).includes(h.trialId)
                   ? (h.trialId as TrialId)
                   : null,
+              ...(typeof h.ascensionLevel === 'number' && h.ascensionLevel > 0
+                ? { ascensionLevel: Math.min(ASCENSION_MAX_LEVEL, Math.floor(h.ascensionLevel)) }
+                : {}),
               wave: Math.max(1, Math.floor(h.wave)),
               victory: Boolean(h.victory),
               totalDamage: typeof h.totalDamage === 'number' ? Math.max(0, Math.floor(h.totalDamage)) : 0,
@@ -2965,9 +3653,13 @@ export class MetaStore {
       keys: this.keys,
       silk: this.silk,
       relics: this.relics,
+      relicShards: this.relicShards,
+      blessedRelics: this.blessedRelics,
       engravedRelics: this.engravedRelics,
+      relicSoulSlots: this.relicSoulSlots,
       masteryLevels: this.masteryLevels,
       cultivationXp: this.cultivationXp,
+      reincarnationCount: this.reincarnationCount,
       meridianLevels: this.meridianLevels,
       claimedRealmMilestones: [...this.claimedRealmMilestones].sort((a, b) => a - b),
       heroProficiency: this.heroProficiency,
@@ -2976,6 +3668,9 @@ export class MetaStore {
       selectedRunMode: this.selectedRunMode,
       selectedDifficulty: this.selectedDifficulty,
       selectedTrialId: this.selectedTrialId,
+      unlockedAscensionLevel: this.unlockedAscensionLevel,
+      selectedAscensionLevel: this.selectedAscensionLevel,
+      clearedAscensionLevel: this.clearedAscensionLevel,
       unlockedDifficulties: this.unlockedDifficulties,
       clearedDifficulties: this.clearedDifficulties,
       difficultyBestWave: this.difficultyBestWave,
