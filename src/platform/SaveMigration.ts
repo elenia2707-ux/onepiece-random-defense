@@ -42,9 +42,12 @@ export interface RunSaveData {
   readonly pendingBoonOffers: readonly BoonOfferSnapshot[];
   readonly contractOfferSeq?: number;
   readonly pendingContractOffer?: ContractOfferSnapshot | null;
+  readonly queuedContractOfferWaves?: readonly number[];
   readonly activeContracts?: readonly ActiveContractState[];
   readonly bossSpawnTick?: number;
   readonly awakenCount?: number;
+  readonly preserveBenchPassives?: boolean;
+  readonly bossRetryUsed?: boolean;
   readonly appliedStartCoinBonus: number;
   readonly appliedStartLuckBonus?: number;
   readonly appliedStartWisps: Readonly<Record<GradeId, number>>;

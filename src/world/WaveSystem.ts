@@ -223,10 +223,13 @@ export interface WaveSystemContext {
   getEffectiveInterestConfig(): { readonly pct: number; readonly cap: number };
   getWaveClearCoinBonusPct(): number;
   hasFieldHazard(fieldIndex: number): boolean;
+  tryConsumeBossRetry?(waveNumber: number, boss: MonsterEntity): boolean;
   markGameOver(reason: GameOverReason): void;
   markPriorityDirty(): void;
   onWaveAdvanced?(completedWave: number, nextWaveNum: number): void;
 }
+
+const ELITE_BOUNTY_DURATION_TICKS = 24 * 30; // 24s high-stakes DPS check
 
 export function spawnBountyOutlaw(
   ctx: WaveSystemContext,
@@ -246,11 +249,11 @@ export function spawnBountyOutlaw(
   const baseBountyHp = Math.round(
     Math.max(1200, waveBaseHp * (waveDef.isBoss ? 0.35 : 5.2)) * hpScale,
   );
-  const bountyHp = elite ? Math.round(baseBountyHp * 2.2) : baseBountyHp;
+  const bountyHp = elite ? Math.round(baseBountyHp * 3.4) : baseBountyHp;
   const baseCoin = 45 + waveNumber * 10;
   const baseLuck = waveNumber >= 14 ? 3 : 2;
-  const rewardCoin = elite ? baseCoin * 2 : baseCoin;
-  const rewardLuck = elite ? baseLuck * 2 : baseLuck;
+  const rewardCoin = elite ? Math.round(baseCoin * 2.5) : baseCoin;
+  const rewardLuck = elite ? baseLuck * 2 + 1 : baseLuck;
   const rewardWispGrade = elite
     ? (Object.keys(ctx.data.wispPools).find((g) => ctx.data.gradesById.get(g)?.rank === 3) ??
       Object.keys(ctx.data.wispPools)[0])
@@ -264,7 +267,7 @@ export function spawnBountyOutlaw(
     isBoss: true,
     isBounty: true,
     isEliteBounty: elite,
-    expireTick: ctx.currentTick + BOUNTY_DURATION_TICKS,
+    expireTick: ctx.currentTick + (elite ? ELITE_BOUNTY_DURATION_TICKS : BOUNTY_DURATION_TICKS),
     bountyRewardLuck: rewardLuck,
     bountyRewardWispGrade: rewardWispGrade,
     bossName,
@@ -272,7 +275,7 @@ export function spawnBountyOutlaw(
     maxHp: bountyHp,
     armor:
       computeMonsterArmor(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false, true) +
-      (elite ? 12 : 0),
+      (elite ? 24 : 0),
     armorShred: 0,
     shredExpireTick: 0,
     shieldHp: 0,
@@ -281,7 +284,7 @@ export function spawnBountyOutlaw(
     hasteUntilTick: 0,
     nextBossSkillTick: 999999999,
     phaseTriggered: true,
-    speedPerTick: 3.4 * diffCfg.speedMult * trialSpdMult,
+    speedPerTick: (elite ? 3.7 : 3.4) * diffCfg.speedMult * trialSpdMult,
     radius: elite ? spec.radius + 3 : spec.radius,
     rewardCoin,
     spawnTick: ctx.currentTick,
@@ -314,12 +317,14 @@ export function spawnBountyOutlaw(
 }
 
 export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
-  // 0. Check active bounty outlaw 30s escape timer
+  // 0. Check active bounty outlaw escape timer
   for (let i = ctx.monsters.length - 1; i >= 0; i--) {
     const m = ctx.monsters[i]!;
     if (m.isBounty && m.expireTick !== undefined && ctx.currentTick >= m.expireTick) {
       const coin = ctx.getCoin();
-      const stolenCoin = Math.min(120, Math.floor(coin * 0.18));
+      const stolenCoin = m.isEliteBounty
+        ? Math.min(300, Math.max(150, Math.floor(coin * 0.25)))
+        : Math.min(120, Math.floor(coin * 0.18));
       ctx.setCoin(Math.max(0, coin - stolenCoin));
       ctx.monsters.splice(i, 1);
       ctx.markPriorityDirty();
@@ -446,6 +451,9 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     if (waveDef.isBoss) {
       const survivingBoss = ctx.monsters.find((m) => m.isBoss && !m.isBounty);
       if (survivingBoss) {
+        if (ctx.tryConsumeBossRetry?.(waveNumber, survivingBoss)) {
+          return;
+        }
         ctx.markGameOver('boss_timeout');
         ctx.events.emit('boss:timeout', {
           wave: waveNumber,

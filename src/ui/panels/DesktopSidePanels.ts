@@ -191,9 +191,10 @@ export function buildDesktopRightWingHtml(params: {
       .map((cid) => {
         const def = CONTRACTS_BY_ID.get(cid);
         if (!def) return '';
+        const canAfford = snapshot.coin >= def.depositCoin;
         return `
-          <button type="button" class="wing-contract-pick interactive" data-wing-action="pick-contract" data-contract-id="${def.id}" title="${escapeHtml(def.desc)}">
-            <b>📜 ${escapeHtml(def.name)}</b>
+          <button type="button" class="wing-contract-pick interactive${canAfford ? '' : ' is-unaffordable'}" data-wing-action="pick-contract" data-contract-id="${def.id}" title="${escapeHtml(def.desc)} (보증금 ${def.depositCoin}은자)" ${canAfford ? '' : 'disabled'}>
+            <b>📜 ${escapeHtml(def.name)} <em>보증 ${def.depositCoin}</em></b>
             <span>${escapeHtml(def.desc)}</span>
           </button>
         `;
@@ -201,7 +202,7 @@ export function buildDesktopRightWingHtml(params: {
       .join('');
     contractWingHtml = `
       <div class="wing-contract-box">
-        <div class="wing-contract-title">📜 밀명 3택 도착! (1개 수락)</div>
+        <div class="wing-contract-title">📜 제 ${String(snapshot.pendingContractOffer.wave).padStart(2, '0')}장 밀명 3택 (보증금 예치)</div>
         ${opts}
       </div>
       <div class="wing-divider"></div>

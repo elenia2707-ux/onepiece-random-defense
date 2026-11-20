@@ -2889,6 +2889,148 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(eliteSlain).toBe(true);
     expect(simProg.buildSnapshot(1, false).wisps.rare ?? 0).toBeGreaterThanOrEqual(rareWispBefore + 1);
   });
+
+  it('supports v2.4 polish: Rank 3+ awaken auto-lock & craft star inheritance, bench-passive preservation in autoArrange, contract deposit/queue/reminder, and 1-time boss retry', () => {
+    const data = loadGameData();
+
+    // 1. Rank 1-2 awaken rejected; Rank 3+ awaken auto-locks; craft inherits max ★ & auto-locks output
+    const sim = new Simulation(data, 0x24240001);
+    sim.commands.enqueue({ type: 'grantTestCoin', amount: 5000 });
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    sim.tick();
+    const lowSlot = sim.buildSnapshot(1, false).field.find((s) => s?.unitId === 'hwasan_novice')!;
+    expect(lowSlot.awakenCost).toBeNull();
+    sim.commands.enqueue({ type: 'awaken', uid: lowSlot.uid });
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'awaken')).toBe(true);
+
+    // Spawn 3x Rank-3 gaebang_elder (or exact ingredients for r_hwasan_master) -> awaken one to ★2 -> unlock -> craft!
+    const hwasanRec = data.recipes.find((r) => r.id === 'r_hwasan_master')!;
+    for (const ing of hwasanRec.ingredients) {
+      const g = data.unitsById.get(ing.unit)!.grade;
+      for (let i = 0; i < ing.n; i++) {
+        sim.commands.enqueue({ type: 'grantTestResource', wispGrade: g });
+        sim.commands.enqueue({ type: 'useWisp', grade: g, unitId: ing.unit });
+      }
+    }
+    sim.tick();
+    const rank3IngId = hwasanRec.ingredients.find(
+      (i) => (data.gradesById.get(data.unitsById.get(i.unit)!.grade)?.rank ?? 0) >= 3,
+    )!.unit;
+    const ingSlot = sim
+      .buildSnapshot(1, false)
+      .field.find((s) => s?.unitId === rank3IngId)!;
+    sim.commands.enqueue({ type: 'awaken', uid: ingSlot.uid });
+    sim.commands.enqueue({ type: 'awaken', uid: ingSlot.uid });
+    sim.tick();
+    const afterAwk = sim.buildSnapshot(1, false).field.find((s) => s?.uid === ingSlot.uid)!;
+    expect(afterAwk.starLevel).toBe(2);
+    expect(afterAwk.locked).toBe(true); // auto-locked on awaken!
+
+    // Unlock intentionally to ascend -> output inherits ★2 and gets auto-locked
+    sim.commands.enqueue({ type: 'lock', uid: ingSlot.uid, locked: false });
+    sim.commands.enqueue({ type: 'craft', recipeId: 'r_hwasan_master', chain: false });
+    sim.tick();
+    const craftedMaster = sim
+      .buildSnapshot(1, false)
+      .field.find((s) => s?.unitId === 'hwasan_master')!;
+    expect(craftedMaster).toBeTruthy();
+    expect(craftedMaster.starLevel).toBe(2);
+    expect(craftedMaster.locked).toBe(true);
+
+    // 2. Bench-passive preservation in autoArrange (keep 1 copy on bench, deploy 2nd duplicate!)
+    const simBench = new Simulation(data, 0x24240002);
+    const passiveUnit = data.units.find((u) => Boolean(u.benchPassive))!;
+    // Spawn 2 copies and move both to bench
+    for (let i = 0; i < 2; i++) {
+      simBench.commands.enqueue({ type: 'grantTestResource', wispGrade: passiveUnit.grade });
+      simBench.commands.enqueue({ type: 'useWisp', grade: passiveUnit.grade, unitId: passiveUnit.id });
+    }
+    simBench.tick();
+    const snapB0 = simBench.buildSnapshot(1, false);
+    const placedIdx = snapB0.field
+      .map((s, idx) => (s?.unitId === passiveUnit.id ? idx : -1))
+      .filter((idx) => idx >= 0);
+    placedIdx.forEach((fIdx, bIdx) => {
+      simBench.commands.enqueue({
+        type: 'move',
+        from: { area: 'field', index: fIdx },
+        to: { area: 'bench', index: bIdx },
+      });
+    });
+    simBench.tick();
+    expect(simBench.buildSnapshot(1, false).benchPassives.activeUnits.length).toBe(1);
+
+    // Auto-arrange with preserveBenchPassives=true (default): 1 stays on bench, 1 deploys to field
+    simBench.commands.enqueue({ type: 'autoArrange' });
+    simBench.tick();
+    const snapB1 = simBench.buildSnapshot(1, false);
+    expect(snapB1.benchPassives.activeUnits.length).toBe(1);
+    expect(snapB1.field.filter((s) => s?.unitId === passiveUnit.id).length).toBe(1);
+
+    // Turning preserveBenchPassives OFF allows deploying the last bench-passive hero too
+    simBench.commands.enqueue({ type: 'setPreserveBenchPassives', enabled: false });
+    simBench.commands.enqueue({ type: 'autoArrange' });
+    simBench.tick();
+    expect(simBench.buildSnapshot(1, false).benchPassives.activeUnits.length).toBe(0);
+
+    // 3. Contract deposit + Wave 6 reminder + Wave 15 queued without overwriting Wave 5
+    const simCon = new Simulation(data, 0x24240003);
+    spawnCheonmaHelper(simCon);
+    simCon.commands.enqueue({ type: 'grantTestCoin', amount: 3000 });
+    simCon.tick();
+    let reminded = false;
+    simCon.events.on('contract:reminder', () => {
+      reminded = true;
+    });
+    // Advance to Wave 15 without answering Wave 5 contract offer
+    while (simCon.buildSnapshot(1, false).wave < 15) {
+      const sNow = simCon.buildSnapshot(1, false);
+      if (sNow.pendingBoonOffer) {
+        simCon.commands.enqueue({ type: 'pickBoon', boonId: sNow.pendingBoonOffer.options[0]! });
+      }
+      simCon.tick();
+    }
+    const snapC15 = simCon.buildSnapshot(1, false);
+    expect(reminded).toBe(true);
+    expect(snapC15.pendingContractOffer?.wave).toBe(5);
+    expect(snapC15.queuedContractCount).toBe(1);
+
+    // Picking Wave 5 contract deducts deposit and immediately dequeues Wave 15 offer!
+    const coinBeforeDep = snapC15.coin;
+    const c5 = snapC15.pendingContractOffer!.options[0]!;
+    simCon.commands.enqueue({ type: 'pickContract', contractId: c5 });
+    simCon.tick();
+    const snapAfterC5 = simCon.buildSnapshot(1, false);
+    expect(snapAfterC5.coin).toBeLessThan(coinBeforeDep);
+    expect(snapAfterC5.pendingContractOffer?.wave).toBe(15);
+    expect(snapAfterC5.queuedContractCount).toBe(0);
+
+    // 4. First boss timeout triggers 1-time boss:retry (+15s, keeping HP) before eventual game over
+    const simRetry = new Simulation(data, 0x24240004, undefined, 'hard');
+    // Put a weak rank-1 unit so Wave 1-4 monsters stay below cap? Better: give 1 medium unit to survive waves 1-4, then sell it at Wave 5!
+    simRetry.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+    simRetry.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'gaebang_elder' });
+    simRetry.tick();
+    while (simRetry.buildSnapshot(1, false).wave < 5 && !simRetry.isGameOver) {
+      simRetry.tick();
+    }
+    // Remove units at Wave 5 so boss definitely times out
+    for (const u of [...simRetry.getUnits()]) {
+      simRetry.commands.enqueue({ type: 'sell', uid: u.uid });
+    }
+    let retryCount = 0;
+    simRetry.events.on('boss:retry', () => {
+      retryCount++;
+    });
+    for (let t = 0; t < 2600 && !simRetry.isGameOver; t++) {
+      simRetry.tick();
+    }
+    expect(retryCount).toBe(1);
+    expect(simRetry.buildSnapshot(1, false).bossRetryUsed).toBe(true);
+    expect(simRetry.isGameOver).toBe(true);
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {

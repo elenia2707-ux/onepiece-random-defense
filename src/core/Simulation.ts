@@ -79,6 +79,7 @@ import {
   getStarAtkBps,
   getUnitAwakenCost,
   MAX_UNIT_STAR_LEVEL,
+  MIN_AWAKEN_GRADE_RANK,
   stepCombat,
   type TileAuraBuff,
 } from '../skills/SkillSystem';
@@ -114,6 +115,7 @@ export {
   HAZARD_SEAL_TICKS,
   HAZARD_WARNING_TICKS,
   MAX_UNIT_STAR_LEVEL,
+  MIN_AWAKEN_GRADE_RANK,
   RUN_SAVE_SCHEMA_VERSION,
   WAVE_MUTANT_META,
 };
@@ -229,6 +231,7 @@ export interface SimEventMap {
     readonly outputUid: number;
     readonly outputUnitId: UnitId;
     readonly grade: GradeId;
+    readonly inheritedStarLevel?: number;
     readonly pos: Vec2;
     readonly tick: number;
   };
@@ -289,6 +292,14 @@ export interface SimEventMap {
     readonly rewardLuck: number;
     readonly tick: number;
   };
+  'boss:retry': {
+    readonly wave: number;
+    readonly bossName: string;
+    readonly bonusSec: number;
+    readonly remainingHp: number;
+    readonly maxHp: number;
+    readonly tick: number;
+  };
   'boss:timeout': {
     readonly wave: number;
     readonly bossName: string;
@@ -318,6 +329,7 @@ export interface SimEventMap {
     readonly unitId: UnitId;
     readonly starLevel: number;
     readonly cost: number;
+    readonly autoLocked: boolean;
     readonly pos: Vec2;
     readonly tick: number;
   };
@@ -327,16 +339,25 @@ export interface SimEventMap {
     readonly options: readonly ContractId[];
     readonly tick: number;
   };
+  'contract:reminder': {
+    readonly seq: number;
+    readonly wave: number;
+    readonly offerWave: number;
+    readonly options: readonly ContractId[];
+    readonly tick: number;
+  };
   'contract:picked': {
     readonly contractId: ContractId;
     readonly name: string;
     readonly deadlineWave: number;
+    readonly depositCoin: number;
     readonly tick: number;
   };
   'contract:completed': {
     readonly contractId: ContractId;
     readonly name: string;
     readonly rewardCoin: number;
+    readonly refundedDeposit: number;
     readonly rewardLuck: number;
     readonly rewardWispGrade?: GradeId;
     readonly rewardWispCount?: number;
@@ -346,6 +367,7 @@ export interface SimEventMap {
   'contract:failed': {
     readonly contractId: ContractId;
     readonly name: string;
+    readonly lostDeposit: number;
     readonly tick: number;
   };
   'bounty:called': {
@@ -491,6 +513,7 @@ export interface ActiveContractState {
   readonly deadlineWave: number;
   progress: number;
   readonly baseline: number;
+  readonly depositCoin?: number;
   status: 'active' | 'completed' | 'failed';
 }
 
@@ -503,6 +526,7 @@ export interface ContractItemSnapshot {
   readonly deadlineWave: number;
   readonly progress: number;
   readonly target: number;
+  readonly depositCoin: number;
   readonly status: 'active' | 'completed' | 'failed';
   readonly rewardCoin: number;
   readonly rewardLuck: number;
@@ -520,6 +544,7 @@ export interface UISnapshot {
   readonly clearTargetWave: number;
   readonly gameOver: boolean;
   readonly gameOverReason: GameOverReason;
+  readonly bossRetryUsed: boolean;
   readonly victoryAchieved: boolean;
   readonly victoryHold: boolean;
   readonly endlessMode: boolean;
@@ -546,8 +571,10 @@ export interface UISnapshot {
   readonly activeBoons: Readonly<Record<BoonId, number>>;
   readonly totalBoonStacks: number;
   readonly pendingContractOffer: ContractOfferSnapshot | null;
+  readonly queuedContractCount: number;
   readonly contracts: readonly ContractItemSnapshot[];
   readonly benchPassives: BenchPassiveSummary;
+  readonly preserveBenchPassives: boolean;
   readonly missions: readonly MissionItemSnapshot[];
   readonly missionsCompletedCount: number;
   readonly damageMeter: {
@@ -573,6 +600,7 @@ export interface UISnapshot {
   readonly summonCost: number;
   readonly wisps: Readonly<Record<GradeId, number>>;
   readonly upgradeLv: Readonly<Record<UpgradeGroupId, number>>;
+  readonly upgradeCosts: Readonly<Record<UpgradeGroupId, number>>;
   readonly relics: Readonly<Record<RelicId, number>>;
   readonly relicBonus: RelicBonusSnapshot;
   readonly synergy: FactionSynergySnapshot;
@@ -674,7 +702,9 @@ export class Simulation {
   private readonly pendingBoonOffers: BoonOfferSnapshot[] = [];
   private contractOfferSeq = 0;
   private pendingContractOffer: ContractOfferSnapshot | null = null;
+  private readonly queuedContractOfferWaves: number[] = [];
   private readonly activeContracts: ActiveContractState[] = [];
+  private preserveBenchPassives = true;
   private appliedStartCoinBonus = 0;
   private appliedStartLuckBonus = 0;
   private readonly appliedStartWisps: Record<GradeId, number> = {};
@@ -701,6 +731,7 @@ export class Simulation {
   private nextSpawnTick = 15;
   private gameOver = false;
   private gameOverReason: GameOverReason = 'overrun';
+  private bossRetryUsed = false;
   private victoryAchieved = false;
   private victoryHold = false;
   private endlessMode = false;
@@ -1179,6 +1210,28 @@ export class Simulation {
       getWaveClearCoinBonusPct: () =>
         getTrainingManualWaveCoinPct(this.relicLv.jade_training_manual ?? 0),
       hasFieldHazard: (fieldIndex) => this.hasFieldHazard(fieldIndex),
+      tryConsumeBossRetry: (waveNumber, boss) => {
+        if (this.bossRetryUsed) return false;
+        if (this.trialId !== null || this.difficulty === 'hell' || this.difficulty === 'abyss') {
+          return false;
+        }
+        if (waveNumber >= this.clearTargetWave && this.difficulty !== 'normal') {
+          return false;
+        }
+        this.bossRetryUsed = true;
+        const bonusSec = 15;
+        this.waveTicksLeft = bonusSec * 30;
+        this.priorityDirty = true;
+        this.events.emit('boss:retry', {
+          wave: waveNumber,
+          bossName: boss.bossName ?? '영물 보스',
+          bonusSec,
+          remainingHp: Math.max(1, Math.round(boss.hp)),
+          maxHp: boss.maxHp,
+          tick: this.currentTick,
+        });
+        return true;
+      },
       markGameOver: (reason) => {
         this.gameOver = true;
         this.gameOverReason = reason;
@@ -1389,6 +1442,16 @@ export class Simulation {
           this.reject('pickContract', '존재하지 않는 밀명 계약입니다.');
           return;
         }
+        if (this.coin < cDef.depositCoin) {
+          this.reject(
+            'pickContract',
+            `밀명 보증금이 부족합니다 (${cDef.depositCoin} 은자 필요 — 성공 시 전액 환급)`,
+          );
+          return;
+        }
+        if (cDef.depositCoin > 0) {
+          this.coin -= cDef.depositCoin;
+        }
         const baseline =
           cDef.condition === 'bounty_kills_delta'
             ? this.bountiesSlain
@@ -1404,6 +1467,7 @@ export class Simulation {
           deadlineWave,
           progress: 0,
           baseline,
+          depositCoin: cDef.depositCoin,
           status: 'active',
         });
         this.pendingContractOffer = null;
@@ -1412,8 +1476,18 @@ export class Simulation {
           contractId: cDef.id,
           name: cDef.name,
           deadlineWave,
+          depositCoin: cDef.depositCoin,
           tick: this.currentTick,
         });
+        this.dequeueNextContractOffer();
+        return;
+      }
+
+      case 'dismissContractOffer': {
+        if (!this.pendingContractOffer) return;
+        this.pendingContractOffer = null;
+        this.priorityDirty = true;
+        this.dequeueNextContractOffer();
         return;
       }
 
@@ -1429,6 +1503,10 @@ export class Simulation {
           return;
         }
         const gradeRank = this.data.gradesById.get(u.grade)?.rank ?? 1;
+        if (gradeRank < MIN_AWAKEN_GRADE_RANK) {
+          this.reject('awaken', '일류(3등급) 이상 협객만 성급 각성할 수 있습니다.');
+          return;
+        }
         const cost = getUnitAwakenCost(gradeRank, curStar);
         if (cost === null) {
           this.reject('awaken', '더 이상 각성할 수 없습니다.');
@@ -1440,6 +1518,11 @@ export class Simulation {
         }
         this.coin -= cost;
         u.starLevel = curStar + 1;
+        const autoLocked = !u.locked;
+        if (autoLocked) {
+          u.locked = true;
+          this.inventoryIndex.setLocked(u.uid, true);
+        }
         this.awakenCount++;
         this.priorityDirty = true;
         this.events.emit('unit:awakened', {
@@ -1447,6 +1530,7 @@ export class Simulation {
           unitId: u.unitId,
           starLevel: u.starLevel,
           cost,
+          autoLocked,
           pos: { x: u.currX, y: u.currY },
           tick: this.currentTick,
         });
@@ -1657,7 +1741,13 @@ export class Simulation {
       }
 
       case 'autoArrange': {
-        this.executeAutoArrange();
+        this.executeAutoArrange(cmd.preserveBenchPassives ?? this.preserveBenchPassives);
+        return;
+      }
+
+      case 'setPreserveBenchPassives': {
+        this.preserveBenchPassives = Boolean(cmd.enabled);
+        this.priorityDirty = true;
         return;
       }
 
@@ -1823,11 +1913,12 @@ export class Simulation {
 
       case 'craft': {
         const res = this.craftSystem.execute(cmd.recipeId, cmd.chain, this.inventoryIndex, {
+          getUnitStarLevel: (uid) => this.unitsByUid.get(uid)?.starLevel ?? 0,
           removeUnitByUid: (uid) => this.removeUnitInternal(uid),
-          spawnCraftedUnit: (unitId, preferredFieldIndex) => {
+          spawnCraftedUnit: (unitId, preferredFieldIndex, inheritedStarLevel = 0) => {
             const slot = this.board.findPlacementSlot(preferredFieldIndex);
             if (!slot) return null;
-            return this.createUnit(unitId, slot, 'craft');
+            return this.createUnit(unitId, slot, 'craft', inheritedStarLevel);
           },
         });
 
@@ -1837,6 +1928,10 @@ export class Simulation {
         }
         const outUnit = this.unitsByUid.get(res.outputUid);
         if (outUnit) {
+          if (res.inheritedStarLevel > 0 && !outUnit.locked) {
+            outUnit.locked = true;
+            this.inventoryIndex.setLocked(outUnit.uid, true);
+          }
           if (this.data.gradesById.get(outUnit.grade)?.fx === 'rainbow') {
             this.craftedImmortal = true;
           }
@@ -1844,6 +1939,7 @@ export class Simulation {
             outputUid: outUnit.uid,
             outputUnitId: outUnit.unitId,
             grade: outUnit.grade,
+            ...(res.inheritedStarLevel > 0 ? { inheritedStarLevel: res.inheritedStarLevel } : {}),
             pos: { x: outUnit.currX, y: outUnit.currY },
             tick: this.currentTick,
           });
@@ -1891,17 +1987,22 @@ export class Simulation {
           if (!bestRecipeId) break;
 
           const res = this.craftSystem.execute(bestRecipeId, bestChain, this.inventoryIndex, {
+            getUnitStarLevel: (uid) => this.unitsByUid.get(uid)?.starLevel ?? 0,
             removeUnitByUid: (uid) => this.removeUnitInternal(uid),
-            spawnCraftedUnit: (unitId, preferredFieldIndex) => {
+            spawnCraftedUnit: (unitId, preferredFieldIndex, inheritedStarLevel = 0) => {
               const slot = this.board.findPlacementSlot(preferredFieldIndex);
               if (!slot) return null;
-              return this.createUnit(unitId, slot, 'craft');
+              return this.createUnit(unitId, slot, 'craft', inheritedStarLevel);
             },
           });
 
           if (!res.ok) break;
           const outUnit = this.unitsByUid.get(res.outputUid);
           if (outUnit) {
+            if (res.inheritedStarLevel > 0 && !outUnit.locked) {
+              outUnit.locked = true;
+              this.inventoryIndex.setLocked(outUnit.uid, true);
+            }
             craftedCount++;
             const outRank = this.data.gradesById.get(outUnit.grade)?.rank ?? 0;
             if (outRank >= topRank) {
@@ -1916,6 +2017,7 @@ export class Simulation {
               outputUid: outUnit.uid,
               outputUnitId: outUnit.unitId,
               grade: outUnit.grade,
+              ...(res.inheritedStarLevel > 0 ? { inheritedStarLevel: res.inheritedStarLevel } : {}),
               pos: { x: outUnit.currX, y: outUnit.currY },
               tick: this.currentTick,
             });
@@ -2003,7 +2105,7 @@ export class Simulation {
     return a.uid - b.uid;
   }
 
-  private executeAutoArrange(): void {
+  private executeAutoArrange(preserveBenchPassives = this.preserveBenchPassives): void {
     const safeEmptyFieldSlots: number[] = [];
     const hazardEmptyFieldSlots: number[] = [];
     const endangeredUnits: UnitEntity[] = [];
@@ -2053,11 +2155,28 @@ export class Simulation {
     }
     benchUnits.sort((a, b) => this.compareUnitsForArrange(a, b));
 
+    const reservedPassiveUnitIds = new Set<UnitId>();
+    if (preserveBenchPassives) {
+      // Locked bench-passive heroes already satisfy their unique passive slot
+      for (let i = 0; i < benchUnits.length; i++) {
+        const u = benchUnits[i]!;
+        if (u.locked && this.data.unitsById.get(u.unitId)?.benchPassive) {
+          reservedPassiveUnitIds.add(u.unitId);
+        }
+      }
+    }
+
     let slotCursor = 0;
     const remainingBench: UnitEntity[] = [];
     for (let i = 0; i < benchUnits.length; i++) {
       const u = benchUnits[i]!;
-      if (!u.locked && slotCursor < emptyFieldSlots.length) {
+      const hasBenchPassive = Boolean(this.data.unitsById.get(u.unitId)?.benchPassive);
+      const keepForPassive =
+        preserveBenchPassives && hasBenchPassive && !reservedPassiveUnitIds.has(u.unitId);
+      if (keepForPassive) {
+        reservedPassiveUnitIds.add(u.unitId);
+        remainingBench.push(u);
+      } else if (!u.locked && slotCursor < emptyFieldSlots.length) {
         const targetFieldIdx = emptyFieldSlots[slotCursor++]!;
         const toSlot: SlotRef = { area: 'field', index: targetFieldIdx };
         const toCenter = this.board.getSlotCenter(toSlot);
@@ -2208,7 +2327,23 @@ export class Simulation {
     }
   }
 
+  private dequeueNextContractOffer(): void {
+    if (this.pendingContractOffer !== null) return;
+    while (this.queuedContractOfferWaves.length > 0) {
+      const nextWave = this.queuedContractOfferWaves.shift()!;
+      this.offerContracts(nextWave);
+      if (this.pendingContractOffer !== null) return;
+    }
+  }
+
   private offerContracts(wave: number): void {
+    if (this.pendingContractOffer !== null) {
+      if (!this.queuedContractOfferWaves.includes(wave)) {
+        this.queuedContractOfferWaves.push(wave);
+        this.priorityDirty = true;
+      }
+      return;
+    }
     const alreadyTaken = new Set<ContractId>(this.activeContracts.map((c) => c.contractId));
     const eligible = CONTRACT_DEFS.filter(
       (c) => wave >= c.minWave && !alreadyTaken.has(c.id),
@@ -2246,8 +2381,9 @@ export class Simulation {
     state.status = 'completed';
     state.progress = def.target;
 
-    if (def.rewardCoin > 0) {
-      this.coin += def.rewardCoin;
+    const refundedDeposit = state.depositCoin ?? 0;
+    if (refundedDeposit + def.rewardCoin > 0) {
+      this.coin += refundedDeposit + def.rewardCoin;
     }
     if (def.rewardLuck > 0) {
       this.luckStone += def.rewardLuck;
@@ -2271,6 +2407,7 @@ export class Simulation {
       contractId: def.id,
       name: def.name,
       rewardCoin: def.rewardCoin,
+      refundedDeposit,
       rewardLuck: def.rewardLuck,
       rewardWispGrade: def.rewardWispGrade,
       rewardWispCount: def.rewardWispCount,
@@ -2288,7 +2425,7 @@ export class Simulation {
       if (!def) continue;
 
       if (def.condition === 'faction_field_waves' && def.faction) {
-        if ((synergy.counts[def.faction] ?? 0) >= (def.minFactionCount ?? 4)) {
+        if ((synergy.counts[def.faction] ?? 0) >= (def.minFactionCount ?? 5)) {
           st.progress = Math.min(def.target, st.progress + 1);
           this.priorityDirty = true;
         }
@@ -2307,9 +2444,24 @@ export class Simulation {
         this.events.emit('contract:failed', {
           contractId: def.id,
           name: def.name,
+          lostDeposit: st.depositCoin ?? 0,
           tick: this.currentTick,
         });
       }
+    }
+
+    // Remind the player once on the next wave if they have not picked a pending contract offer yet
+    if (
+      this.pendingContractOffer !== null &&
+      nextWaveNum === this.pendingContractOffer.wave + 1
+    ) {
+      this.events.emit('contract:reminder', {
+        seq: this.pendingContractOffer.seq,
+        wave: nextWaveNum,
+        offerWave: this.pendingContractOffer.wave,
+        options: [...this.pendingContractOffer.options],
+        tick: this.currentTick,
+      });
     }
 
     if (CONTRACT_OFFER_WAVES.includes(nextWaveNum)) {
@@ -2323,7 +2475,7 @@ export class Simulation {
       if (st.status !== 'active') continue;
       const def = CONTRACTS_BY_ID.get(st.contractId);
       if (!def || def.condition !== 'fast_boss_kill') continue;
-      const maxTicks = (def.maxBossKillSec ?? 28) * 30;
+      const maxTicks = (def.maxBossKillSec ?? 20) * 30;
       if (elapsedTicks <= maxTicks) {
         st.progress = Math.min(def.target, st.progress + 1);
         if (st.progress >= def.target) {
@@ -2389,6 +2541,7 @@ export class Simulation {
     unitId: UnitId,
     slot: SlotRef,
     source: 'summon' | 'craft' | 'wisp' | 'gamble',
+    initialStarLevel = 0,
   ): number {
     const def = this.data.unitsById.get(unitId);
     if (!def) {
@@ -2396,6 +2549,7 @@ export class Simulation {
     }
     const uid = this.nextUid++;
     const center = this.board.getSlotCenter(slot);
+    const clampedStar = Math.max(0, Math.min(MAX_UNIT_STAR_LEVEL, Math.floor(initialStarLevel)));
 
     const entity: UnitEntity = {
       uid,
@@ -2403,7 +2557,7 @@ export class Simulation {
       grade: def.grade,
       slot,
       locked: false,
-      starLevel: 0,
+      starLevel: clampedStar,
       spawnTick: this.currentTick,
       moveFromX: center.x,
       moveFromY: center.y,
@@ -2626,6 +2780,7 @@ export class Simulation {
         deadlineWave: st.deadlineWave,
         progress: st.progress,
         target: cDef.target,
+        depositCoin: st.depositCoin ?? cDef.depositCoin,
         status: st.status,
         rewardCoin: cDef.rewardCoin,
         rewardLuck: cDef.rewardLuck,
@@ -2685,7 +2840,7 @@ export class Simulation {
     const patternHint = activeBoss
       ? activeBoss.isBounty
         ? activeBoss.isEliteBounty
-          ? '정예 현상수배! 2배 보상+일류기연'
+          ? '정예 현상수배! 24초 고난도 · 2.5배 보상+일류기연'
           : '현상수배 도주 주의'
         : this.waveNumber >= 35 && this.waveNumber % 5 === 0
           ? '무한 이중권능: 독갑 + 혈옥주박 + 광풍!'
@@ -2705,6 +2860,7 @@ export class Simulation {
       clearTargetWave: this.clearTargetWave,
       gameOver: this.gameOver,
       gameOverReason: this.gameOverReason,
+      bossRetryUsed: this.bossRetryUsed,
       victoryAchieved: this.victoryAchieved,
       victoryHold: this.victoryHold,
       endlessMode: this.endlessMode,
@@ -2747,8 +2903,10 @@ export class Simulation {
             options: [...this.pendingContractOffer.options],
           }
         : null,
+      queuedContractCount: this.queuedContractOfferWaves.length,
       contracts: contractItems,
       benchPassives,
+      preserveBenchPassives: this.preserveBenchPassives,
       missions: missionItems,
       missionsCompletedCount: this.completedMissions.size,
       damageMeter: {
@@ -2774,6 +2932,11 @@ export class Simulation {
       summonCost: this.getSummonCost(),
       wisps: { ...this.wisps },
       upgradeLv: { ...this.upgradeLv },
+      upgradeCosts: {
+        orthodox: this.getUpgradeCost('orthodox'),
+        unorthodox: this.getUpgradeCost('unorthodox'),
+        demonic: this.getUpgradeCost('demonic'),
+      },
       relics: { ...this.relicLv },
       relicBonus,
       synergy,
@@ -2883,7 +3046,10 @@ export class Simulation {
             options: [...this.pendingContractOffer.options],
           }
         : null,
+      queuedContractOfferWaves: [...this.queuedContractOfferWaves],
       activeContracts: this.activeContracts.map((c) => ({ ...c })),
+      preserveBenchPassives: this.preserveBenchPassives,
+      bossRetryUsed: this.bossRetryUsed,
       appliedStartCoinBonus: this.appliedStartCoinBonus,
       appliedStartLuckBonus: this.appliedStartLuckBonus,
       appliedStartWisps: { ...this.appliedStartWisps },
@@ -2985,6 +3151,14 @@ export class Simulation {
           options: [...save.pendingContractOffer.options],
         }
       : null;
+    this.queuedContractOfferWaves.length = 0;
+    if (Array.isArray(save.queuedContractOfferWaves)) {
+      for (const w of save.queuedContractOfferWaves) {
+        if (typeof w === 'number' && Number.isFinite(w) && w > 0) {
+          this.queuedContractOfferWaves.push(Math.floor(w));
+        }
+      }
+    }
     this.activeContracts.length = 0;
     if (Array.isArray(save.activeContracts)) {
       for (const c of save.activeContracts) {
@@ -2993,6 +3167,8 @@ export class Simulation {
         }
       }
     }
+    this.preserveBenchPassives = save.preserveBenchPassives !== false;
+    this.bossRetryUsed = Boolean(save.bossRetryUsed);
 
     this.appliedStartCoinBonus = Math.max(0, Math.floor(save.appliedStartCoinBonus ?? 0));
     this.appliedStartLuckBonus = Math.max(0, Math.floor(save.appliedStartLuckBonus ?? 0));

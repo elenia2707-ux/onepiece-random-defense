@@ -21,11 +21,13 @@ export type GameCommand =
   | { readonly type: 'gamble'; readonly tier: GradeId }
   | { readonly type: 'upgrade'; readonly group: UpgradeGroupId; readonly count?: number }
   | { readonly type: 'callBounty'; readonly elite?: boolean }
-  | { readonly type: 'autoArrange' }
+  | { readonly type: 'autoArrange'; readonly preserveBenchPassives?: boolean }
+  | { readonly type: 'setPreserveBenchPassives'; readonly enabled: boolean }
   | { readonly type: 'enterEndless' }
   | { readonly type: 'pickBoon'; readonly boonId: BoonId }
   | { readonly type: 'rerollBoon' }
   | { readonly type: 'pickContract'; readonly contractId: ContractId }
+  | { readonly type: 'dismissContractOffer' }
   | { readonly type: 'syncRelics'; readonly relics: Readonly<Partial<Record<RelicId, number>>> }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {

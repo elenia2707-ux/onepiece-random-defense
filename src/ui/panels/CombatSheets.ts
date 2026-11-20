@@ -737,6 +737,7 @@ export function buildMissionSheetView(
       .map((cid) => {
         const def = CONTRACTS_BY_ID.get(cid);
         if (!def) return '';
+        const canAfford = snapshot.coin >= def.depositCoin;
         return `
           <div class="sheet-card contract-offer-card">
             <div class="mission-main">
@@ -745,22 +746,26 @@ export function buildMissionSheetView(
                 <span class="card-name">${escapeHtml(def.name)}</span>
                 <div class="mission-rewards">${formatContractRewards(def)}</div>
               </div>
-              <div class="card-sub">${escapeHtml(def.desc)} · 기한 ${def.durationWaves}장</div>
+              <div class="card-sub">${escapeHtml(def.desc)} · 기한 ${def.durationWaves}장 · <b>보증금 ${def.depositCoin}은자</b> (완수 시 환급 / 실패 시 몰수)</div>
             </div>
             <button
               type="button"
-              class="card-cta-btn cta-gold interactive"
+              class="card-cta-btn ${canAfford ? 'cta-gold interactive' : 'cta-disabled'}"
               data-sheet-action="pick-contract"
               data-contract-id="${def.id}"
+              ${canAfford ? '' : 'disabled'}
             >
               <span>밀명 수락</span>
+              <span class="mini-price">${ICON.coin}${def.depositCoin}</span>
             </button>
           </div>
         `;
       })
       .join('');
+    const queueHint =
+      snapshot.queuedContractCount > 0 ? ` · 대기 밀명 +${snapshot.queuedContractCount}` : '';
     contractSectionHtml += `
-      <div class="sheet-section-label contract-section-label">📜 제 ${String(pendingOffer.wave).padStart(2, '0')} 장 강호 밀명 · 3택 1 고위험 계약</div>
+      <div class="sheet-section-label contract-section-label">📜 제 ${String(pendingOffer.wave).padStart(2, '0')} 장 강호 밀명 · 3택 1 고위험 계약${queueHint}</div>
       ${offerCards}
     `;
   }
@@ -774,7 +779,7 @@ export function buildMissionSheetView(
           c.status === 'completed'
             ? '<span class="mission-stamp done">완수 ✓</span>'
             : c.status === 'failed'
-              ? '<span class="mission-stamp failed">기한 만료</span>'
+              ? '<span class="mission-stamp failed">보증금 몰수</span>'
               : `<span class="mission-stamp">${c.progress}/${c.target} · 잔여 ${remWaves}장</span>`;
         return `
           <div class="sheet-card mission-card contract-active-card${c.status === 'completed' ? ' mission-done' : c.status === 'failed' ? ' contract-failed' : ''}">
@@ -784,7 +789,7 @@ export function buildMissionSheetView(
                 <span class="card-name">${escapeHtml(c.name)}</span>
                 <div class="mission-rewards">${formatContractRewards(c)}</div>
               </div>
-              <div class="card-sub">${escapeHtml(c.desc)}</div>
+              <div class="card-sub">${escapeHtml(c.desc)} · 예치금 ${c.depositCoin}은자</div>
               <div class="mission-prog-track">
                 <div class="mission-prog-fill contract" style="width:${pct}%"></div>
               </div>

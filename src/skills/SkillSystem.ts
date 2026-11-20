@@ -61,8 +61,10 @@ export interface BenchPassiveSummary {
 }
 
 export const MAX_UNIT_STAR_LEVEL = 3;
+export const MIN_AWAKEN_GRADE_RANK = 3;
 
 export function getUnitAwakenCost(gradeRank: number, currentStar: number): number | null {
+  if (gradeRank < MIN_AWAKEN_GRADE_RANK) return null;
   if (currentStar >= MAX_UNIT_STAR_LEVEL || currentStar < 0) return null;
   const baseCosts = [300, 650, 1200] as const;
   const rankSteps = [80, 150, 250] as const;

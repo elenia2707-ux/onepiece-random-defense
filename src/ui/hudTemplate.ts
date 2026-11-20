@@ -106,7 +106,8 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
 
       <button id="bench-badge" type="button" class="bench-badge interactive" title="문파 대기석 접기/펼치기 (접기 시 비무대 확대)">${ICON.pavilion}<span>대기석</span><b id="val-bench-count">0/12</b><span id="bench-fold-arrow" class="bench-fold-arrow">▾</span></button>
       <button id="btn-auto-arrange" type="button" class="auto-arrange-btn interactive" title="비무대 빈칸 자동출전 및 대기석 서열 정렬">⚡ 자동출전</button>
-      <button id="btn-bulk-cleanup" type="button" class="bulk-cleanup-btn interactive" title="문파 대기석의 잠금 해제된 초급 협객 일괄 정리">🧹 잉여정리 <b id="val-surplus-count">0</b></button>
+      <button id="btn-preserve-bench" type="button" class="preserve-bench-btn active interactive" title="자동출전 시 대기석 패시브(진법) 협객 1인 유지 토글">🏯 진법</button>
+      <button id="btn-bulk-cleanup" type="button" class="bulk-cleanup-btn interactive" title="문파 대기석의 잠금 해제된 초급 협객 일괄 정리">🧹 잉여 <b id="val-surplus-count">0</b></button>
 
       <div id="synergy-bar" class="synergy-bar" aria-label="출전 문파 진법 공명">
         <button id="btn-syn-orthodox" type="button" class="syn-pill syn-orthodox interactive" data-syn="orthodox" title="정파 북두검진">정<b id="syn-val-orthodox">0</b></button>
@@ -230,6 +231,21 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           <div class="boon-footer">
             <button id="btn-boon-reroll" type="button" class="boon-reroll-btn interactive">🎲 비급 다시 뽑기 (150은자)</button>
             <button id="btn-boon-peek" type="button" class="boon-peek-btn interactive">👁 비무대 전황 살펴보기</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="contract-modal" class="contract-modal interactive" role="dialog" aria-modal="true" aria-label="강호 밀명 3택 1">
+        <div class="boon-shell contract-shell">
+          <div class="boon-header">
+            <div class="boon-kicker">📜 고위험 · 고보상 강호 밀명</div>
+            <div id="contract-modal-title" class="boon-title">제 05 장 강호 밀명 3택 1</div>
+            <div class="boon-subtitle">보증금을 예치하고 기한 내 달성하면 전액 환급 + 막대한 보상! 실패 시 보증금 몰수</div>
+          </div>
+          <div id="contract-modal-cards" class="boon-cards"></div>
+          <div class="boon-footer">
+            <button id="btn-contract-later" type="button" class="boon-peek-btn interactive">⏳ 나중에 선택 (의뢰 탭)</button>
+            <button id="btn-contract-decline" type="button" class="boon-reroll-btn contract-decline-btn interactive">✕ 이번 밀명 거절</button>
           </div>
         </div>
       </div>

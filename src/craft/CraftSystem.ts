@@ -5,12 +5,22 @@ import type { InventoryIndex } from './InventoryIndex';
 import type { RecipeGraph } from './RecipeGraph';
 
 export interface AtomicCraftCallbacks {
+  getUnitStarLevel?(uid: number): number;
   removeUnitByUid(uid: number): SlotRef | null;
-  spawnCraftedUnit(unitId: UnitId, preferredFieldIndex?: number): number | null;
+  spawnCraftedUnit(
+    unitId: UnitId,
+    preferredFieldIndex?: number,
+    inheritedStarLevel?: number,
+  ): number | null;
 }
 
 export type CraftExecutionResult =
-  | { readonly ok: true; readonly outputUid: number; readonly outputUnitId: UnitId }
+  | {
+      readonly ok: true;
+      readonly outputUid: number;
+      readonly outputUnitId: UnitId;
+      readonly inheritedStarLevel: number;
+    }
   | { readonly ok: false; readonly reason: string };
 
 /**
@@ -73,6 +83,7 @@ export class CraftSystem {
 
     let lastCreatedUid: number | null = null;
     let lastOutputUnitId: UnitId = recipe.output;
+    let lastInheritedStar = 0;
 
     for (const stepId of steps) {
       const stepRec = this.graph.recipesById.get(stepId)!;
@@ -91,7 +102,12 @@ export class CraftSystem {
       }
 
       let firstConsumedFieldIndex: number | undefined;
+      let maxConsumedStar = 0;
       for (const uid of toConsume) {
+        const star = callbacks.getUnitStarLevel?.(uid) ?? 0;
+        if (star > maxConsumedStar) {
+          maxConsumedStar = star;
+        }
         const oldSlot = callbacks.removeUnitByUid(uid);
         if (
           oldSlot &&
@@ -102,17 +118,27 @@ export class CraftSystem {
         }
       }
 
-      const createdUid = callbacks.spawnCraftedUnit(stepRec.output, firstConsumedFieldIndex);
+      const createdUid = callbacks.spawnCraftedUnit(
+        stepRec.output,
+        firstConsumedFieldIndex,
+        maxConsumedStar,
+      );
       if (createdUid === null) {
         return { ok: false, reason: '배치할 빈 슬롯이 없습니다.' };
       }
       lastCreatedUid = createdUid;
       lastOutputUnitId = stepRec.output;
+      lastInheritedStar = maxConsumedStar;
     }
 
     if (lastCreatedUid === null) {
       return { ok: false, reason: '조합 실행에 실패했습니다.' };
     }
-    return { ok: true, outputUid: lastCreatedUid, outputUnitId: lastOutputUnitId };
+    return {
+      ok: true,
+      outputUid: lastCreatedUid,
+      outputUnitId: lastOutputUnitId,
+      inheritedStarLevel: lastInheritedStar,
+    };
   }
 }

@@ -8,10 +8,12 @@ import {
 import {
   type ContractId,
   getBoonRerollCost,
+  MIN_AWAKEN_GRADE_RANK,
   type SlotView,
   type UISnapshot,
 } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
+import { CONTRACTS_BY_ID } from '../data/contracts';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
   BoonId,
@@ -240,6 +242,7 @@ export class UIManager {
   private benchBadgeBtnEl!: HTMLButtonElement;
   private benchFoldArrowEl!: HTMLElement;
   private benchCountEl!: HTMLElement;
+  private preserveBenchBtnEl!: HTMLButtonElement;
   private appEl: HTMLElement | null = null;
   private gameRootEl: HTMLElement | null = null;
   private desktopLeftEl: HTMLElement | null = null;
@@ -260,6 +263,7 @@ export class UIManager {
   private prevDemonicTier = 0;
   private prevTrinityActive = false;
   private recRecipeId: string | null = null;
+  private recUpgradeGroup: UpgradeGroupId | null = null;
   private prevRecommendSignature = '';
 
   private toastLayerEl!: HTMLElement;
@@ -280,6 +284,14 @@ export class UIManager {
   private boonMinimized = false;
   private lastBoonOfferSeq = -1;
   private prevBoonModalSig = '';
+
+  private contractModalEl!: HTMLElement;
+  private contractModalTitleEl!: HTMLElement;
+  private contractModalCardsEl!: HTMLElement;
+  private contractLaterBtnEl!: HTMLButtonElement;
+  private contractDeclineBtnEl!: HTMLButtonElement;
+  private contractModalOpen = false;
+  private prevContractModalSig = '';
 
   private gameOverModalEl!: HTMLElement;
   private gameOverCardEl!: HTMLElement;
@@ -484,6 +496,7 @@ export class UIManager {
     this.benchBadgeBtnEl = this.mustGet('bench-badge') as HTMLButtonElement;
     this.benchFoldArrowEl = this.mustGet('bench-fold-arrow');
     this.autoArrangeBtnEl = this.mustGet('btn-auto-arrange') as HTMLButtonElement;
+    this.preserveBenchBtnEl = this.mustGet('btn-preserve-bench') as HTMLButtonElement;
     this.bulkCleanupBtnEl = this.mustGet('btn-bulk-cleanup') as HTMLButtonElement;
     this.surplusCountEl = this.mustGet('val-surplus-count');
     this.discardDropZoneEl = this.mustGet('discard-drop-zone');
@@ -558,6 +571,12 @@ export class UIManager {
     this.boonRerollBtnEl = this.mustGet('btn-boon-reroll') as HTMLButtonElement;
     this.boonPeekBtnEl = this.mustGet('btn-boon-peek') as HTMLButtonElement;
 
+    this.contractModalEl = this.mustGet('contract-modal');
+    this.contractModalTitleEl = this.mustGet('contract-modal-title');
+    this.contractModalCardsEl = this.mustGet('contract-modal-cards');
+    this.contractLaterBtnEl = this.mustGet('btn-contract-later') as HTMLButtonElement;
+    this.contractDeclineBtnEl = this.mustGet('btn-contract-decline') as HTMLButtonElement;
+
     this.gameOverModalEl = this.mustGet('gameover-modal');
     this.gameOverCardEl = this.mustGet('gameover-card');
     this.gameOverTitleEl = this.mustGet('gameover-title');
@@ -614,6 +633,29 @@ export class UIManager {
       if (this.lastSnapshot) {
         this.refreshBoonModal(this.lastSnapshot);
       }
+    });
+    this.contractModalCardsEl.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>(
+        '[data-contract-id]',
+      );
+      const contractId = btn?.dataset.contractId as ContractId | undefined;
+      if (!contractId || btn?.disabled) return;
+      this.contractModalOpen = false;
+      this.prevContractModalSig = '';
+      this.handlers.onDispatch({ type: 'pickContract', contractId });
+    });
+    this.contractLaterBtnEl.addEventListener('click', () => {
+      this.contractModalOpen = false;
+      this.prevContractModalSig = '';
+      this.contractModalEl.classList.remove('open');
+      this.showToast('📜 밀명은 [의뢰] 탭에서 언제든 수락할 수 있습니다.');
+    });
+    this.contractDeclineBtnEl.addEventListener('click', () => {
+      this.contractModalOpen = false;
+      this.prevContractModalSig = '';
+      this.contractModalEl.classList.remove('open');
+      this.handlers.onDispatch({ type: 'dismissContractOffer' });
+      this.showToast('📜 이번 강호 밀명 제안을 거절했습니다.');
     });
     this.speedBtnEl.addEventListener('click', () => this.handlers.onCycleSpeed());
     this.pauseBtnEl.addEventListener('click', () => this.handlers.onTogglePause());
@@ -735,6 +777,16 @@ export class UIManager {
     this.autoArrangeBtnEl.addEventListener('click', () => {
       this.handlers.onDispatch({ type: 'autoArrange' });
       this.handlers.clearSelection();
+    });
+
+    this.preserveBenchBtnEl.addEventListener('click', () => {
+      const next = !(this.lastSnapshot?.preserveBenchPassives ?? true);
+      this.handlers.onDispatch({ type: 'setPreserveBenchPassives', enabled: next });
+      this.showToast(
+        next
+          ? '🏯 대기진 유지 ON: 자동출전 시 대기석 패시브 협객 1인 보존'
+          : '🏯 대기진 유지 OFF: 자동출전 시 모든 대기석 협객 출전',
+      );
     });
 
     this.bulkCleanupBtnEl.addEventListener('click', () => {
@@ -859,6 +911,10 @@ export class UIManager {
     });
 
     this.recommendBarEl.addEventListener('click', () => {
+      if (this.recUpgradeGroup) {
+        this.handlers.onDispatch({ type: 'upgrade', group: this.recUpgradeGroup });
+        return;
+      }
       const rid = this.recRecipeId;
       if (!rid || !this.lastSnapshot) return;
       const st = this.lastSnapshot.craft.recipes[rid];
@@ -1598,6 +1654,11 @@ export class UIManager {
       'can-deploy',
       snapshot.benchOccupied > 0 && snapshot.fieldOccupied < 18,
     );
+    this.preserveBenchBtnEl.classList.toggle('active', snapshot.preserveBenchPassives);
+    this.setText(
+      this.preserveBenchBtnEl,
+      snapshot.preserveBenchPassives ? '🏯 진법ON' : '🏯 진법OFF',
+    );
     this.setText(this.surplusCountEl, String(snapshot.benchSurplusCommonCount));
     this.bulkCleanupBtnEl.classList.toggle('has-surplus', snapshot.benchSurplusCommonCount > 0);
     this.setText(this.summonCostEl, String(snapshot.summonCost));
@@ -1663,6 +1724,15 @@ export class UIManager {
     const totalUpLv =
       snapshot.upgradeLv.orthodox + snapshot.upgradeLv.unorthodox + snapshot.upgradeLv.demonic;
     this.setText(this.upgradeCostEl, `Lv.${totalUpLv}`);
+    const minUpCost = Math.min(
+      snapshot.upgradeCosts.orthodox,
+      snapshot.upgradeCosts.unorthodox,
+      snapshot.upgradeCosts.demonic,
+    );
+    this.upgradeBtnEl.classList.toggle(
+      'upgrade-nudge',
+      snapshot.wave >= 4 && totalUpLv === 0 && snapshot.coin >= minUpCost,
+    );
 
     // 3. Reject notices
     for (let i = 0; i < snapshot.rejects.length; i++) {
@@ -1680,14 +1750,90 @@ export class UIManager {
       this.refreshSheet(snapshot);
     }
 
-    // 6. Boss Reward 3-Choice Roguelike Boon Modal
+    // 6. Boss Reward 3-Choice Roguelike Boon Modal & Contract 3-Choice Modal
     this.refreshBoonModal(snapshot);
+    this.refreshContractModal(snapshot);
 
     // 7. Victory / Game Over Settlement Modal
     this.refreshSettlementModal(snapshot, waveStr);
 
     // 8. Interactive First-Run Tutorial Coach
     this.tutorial.sync(snapshot, this.isTutorialBlocked());
+  }
+
+  public promptContractModal(_seq: number): void {
+    this.contractModalOpen = true;
+    this.prevContractModalSig = '';
+    if (this.lastSnapshot) {
+      this.refreshContractModal(this.lastSnapshot);
+    }
+  }
+
+  private refreshContractModal(snapshot: UISnapshot): void {
+    const offer = snapshot.pendingContractOffer;
+    const blockedByOtherModal =
+      snapshot.pendingBoonOffer !== null || snapshot.gameOver || snapshot.victoryHold;
+    if (!offer || !this.contractModalOpen || blockedByOtherModal) {
+      if (this.prevContractModalSig !== 'closed') {
+        this.prevContractModalSig = 'closed';
+        this.contractModalEl.classList.remove('open');
+      }
+      return;
+    }
+
+    const affordBits = offer.options
+      .map((cid) => {
+        const d = CONTRACTS_BY_ID.get(cid);
+        return d && snapshot.coin >= d.depositCoin ? '1' : '0';
+      })
+      .join('');
+    const sig = `${offer.seq}:${offer.wave}:${affordBits}:${snapshot.queuedContractCount}`;
+    if (sig === this.prevContractModalSig) return;
+    this.prevContractModalSig = sig;
+
+    const offerWaveStr = String(offer.wave).padStart(2, '0');
+    this.setText(this.contractModalTitleEl, `제 ${offerWaveStr} 장 강호 밀명 3택 1`);
+
+    this.contractModalCardsEl.innerHTML = offer.options
+      .map((cid) => {
+        const def = CONTRACTS_BY_ID.get(cid);
+        if (!def) return '';
+        const canAfford = snapshot.coin >= def.depositCoin;
+        const rewardParts: string[] = [];
+        if (def.rewardCoin > 0) rewardParts.push(`은자 +${def.rewardCoin}`);
+        if (def.rewardLuck > 0) rewardParts.push(`영단 +${def.rewardLuck}`);
+        if (def.rewardWispGrade) {
+          const gName = this.data.gradesById.get(def.rewardWispGrade)?.name ?? def.rewardWispGrade;
+          rewardParts.push(`${gName} 기연 ×${def.rewardWispCount ?? 1}`);
+        }
+        if (def.rewardUpgradeAll && def.rewardUpgradeAll > 0) {
+          rewardParts.push(`전 문파 내공 +${def.rewardUpgradeAll}Lv`);
+        }
+        return `
+          <button
+            type="button"
+            class="boon-card contract-modal-card interactive${canAfford ? '' : ' is-unaffordable'}"
+            data-contract-id="${def.id}"
+            ${canAfford ? '' : 'disabled'}
+          >
+            <div class="boon-card-body">
+              <div class="boon-card-top">
+                <span class="boon-rarity-pill" style="background:#b45309">${escapeHtml(def.tag)}</span>
+                <span class="boon-tag-pill">기한 ${def.durationWaves}장</span>
+                <span class="boon-stack-pill ${canAfford ? 'is-new' : 'is-warn'}">보증금 ${def.depositCoin}은자</span>
+              </div>
+              <div class="boon-card-name">${escapeHtml(def.name)}</div>
+              <div class="boon-card-desc">${escapeHtml(def.desc)} · 보상: <b>${escapeHtml(rewardParts.join(' · '))}</b></div>
+            </div>
+            <div class="boon-card-cta">
+              <span>${canAfford ? '수락' : '부족'}</span>
+            </div>
+          </button>
+        `;
+      })
+      .join('');
+
+    this.contractModalEl.classList.add('open');
   }
 
   private refreshBoonModal(snapshot: UISnapshot): void {
@@ -1963,7 +2109,9 @@ export class UIManager {
     if (hasSelection) {
       if (this.prevRecommendSignature !== 'hidden') {
         this.prevRecommendSignature = 'hidden';
+        this.recUpgradeGroup = null;
         this.recommendBarEl.classList.remove('visible');
+        this.recommendBarEl.classList.remove('rec-upgrade-mode');
       }
       return;
     }
@@ -1972,9 +2120,72 @@ export class UIManager {
     const rec = this.pickRecommendedRecipe(snapshot);
     const st = rec ? snapshot.craft.recipes[rec.id] : undefined;
     const isPinned = Boolean(rec && this.pinnedRecipeId === rec.id);
-    const sig = `${meta.rev}:${rec?.id ?? 'none'}:${isPinned ? 1 : 0}:${st?.lamp ?? ''}:${st?.have ?? 0}:${snapshot.craft.rev}:${snapshot.fieldOccupied + snapshot.benchOccupied}`;
+    const recOutRank = rec
+      ? (this.data.gradesById.get(this.data.unitsById.get(rec.output)?.grade ?? '')?.rank ?? 0)
+      : 0;
+    const hasHighCraftReady =
+      Boolean(st && (st.lamp === 'ready' || st.lamp === 'chainReady') && recOutRank >= 3);
+
+    // Beginner Boss Wall Guard: from Wave 4+, nudge inner-qi upgrade when dominant faction lags behind
+    const synCounts = snapshot.synergy.counts;
+    const domFaction: UpgradeGroupId =
+      synCounts.demonic >= synCounts.orthodox && synCounts.demonic >= synCounts.unorthodox
+        ? 'demonic'
+        : synCounts.unorthodox >= synCounts.orthodox
+          ? 'unorthodox'
+          : 'orthodox';
+    const domUpLv = snapshot.upgradeLv[domFaction] ?? 0;
+    const domUpCost = snapshot.upgradeCosts[domFaction] ?? 999999;
+    const maxUpLv = Math.max(
+      snapshot.upgradeLv.orthodox,
+      snapshot.upgradeLv.unorthodox,
+      snapshot.upgradeLv.demonic,
+    );
+    const targetUpLv = snapshot.wave >= 4 ? Math.min(10, Math.floor((snapshot.wave - 1) / 2)) : 0;
+    const showUpgradeNudge =
+      !isPinned &&
+      !hasHighCraftReady &&
+      snapshot.wave >= 4 &&
+      maxUpLv < targetUpLv &&
+      snapshot.coin >= domUpCost;
+
+    const sig = showUpgradeNudge
+      ? `up:${domFaction}:${domUpLv}:${domUpCost}:${snapshot.wave}:${snapshot.craft.readyCount + snapshot.craft.chainReadyCount}`
+      : `${meta.rev}:${rec?.id ?? 'none'}:${isPinned ? 1 : 0}:${st?.lamp ?? ''}:${st?.have ?? 0}:${snapshot.craft.rev}:${snapshot.fieldOccupied + snapshot.benchOccupied}`;
     if (sig === this.prevRecommendSignature) return;
     this.prevRecommendSignature = sig;
+
+    if (showUpgradeNudge) {
+      const upDef = this.data.upgradesByFaction.get(domFaction);
+      const fMeta = FACTION_META[domFaction];
+      this.recUpgradeGroup = domFaction;
+      this.recRecipeId = null;
+      this.recommendBarEl.classList.add('visible', 'rec-lit', 'rec-upgrade-mode');
+      this.setText(this.recTagEl, '🔥 내공 추천');
+      const repUnit =
+        this.data.units.find((u) => u.faction === domFaction && u.grade === 'rare') ??
+        this.data.units[0]!;
+      const repGrade = this.data.gradesById.get(repUnit.grade) ?? this.data.grades[0]!;
+      this.recImgEl.src = this.sprites.unitPortraitUrl(
+        repUnit,
+        repGrade,
+        getEquippedSkinDef(this.data, repUnit.id, meta),
+      );
+      this.recImgEl.alt = upDef?.name ?? fMeta.label;
+      this.recGradeEl.textContent = `Lv.${domUpLv}→${domUpLv + 1}`;
+      this.recGradeEl.style.backgroundColor = fMeta.color;
+      this.recNameEl.textContent = upDef?.name ?? `${fMeta.label} 심법`;
+      this.recIngsEl.innerHTML = `<span class="rec-upgrade-hint">영물 보스 대비 · ${escapeHtml(fMeta.label)} 공격력 +${upDef?.atkBonusPctPerLv ?? 12}%</span>`;
+      const totalReadyAll = snapshot.craft.readyCount + snapshot.craft.chainReadyCount;
+      this.recCraftAllBtnEl.classList.toggle('visible', totalReadyAll >= 2);
+      this.setText(this.recCraftAllBtnEl, `⚡전부 ${totalReadyAll}`);
+      this.recCtaEl.className = 'rec-cta interactive cta-ready';
+      this.recCtaEl.textContent = `수련 ${domUpCost}`;
+      return;
+    }
+
+    this.recUpgradeGroup = null;
+    this.recommendBarEl.classList.remove('rec-upgrade-mode');
 
     const outUnit = rec ? this.data.unitsById.get(rec.output) : undefined;
     const outGrade = outUnit ? this.data.gradesById.get(outUnit.grade) : undefined;
@@ -2336,12 +2547,16 @@ export class UIManager {
       this.unitAscendBtnEl.style.display = 'none';
     }
 
-    if (slotView.awakenCost !== null) {
+    if ((gradeDef.rank ?? 1) < MIN_AWAKEN_GRADE_RANK) {
+      this.unitAwakenBtnEl.style.display = 'none';
+    } else if (slotView.awakenCost !== null) {
+      this.unitAwakenBtnEl.style.display = 'inline-flex';
       this.unitAwakenBtnEl.disabled = !canAffordAwaken;
       this.unitAwakenBtnEl.classList.toggle('ready', canAffordAwaken);
       this.unitAwakenBtnEl.classList.remove('maxed');
       this.unitAwakenBtnEl.innerHTML = `<span>⭐ ${slotView.starLevel + 1}성</span><span class="mini-price">${ICON.coin}${slotView.awakenCost}</span>`;
     } else {
+      this.unitAwakenBtnEl.style.display = 'inline-flex';
       this.unitAwakenBtnEl.disabled = true;
       this.unitAwakenBtnEl.classList.remove('ready');
       this.unitAwakenBtnEl.classList.add('maxed');

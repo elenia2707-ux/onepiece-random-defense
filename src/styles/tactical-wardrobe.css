@@ -1219,12 +1219,121 @@
 .wing-contract-pick b {
   font-size: 12.5px;
   color: #fef08a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 6px;
+}
+
+.wing-contract-pick b em {
+  font-style: normal;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fde047;
+}
+
+.wing-contract-pick.is-unaffordable {
+  opacity: 0.52;
+  cursor: not-allowed;
 }
 
 .wing-contract-pick span {
   font-size: 11px;
   color: #fed7aa;
   line-height: 1.3;
+}
+
+/* v2.4: Roomier 2-row mobile tactical strip (better touch targets & room for 6-7+ pills) */
+#app:not(.is-desktop-wide) .tactical-strip {
+  height: auto;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  column-gap: 7px;
+  top: 100px;
+  padding: 0 6px;
+}
+
+#app:not(.is-desktop-wide) .tactical-strip .tac-pill {
+  height: 44px;
+  padding: 0 15px;
+  font-size: 17px;
+  gap: 4.5px;
+}
+
+#app:not(.is-desktop-wide) .tactical-strip.boss-active {
+  top: 172px;
+  row-gap: 4px;
+  column-gap: 5px;
+}
+
+#app:not(.is-desktop-wide) .tactical-strip.boss-active .tac-pill {
+  height: 36px;
+  padding: 0 11px;
+  font-size: 14.5px;
+}
+
+/* v2.4: 3-Choice Contract Modal */
+.contract-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 16, 18, 0.76);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 64;
+}
+
+.contract-modal.open {
+  display: flex;
+  animation: fadeInFast 140ms ease;
+}
+
+.contract-shell {
+  border-color: #f59e0b;
+}
+
+.contract-modal-card {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.92) 0%, rgba(41, 20, 10, 0.96) 100%);
+  border-color: #f59e0b;
+}
+
+.contract-modal-card.is-unaffordable {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.boon-stack-pill.is-warn {
+  background: #991b1b;
+  color: #fecaca;
+}
+
+.contract-decline-btn {
+  background: linear-gradient(180deg, #64748b 0%, #334155 100%);
+  color: #f1f5f9;
+}
+
+/* v2.4: Upgrade Nudge visual cues */
+.recommend-bar.rec-upgrade-mode {
+  background: linear-gradient(180deg, rgba(154, 52, 18, 0.96) 0%, rgba(67, 20, 7, 0.98) 100%);
+  border-color: #fb923c;
+  box-shadow: 0 4px 0 var(--ink), 0 0 0 2px #fde047;
+}
+
+.rec-upgrade-hint {
+  font-size: 13.5px;
+  color: #ffedd5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action-btn.btn-upgrade.upgrade-nudge {
+  box-shadow: 0 6px 0 var(--ink), 0 0 0 3px #fde047, 0 0 18px rgba(250, 204, 21, 0.65);
+  animation: chipGlow 0.85s ease-in-out infinite alternate;
 }
 
 
