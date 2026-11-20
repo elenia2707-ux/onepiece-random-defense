@@ -60,10 +60,15 @@ export class Game {
     this.meta = new MetaStore();
     this.sound = new SoundSynthesizer();
     const runSeed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 0x20261118;
+    const selRunMode = this.meta.getSelectedRunMode();
     const selDiff = this.meta.getSelectedDifficulty();
-    const selTrial = this.meta.getSelectedTrialId();
+    const selTrial = selRunMode === 'standard' ? this.meta.getSelectedTrialId() : null;
+    const metaProf = this.meta.getProfile();
     const rookieMode =
-      this.meta.getProfile().totalRuns < 3 && selDiff === 'normal' && selTrial === null;
+      selRunMode === 'standard' &&
+      metaProf.totalRuns < 3 &&
+      selDiff === 'normal' &&
+      selTrial === null;
     this.sim = new Simulation(
       data,
       runSeed,
@@ -71,6 +76,10 @@ export class Game {
       selDiff,
       selTrial,
       rookieMode,
+      {
+        runMode: selRunMode,
+        dailyDateKey: metaProf.dailyDate,
+      },
     );
 
     // Attempt seamless auto-resume of unfinished expedition with schema migration (v1 -> v2)
@@ -84,6 +93,8 @@ export class Game {
         !savedRun.gameOver &&
         !savedRun.victoryHold &&
         !savedRun.victoryAchieved &&
+        (savedRun.runMode ?? 'standard') === this.sim.runMode &&
+        (savedRun.dailyDateKey ?? null) === (this.sim.dailyChallengeSpec?.dateKey ?? null) &&
         savedRun.difficulty === this.sim.difficulty &&
         (savedRun.trialId ?? null) === this.sim.trialId &&
         this.sim.restoreRunSave(savedRun)
@@ -202,6 +213,15 @@ export class Game {
       },
       onSelectTrial: (trialId) => {
         if (this.meta.setSelectedTrial(trialId)) {
+          this.suppressAutoSave = true;
+          this.meta.clearActiveRun();
+          window.location.reload();
+          return true;
+        }
+        return false;
+      },
+      onSelectRunMode: (mode) => {
+        if (this.meta.setSelectedRunMode(mode)) {
           this.suppressAutoSave = true;
           this.meta.clearActiveRun();
           window.location.reload();
@@ -419,6 +439,7 @@ export class Game {
         } else if (snap.gameOver && this.settlementRecord && !this.endlessSettled) {
           this.endlessSettled = true;
           const prevUnlockLen = this.settlementRecord.unlockedSkinIds.length;
+          const topEntry = snap.damageMeter.entries[0] ?? null;
           this.settlementRecord = this.meta.settleEndlessOvertime(this.settlementRecord, {
             wave: snap.wave,
             monstersSlain: snap.monstersSlain,
@@ -426,10 +447,15 @@ export class Game {
             bountiesSlain: snap.bounty.bountiesSlain,
             difficulty: snap.difficulty,
             trialId: snap.trialId,
+            runMode: snap.runMode,
             victory: snap.victoryAchieved,
             elapsedTicks: this.sim.tickCount,
+            totalDamage: snap.damageMeter.totalDamage,
+            topHeroId: topEntry?.unitId ?? null,
+            topHeroName: topEntry?.name ?? null,
             usedHighFormation: snap.usedHighFormation,
             craftedImmortal: snap.craftedImmortal,
+            ...(snap.dailyChallenge ? { dateKey: snap.dailyChallenge.dateKey } : {}),
           });
           if (this.settlementRecord.unlockedSkinIds.length > prevUnlockLen) {
             this.syncCosmetics(true);
@@ -546,6 +572,7 @@ export class Game {
 
   private settleCurrentRun(snap: UISnapshot): SettlementRecord {
     if (!this.settlementRecord) {
+      const topEntry = snap.damageMeter.entries[0] ?? null;
       this.settlementRecord = this.meta.settleRun({
         wave: snap.wave,
         monstersSlain: snap.monstersSlain,
@@ -553,10 +580,15 @@ export class Game {
         bountiesSlain: snap.bounty.bountiesSlain,
         difficulty: snap.difficulty,
         trialId: snap.trialId,
+        runMode: snap.runMode,
         victory: snap.victoryAchieved,
         elapsedTicks: this.sim.tickCount,
+        totalDamage: snap.damageMeter.totalDamage,
+        topHeroId: topEntry?.unitId ?? null,
+        topHeroName: topEntry?.name ?? null,
         usedHighFormation: snap.usedHighFormation,
         craftedImmortal: snap.craftedImmortal,
+        ...(snap.dailyChallenge ? { dateKey: snap.dailyChallenge.dateKey } : {}),
       });
       if (this.settlementRecord.unlockedSkinIds.length > 0) {
         this.syncCosmetics(true);
@@ -918,15 +950,40 @@ export class Game {
 
     this.sim.events.on('run:victory', (ev) => {
       this.sound.playVictory();
-      const bannerTag = ev.trialId ? TRIAL_CONFIGS[ev.trialId].badge : '천하통일';
+      const bannerTag =
+        this.sim.runMode === 'boss_rush'
+          ? '보스러시 제패'
+          : this.sim.runMode === 'daily_challenge'
+            ? '오늘의 비무 제패'
+            : ev.trialId
+              ? TRIAL_CONFIGS[ev.trialId].badge
+              : '천하통일';
+      const subTxt =
+        this.sim.runMode === 'boss_rush'
+          ? `제 ${ev.wave} 관문 완전 정복!`
+          : `제 ${ev.wave} 장 대승리!`;
       this.vfx.showCraftCelebrationBanner(
         bannerTag,
-        `제 ${ev.wave} 장 대승리!`,
+        subTxt,
         '#fde047',
         performance.now(),
       );
       const snap = this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused());
       this.settleCurrentRun(snap);
+    });
+
+    this.sim.events.on('endless:milestone', (ev) => {
+      this.sound.playVictory();
+      this.vfx.triggerScreenFlash('#fde047', 0.16, 0.25, ev.tick);
+      this.vfx.showCraftCelebrationBanner(
+        `무한 ${ev.wave}장 돌파`,
+        ev.label,
+        '#fde047',
+        performance.now(),
+      );
+      this.ui.showToast(
+        `🏛 ${ev.label} 달성! 전투 보급 은자+${ev.inRunCoin} · 영단+${ev.inRunLuck} (정산 시 영구 보상 지급!)`,
+      );
     });
 
     this.sim.events.on('gamble:result', (ev) => {
@@ -1035,6 +1092,15 @@ export class Game {
     } else if (this.autoRestoredWave !== null) {
       const wStr = String(this.autoRestoredWave).padStart(2, '0');
       this.ui.showToast(`💾 이전 출정(제 ${wStr}장) 자동 이어하기 완료!`);
+    } else if (!this.tutorialPaused && this.sim.dailyChallengeSpec) {
+      const spec = this.sim.dailyChallengeSpec;
+      this.ui.showToast(
+        `📅 오늘의 강호 비무 [${spec.rule.name}] (${spec.seedCode}) — ${spec.rule.desc}`,
+      );
+    } else if (!this.tutorialPaused && this.sim.runMode === 'boss_rush') {
+      this.ui.showToast(
+        '⚔ 보스 러시 10연전 출정! 초기 420은자 · 6영단 · 기연 6장 지급 — 4초 뒤 제1관문 개시!',
+      );
     } else if (!this.tutorialPaused && this.sim.rookieMode) {
       this.ui.showToast('🛡 초출강호 보호 적용 (첫 3회 출정: 5·10장 영물 제한시간 +25%)');
     }

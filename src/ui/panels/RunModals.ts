@@ -156,7 +156,26 @@ export function buildSettlementLootHtml(
         `;
   }
 
-  const totalSilkGain = rec.firstClearBonusSilk + rec.titleBonusSilk;
+  let endlessMilestoneBanner = '';
+  if (rec.unlockedEndlessMilestones.length > 0) {
+    const wavesTxt = rec.unlockedEndlessMilestones.map((w) => `제${w}장`).join(' · ');
+    endlessMilestoneBanner = `
+          <div class="first-clear-banner endless-ms-banner">
+            🏛 무한 혈투 기록판 돌파 [${wavesTxt}]! (+${rec.endlessBonusGold} 주화 · 열쇠 +${rec.endlessBonusKeys} · 비단 +${rec.endlessBonusSilk}필)
+          </div>
+        `;
+  }
+
+  let dailyScoreBanner = '';
+  if (rec.runMode === 'daily_challenge' && rec.dailyChallengeScore !== undefined) {
+    dailyScoreBanner = `
+          <div class="first-clear-banner daily-score-banner">
+            📅 오늘의 강호 비무 최종 점수: <b>${rec.dailyChallengeScore.toLocaleString('ko-KR')}점</b>
+          </div>
+        `;
+  }
+
+  const totalSilkGain = rec.firstClearBonusSilk + rec.titleBonusSilk + rec.endlessBonusSilk;
   const silkLootHtml =
     totalSilkGain > 0
       ? `
@@ -232,7 +251,9 @@ export function buildSettlementLootHtml(
 
   return `
         <div class="settlement-loot-title">출정 정산 영구 보상${multBadge}</div>
+        ${dailyScoreBanner}
         ${firstClearBanner}
+        ${endlessMilestoneBanner}
         ${titleUnlockBanner}
         ${skinUnlockBanner}
         <div class="settlement-loot-row">

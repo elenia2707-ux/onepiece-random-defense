@@ -10,6 +10,11 @@ import {
   TRIAL_CONFIGS,
   TRIAL_ORDER,
 } from '../core/relicFormulas';
+import {
+  computeDailyChallengeScore,
+  ENDLESS_MILESTONES,
+  type RunModeId,
+} from '../data/specialModes';
 import type {
   CourtSkinDef,
   CourtSkinId,
@@ -93,6 +98,36 @@ export interface TrialRecord {
   readonly bestTicks: number | null;
 }
 
+export interface DailyChallengeRecord {
+  readonly dateKey: string;
+  readonly bestWave: number;
+  readonly bestScore: number;
+  readonly cleared: boolean;
+  readonly bestTicks: number | null;
+  readonly rewardTierClaimed: 0 | 1 | 2;
+}
+
+export interface BossRushRecord {
+  readonly clears: number;
+  readonly bestStage: number;
+  readonly bestTicks: number | null;
+}
+
+export interface HallOfFameEntry {
+  readonly id: string;
+  readonly dateKey: string;
+  readonly runMode: RunModeId;
+  readonly difficulty: DifficultyId;
+  readonly trialId: TrialId | null;
+  readonly wave: number;
+  readonly victory: boolean;
+  readonly totalDamage: number;
+  readonly topHeroId: UnitId | null;
+  readonly topHeroName: string | null;
+  readonly elapsedTicks: number | null;
+  readonly score: number;
+}
+
 export interface TitleProgress {
   readonly current: number;
   readonly target: number;
@@ -120,6 +155,7 @@ export interface MetaProfile {
   readonly relics: Readonly<Record<RelicId, number>>;
   readonly totalRuns: number;
   readonly bestWave: number;
+  readonly selectedRunMode: RunModeId;
   readonly selectedDifficulty: DifficultyId;
   readonly selectedTrialId: TrialId | null;
   readonly unlockedDifficulties: Readonly<Record<DifficultyId, boolean>>;
@@ -128,6 +164,11 @@ export interface MetaProfile {
   readonly clearedTrials: Readonly<Record<TrialId, boolean>>;
   readonly trialRecords: Readonly<Record<TrialId, TrialRecord>>;
   readonly clearedTrialCount: number;
+  readonly dailyChallengeToday: DailyChallengeRecord | null;
+  readonly dailyChallengeStreak: number;
+  readonly bossRushRecord: BossRushRecord;
+  readonly endlessMilestonesCleared: readonly number[];
+  readonly hallOfFame: readonly HallOfFameEntry[];
   readonly unlockedTitles: Readonly<Record<TitleId, boolean>>;
   readonly unlockedTitleCount: number;
   readonly equippedTitle: TitleId | null;
@@ -152,8 +193,12 @@ export interface SettlementInput {
   readonly bountiesSlain?: number;
   readonly difficulty?: DifficultyId;
   readonly trialId?: TrialId | null;
+  readonly runMode?: RunModeId;
   readonly victory?: boolean;
   readonly elapsedTicks?: number;
+  readonly totalDamage?: number;
+  readonly topHeroId?: UnitId | null;
+  readonly topHeroName?: string | null;
   readonly usedHighFormation?: boolean;
   readonly craftedImmortal?: boolean;
   readonly dateKey?: string;
@@ -172,11 +217,17 @@ export interface SettlementRecord extends SettlementReward {
   readonly bountiesSlain: number;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly runMode: RunModeId;
   readonly victory: boolean;
   readonly firstClearBonusGold: number;
   readonly firstClearBonusKeys: number;
   readonly firstClearBonusSilk: number;
   readonly unlockedNextDifficulty: DifficultyId | null;
+  readonly unlockedEndlessMilestones: readonly number[];
+  readonly endlessBonusGold: number;
+  readonly endlessBonusKeys: number;
+  readonly endlessBonusSilk: number;
+  readonly dailyChallengeScore?: number;
   readonly unlockedSkinIds: readonly string[];
   readonly unlockedTitleIds: readonly TitleId[];
   readonly titleBonusGold: number;
@@ -564,6 +615,13 @@ export class MetaStore {
     createEmptyDifficultyBestWave();
   private readonly clearedTrials: Record<TrialId, boolean> = createEmptyClearedTrials();
   private readonly trialRecords: Record<TrialId, TrialRecord> = createEmptyTrialRecords();
+  private selectedRunMode: RunModeId = 'standard';
+  private readonly dailyChallengeRecords: Record<string, DailyChallengeRecord> = {};
+  private dailyChallengeStreak = 0;
+  private lastDailyChallengeDate: string | null = null;
+  private bossRushRecord: BossRushRecord = { clears: 0, bestStage: 0, bestTicks: null };
+  private readonly endlessMilestonesCleared = new Set<number>();
+  private hallOfFame: HallOfFameEntry[] = [];
   private readonly unlockedTitles: Record<TitleId, boolean> = createEmptyUnlockedTitles();
   private equippedTitle: TitleId | null = null;
   private readonly discoveredUnits: Record<UnitId, boolean> = {};
@@ -709,6 +767,7 @@ export class MetaStore {
       relics: { ...this.relics },
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
+      selectedRunMode: this.selectedRunMode,
       selectedDifficulty: this.selectedDifficulty,
       selectedTrialId: this.selectedTrialId,
       unlockedDifficulties: { ...this.unlockedDifficulties },
@@ -717,6 +776,13 @@ export class MetaStore {
       clearedTrials: { ...this.clearedTrials },
       trialRecords: trialRecordsCopy,
       clearedTrialCount,
+      dailyChallengeToday: this.dailyChallengeRecords[this.dailyDate]
+        ? { ...this.dailyChallengeRecords[this.dailyDate]! }
+        : null,
+      dailyChallengeStreak: this.dailyChallengeStreak,
+      bossRushRecord: { ...this.bossRushRecord },
+      endlessMilestonesCleared: [...this.endlessMilestonesCleared].sort((a, b) => a - b),
+      hallOfFame: this.hallOfFame.map((e) => ({ ...e })),
       unlockedTitles: { ...this.unlockedTitles },
       unlockedTitleCount,
       equippedTitle: this.equippedTitle,
@@ -748,6 +814,10 @@ export class MetaStore {
 
   public getRelicLevels(): Readonly<Record<RelicId, number>> {
     return { ...this.relics };
+  }
+
+  public getSelectedRunMode(): RunModeId {
+    return this.selectedRunMode;
   }
 
   public getSelectedDifficulty(): DifficultyId {
@@ -787,13 +857,34 @@ export class MetaStore {
     return true;
   }
 
+  public setSelectedRunMode(mode: RunModeId): boolean {
+    if (mode !== 'standard' && mode !== 'daily_challenge' && mode !== 'boss_rush') {
+      return false;
+    }
+    if (this.selectedRunMode !== mode || (mode !== 'standard' && this.selectedTrialId !== null)) {
+      this.clearActiveRun();
+    }
+    this.selectedRunMode = mode;
+    if (mode !== 'standard') {
+      this.selectedTrialId = null;
+    }
+    this.rev++;
+    this.save();
+    return true;
+  }
+
   public setSelectedDifficulty(diff: DifficultyId): boolean {
     if (!this.unlockedDifficulties[diff]) {
       return false;
     }
-    if (this.selectedDifficulty !== diff || this.selectedTrialId !== null) {
+    if (
+      this.selectedDifficulty !== diff ||
+      this.selectedTrialId !== null ||
+      this.selectedRunMode !== 'standard'
+    ) {
       this.clearActiveRun();
     }
+    this.selectedRunMode = 'standard';
     this.selectedDifficulty = diff;
     this.selectedTrialId = null;
     this.rev++;
@@ -805,9 +896,10 @@ export class MetaStore {
     if (trialId !== null && !(TRIAL_ORDER as readonly string[]).includes(trialId)) {
       return false;
     }
-    if (this.selectedTrialId !== trialId) {
+    if (this.selectedTrialId !== trialId || this.selectedRunMode !== 'standard') {
       this.clearActiveRun();
     }
+    this.selectedRunMode = 'standard';
     this.selectedTrialId = trialId;
     this.rev++;
     this.save();
@@ -1285,27 +1377,142 @@ export class MetaStore {
     return { unlockedIds, bonusGold, bonusKeys, bonusSilk };
   }
 
+  private awardEndlessMilestones(wave: number): {
+    readonly unlockedWaves: number[];
+    readonly bonusGold: number;
+    readonly bonusKeys: number;
+    readonly bonusSilk: number;
+  } {
+    const unlockedWaves: number[] = [];
+    let bonusGold = 0;
+    let bonusKeys = 0;
+    let bonusSilk = 0;
+    for (let i = 0; i < ENDLESS_MILESTONES.length; i++) {
+      const ms = ENDLESS_MILESTONES[i]!;
+      if (wave >= ms.wave && !this.endlessMilestonesCleared.has(ms.wave)) {
+        this.endlessMilestonesCleared.add(ms.wave);
+        unlockedWaves.push(ms.wave);
+        bonusGold += ms.rewardGold;
+        bonusKeys += ms.rewardKeys;
+        bonusSilk += ms.rewardSilk;
+      }
+    }
+    if (bonusGold > 0) this.gold += bonusGold;
+    if (bonusKeys > 0) this.keys += bonusKeys;
+    if (bonusSilk > 0) this.silk += bonusSilk;
+    return { unlockedWaves, bonusGold, bonusKeys, bonusSilk };
+  }
+
+  private recordHallOfFame(entry: HallOfFameEntry): void {
+    const minWave = entry.runMode === 'boss_rush' ? 2 : 5;
+    if (entry.wave < minWave) return;
+    this.hallOfFame.push(entry);
+    this.hallOfFame.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.wave !== a.wave) return b.wave - a.wave;
+      return b.totalDamage - a.totalDamage;
+    });
+    if (this.hallOfFame.length > 12) {
+      this.hallOfFame.length = 12;
+    }
+  }
+
+  private static isConsecutiveDay(prevDateKey: string | null, currDateKey: string): boolean {
+    if (!prevDateKey || prevDateKey === currDateKey) return false;
+    const prevMs = Date.parse(`${prevDateKey}T00:00:00Z`);
+    const currMs = Date.parse(`${currDateKey}T00:00:00Z`);
+    if (!Number.isFinite(prevMs) || !Number.isFinite(currMs)) return false;
+    const diffDays = Math.round((currMs - prevMs) / 86_400_000);
+    return diffDays === 1;
+  }
+
   public settleRun(input: SettlementInput): SettlementRecord {
+    const runMode: RunModeId = input.runMode ?? 'standard';
     const diff = input.difficulty ?? 'normal';
-    const trialId = input.trialId ?? null;
+    const trialId = runMode === 'standard' ? (input.trialId ?? null) : null;
     const victory = Boolean(input.victory);
     const bountiesSlain = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
     const reward = computeSettlementReward(input);
     const wave = Math.max(1, Math.floor(input.wave));
-    const isNewBest = wave > this.bestWave;
+    const isNewBest = runMode === 'standard' && wave > this.bestWave;
     const elapsedTicks =
       typeof input.elapsedTicks === 'number' &&
       Number.isFinite(input.elapsedTicks) &&
       input.elapsedTicks > 0
         ? Math.floor(input.elapsedTicks)
         : null;
+    const dateKey = input.dateKey ?? getLocalDateKey();
 
     let firstClearBonusGold = 0;
     let firstClearBonusKeys = 0;
     let firstClearBonusSilk = 0;
     let unlockedNextDifficulty: DifficultyId | null = null;
+    let dailyChallengeScore: number | undefined;
 
-    if (trialId !== null) {
+    if (runMode === 'daily_challenge') {
+      dailyChallengeScore = computeDailyChallengeScore(
+        wave,
+        Math.max(0, Math.floor(input.bossesSlain)),
+        victory,
+        elapsedTicks ?? 36000,
+      );
+      const prev = this.dailyChallengeRecords[dateKey];
+      const prevTier = prev?.rewardTierClaimed ?? 0;
+      let nextTier: 0 | 1 | 2 = prevTier;
+      if (wave >= 10 && prevTier < 1) {
+        firstClearBonusGold += 120;
+        firstClearBonusKeys += 1;
+        firstClearBonusSilk += 15;
+        nextTier = 1;
+      }
+      if (victory && prevTier < 2) {
+        firstClearBonusGold += 250;
+        firstClearBonusKeys += 2;
+        firstClearBonusSilk += 35;
+        nextTier = 2;
+      }
+      if (this.lastDailyChallengeDate !== dateKey) {
+        this.dailyChallengeStreak = MetaStore.isConsecutiveDay(this.lastDailyChallengeDate, dateKey)
+          ? this.dailyChallengeStreak + 1
+          : 1;
+        this.lastDailyChallengeDate = dateKey;
+      }
+      this.dailyChallengeRecords[dateKey] = {
+        dateKey,
+        bestWave: Math.max(prev?.bestWave ?? 0, wave),
+        bestScore: Math.max(prev?.bestScore ?? 0, dailyChallengeScore),
+        cleared: Boolean(prev?.cleared || victory),
+        bestTicks:
+          victory && elapsedTicks !== null
+            ? prev?.bestTicks != null
+              ? Math.min(prev.bestTicks, elapsedTicks)
+              : elapsedTicks
+            : (prev?.bestTicks ?? null),
+        rewardTierClaimed: nextTier,
+      };
+    } else if (runMode === 'boss_rush') {
+      const prev = this.bossRushRecord;
+      const wasFirstClear = victory && prev.clears === 0;
+      this.bossRushRecord = {
+        clears: prev.clears + (victory ? 1 : 0),
+        bestStage: Math.max(prev.bestStage, wave),
+        bestTicks:
+          victory && elapsedTicks !== null
+            ? prev.bestTicks !== null
+              ? Math.min(prev.bestTicks, elapsedTicks)
+              : elapsedTicks
+            : prev.bestTicks,
+      };
+      if (wasFirstClear) {
+        firstClearBonusGold = 350;
+        firstClearBonusKeys = 3;
+        firstClearBonusSilk = 50;
+      } else if (victory) {
+        firstClearBonusGold = 180;
+        firstClearBonusKeys = 1;
+        firstClearBonusSilk = 20;
+      }
+    } else if (trialId !== null) {
       const prevRec = this.trialRecords[trialId];
       this.trialRecords[trialId] = {
         clears: prevRec.clears + (victory ? 1 : 0),
@@ -1347,6 +1554,11 @@ export class MetaStore {
       }
     }
 
+    const endlessMs =
+      runMode === 'standard'
+        ? this.awardEndlessMilestones(wave)
+        : { unlockedWaves: [], bonusGold: 0, bonusKeys: 0, bonusSilk: 0 };
+
     const totalGoldGain = reward.goldEarned + firstClearBonusGold;
     const totalKeysGain = reward.keysEarned + firstClearBonusKeys;
 
@@ -1357,6 +1569,31 @@ export class MetaStore {
     if (isNewBest) {
       this.bestWave = wave;
     }
+
+    const totalDamage = Math.max(0, Math.floor(input.totalDamage ?? 0));
+    const modeScore =
+      dailyChallengeScore ??
+      (runMode === 'boss_rush'
+        ? wave * 2500 + (victory ? 8000 : 0)
+        : wave * 1000 +
+          (diff === 'abyss' ? 6000 : diff === 'hell' ? 3500 : diff === 'hard' ? 1500 : 0) +
+          (trialId ? 4000 : 0) +
+          (victory ? 3000 : 0));
+    this.recordHallOfFame({
+      id: `${dateKey}-${this.totalRuns}-${wave}`,
+      dateKey,
+      runMode,
+      difficulty: diff,
+      trialId,
+      wave,
+      victory,
+      totalDamage,
+      topHeroId: input.topHeroId ?? null,
+      topHeroName: input.topHeroName ?? null,
+      elapsedTicks,
+      score: modeScore,
+    });
+
     this.advanceDailyQuests(input, victory, wave);
     const unlockedSkinIds = this.unlockEligibleAchievementSkins();
     const titleRes = this.evaluateTitles(true);
@@ -1372,18 +1609,24 @@ export class MetaStore {
       bountiesSlain,
       difficulty: diff,
       trialId,
+      runMode,
       victory,
       firstClearBonusGold,
       firstClearBonusKeys,
       firstClearBonusSilk,
       unlockedNextDifficulty,
+      unlockedEndlessMilestones: endlessMs.unlockedWaves,
+      endlessBonusGold: endlessMs.bonusGold,
+      endlessBonusKeys: endlessMs.bonusKeys,
+      endlessBonusSilk: endlessMs.bonusSilk,
+      ...(dailyChallengeScore !== undefined ? { dailyChallengeScore } : {}),
       unlockedSkinIds,
       unlockedTitleIds: titleRes.unlockedIds,
       titleBonusGold: titleRes.bonusGold,
       titleBonusKeys: titleRes.bonusKeys,
       titleBonusSilk: titleRes.bonusSilk,
-      goldEarned: totalGoldGain,
-      keysEarned: totalKeysGain,
+      goldEarned: totalGoldGain + endlessMs.bonusGold,
+      keysEarned: totalKeysGain + endlessMs.bonusKeys,
       totalGold: this.gold,
       totalKeys: this.keys,
       totalSilk: this.silk,
@@ -1414,11 +1657,11 @@ export class MetaStore {
     const deltaGold = Math.max(0, finalBase.goldEarned - prevBase.goldEarned);
     const deltaKeys = Math.max(0, finalBase.keysEarned - prevBase.keysEarned);
     const wave = Math.max(prevRecord.wave, Math.floor(finalInput.wave));
-    const isNewBest = wave > this.bestWave || prevRecord.isNewBest;
+    const isNewBest = prevRecord.runMode === 'standard' && (wave > this.bestWave || prevRecord.isNewBest);
 
     this.gold += deltaGold;
     this.keys += deltaKeys;
-    if (wave > this.bestWave) {
+    if (prevRecord.runMode === 'standard' && wave > this.bestWave) {
       this.bestWave = wave;
     }
     if (prevRecord.trialId !== null) {
@@ -1429,8 +1672,43 @@ export class MetaStore {
           bestWave: wave,
         };
       }
-    } else if (wave > this.difficultyBestWave[prevRecord.difficulty]) {
+    } else if (prevRecord.runMode === 'standard' && wave > this.difficultyBestWave[prevRecord.difficulty]) {
       this.difficultyBestWave[prevRecord.difficulty] = wave;
+    }
+
+    const endlessMs =
+      prevRecord.runMode === 'standard'
+        ? this.awardEndlessMilestones(wave)
+        : { unlockedWaves: [], bonusGold: 0, bonusKeys: 0, bonusSilk: 0 };
+
+    if (wave >= 35) {
+      const dateKey = finalInput.dateKey ?? getLocalDateKey();
+      const totalDamage = Math.max(0, Math.floor(finalInput.totalDamage ?? 0));
+      this.recordHallOfFame({
+        id: `${dateKey}-endless-${this.totalRuns}-${wave}`,
+        dateKey,
+        runMode: prevRecord.runMode,
+        difficulty: prevRecord.difficulty,
+        trialId: prevRecord.trialId,
+        wave,
+        victory: true,
+        totalDamage,
+        topHeroId: finalInput.topHeroId ?? null,
+        topHeroName: finalInput.topHeroName ?? null,
+        elapsedTicks:
+          typeof finalInput.elapsedTicks === 'number' ? Math.floor(finalInput.elapsedTicks) : null,
+        score:
+          wave * 1000 +
+          (prevRecord.difficulty === 'abyss'
+            ? 6000
+            : prevRecord.difficulty === 'hell'
+              ? 3500
+              : prevRecord.difficulty === 'hard'
+                ? 1500
+                : 0) +
+          (prevRecord.trialId ? 4000 : 0) +
+          3000,
+      });
     }
 
     // Advance endless overtime deltas on today's daily quests without double-counting run/clear quests
@@ -1460,6 +1738,11 @@ export class MetaStore {
       ...prevRecord.unlockedTitleIds,
       ...overtimeTitles.unlockedIds.filter((id) => !prevRecord.unlockedTitleIds.includes(id)),
     ];
+    const mergedMilestones = [
+      ...prevRecord.unlockedEndlessMilestones,
+      ...endlessMs.unlockedWaves.filter((w) => !prevRecord.unlockedEndlessMilestones.includes(w)),
+    ].sort((a, b) => a - b);
+
     this.clearActiveRun();
     this.rev++;
     this.save();
@@ -1474,13 +1757,17 @@ export class MetaStore {
         prevRecord.bountiesSlain,
         Math.floor(finalInput.bountiesSlain ?? 0),
       ),
+      unlockedEndlessMilestones: mergedMilestones,
+      endlessBonusGold: prevRecord.endlessBonusGold + endlessMs.bonusGold,
+      endlessBonusKeys: prevRecord.endlessBonusKeys + endlessMs.bonusKeys,
+      endlessBonusSilk: prevRecord.endlessBonusSilk + endlessMs.bonusSilk,
       unlockedSkinIds: mergedSkins,
       unlockedTitleIds: mergedTitles,
       titleBonusGold: prevRecord.titleBonusGold + overtimeTitles.bonusGold,
       titleBonusKeys: prevRecord.titleBonusKeys + overtimeTitles.bonusKeys,
       titleBonusSilk: prevRecord.titleBonusSilk + overtimeTitles.bonusSilk,
-      goldEarned: prevRecord.goldEarned + deltaGold,
-      keysEarned: prevRecord.keysEarned + deltaKeys,
+      goldEarned: prevRecord.goldEarned + deltaGold + endlessMs.bonusGold,
+      keysEarned: prevRecord.keysEarned + deltaKeys + endlessMs.bonusKeys,
       totalGold: this.gold,
       totalKeys: this.keys,
       totalSilk: this.silk,
@@ -1873,6 +2160,83 @@ export class MetaStore {
     if (typeof rec.tutorialDone === 'boolean') {
       this.tutorialDone = rec.tutorialDone;
     }
+    if (
+      rec.selectedRunMode === 'standard' ||
+      rec.selectedRunMode === 'daily_challenge' ||
+      rec.selectedRunMode === 'boss_rush'
+    ) {
+      this.selectedRunMode = rec.selectedRunMode;
+    }
+    if (typeof rec.dailyChallengeStreak === 'number' && Number.isFinite(rec.dailyChallengeStreak) && rec.dailyChallengeStreak >= 0) {
+      this.dailyChallengeStreak = Math.floor(rec.dailyChallengeStreak);
+    }
+    if (typeof rec.lastDailyChallengeDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rec.lastDailyChallengeDate)) {
+      this.lastDailyChallengeDate = rec.lastDailyChallengeDate;
+    }
+    if (typeof rec.dailyChallengeRecords === 'object' && rec.dailyChallengeRecords !== null) {
+      for (const [dk, rawEntry] of Object.entries(rec.dailyChallengeRecords as Record<string, unknown>)) {
+        if (typeof rawEntry === 'object' && rawEntry !== null) {
+          const e = rawEntry as Record<string, unknown>;
+          this.dailyChallengeRecords[dk] = {
+            dateKey: dk,
+            bestWave: typeof e.bestWave === 'number' ? Math.max(0, Math.floor(e.bestWave)) : 0,
+            bestScore: typeof e.bestScore === 'number' ? Math.max(0, Math.floor(e.bestScore)) : 0,
+            cleared: Boolean(e.cleared),
+            bestTicks: typeof e.bestTicks === 'number' && e.bestTicks > 0 ? Math.floor(e.bestTicks) : null,
+            rewardTierClaimed: e.rewardTierClaimed === 2 ? 2 : e.rewardTierClaimed === 1 ? 1 : 0,
+          };
+        }
+      }
+    }
+    if (typeof rec.bossRushRecord === 'object' && rec.bossRushRecord !== null) {
+      const br = rec.bossRushRecord as Record<string, unknown>;
+      this.bossRushRecord = {
+        clears: typeof br.clears === 'number' ? Math.max(0, Math.floor(br.clears)) : 0,
+        bestStage: typeof br.bestStage === 'number' ? Math.max(0, Math.floor(br.bestStage)) : 0,
+        bestTicks: typeof br.bestTicks === 'number' && br.bestTicks > 0 ? Math.floor(br.bestTicks) : null,
+      };
+    }
+    this.endlessMilestonesCleared.clear();
+    if (Array.isArray(rec.endlessMilestonesCleared)) {
+      for (const w of rec.endlessMilestonesCleared) {
+        if (typeof w === 'number' && Number.isFinite(w) && w >= 40) {
+          this.endlessMilestonesCleared.add(Math.floor(w));
+        }
+      }
+    }
+    this.hallOfFame = [];
+    if (Array.isArray(rec.hallOfFame)) {
+      for (const rawH of rec.hallOfFame.slice(0, 12)) {
+        if (typeof rawH === 'object' && rawH !== null) {
+          const h = rawH as Record<string, unknown>;
+          if (typeof h.wave === 'number' && typeof h.dateKey === 'string') {
+            this.hallOfFame.push({
+              id: typeof h.id === 'string' ? h.id : `${h.dateKey}-${h.wave}`,
+              dateKey: h.dateKey,
+              runMode:
+                h.runMode === 'daily_challenge' || h.runMode === 'boss_rush'
+                  ? h.runMode
+                  : 'standard',
+              difficulty:
+                typeof h.difficulty === 'string' && (DIFFICULTY_ORDER as readonly string[]).includes(h.difficulty)
+                  ? (h.difficulty as DifficultyId)
+                  : 'normal',
+              trialId:
+                typeof h.trialId === 'string' && (TRIAL_ORDER as readonly string[]).includes(h.trialId)
+                  ? (h.trialId as TrialId)
+                  : null,
+              wave: Math.max(1, Math.floor(h.wave)),
+              victory: Boolean(h.victory),
+              totalDamage: typeof h.totalDamage === 'number' ? Math.max(0, Math.floor(h.totalDamage)) : 0,
+              topHeroId: typeof h.topHeroId === 'string' ? h.topHeroId : null,
+              topHeroName: typeof h.topHeroName === 'string' ? h.topHeroName : null,
+              elapsedTicks: typeof h.elapsedTicks === 'number' && h.elapsedTicks > 0 ? Math.floor(h.elapsedTicks) : null,
+              score: typeof h.score === 'number' ? Math.max(0, Math.floor(h.score)) : 0,
+            });
+          }
+        }
+      }
+    }
   }
 
   private load(): void {
@@ -1896,6 +2260,7 @@ export class MetaStore {
       relics: this.relics,
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
+      selectedRunMode: this.selectedRunMode,
       selectedDifficulty: this.selectedDifficulty,
       selectedTrialId: this.selectedTrialId,
       unlockedDifficulties: this.unlockedDifficulties,
@@ -1903,6 +2268,12 @@ export class MetaStore {
       difficultyBestWave: this.difficultyBestWave,
       clearedTrials: this.clearedTrials,
       trialRecords: this.trialRecords,
+      dailyChallengeRecords: this.dailyChallengeRecords,
+      dailyChallengeStreak: this.dailyChallengeStreak,
+      lastDailyChallengeDate: this.lastDailyChallengeDate,
+      bossRushRecord: this.bossRushRecord,
+      endlessMilestonesCleared: [...this.endlessMilestonesCleared].sort((a, b) => a - b),
+      hallOfFame: this.hallOfFame,
       unlockedTitles: this.unlockedTitles,
       equippedTitle: this.equippedTitle,
       discoveredUnits: this.discoveredUnits,

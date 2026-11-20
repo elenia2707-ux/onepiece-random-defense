@@ -18,6 +18,12 @@ import {
 } from '../core/relicFormulas';
 import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
+import {
+  BOSS_RUSH_STAGES,
+  type DailyRuleDef,
+  resolveBossRushWaveDef,
+  type RunModeId,
+} from '../data/specialModes';
 import type {
   BoonId,
   DifficultyId,
@@ -88,6 +94,7 @@ export function getStarSpeedPct(starLevel: number): number {
 export function computeBenchPassiveSummary(
   units: readonly UnitEntity[],
   unitsById: ReadonlyMap<UnitId, UnitDef>,
+  mult = 1,
 ): BenchPassiveSummary {
   const seen = new Set<UnitId>();
   const activeUnits: BenchPassiveActiveEntry[] = [];
@@ -115,15 +122,15 @@ export function computeBenchPassiveSummary(
       passiveName: bp.name,
       desc: bp.desc,
     });
-    interestPct += bp.interestPct ?? 0;
-    interestCap += bp.interestCap ?? 0;
-    killCoinPct += bp.killCoinPct ?? 0;
-    gambleBonusPct += bp.gambleBonusPct ?? 0;
-    critChancePct += bp.critChancePct ?? 0;
-    critMultBonus += bp.critMultBonus ?? 0;
-    armorShred += bp.armorShred ?? 0;
-    skillDamagePct += bp.skillDamagePct ?? 0;
-    bossDamagePct += bp.bossDamagePct ?? 0;
+    interestPct += (bp.interestPct ?? 0) * mult;
+    interestCap += (bp.interestCap ?? 0) * mult;
+    killCoinPct += (bp.killCoinPct ?? 0) * mult;
+    gambleBonusPct += (bp.gambleBonusPct ?? 0) * mult;
+    critChancePct += (bp.critChancePct ?? 0) * mult;
+    critMultBonus += (bp.critMultBonus ?? 0) * mult;
+    armorShred += (bp.armorShred ?? 0) * mult;
+    skillDamagePct += (bp.skillDamagePct ?? 0) * mult;
+    bossDamagePct += (bp.bossDamagePct ?? 0) * mult;
   }
 
   return {
@@ -279,6 +286,8 @@ export interface CombatSystemContext {
   readonly data: GameDataBundle;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly runMode?: RunModeId;
+  readonly dailyRule?: DailyRuleDef | null;
   readonly clearTargetWave: number;
   readonly board: Board;
   readonly rng: Rng;
@@ -314,7 +323,11 @@ export interface CombatSystemContext {
 
 export function stepCombat(ctx: CombatSystemContext): void {
   const synergy = computeFieldSynergy(ctx.units, ctx.data.unitsById);
-  const benchPassive = computeBenchPassiveSummary(ctx.units, ctx.data.unitsById);
+  const benchPassive = computeBenchPassiveSummary(
+    ctx.units,
+    ctx.data.unitsById,
+    ctx.dailyRule?.modifiers.benchPassiveMult ?? 1,
+  );
   const swiftStacks = ctx.getBoonStacks('b_swift_formation');
   const setBonus = computeRelicSetBonuses(ctx.relicLv);
   const trigramAuraPct = getTrigramMirrorAuraPct(ctx.relicLv.eight_trigram_mirror ?? 0);
@@ -421,6 +434,10 @@ export function stepCombat(ctx: CombatSystemContext): void {
         if (starSpeedPct > 0) {
           speedMult *= 1 + starSpeedPct / 100;
         }
+        const dailyFacSpd = ctx.dailyRule?.modifiers.factionSpeedMult?.[def.faction];
+        if (dailyFacSpd !== undefined && dailyFacSpd !== 1) {
+          speedMult *= dailyFacSpd;
+        }
         u.cooldownTicks = Math.max(1, Math.round(def.attackIntervalTicks / speedMult));
         u.attackCount++;
         u.lastAttackTick = ctx.currentTick;
@@ -482,6 +499,9 @@ export function stepCombat(ctx: CombatSystemContext): void {
           }
           if (trialCfg && trialCfg.orthodoxCritMultBonus > 0) {
             critMult += trialCfg.orthodoxCritMultBonus;
+          }
+          if (ctx.dailyRule?.modifiers.orthodoxCritMultBonus) {
+            critMult += ctx.dailyRule.modifiers.orthodoxCritMultBonus;
           }
         } else if (def.faction === 'demonic') {
           if (synergy.demonicTier === 2) {
@@ -850,7 +870,8 @@ function applyHitToMonster(
     const abacusCoinPct =
       getAbacusKillCoinPct(ctx.relicLv.merchant_abacus ?? 0) +
       setBonus.killCoinPct +
-      benchPassive.killCoinPct;
+      benchPassive.killCoinPct +
+      (ctx.dailyRule?.modifiers.killCoinPctBonus ?? 0);
     const bountyBannerCoinPct = m.isBounty
       ? getSlayerBannerBountyCoinPct(ctx.relicLv.demon_slayer_banner ?? 0)
       : 0;
@@ -882,14 +903,21 @@ function applyHitToMonster(
       } else {
         ctx.onMonsterSlain(true, false, m.spawnTick);
         ctx.tileHazards.length = 0;
-        const endlessBonusLuck = ctx.waveNumber >= 35 && ctx.waveNumber % 5 === 0 ? 2 : 0;
+        const isBossRush = ctx.runMode === 'boss_rush';
+        const rushStage = isBossRush ? BOSS_RUSH_STAGES[ctx.waveNumber - 1] : undefined;
+        const endlessBonusLuck =
+          !isBossRush && ctx.waveNumber >= 35 && ctx.waveNumber % 5 === 0 ? 2 : 0;
+        const dailyBossLuck = ctx.dailyRule?.modifiers.bossKillBonusLuck ?? 0;
         const rewardLuck =
-          2 +
+          (rushStage ? rushStage.rewardLuck : 2) +
           getScrollChestBossLuckBonus(ctx.relicLv.heavenly_scroll_chest ?? 0) +
-          endlessBonusLuck;
+          endlessBonusLuck +
+          dailyBossLuck;
         ctx.addLuckStone(rewardLuck);
 
-        const waveDef = resolveWaveDef(ctx.data.waves, ctx.waveNumber);
+        const waveDef = isBossRush
+          ? resolveBossRushWaveDef(ctx.waveNumber)
+          : resolveWaveDef(ctx.data.waves, ctx.waveNumber);
         const fallbackWispGrade =
           Object.keys(ctx.data.wispPools)[1] ?? Object.keys(ctx.data.wispPools)[0]!;
         const rewardGrade = waveDef.rewardWispGrade ?? fallbackWispGrade;
@@ -913,7 +941,10 @@ function applyHitToMonster(
         ) {
           ctx.triggerVictory();
         } else if (noWaveBossRemaining) {
-          ctx.offerBossBoons(ctx.waveNumber);
+          const shouldOfferBoon = !isBossRush || (rushStage ? rushStage.offersBoon : ctx.waveNumber % 2 === 1);
+          if (shouldOfferBoon) {
+            ctx.offerBossBoons(ctx.waveNumber);
+          }
         }
       }
     } else {

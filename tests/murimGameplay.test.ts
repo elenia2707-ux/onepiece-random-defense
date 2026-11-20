@@ -16,6 +16,11 @@ import {
   getWaveMutantKind,
 } from '../src/core/Simulation';
 import { loadGameData } from '../src/data/loader';
+import {
+  BOSS_RUSH_TARGET_STAGE,
+  ENDLESS_MILESTONES,
+  getDailyChallengeSpec,
+} from '../src/data/specialModes';
 import type { BoonId, MonsterKind, PassiveProcKind, RelicId, TrialId } from '../src/data/types';
 import { DISCARD_DROP_RECT, isPointInDiscardZone } from '../src/input/DragController';
 import { pickDailyQuestsForDate } from '../src/platform/DailyQuests';
@@ -3030,6 +3035,184 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(retryCount).toBe(1);
     expect(simRetry.buildSnapshot(1, false).bossRetryUsed).toBe(true);
     expect(simRetry.isGameOver).toBe(true);
+  });
+
+  it('v2.5: runs deterministic Daily Challenge, 10-stage Boss Rush, Endless 40+ milestones, and persists Hall of Fame', () => {
+    const data = loadGameData();
+
+    // 1. Daily Seed Challenge determinism & Wave 20 target
+    const specA = getDailyChallengeSpec('2026-11-20');
+    const specB = getDailyChallengeSpec('2026-11-20');
+    expect(specA.seed).toBe(specB.seed);
+    expect(specA.rule.id).toBe(specB.rule.id);
+    expect(specA.targetWave).toBe(20);
+
+    const dailySim1 = new Simulation(data, 12345, {}, 'normal', null, false, {
+      runMode: 'daily_challenge',
+      dailyDateKey: '2026-11-20',
+    });
+    const dailySim2 = new Simulation(data, 99999, {}, 'normal', null, false, {
+      runMode: 'daily_challenge',
+      dailyDateKey: '2026-11-20',
+    });
+    expect(dailySim1.dailyChallengeSpec?.seed).toBe(specA.seed);
+    expect(dailySim2.dailyChallengeSpec?.seed).toBe(specA.seed);
+    expect(dailySim1.buildSnapshot(1, false).clearTargetWave).toBe(20);
+    // Identical summon rolls under same dateKey regardless of passed fallback seed
+    for (let i = 0; i < 4; i++) {
+      dailySim1.commands.enqueue({ type: 'summon' });
+      dailySim2.commands.enqueue({ type: 'summon' });
+    }
+    dailySim1.tick();
+    dailySim2.tick();
+    expect(dailySim1.getUnits().map((u) => u.unitId)).toEqual(
+      dailySim2.getUnits().map((u) => u.unitId),
+    );
+
+    // 2. Boss Rush starter kit, 10-stage victory, and odd-stage boon cadence
+    const brSim = new Simulation(data, 0x25250002, {}, 'normal', null, false, {
+      runMode: 'boss_rush',
+    });
+    const brStart = brSim.buildSnapshot(1, false);
+    expect(brStart.runMode).toBe('boss_rush');
+    expect(brStart.clearTargetWave).toBe(BOSS_RUSH_TARGET_STAGE);
+    expect(brStart.coin).toBe(420);
+    expect(brStart.luckStone).toBe(6);
+    expect(brStart.wisps.common).toBe(3);
+    expect(brStart.wisps.uncommon).toBe(2);
+    expect(brStart.wisps.rare).toBe(1);
+    expect(brStart.isBossWave).toBe(true);
+
+    // Save/Restore preserves runMode & dailyDateKey
+    const savedDaily = dailySim1.exportRunSave(Date.now());
+    expect(savedDaily.runMode).toBe('daily_challenge');
+    expect(savedDaily.dailyDateKey).toBe('2026-11-20');
+    const dailyRestored = new Simulation(data, 1, {}, 'normal', null, false, {
+      runMode: 'daily_challenge',
+      dailyDateKey: '2026-11-20',
+    });
+    expect(dailyRestored.restoreRunSave(savedDaily)).toBe(true);
+
+    // Clear 1st stage of Boss Rush with stacked Cheonma + upgrades and verify stage 2 + boon offered on stage 1
+    spawnCheonmaHelper(brSim);
+    brSim.commands.enqueue({ type: 'grantTestCoin', amount: 8000 });
+    for (let i = 0; i < 10; i++) {
+      brSim.commands.enqueue({ type: 'upgrade', group: 'demonic' });
+    }
+    brSim.tick();
+    let boonOffersInBr = 0;
+    brSim.events.on('boon:offered', () => {
+      boonOffersInBr++;
+    });
+    for (let t = 0; t < 3000 && brSim.buildSnapshot(1, false).wave < 3; t++) {
+      const s = brSim.buildSnapshot(1, false);
+      if (s.pendingBoonOffer) {
+        brSim.commands.enqueue({ type: 'pickBoon', boonId: s.pendingBoonOffer.options[0]! });
+      }
+      brSim.tick();
+    }
+    expect(brSim.buildSnapshot(1, false).wave).toBeGreaterThanOrEqual(3);
+    expect(boonOffersInBr).toBeGreaterThanOrEqual(1);
+
+    // 3. MetaStore: Daily Challenge tier/streak, Boss Rush settlement, Endless 40+ milestones, Hall of Fame persistence
+    const backing = new Map<string, string>();
+    const storage: StorageLike = {
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+      removeItem: (k) => {
+        backing.delete(k);
+      },
+    };
+    const meta = new MetaStore(storage);
+    const d1 = meta.settleRun({
+      wave: 20,
+      monstersSlain: 260,
+      bossesSlain: 4,
+      difficulty: 'hard',
+      runMode: 'daily_challenge',
+      victory: true,
+      elapsedTicks: 9000,
+      totalDamage: 1_500_000,
+      topHeroId: 'cheonma',
+      topHeroName: '천마',
+      dateKey: '2026-11-19',
+    });
+    expect(d1.dailyChallengeScore).toBeGreaterThan(20000);
+    expect(d1.firstClearBonusGold).toBeGreaterThan(0);
+
+    // Consecutive day increments streak
+    const d2 = meta.settleRun({
+      wave: 20,
+      monstersSlain: 250,
+      bossesSlain: 4,
+      difficulty: 'hard',
+      runMode: 'daily_challenge',
+      victory: true,
+      elapsedTicks: 8500,
+      totalDamage: 1_800_000,
+      topHeroId: 'sword_immortal',
+      topHeroName: '태상검선',
+      dateKey: '2026-11-20',
+    });
+    expect(d2.dailyChallengeScore).toBeGreaterThan(0);
+
+    // Boss Rush 10-stage clear
+    const brSettle = meta.settleRun({
+      wave: 10,
+      monstersSlain: 10,
+      bossesSlain: 10,
+      difficulty: 'normal',
+      runMode: 'boss_rush',
+      victory: true,
+      elapsedTicks: 6000,
+      totalDamage: 12_000_000,
+      topHeroId: 'cheonma',
+      topHeroName: '천마',
+    });
+    expect(brSettle.firstClearBonusGold).toBe(350);
+    expect(brSettle.firstClearBonusSilk).toBe(50);
+
+    // Endless 50-wave settlement awards both 40 and 50 milestones once (no double claim on second run)
+    const end1 = meta.settleRun({
+      wave: 52,
+      monstersSlain: 1200,
+      bossesSlain: 10,
+      difficulty: 'normal',
+      runMode: 'standard',
+      victory: true,
+      elapsedTicks: 24000,
+      totalDamage: 45_000_000,
+      topHeroId: 'hell_flame_sovereign',
+      topHeroName: '구천염황',
+    });
+    expect(end1.unlockedEndlessMilestones).toEqual([40, 50]);
+    expect(end1.endlessBonusGold).toBe(ENDLESS_MILESTONES[0]!.rewardGold + ENDLESS_MILESTONES[1]!.rewardGold);
+    expect(end1.endlessBonusSilk).toBe(ENDLESS_MILESTONES[0]!.rewardSilk + ENDLESS_MILESTONES[1]!.rewardSilk);
+
+    const end2 = meta.settleRun({
+      wave: 55,
+      monstersSlain: 1300,
+      bossesSlain: 11,
+      difficulty: 'normal',
+      runMode: 'standard',
+      victory: true,
+      elapsedTicks: 25000,
+      totalDamage: 50_000_000,
+    });
+    expect(end2.unlockedEndlessMilestones).toEqual([]);
+    expect(end2.endlessBonusGold).toBe(0);
+
+    // Reload from storage and verify persistence of streak, bossRushRecord, endless milestones, and Hall of Fame
+    const metaReloaded = new MetaStore(storage);
+    const prof = metaReloaded.getProfile();
+    expect(prof.dailyChallengeStreak).toBe(2);
+    expect(prof.bossRushRecord.clears).toBe(1);
+    expect(prof.bossRushRecord.bestStage).toBe(10);
+    expect(prof.endlessMilestonesCleared).toEqual([40, 50]);
+    expect(prof.hallOfFame.length).toBeGreaterThanOrEqual(4);
+    expect(prof.hallOfFame[0]!.wave).toBe(55);
   });
 });
 

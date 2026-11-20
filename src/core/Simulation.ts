@@ -41,6 +41,14 @@ import {
   CONTRACTS_BY_ID,
   type ContractId,
 } from '../data/contracts';
+import {
+  BOSS_RUSH_TARGET_STAGE,
+  type DailyChallengeSpec,
+  ENDLESS_MILESTONES_BY_WAVE,
+  getDailyChallengeSpec,
+  resolveBossRushWaveDef,
+  type RunModeId,
+} from '../data/specialModes';
 import type {
   BenchPassiveDef,
   BoonId,
@@ -404,6 +412,13 @@ export interface SimEventMap {
     readonly trialId: TrialId | null;
     readonly tick: number;
   };
+  'endless:milestone': {
+    readonly wave: number;
+    readonly label: string;
+    readonly inRunCoin: number;
+    readonly inRunLuck: number;
+    readonly tick: number;
+  };
   'command:rejected': {
     readonly cmd: GameCommand['type'];
     readonly reason: string;
@@ -535,12 +550,20 @@ export interface ContractItemSnapshot {
   readonly rewardUpgradeAll?: number;
 }
 
+export interface SimulationModeOptions {
+  readonly runMode?: RunModeId;
+  readonly dailyDateKey?: string;
+}
+
 export interface UISnapshot {
   readonly tick: number;
   readonly speed: Speed;
   readonly paused: boolean;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly runMode: RunModeId;
+  readonly dailyChallenge: DailyChallengeSpec | null;
+  readonly endlessMilestonesReached: readonly number[];
   readonly clearTargetWave: number;
   readonly gameOver: boolean;
   readonly gameOverReason: GameOverReason;
@@ -621,6 +644,8 @@ export class Simulation {
   public readonly data: GameDataBundle;
   public readonly difficulty: DifficultyId;
   public readonly trialId: TrialId | null;
+  public readonly runMode: RunModeId;
+  public readonly dailyChallengeSpec: DailyChallengeSpec | null;
   public readonly rookieMode: boolean;
   public readonly events = new EventBus<SimEventMap>();
   public readonly commands = new CommandQueue();
@@ -631,6 +656,7 @@ export class Simulation {
   public readonly craftIndex: CraftIndex;
   public readonly craftSystem: CraftSystem;
   public readonly wispSystem: WispSystem;
+  private readonly endlessMilestonesReached = new Set<number>();
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
@@ -746,12 +772,31 @@ export class Simulation {
     difficulty: DifficultyId = 'normal',
     trialId: TrialId | null = null,
     rookieMode = false,
+    options?: SimulationModeOptions,
   ) {
     this.data = data;
-    this.difficulty = difficulty;
-    this.trialId = trialId;
-    this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
-    this.rng = new Rng(seed);
+    this.runMode = options?.runMode ?? 'standard';
+    if (this.runMode === 'daily_challenge') {
+      const spec = getDailyChallengeSpec(options?.dailyDateKey ?? '2026-11-19');
+      this.dailyChallengeSpec = spec;
+      this.difficulty = 'hard';
+      this.trialId = null;
+      this.rookieMode = false;
+      this.rng = new Rng(spec.seed);
+    } else if (this.runMode === 'boss_rush') {
+      this.dailyChallengeSpec = null;
+      this.difficulty = 'hard';
+      this.trialId = null;
+      this.rookieMode = false;
+      this.rng = new Rng(seed);
+    } else {
+      this.dailyChallengeSpec = null;
+      this.difficulty = difficulty;
+      this.trialId = trialId;
+      this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
+      this.rng = new Rng(seed);
+    }
+
     this.board = new Board(data.board);
     this.path = new LoopPath(data.board.path.waypoints);
     this.recipeGraph = new RecipeGraph(data.units, data.gradesById, data.recipes);
@@ -759,9 +804,20 @@ export class Simulation {
     this.craftSystem = new CraftSystem(this.recipeGraph);
     this.wispSystem = new WispSystem(data.wispPools, this.recipeGraph);
 
-    this.coin = data.board.economy.initialCoin;
-    this.luckStone = data.board.economy.initialLuckStone;
-    this.waveTicksLeft = data.waves[0]?.durationTicks ?? 840;
+    const dailyMod = this.dailyChallengeSpec?.rule.modifiers;
+    this.coin =
+      (this.runMode === 'boss_rush' ? 420 : data.board.economy.initialCoin) +
+      (dailyMod?.startCoinBonus ?? 0);
+    this.luckStone =
+      (this.runMode === 'boss_rush' ? 6 : data.board.economy.initialLuckStone) +
+      (dailyMod?.startLuckBonus ?? 0);
+    this.waveTicksLeft =
+      this.runMode === 'boss_rush'
+        ? resolveBossRushWaveDef(1).durationTicks
+        : (data.waves[0]?.durationTicks ?? 840);
+    if (this.runMode === 'boss_rush') {
+      this.nextSpawnTick = 120; // 4s prep window before Boss 1 enters
+    }
 
     for (const poolGradeId of Object.keys(data.wispPools)) {
       this.wisps[poolGradeId] = 0;
@@ -771,6 +827,11 @@ export class Simulation {
       if (g.starterWispCount > 0) {
         this.wisps[g.id] = g.starterWispCount;
       }
+    }
+    if (this.runMode === 'boss_rush') {
+      this.wisps.common = (this.wisps.common ?? 0) + 2;
+      this.wisps.uncommon = (this.wisps.uncommon ?? 0) + 2;
+      this.wisps.rare = (this.wisps.rare ?? 0) + 1;
     }
 
     this.summonableGrades = data.grades.filter((g) => g.summonable && g.summonWeight > 0);
@@ -832,6 +893,8 @@ export class Simulation {
   }
 
   public get clearTargetWave(): number {
+    if (this.runMode === 'boss_rush') return BOSS_RUSH_TARGET_STAGE;
+    if (this.dailyChallengeSpec) return this.dailyChallengeSpec.targetWave;
     return this.trialId ? TRIAL_CONFIGS[this.trialId].targetWave : CLEAR_TARGET_WAVE;
   }
 
@@ -906,7 +969,11 @@ export class Simulation {
   }
 
   public computeBenchPassives(): BenchPassiveSummary {
-    return computeBenchPassiveSummary(this.units, this.data.unitsById);
+    return computeBenchPassiveSummary(
+      this.units,
+      this.data.unitsById,
+      this.dailyChallengeSpec?.rule.modifiers.benchPassiveMult ?? 1,
+    );
   }
 
   public getEffectiveInterestConfig(): { readonly pct: number; readonly cap: number } {
@@ -916,8 +983,14 @@ export class Simulation {
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const benchBonus = this.computeBenchPassives();
     const usuryStacks = this.getBoonStacks('b_usury_vault');
+    const dailyMod = this.dailyChallengeSpec?.rule.modifiers;
     const basePct = getVaultInterestPct(this.relicLv.golden_vault);
-    const pct = basePct + usuryStacks * 3 + setBonus.interestPct + benchBonus.interestPct;
+    const pct =
+      basePct +
+      usuryStacks * 3 +
+      setBonus.interestPct +
+      benchBonus.interestPct +
+      (dailyMod?.interestPctBonus ?? 0);
     if (pct <= 0) {
       return { pct: 0, cap: 0 };
     }
@@ -925,7 +998,12 @@ export class Simulation {
       this.relicLv.golden_vault > 0 ? getVaultInterestCap(this.relicLv.golden_vault) : 120;
     return {
       pct,
-      cap: baseCap + usuryStacks * 60 + setBonus.interestCap + benchBonus.interestCap,
+      cap:
+        baseCap +
+        usuryStacks * 60 +
+        setBonus.interestCap +
+        benchBonus.interestCap +
+        (dailyMod?.interestCapBonus ?? 0),
     };
   }
 
@@ -943,12 +1021,14 @@ export class Simulation {
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const benchBonus = this.computeBenchPassives();
     const trialBonus = this.trialId ? TRIAL_CONFIGS[this.trialId].gambleBonusPct : 0;
+    const dailyBonus = this.dailyChallengeSpec?.rule.modifiers.gambleBonusPct ?? 0;
     return (
       getFurnaceChanceBonusPct(this.relicLv.immortal_furnace) +
       this.getBoonStacks('b_elixir_jackpot') * 12 +
       setBonus.gambleBonusPct +
       benchBonus.gambleBonusPct +
-      trialBonus
+      trialBonus +
+      dailyBonus
     );
   }
 
@@ -1036,7 +1116,7 @@ export class Simulation {
       extraTraitPct += Math.round(benchCount * (benchBoonStacks >= 2 ? 4.5 : 2.5));
     }
 
-    return computeUnitEffectiveAtk(
+    const baseResult = computeUnitEffectiveAtk(
       this.data,
       unitId,
       this.upgradeLv,
@@ -1051,6 +1131,21 @@ export class Simulation {
         getStarAtkBps(starLevel),
       extraTraitPct,
     );
+    const def = this.data.unitsById.get(unitId);
+    const dailyFacMult = def
+      ? this.dailyChallengeSpec?.rule.modifiers.factionAtkMult?.[def.faction]
+      : undefined;
+    if (dailyFacMult !== undefined && dailyFacMult !== 1) {
+      const scaledTotal = Math.max(
+        1,
+        Math.round((baseResult.baseAtk + baseResult.bonusAtk) * dailyFacMult),
+      );
+      return {
+        baseAtk: baseResult.baseAtk,
+        bonusAtk: scaledTotal - baseResult.baseAtk,
+      };
+    }
+    return baseResult;
   }
 
   public getUnitSellCoin(baseSellCoin: number): number {
@@ -1166,6 +1261,8 @@ export class Simulation {
       data: this.data,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      runMode: this.runMode,
+      dailyRule: this.dailyChallengeSpec?.rule ?? null,
       rookieMode: this.rookieMode,
       clearTargetWave: this.clearTargetWave,
       board: this.board,
@@ -1212,7 +1309,12 @@ export class Simulation {
       hasFieldHazard: (fieldIndex) => this.hasFieldHazard(fieldIndex),
       tryConsumeBossRetry: (waveNumber, boss) => {
         if (this.bossRetryUsed) return false;
-        if (this.trialId !== null || this.difficulty === 'hell' || this.difficulty === 'abyss') {
+        if (
+          this.trialId !== null ||
+          this.runMode !== 'standard' ||
+          this.difficulty === 'hell' ||
+          this.difficulty === 'abyss'
+        ) {
           return false;
         }
         if (waveNumber >= this.clearTargetWave && this.difficulty !== 'normal') {
@@ -1251,6 +1353,8 @@ export class Simulation {
       data: this.data,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      runMode: this.runMode,
+      dailyRule: this.dailyChallengeSpec?.rule ?? null,
       clearTargetWave: this.clearTargetWave,
       board: this.board,
       rng: this.rng,
@@ -1393,6 +1497,10 @@ export class Simulation {
       }
 
       case 'rerollBoon': {
+        if (this.dailyChallengeSpec?.rule.modifiers.disableBoonReroll) {
+          this.reject('rerollBoon', `오늘의 비무 규칙 [${this.dailyChallengeSpec.rule.name}]: 기연 다시 뽑기 금지!`);
+          return;
+        }
         const currentOffer = this.pendingBoonOffers[0];
         if (!currentOffer) {
           this.reject('rerollBoon', '현재 리롤할 강호 기연이 없습니다.');
@@ -2416,7 +2524,25 @@ export class Simulation {
     });
   }
 
-  private handleWaveAdvancedForContracts(_completedWave: number, nextWaveNum: number): void {
+  private handleWaveAdvancedForContracts(completedWave: number, nextWaveNum: number): void {
+    // Endless 40+ Milestone Rewards (40, 50, 60, 70, 80, 100)
+    if (this.endlessMode) {
+      const milestone = ENDLESS_MILESTONES_BY_WAVE.get(completedWave);
+      if (milestone && !this.endlessMilestonesReached.has(milestone.wave)) {
+        this.endlessMilestonesReached.add(milestone.wave);
+        this.coin += milestone.inRunCoin;
+        this.luckStone += milestone.inRunLuck;
+        this.priorityDirty = true;
+        this.events.emit('endless:milestone', {
+          wave: milestone.wave,
+          label: milestone.label,
+          inRunCoin: milestone.inRunCoin,
+          inRunLuck: milestone.inRunLuck,
+          tick: this.currentTick,
+        });
+      }
+    }
+
     const synergy = this.computeFieldSynergy();
     for (let i = 0; i < this.activeContracts.length; i++) {
       const st = this.activeContracts[i]!;
@@ -2464,7 +2590,7 @@ export class Simulation {
       });
     }
 
-    if (CONTRACT_OFFER_WAVES.includes(nextWaveNum)) {
+    if (this.runMode !== 'boss_rush' && CONTRACT_OFFER_WAVES.includes(nextWaveNum)) {
       this.offerContracts(nextWaveNum);
     }
   }
@@ -2718,15 +2844,19 @@ export class Simulation {
     const rejects = this.pendingRejects.slice();
     this.pendingRejects.length = 0;
 
-    const waveDef = resolveWaveDef(this.data.waves, this.waveNumber);
-    const mutantKind = getWaveMutantKind(this.waveNumber, waveDef.isBoss);
+    const waveDef =
+      this.runMode === 'boss_rush'
+        ? resolveBossRushWaveDef(this.waveNumber)
+        : resolveWaveDef(this.data.waves, this.waveNumber);
+    const mutantKind =
+      this.runMode === 'boss_rush' ? null : getWaveMutantKind(this.waveNumber, waveDef.isBoss);
     const waveMutant = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
     const waveBoss = this.monsters.find((m) => m.isBoss && !m.isBounty);
     const bountyBoss = this.monsters.find((m) => m.isBounty);
     const activeBoss = waveBoss ?? bountyBoss;
 
-    const unlockedBounty = this.waveNumber >= 2;
-    const eliteUnlocked = this.waveNumber >= ELITE_BOUNTY_MIN_WAVE;
+    const unlockedBounty = this.runMode !== 'boss_rush' && this.waveNumber >= 2;
+    const eliteUnlocked = this.runMode !== 'boss_rush' && this.waveNumber >= ELITE_BOUNTY_MIN_WAVE;
     const bountyActiveTicksLeft =
       bountyBoss && bountyBoss.expireTick !== undefined
         ? Math.max(0, bountyBoss.expireTick - this.currentTick)
@@ -2857,6 +2987,9 @@ export class Simulation {
       paused,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      runMode: this.runMode,
+      dailyChallenge: this.dailyChallengeSpec,
+      endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
       clearTargetWave: this.clearTargetWave,
       gameOver: this.gameOver,
       gameOverReason: this.gameOverReason,
@@ -3016,6 +3149,9 @@ export class Simulation {
       savedAtMs,
       difficulty: this.difficulty,
       trialId: this.trialId,
+      runMode: this.runMode,
+      dailyDateKey: this.dailyChallengeSpec?.dateKey ?? null,
+      endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
       currentTick: this.currentTick,
       rngState: this.rng.getState(),
       nextUid: this.nextUid,
@@ -3087,8 +3223,22 @@ export class Simulation {
     const mig = migrateRunSave(rawSave, this.data);
     const save = mig.save;
     if (!save) return false;
-    if (save.difficulty !== this.difficulty || (save.trialId ?? null) !== this.trialId) {
+    if (
+      save.difficulty !== this.difficulty ||
+      (save.trialId ?? null) !== this.trialId ||
+      (save.runMode ?? 'standard') !== this.runMode ||
+      (save.dailyDateKey ?? null) !== (this.dailyChallengeSpec?.dateKey ?? null)
+    ) {
       return false;
+    }
+
+    this.endlessMilestonesReached.clear();
+    if (Array.isArray(save.endlessMilestonesReached)) {
+      for (const w of save.endlessMilestonesReached) {
+        if (typeof w === 'number' && Number.isFinite(w) && w > 0) {
+          this.endlessMilestonesReached.add(Math.floor(w));
+        }
+      }
     }
 
     this.currentTick = Math.floor(save.currentTick);

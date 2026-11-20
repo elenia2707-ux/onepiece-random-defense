@@ -1,12 +1,18 @@
 import {
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
+  formatCompactNumber,
   TITLE_DEFS,
   TRIAL_CONFIGS,
   TRIAL_ORDER,
 } from '../../core/relicFormulas';
 import type { UISnapshot } from '../../core/Simulation';
 import type { RecipeGraph } from '../../craft/RecipeGraph';
+import {
+  BOSS_RUSH_TARGET_STAGE,
+  ENDLESS_MILESTONES,
+  getDailyChallengeSpec,
+} from '../../data/specialModes';
 import type { GameDataBundle, TrialId } from '../../data/types';
 import {
   computeTitleProgress,
@@ -62,7 +68,8 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     const cfg = DIFFICULTY_CONFIGS[diff];
     const unlocked = meta.unlockedDifficulties[diff];
     const cleared = meta.clearedDifficulties[diff];
-    const active = snapshot.trialId === null && snapshot.difficulty === diff;
+    const active =
+      snapshot.runMode === 'standard' && snapshot.trialId === null && snapshot.difficulty === diff;
     const bestDiffWave = meta.difficultyBestWave[diff] ?? 0;
 
     const clearBadge = cleared
@@ -77,8 +84,8 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     const btnLabel = active
       ? '출정 중 ✓'
       : unlocked
-        ? snapshot.trialId !== null
-          ? '일반 복귀'
+        ? snapshot.trialId !== null || snapshot.runMode !== 'standard'
+          ? '표준 복귀'
           : '출정 전환'
         : '🔒 미해금';
     const btnClass = active
@@ -317,6 +324,123 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     })
     .join('');
 
+  const dailySpec = getDailyChallengeSpec(meta.dailyDate);
+  const dailyRec = meta.dailyChallengeToday;
+  const dailyActive = snapshot.runMode === 'daily_challenge';
+  const dailyBestLine = dailyRec
+    ? `오늘 최고: ${dailyRec.bestScore.toLocaleString('ko-KR')}점 (제 ${String(dailyRec.bestWave).padStart(2, '0')}장${dailyRec.cleared ? ' · 제패 ✓' : ''}) · 보상 티어 ${dailyRec.rewardTierClaimed}/2`
+    : '오늘 첫 도전 시 10장 돌파·20장 제패 영구 보상 획득!';
+  const dailyBtnLabel = dailyActive ? '출정 중 ✓' : '오늘의 비무 출정';
+  const dailyBtnClass = dailyActive ? 'card-cta-btn cta-green interactive' : 'card-cta-btn cta-gold interactive';
+
+  const brRec = meta.bossRushRecord;
+  const brActive = snapshot.runMode === 'boss_rush';
+  const brBestParts: string[] = [];
+  if (brRec.bestStage > 0 || brRec.clears > 0) {
+    brBestParts.push(`제패 ${brRec.clears}회`);
+    brBestParts.push(`최고 제${brRec.bestStage}관문`);
+    if (brRec.bestTicks !== null) {
+      brBestParts.push(`최단 ${formatTicksDuration(brRec.bestTicks)}`);
+    }
+  }
+  const brRecordLine =
+    brBestParts.length > 0
+      ? `📜 전적: ${brBestParts.join(' · ')}`
+      : `초회 10관문 제패 시 +350주화 · 열쇠+3 · 비단+50필`;
+  const brBtnLabel = brActive ? '출정 중 ✓' : '보스 러시 출정';
+  const brBtnClass = brActive ? 'card-cta-btn cta-green interactive' : 'card-cta-btn cta-crimson interactive';
+
+  const specialModesHtml = `
+    <div class="special-mode-grid">
+      <div class="diff-card special-mode-card daily-mode-card${dailyActive ? ' diff-active' : ''}">
+        <div class="diff-info">
+          <div class="card-name-row">
+            <span class="grade-pill" style="background:#0284c7">📅 ${escapeHtml(dailySpec.dateKey)}</span>
+            <span class="card-name">오늘의 강호 비무</span>
+            <span class="trial-rule-tag">${escapeHtml(dailySpec.rule.badge)}</span>
+            <span class="diff-best-pill">시드 ${escapeHtml(dailySpec.seedCode)}</span>
+            ${meta.dailyChallengeStreak > 0 ? `<span class="diff-clear-pill">🔥 ${meta.dailyChallengeStreak}일 연속</span>` : ''}
+          </div>
+          <div class="card-sub"><b>[${escapeHtml(dailySpec.rule.name)}]</b> ${escapeHtml(dailySpec.rule.desc)} (제 ${dailySpec.targetWave} 장 목표)</div>
+          <div class="trial-record-line">${escapeHtml(dailyBestLine)}</div>
+        </div>
+        <button
+          type="button"
+          class="${dailyBtnClass}"
+          data-sheet-action="select-run-mode"
+          data-run-mode="daily_challenge"
+        >
+          <span>${dailyBtnLabel}</span>
+        </button>
+      </div>
+      <div class="diff-card special-mode-card boss-rush-card${brActive ? ' diff-active' : ''}">
+        <div class="diff-info">
+          <div class="card-name-row">
+            <span class="grade-pill" style="background:#be123c">⚔ ${BOSS_RUSH_TARGET_STAGE}연전</span>
+            <span class="card-name">보스 러시</span>
+            <span class="trial-rule-tag">초기 420은자·6영단·기연6</span>
+            ${brRec.clears > 0 ? '<span class="diff-clear-pill">🏆 10관문 제패</span>' : '<span class="diff-bonus-pill">초회 +350주화·비단+50</span>'}
+          </div>
+          <div class="card-sub">잡졸 없이 영물 보스 ${BOSS_RUSH_TARGET_STAGE}연전! 매 관문 대형 보상 + 홀수 관문 기연 3택 · 클리어 후 무한 관문 도전 가능</div>
+          <div class="trial-record-line">${escapeHtml(brRecordLine)}</div>
+        </div>
+        <button
+          type="button"
+          class="${brBtnClass}"
+          data-sheet-action="select-run-mode"
+          data-run-mode="boss_rush"
+        >
+          <span>${brBtnLabel}</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  const clearedEndlessSet = new Set(meta.endlessMilestonesCleared);
+  const endlessMilestoneChipsHtml = ENDLESS_MILESTONES.map((ms) => {
+    const done = clearedEndlessSet.has(ms.wave);
+    return `
+      <div class="endless-ms-chip${done ? ' done' : ''}">
+        <div class="endless-ms-top">
+          <span class="endless-ms-wave">${ms.wave}장</span>
+          <span class="endless-ms-status">${done ? '✓ 달성' : '미달성'}</span>
+        </div>
+        <div class="endless-ms-reward">+${ms.rewardGold}주화 · 🔑${ms.rewardKeys} · 🧵${ms.rewardSilk}</div>
+      </div>
+    `;
+  }).join('');
+
+  const hofRowsHtml =
+    meta.hallOfFame.length > 0
+      ? meta.hallOfFame
+          .slice(0, 8)
+          .map((entry, idx) => {
+            const modeLabel =
+              entry.runMode === 'daily_challenge'
+                ? '📅 일일'
+                : entry.runMode === 'boss_rush'
+                  ? '⚔ 러시'
+                  : entry.trialId
+                    ? `🌀 ${TRIAL_CONFIGS[entry.trialId]?.badge ?? '비경'}`
+                    : DIFFICULTY_CONFIGS[entry.difficulty]?.badge.split(' ')[0] ?? entry.difficulty;
+            const waveTxt =
+              entry.runMode === 'boss_rush'
+                ? `제${entry.wave}관문`
+                : `제 ${String(entry.wave).padStart(2, '0')}장`;
+            const heroTxt = entry.topHeroName ? ` · MVP ${entry.topHeroName}` : '';
+            const dmgTxt = entry.totalDamage > 0 ? ` · ${formatCompactNumber(entry.totalDamage)}` : '';
+            return `
+              <div class="hof-row">
+                <span class="hof-rank">#${idx + 1}</span>
+                <span class="hof-mode">${escapeHtml(modeLabel)}</span>
+                <span class="hof-main"><b>${waveTxt}</b>${entry.victory ? ' 🏆' : ''}${escapeHtml(heroTxt)}${dmgTxt}</span>
+                <span class="hof-date">${escapeHtml(entry.dateKey.slice(5))}</span>
+              </div>
+            `;
+          })
+          .join('')
+      : '<div class="hof-empty">아직 등재된 전설 기록이 없습니다. 5장 이상 돌파하거나 무한 40장+에 도전해 보세요!</div>';
+
   const bodyHtml = `
     <div class="codex-guide-banner">
       <div class="settlement-preview-info">
@@ -326,6 +450,13 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
       <button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="replay-tutorial">
         <span>❔ 입문 교범</span>
       </button>
+    </div>
+    <div class="sheet-section-label">🌟 특수 출정 모드 — 매일의 시련 &amp; 보스 러시</div>
+    ${specialModesHtml}
+    <div class="sheet-section-label">🏛 무한 40장+ 마일스톤 (${meta.endlessMilestonesCleared.length}/${ENDLESS_MILESTONES.length}) &amp; 강호 명예의 전당</div>
+    <div class="endless-hall-box">
+      <div class="endless-milestone-grid">${endlessMilestoneChipsHtml}</div>
+      <div class="hof-list">${hofRowsHtml}</div>
     </div>
     <div class="sheet-section-label">⚔ 표준 출정 난이도 선택 (제 30 장 제패 시 상위 난이도 해금)</div>
     <div class="diff-list">${diffCards}</div>

@@ -1,6 +1,12 @@
 import type { EventBus } from '../core/EventBus';
 import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
+import {
+  BOSS_RUSH_STAGES,
+  type DailyRuleDef,
+  resolveBossRushWaveDef,
+  type RunModeId,
+} from '../data/specialModes';
 import type {
   DifficultyId,
   GameDataBundle,
@@ -197,6 +203,8 @@ export interface WaveSystemContext {
   readonly data: GameDataBundle;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly runMode?: RunModeId;
+  readonly dailyRule?: DailyRuleDef | null;
   readonly rookieMode?: boolean;
   readonly clearTargetWave: number;
   readonly board: Board;
@@ -243,9 +251,15 @@ export function spawnBountyOutlaw(
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
   const trialSpdMult = trialCfg ? trialCfg.speedMult : 1;
 
-  const waveDef = resolveWaveDef(ctx.data.waves, waveNumber);
+  const waveDef =
+    ctx.runMode === 'boss_rush'
+      ? resolveBossRushWaveDef(waveNumber)
+      : resolveWaveDef(ctx.data.waves, waveNumber);
   const waveBaseHp = waveDef.monsterHp;
-  const hpScale = computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false);
+  const hpScale =
+    ctx.runMode === 'boss_rush'
+      ? 1
+      : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, false);
   const baseBountyHp = Math.round(
     Math.max(1200, waveBaseHp * (waveDef.isBoss ? 0.35 : 5.2)) * hpScale,
   );
@@ -337,24 +351,21 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
   }
 
   const waveNumber = ctx.getWaveNumber();
-  const waveDef = resolveWaveDef(ctx.data.waves, waveNumber);
-  const mutantKind = getWaveMutantKind(waveNumber, waveDef.isBoss);
+  const isBossRush = ctx.runMode === 'boss_rush';
+  const waveDef = isBossRush
+    ? resolveBossRushWaveDef(waveNumber)
+    : resolveWaveDef(ctx.data.waves, waveNumber);
+  const mutantKind = isBossRush ? null : getWaveMutantKind(waveNumber, waveDef.isBoss);
   const mutantMeta = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
   const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
-  const hpScale = computeWaveHpScale(
-    ctx.data,
-    ctx.difficulty,
-    ctx.trialId,
-    waveNumber,
-    waveDef.isBoss,
-  );
-  const resolvedBossName = resolveTargetBossName(
-    ctx.trialId,
-    ctx.clearTargetWave,
-    waveNumber,
-    waveDef,
-  );
+  const dailyMod = ctx.dailyRule?.modifiers;
+  const hpScale = isBossRush
+    ? 1
+    : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, waveDef.isBoss);
+  const resolvedBossName = isBossRush
+    ? waveDef.bossName
+    : resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, waveNumber, waveDef);
 
   const effectiveSpawnCount = mutantMeta
     ? Math.max(4, Math.round(waveDef.spawnCount * mutantMeta.countMult))
@@ -366,9 +377,13 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
   const spawnedInWave = ctx.getSpawnedInWave();
   if (spawnedInWave < effectiveSpawnCount && ctx.currentTick >= ctx.getNextSpawnTick()) {
     const startPos = ctx.path.sample(0);
-    const hpMult = mutantMeta ? mutantMeta.hpMult : 1;
+    const dailyHpMult =
+      (dailyMod?.monsterHpMult ?? 1) * (waveDef.isBoss ? (dailyMod?.bossHpMult ?? 1) : 1);
+    const hpMult = (mutantMeta ? mutantMeta.hpMult : 1) * dailyHpMult;
     const speedMult =
-      (mutantMeta ? mutantMeta.speedMult : 1) * (trialCfg ? trialCfg.speedMult : 1);
+      (mutantMeta ? mutantMeta.speedMult : 1) *
+      (trialCfg ? trialCfg.speedMult : 1) *
+      (dailyMod?.monsterSpeedMult ?? 1);
     const bonusCoin = mutantMeta ? mutantMeta.bonusCoin : 0;
     const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale * hpMult));
 
@@ -386,6 +401,20 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
           ),
         );
 
+    const bossRushStageDef = isBossRush
+      ? BOSS_RUSH_STAGES[Math.min(BOSS_RUSH_STAGES.length - 1, Math.max(0, waveNumber - 1))]
+      : undefined;
+    const armorVal = isBossRush
+      ? (bossRushStageDef?.armorBonus ?? 12 + waveNumber * 10)
+      : computeMonsterArmor(
+          ctx.data,
+          ctx.difficulty,
+          ctx.trialId,
+          waveNumber,
+          waveDef.isBoss,
+          false,
+        ) + (waveDef.isBoss ? (dailyMod?.bonusBossArmor ?? 0) : 0);
+
     const monster: MonsterEntity = {
       entityId: ctx.allocateMonsterId(),
       kind: waveDef.monsterKind,
@@ -393,14 +422,7 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
       bossName: resolvedBossName,
       hp: scaledHp,
       maxHp: scaledHp,
-      armor: computeMonsterArmor(
-        ctx.data,
-        ctx.difficulty,
-        ctx.trialId,
-        waveNumber,
-        waveDef.isBoss,
-        false,
-      ),
+      armor: armorVal,
       armorShred: 0,
       shredExpireTick: 0,
       shieldHp: 0,
@@ -409,7 +431,8 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
       hasteUntilTick: 0,
       nextBossSkillTick: ctx.currentTick + initialSkillDelay,
       phaseTriggered: false,
-      speedPerTick: waveDef.monsterSpeedPerTick * diffCfg.speedMult * speedMult,
+      speedPerTick:
+        waveDef.monsterSpeedPerTick * (isBossRush ? 1 : diffCfg.speedMult) * speedMult,
       radius: waveDef.monsterRadius,
       rewardCoin: waveDef.rewardCoin + bonusCoin,
       spawnTick: ctx.currentTick,
@@ -474,15 +497,20 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     ctx.tileHazards.length = 0;
     const nextWaveNum = waveNumber + 1;
     ctx.setWaveNumber(nextWaveNum);
-    const nextWaveDef = resolveWaveDef(ctx.data.waves, nextWaveNum);
+    const nextWaveDef = isBossRush
+      ? resolveBossRushWaveDef(nextWaveNum)
+      : resolveWaveDef(ctx.data.waves, nextWaveNum);
     const rookieBossBonus =
-      ctx.rookieMode && nextWaveDef.isBoss && nextWaveNum <= 10 ? 1.25 : 1;
+      !isBossRush && ctx.rookieMode && nextWaveDef.isBoss && nextWaveNum <= 10 ? 1.25 : 1;
     ctx.setWaveTicksLeft(Math.round(nextWaveDef.durationTicks * rookieBossBonus));
     ctx.setSpawnedInWave(0);
-    ctx.setNextSpawnTick(ctx.currentTick + 15);
+    ctx.setNextSpawnTick(ctx.currentTick + (isBossRush ? 60 : 15));
     const waveClearBonusPct = ctx.getWaveClearCoinBonusPct();
+    const baseClearRaw = isBossRush ? 60 + completedWave * 15 : 20;
     const baseClearCoin =
-      waveClearBonusPct > 0 ? Math.round(20 * (1 + waveClearBonusPct / 100)) : 20;
+      waveClearBonusPct > 0
+        ? Math.round(baseClearRaw * (1 + waveClearBonusPct / 100))
+        : baseClearRaw;
     const updatedCoin = curCoin + baseClearCoin + interestCoin;
     ctx.setCoin(updatedCoin);
     ctx.addLuckStone(1);
@@ -501,7 +529,9 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
 
     if (nextWaveDef.isBoss) {
       const nextBossName =
-        resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, nextWaveNum, nextWaveDef) ??
+        (isBossRush
+          ? nextWaveDef.bossName
+          : resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, nextWaveNum, nextWaveDef)) ??
         '웨이브 보스';
       ctx.events.emit('wave:boss', {
         wave: nextWaveNum,

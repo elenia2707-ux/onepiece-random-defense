@@ -14,6 +14,7 @@ import {
 } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import { CONTRACTS_BY_ID } from '../data/contracts';
+import type { RunModeId } from '../data/specialModes';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
   BoonId,
@@ -100,6 +101,7 @@ export interface UIControlHandlers {
   onClaimDailyQuest(questId: DailyQuestId): DailyQuestClaimResult;
   onSelectDifficulty(diff: DifficultyId): boolean;
   onSelectTrial(trialId: TrialId | null): boolean;
+  onSelectRunMode(mode: RunModeId): boolean;
   onEnterEndless(): void;
   onRestart(): void;
   onSettleAndRestart(): void;
@@ -1256,6 +1258,7 @@ export class UIManager {
         if (!diff) return;
         if (
           this.lastSnapshot &&
+          this.lastSnapshot.runMode === 'standard' &&
           this.lastSnapshot.trialId === null &&
           diff === this.lastSnapshot.difficulty
         ) {
@@ -1269,7 +1272,11 @@ export class UIManager {
       } else if (action === 'select-trial') {
         const rawTrial = btn.dataset.trialId ?? '';
         const trialId = rawTrial ? (rawTrial as TrialId) : null;
-        if (this.lastSnapshot && trialId === this.lastSnapshot.trialId) {
+        if (
+          this.lastSnapshot &&
+          this.lastSnapshot.runMode === 'standard' &&
+          trialId === this.lastSnapshot.trialId
+        ) {
           if (trialId) {
             this.showToast(`현재 [${TRIAL_CONFIGS[trialId].name}] 비경에 출정 중입니다.`);
           }
@@ -1278,6 +1285,23 @@ export class UIManager {
         const ok = this.handlers.onSelectTrial(trialId);
         if (!ok) {
           this.showToast('선택할 수 없는 비경 시련입니다.', true);
+        }
+      } else if (action === 'select-run-mode') {
+        const mode = btn.dataset.runMode as RunModeId | undefined;
+        if (!mode) return;
+        if (this.lastSnapshot && this.lastSnapshot.runMode === mode) {
+          const label =
+            mode === 'daily_challenge'
+              ? '오늘의 강호 비무'
+              : mode === 'boss_rush'
+                ? '보스 러시'
+                : '표준 출정';
+          this.showToast(`현재 [${label}] 모드로 출정 중입니다.`);
+          return;
+        }
+        const ok = this.handlers.onSelectRunMode(mode);
+        if (!ok) {
+          this.showToast('전환할 수 없는 출정 모드입니다.', true);
         }
       } else if (action === 'codex-filter') {
         this.codexFilter = (btn.dataset.filter ?? 'all') as CodexFilterId;
@@ -1438,7 +1462,7 @@ export class UIManager {
     this.lastSnapshot = snapshot;
     const meta = this.handlers.getMetaProfile();
 
-    // 1. Top HUD Wave, Difficulty, Secret Realm Trial, Mutant Wave & Boss status
+    // 1. Top HUD Wave, Difficulty, Special Mode, Secret Realm Trial, Mutant Wave & Boss status
     const waveStr = String(snapshot.wave).padStart(2, '0');
     const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
     const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
@@ -1446,8 +1470,22 @@ export class UIManager {
     this.waveBoxEl.classList.toggle('endless-mode', snapshot.endlessMode);
     this.waveBoxEl.classList.toggle('mutant-mode', Boolean(snapshot.waveMutant));
     this.waveBoxEl.classList.toggle('trial-mode', trialCfg !== null);
+    this.waveBoxEl.classList.toggle('daily-mode', snapshot.runMode === 'daily_challenge');
+    this.waveBoxEl.classList.toggle('boss-rush-mode', snapshot.runMode === 'boss_rush');
     const prefix = snapshot.isBossWave ? '영물' : snapshot.endlessMode ? '혈투' : '제';
-    if (trialCfg) {
+    if (snapshot.runMode === 'boss_rush') {
+      const targetStr = String(snapshot.clearTargetWave).padStart(2, '0');
+      const stageLabel = snapshot.endlessMode
+        ? `무한 ${waveStr}관문`
+        : `${waveStr}/${targetStr}관문`;
+      this.setText(this.waveBadgeEl, `⚔ ${stageLabel} · 보스러시`);
+    } else if (snapshot.dailyChallenge) {
+      const targetStr = String(snapshot.clearTargetWave).padStart(2, '0');
+      const rightTag = snapshot.waveMutant
+        ? snapshot.waveMutant.badge
+        : snapshot.dailyChallenge.rule.badge;
+      this.setText(this.waveBadgeEl, `📅 ${waveStr}/${targetStr}장 · ${rightTag}`);
+    } else if (trialCfg) {
       const targetStr = String(snapshot.clearTargetWave).padStart(2, '0');
       const waveNumLabel = snapshot.endlessMode ? `${waveStr}장` : `${waveStr}/${targetStr}장`;
       const rightTag = snapshot.waveMutant ? snapshot.waveMutant.badge : trialCfg.badge;
@@ -1459,6 +1497,7 @@ export class UIManager {
     }
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
     if (
+      snapshot.runMode !== 'boss_rush' &&
       !snapshot.isBossWave &&
       !snapshot.gameOver &&
       !snapshot.victoryHold &&
@@ -1857,25 +1896,30 @@ export class UIManager {
 
     const rerollsUsed = offer.rerollsUsed ?? 0;
     const rerollCost = getBoonRerollCost(rerollsUsed);
-    const canReroll = snapshot.coin >= rerollCost;
-    const sig = `${offer.seq}:${offer.wave}:${rerollsUsed}:${canReroll ? 1 : 0}:${this.boonMinimized ? 1 : 0}:${offer.options.map((id) => `${id}=${snapshot.activeBoons[id] ?? 0}`).join(',')}`;
+    const rerollDisabledByRule = Boolean(snapshot.dailyChallenge?.rule.modifiers.disableBoonReroll);
+    const canReroll = !rerollDisabledByRule && snapshot.coin >= rerollCost;
+    const sig = `${offer.seq}:${offer.wave}:${rerollsUsed}:${canReroll ? 1 : 0}:${rerollDisabledByRule ? 1 : 0}:${this.boonMinimized ? 1 : 0}:${offer.options.map((id) => `${id}=${snapshot.activeBoons[id] ?? 0}`).join(',')}`;
     if (sig === this.prevBoonModalSig) {
       return;
     }
     this.prevBoonModalSig = sig;
 
     const offerWaveStr = String(offer.wave).padStart(2, '0');
-    this.setText(this.boonTitleEl, `제 ${offerWaveStr} 장 비전 비급 3택 1`);
+    const offerStageLabel =
+      snapshot.runMode === 'boss_rush' ? `제 ${offer.wave} 관문` : `제 ${offerWaveStr} 장`;
+    this.setText(this.boonTitleEl, `${offerStageLabel} 비전 비급 3택 1`);
     this.setText(
       this.boonPeekPillEl,
-      `☯ 제 ${offerWaveStr} 장 강호 기연 선택 대기중 — 비급 펼치기`,
+      `☯ ${offerStageLabel} 강호 기연 선택 대기중 — 비급 펼치기`,
     );
 
     this.boonRerollBtnEl.disabled = !canReroll;
     this.boonRerollBtnEl.classList.toggle('is-affordable', canReroll);
     this.setText(
       this.boonRerollBtnEl,
-      `🎲 비급 다시 뽑기 (은자 ${rerollCost.toLocaleString('ko-KR')})`,
+      rerollDisabledByRule
+        ? '🚫 청빈의 도 — 다시 뽑기 금지'
+        : `🎲 비급 다시 뽑기 (은자 ${rerollCost.toLocaleString('ko-KR')})`,
     );
 
     if (this.boonMinimized) {
@@ -1924,21 +1968,41 @@ export class UIManager {
     this.gameOverCardEl.classList.toggle('victory-theme', showVictory || snapshot.victoryAchieved);
 
     if (showVictory) {
-      this.setText(
-        this.gameOverTitleEl,
-        trialCfg ? '🏆 무림 비경 제패 · 출정 정산' : '🏆 천하통일 대승리 · 출정 정산',
-      );
-      this.setText(
-        this.gameOverSubEl,
-        trialCfg
-          ? `제 ${waveStr} 장 [${trialCfg.name}] 시련 제패! (마물 ${snapshot.monstersSlain}기)`
-          : `제 ${waveStr} 장 천마대제 토벌 완료! (${diffCfg.name} · 마물 ${snapshot.monstersSlain}기)`,
-      );
-      this.setText(
-        this.gameOverEndlessBtnEl,
-        `⚔ 무한 혈투 (${snapshot.clearTargetWave + 1}장~)`,
-      );
-      this.gameOverEndlessBtnEl.style.display = 'inline-flex';
+      if (snapshot.runMode === 'daily_challenge' && snapshot.dailyChallenge) {
+        this.setText(this.gameOverTitleEl, '📅 오늘의 강호 비무 제패 · 출정 정산');
+        this.setText(
+          this.gameOverSubEl,
+          `${snapshot.dailyChallenge.dateKey} [${snapshot.dailyChallenge.rule.name}] 제 ${waveStr} 장 완전 제패!`,
+        );
+        this.gameOverEndlessBtnEl.style.display = 'none';
+      } else if (snapshot.runMode === 'boss_rush') {
+        this.setText(this.gameOverTitleEl, '⚔ 보스 러시 10관문 제패 · 출정 정산');
+        this.setText(
+          this.gameOverSubEl,
+          `영물 10연전 완전 정복! 무한 보스 관문(11관문~)에 계속 도전할 수 있습니다.`,
+        );
+        this.setText(
+          this.gameOverEndlessBtnEl,
+          `⚔ 무한 관문 (${snapshot.clearTargetWave + 1}관문~)`,
+        );
+        this.gameOverEndlessBtnEl.style.display = 'inline-flex';
+      } else {
+        this.setText(
+          this.gameOverTitleEl,
+          trialCfg ? '🏆 무림 비경 제패 · 출정 정산' : '🏆 천하통일 대승리 · 출정 정산',
+        );
+        this.setText(
+          this.gameOverSubEl,
+          trialCfg
+            ? `제 ${waveStr} 장 [${trialCfg.name}] 시련 제패! (마물 ${snapshot.monstersSlain}기)`
+            : `제 ${waveStr} 장 천마대제 토벌 완료! (${diffCfg.name} · 마물 ${snapshot.monstersSlain}기)`,
+        );
+        this.setText(
+          this.gameOverEndlessBtnEl,
+          `⚔ 무한 혈투 (${snapshot.clearTargetWave + 1}장~)`,
+        );
+        this.gameOverEndlessBtnEl.style.display = 'inline-flex';
+      }
       this.gameOverInspectBtnEl.style.display = 'none';
       this.setText(this.gameOverRestartBtnEl, '금의환향');
     } else {
@@ -1953,10 +2017,21 @@ export class UIManager {
         snapshot.gameOverReason === 'boss_timeout'
           ? '제한시간 초과'
           : `마물 ${snapshot.monsterCap}기 돌파`;
-      const modeTag = trialCfg ? `[${trialCfg.badge}] · ` : '';
+      const modeTag =
+        snapshot.runMode === 'daily_challenge'
+          ? '[📅 오늘의 비무] · '
+          : snapshot.runMode === 'boss_rush'
+            ? '[⚔ 보스 러시] · '
+            : trialCfg
+              ? `[${trialCfg.badge}] · `
+              : '';
+      const reachTxt =
+        snapshot.runMode === 'boss_rush'
+          ? `제 ${snapshot.wave} 관문 도달`
+          : `제 ${waveStr} 장 도달`;
       const subTxt = rec
-        ? `${modeTag}제 ${waveStr} 장 도달${rec.isNewBest ? ' (최고 기록!)' : ''} · ${reasonTag} · 영물 ${rec.bossesSlain}기 토벌`
-        : `${modeTag}제 ${waveStr} 장 · ${reasonTag}`;
+        ? `${modeTag}${reachTxt}${rec.isNewBest ? ' (최고 기록!)' : ''} · ${reasonTag} · 영물 ${rec.bossesSlain}기 토벌`
+        : `${modeTag}${reachTxt} · ${reasonTag}`;
       this.setText(this.gameOverSubEl, subTxt);
 
       this.gameOverEndlessBtnEl.style.display = 'none';
@@ -1964,7 +2039,7 @@ export class UIManager {
       this.setText(this.gameOverRestartBtnEl, '재출정');
     }
 
-    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.titleBonusGold ?? 0}:${rec?.titleBonusKeys ?? 0}:${rec?.titleBonusSilk ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}:${rec?.unlockedTitleIds.join(',') ?? ''}`;
+    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.endlessBonusGold ?? 0}:${rec?.endlessBonusSilk ?? 0}:${rec?.dailyChallengeScore ?? 0}:${rec?.titleBonusGold ?? 0}:${rec?.titleBonusKeys ?? 0}:${rec?.titleBonusSilk ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}:${rec?.unlockedTitleIds.join(',') ?? ''}`;
     if (rec && sig !== this.prevSettlementRenderedSig) {
       this.prevSettlementRenderedSig = sig;
       this.gameOverLootEl.innerHTML = buildSettlementLootHtml(this.data, snapshot, rec);

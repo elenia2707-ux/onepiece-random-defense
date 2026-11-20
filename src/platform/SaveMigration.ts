@@ -4,6 +4,7 @@ import type {
   ContractOfferSnapshot,
   GambleResultSnapshot,
 } from '../core/Simulation';
+import type { RunModeId } from '../data/specialModes';
 import type {
   BoonId,
   DifficultyId,
@@ -24,6 +25,9 @@ export interface RunSaveData {
   readonly savedAtMs: number;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly runMode?: RunModeId;
+  readonly dailyDateKey?: string | null;
+  readonly endlessMilestonesReached?: readonly number[];
   readonly currentTick: number;
   readonly rngState: number;
   readonly nextUid: number;
