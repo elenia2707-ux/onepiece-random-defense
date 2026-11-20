@@ -1,8 +1,10 @@
 import {
   CODEX_MILESTONES,
+  computeHeroProficiencyInfo,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
   formatCompactNumber,
+  HERO_PROFICIENCY_MAX_RANK,
   TITLE_DEFS,
   TRIAL_CONFIGS,
   TRIAL_ORDER,
@@ -305,6 +307,28 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
       const tacticalNote =
         extraTactical.length > 0 ? ` · <b>${escapeHtml(extraTactical.join(' / '))}</b>` : '';
 
+      const profEntry = meta.heroProficiency[u.id] ?? { xp: 0, runs: 0, mvpCount: 0 };
+      const profInfo = computeHeroProficiencyInfo(profEntry.xp);
+      const profPct = profInfo.isMaxRank
+        ? 100
+        : Math.min(100, Math.max(0, Math.round((profInfo.currentTierXp / profInfo.nextTierXp) * 100)));
+      const profBadgeHtml =
+        profInfo.rank > 0
+          ? `<span class="codex-prof-badge" style="background:${profInfo.color}">🥋 ${escapeHtml(profInfo.rankName)} Lv.${profInfo.rank} (공+${profInfo.atkBonusPct}%)</span>`
+          : '';
+      const mvpPart = profEntry.mvpCount > 0 ? ` · 👑MVP ${profEntry.mvpCount}회` : '';
+      const profBarHtml =
+        profEntry.xp > 0 || discovered
+          ? `
+              <div class="codex-prof-row">
+                <div class="codex-prof-track">
+                  <div class="codex-prof-fill" style="width:${profPct}%;background:${profInfo.color}"></div>
+                </div>
+                <span class="codex-prof-meta">${profInfo.isMaxRank ? `무신 극의 (${HERO_PROFICIENCY_MAX_RANK}단·공+15%)` : `숙련 ${profInfo.currentTierXp}/${profInfo.nextTierXp} XP (다음: 공+${(profInfo.rank + 1) * 3}%)`}${profEntry.runs > 0 ? ` · 출전 ${profEntry.runs}회${mvpPart}` : ''}</span>
+              </div>
+            `
+          : '';
+
       return `
         <div class="sheet-card codex-card${discovered ? ' codex-discovered' : ' codex-undiscovered'}">
           <div class="card-left">
@@ -315,10 +339,12 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
                 <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
                 <span class="card-name">${escapeHtml(u.name)}</span>
                 ${roleBadges}
+                ${profBadgeHtml}
                 ${statusBadge}
               </div>
               <div class="card-sub">⚔${u.atk} · 사거리 ${u.range} · 절기 <b>[${escapeHtml(u.skill.name)}]</b>${tacticalNote}</div>
               <div class="codex-lineage">${escapeHtml(lowerLine)} · <span>${escapeHtml(upperLine)}</span></div>
+              ${profBarHtml}
             </div>
           </div>
         </div>
@@ -511,7 +537,7 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     <div class="sheet-section-label">🏅 강호 칭호 · 업적 보상 사다리 (${meta.unlockedTitleCount}/${TITLE_DEFS.length} 해금)</div>
     <div class="title-ladder-list">${titleCards}</div>
     <div class="codex-header-bar">
-      <span class="sheet-section-label">📖 무림 ${data.units.length}인 명숙록 (${meta.discoveredCount}/${data.units.length}${meta.codexAtkBonusPct > 0 ? ` · 영구 공격력 +${meta.codexAtkBonusPct}%` : ''})</span>
+      <span class="sheet-section-label">📖 무림 ${data.units.length}인 명숙록 (${meta.discoveredCount}/${data.units.length}${meta.masteredHeroCount > 0 ? ` · 숙련 ${meta.masteredHeroCount}인` : ''}${meta.codexAtkBonusPct > 0 ? ` · 수집공+${meta.codexAtkBonusPct}%` : ''})</span>
       <div class="codex-filter-row">${filterHtml}</div>
     </div>
     <div class="codex-milestone-strip">${codexMilestoneHtml}</div>

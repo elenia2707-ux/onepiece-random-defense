@@ -590,6 +590,7 @@ export interface SimulationModeOptions {
   readonly codexAtkBonusPct?: number;
   readonly endgameBonuses?: EndgameMetaBonuses;
   readonly arenaRule?: ArenaRuleId | null;
+  readonly heroMasteryAtkPct?: Readonly<Partial<Record<UnitId, number>>>;
 }
 
 export interface UISnapshot {
@@ -702,6 +703,7 @@ export class Simulation {
   private codexAtkBonusPct = 0;
   private endgameBonuses: EndgameMetaBonuses = ZERO_ENDGAME_META_BONUSES;
   private arenaRule: ArenaRuleId | null = null;
+  private heroMasteryAtkPct: Readonly<Partial<Record<UnitId, number>>> = {};
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
@@ -826,6 +828,7 @@ export class Simulation {
       ? { ...options.endgameBonuses }
       : ZERO_ENDGAME_META_BONUSES;
     this.arenaRule = options?.arenaRule ?? null;
+    this.heroMasteryAtkPct = options?.heroMasteryAtkPct ? { ...options.heroMasteryAtkPct } : {};
     if (this.runMode === 'daily_challenge') {
       const spec = getDailyChallengeSpec(options?.dailyDateKey ?? '2026-11-19');
       this.dailyChallengeSpec = spec;
@@ -1079,7 +1082,8 @@ export class Simulation {
       setBonus.gambleBonusPct +
       benchBonus.gambleBonusPct +
       trialBonus +
-      dailyBonus
+      dailyBonus +
+      (this.endgameBonuses.gambleBonusPct ?? 0)
     );
   }
 
@@ -1176,6 +1180,10 @@ export class Simulation {
     }
     if (this.endgameBonuses.atkPct > 0) {
       extraTraitPct += this.endgameBonuses.atkPct;
+    }
+    const heroProfPct = this.heroMasteryAtkPct[unitId] ?? 0;
+    if (heroProfPct > 0) {
+      extraTraitPct += heroProfPct;
     }
     if (this.arenaRule === 'bloodflame_forge') {
       extraTraitPct += 5;
@@ -1520,6 +1528,10 @@ export class Simulation {
       }
       if (cmd.arenaRule !== undefined) {
         this.arenaRule = cmd.arenaRule;
+        this.priorityDirty = true;
+      }
+      if (cmd.heroMasteryAtkPct !== undefined) {
+        this.heroMasteryAtkPct = { ...cmd.heroMasteryAtkPct };
         this.priorityDirty = true;
       }
       return;
@@ -3257,7 +3269,12 @@ export class Simulation {
       range: (def?.range ?? 150) + harmonyRange + rangeMirrorBonus,
       skillName: def?.skill.name ?? '기본 초식',
       armorShred:
-        (def?.armorShred ?? 0) + crusherShred + trialShred + relicShred + benchPassives.armorShred,
+        (def?.armorShred ?? 0) +
+        crusherShred +
+        trialShred +
+        relicShred +
+        benchPassives.armorShred +
+        (this.endgameBonuses.armorShred ?? 0),
       supportAura: def?.supportAura,
       passiveTrait: def?.passiveTrait,
       benchPassive: def?.benchPassive,
@@ -3266,6 +3283,31 @@ export class Simulation {
       sealed: isField ? this.isFieldSlotSealed(u.slot.index) : false,
       hazardWarning: isField ? this.isFieldSlotWarning(u.slot.index) : false,
     };
+  }
+
+  public getRunHeroContributions(): ReadonlyArray<{
+    readonly unitId: UnitId;
+    readonly damage: number;
+    readonly onBoard: boolean;
+  }> {
+    const boardSet = new Set<UnitId>();
+    for (let i = 0; i < this.units.length; i++) {
+      boardSet.add(this.units[i]!.unitId);
+    }
+    const allIds = new Set<UnitId>(boardSet);
+    for (const [uid, dmg] of this.damageByUnit.entries()) {
+      if (dmg > 0) allIds.add(uid);
+    }
+    const out: Array<{ readonly unitId: UnitId; readonly damage: number; readonly onBoard: boolean }> = [];
+    for (const uid of allIds) {
+      out.push({
+        unitId: uid,
+        damage: Math.max(0, Math.floor(this.damageByUnit.get(uid) ?? 0)),
+        onBoard: boardSet.has(uid),
+      });
+    }
+    out.sort((a, b) => (b.damage !== a.damage ? b.damage - a.damage : a.unitId.localeCompare(b.unitId)));
+    return out;
   }
 
   public exportRunSave(savedAtMs = 0): RunSaveData {

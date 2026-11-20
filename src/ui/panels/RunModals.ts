@@ -175,7 +175,43 @@ export function buildSettlementLootHtml(
         `;
   }
 
-  const totalSilkGain = rec.firstClearBonusSilk + rec.titleBonusSilk + rec.endlessBonusSilk;
+  let cultivationBanner = '';
+  if (rec.cultivationXpEarned > 0) {
+    const lvUpTxt =
+      rec.newCultivationLevel > rec.prevCultivationLevel
+        ? ` · 🎉 단전 경지 승급 Lv.${rec.prevCultivationLevel}→Lv.${rec.newCultivationLevel} [${rec.cultivationRealmName}] (진기 혈점 +${rec.meridianPointsEarned}!)`
+        : ` · 현재 Lv.${rec.newCultivationLevel} [${rec.cultivationRealmName}]`;
+    cultivationBanner = `
+          <div class="first-clear-banner cultivation-gain-banner">
+            ☯ 단전 내공 진기 +${rec.cultivationXpEarned.toLocaleString('ko-KR')} XP 수련${escapeHtml(lvUpTxt)}
+          </div>
+        `;
+  }
+
+  let heroProfBanner = '';
+  if (rec.heroRankUps && rec.heroRankUps.length > 0) {
+    const rankLabels = rec.heroRankUps.slice(0, 4).map((r) => {
+      const uName = data.unitsById.get(r.unitId)?.name ?? r.unitId;
+      return `${uName} [${r.rankName} Lv.${r.newRank}·공+${r.atkBonusPct}%]`;
+    });
+    const moreSuffix = rec.heroRankUps.length > 4 ? ` 외 ${rec.heroRankUps.length - 4}인` : '';
+    const rwParts: string[] = [];
+    if (rec.heroProficiencyBonusGold > 0) rwParts.push(`+${rec.heroProficiencyBonusGold}주화`);
+    if (rec.heroProficiencyBonusKeys > 0) rwParts.push(`열쇠+${rec.heroProficiencyBonusKeys}`);
+    if (rec.heroProficiencyBonusSilk > 0) rwParts.push(`비단+${rec.heroProficiencyBonusSilk}필`);
+    const rwStr = rwParts.length > 0 ? ` (${rwParts.join(' · ')})` : '';
+    heroProfBanner = `
+          <div class="first-clear-banner hero-prof-banner">
+            🥋 협객 숙련도 등극! ${escapeHtml(rankLabels.join(', '))}${escapeHtml(moreSuffix)}${escapeHtml(rwStr)}
+          </div>
+        `;
+  }
+
+  const totalSilkGain =
+    rec.firstClearBonusSilk +
+    rec.titleBonusSilk +
+    rec.endlessBonusSilk +
+    (rec.heroProficiencyBonusSilk ?? 0);
   const silkLootHtml =
     totalSilkGain > 0
       ? `
@@ -189,8 +225,10 @@ export function buildSettlementLootHtml(
         `
       : '';
 
-  const displayGoldGain = rec.goldEarned + rec.titleBonusGold;
-  const displayKeysGain = rec.keysEarned + rec.titleBonusKeys;
+  const displayGoldGain =
+    rec.goldEarned + rec.titleBonusGold + (rec.heroProficiencyBonusGold ?? 0);
+  const displayKeysGain =
+    rec.keysEarned + rec.titleBonusKeys + (rec.heroProficiencyBonusKeys ?? 0);
 
   // Detailed Settlement Battle Report (TOP 5 DPS · Faction Damage Share · Economy Breakdown)
   const dm = snapshot.damageMeter;
@@ -251,6 +289,8 @@ export function buildSettlementLootHtml(
 
   return `
         <div class="settlement-loot-title">출정 정산 영구 보상${multBadge}</div>
+        ${cultivationBanner}
+        ${heroProfBanner}
         ${dailyScoreBanner}
         ${firstClearBanner}
         ${endlessMilestoneBanner}

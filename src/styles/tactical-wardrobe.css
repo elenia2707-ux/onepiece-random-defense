@@ -1730,6 +1730,269 @@
   filter: grayscale(0.45);
 }
 
+/* v3.1: 단전 내공 경지 · 기경팔맥(奇經八脈) 타통 & 44인 협객 무공 숙련도 */
+.meridian-panel {
+  background: linear-gradient(180deg, rgba(15, 36, 58, 0.94) 0%, rgba(8, 19, 34, 0.98) 100%);
+  border: 2.5px solid var(--ink);
+  border-radius: 16px;
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.meridian-realm-banner {
+  background: rgba(9, 24, 38, 0.88);
+  border: 2px solid rgba(125, 211, 252, 0.35);
+  border-radius: 12px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meridian-realm-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meridian-realm-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.meridian-realm-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: #fef9c3;
+  text-shadow: var(--outline-1);
+}
+
+.meridian-qi-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.85);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.meridian-qi-pill.has-pts {
+  border-color: #fde047;
+  background: linear-gradient(180deg, #ea580c 0%, #9a3412 100%);
+  color: #fef08a;
+  animation: chipGlow 0.9s ease-in-out infinite alternate;
+}
+
+.meridian-reset-btn {
+  padding: 4px 10px;
+  border-radius: 9px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(180deg, #475569 0%, #1e293b 100%);
+  color: #e2e8f0;
+  font-family: var(--font-display);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.meridian-reset-btn:active {
+  transform: translateY(1px);
+}
+
+.meridian-xp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meridian-xp-track {
+  flex: 1;
+  min-width: 150px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: rgba(2, 6, 23, 0.9);
+  overflow: hidden;
+}
+
+.meridian-xp-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 180ms ease-out;
+}
+
+.meridian-xp-txt {
+  font-size: 11.5px;
+  color: #bae6fd;
+  font-variant-numeric: tabular-nums;
+}
+
+.meridian-cycle-row {
+  display: flex;
+  align-items: center;
+}
+
+.meridian-cycle-hint {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.meridian-cycle-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1.5px solid #fde047;
+}
+
+.meridian-cycle-badge.open {
+  background: linear-gradient(90deg, #0369a1, #0f766e);
+  color: #e0f2fe;
+}
+
+.meridian-cycle-badge.max {
+  background: linear-gradient(90deg, #9333ea, #be123c);
+  color: #fef08a;
+}
+
+.realm-milestone-strip {
+  margin-bottom: 2px;
+}
+
+.meridian-grid {
+  margin-top: 2px;
+}
+
+.meridian-card {
+  background: rgba(10, 25, 42, 0.92);
+  border: 2px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
+  padding: 8px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.meridian-card.active {
+  border-color: rgba(56, 189, 248, 0.68);
+}
+
+.meridian-card.maxed {
+  border-color: #fde047;
+  background: linear-gradient(180deg, rgba(49, 24, 78, 0.92) 0%, rgba(17, 24, 39, 0.95) 100%);
+}
+
+.meridian-acupoint-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #fde68a;
+}
+
+.meridian-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.meridian-pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.meridian-pip.max {
+  border-color: #fef08a;
+}
+
+.codex-prof-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-shadow: var(--outline-1);
+}
+
+.codex-prof-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.codex-prof-track {
+  width: 110px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: rgba(6, 18, 24, 0.88);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.codex-prof-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.codex-prof-meta {
+  font-size: 11.5px;
+  color: #bae6fd;
+  font-variant-numeric: tabular-nums;
+}
+
+.relic-buff-pill.hud-realm-pill {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  color: #f0f9ff;
+  font-weight: 700;
+}
+
+.relic-buff-pill.hud-realm-pill.has-qi-alert {
+  background: linear-gradient(180deg, #b45309 0%, #7c2d12 100%);
+  border-color: #fde047 !important;
+  color: #fef9c3;
+}
+
+.shortcut-chip.prof-chip {
+  background: rgba(15, 23, 42, 0.88);
+  color: #fef08a;
+  border-width: 2px;
+}
+
+.first-clear-banner.cultivation-gain-banner {
+  background: linear-gradient(90deg, rgba(12, 74, 110, 0.95), rgba(15, 118, 110, 0.95));
+  border-color: #38bdf8;
+  color: #e0f2fe;
+}
+
+.first-clear-banner.hero-prof-banner {
+  background: linear-gradient(90deg, rgba(124, 45, 18, 0.95), rgba(107, 33, 168, 0.95));
+  border-color: #fde047;
+  color: #fef9c3;
+}
+
+
 
 
 

@@ -3442,6 +3442,112 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const forgeAtk = simForge.getUnitEffectiveAtk('cheonma');
     expect(forgeAtk.baseAtk + forgeAtk.bonusAtk).toBeGreaterThan(baseAtk.baseAtk + baseAtk.bonusAtk);
   });
+
+  it('supports v3.1 Wuxia progression: Cultivation Realm XP, 8 Extraordinary Meridians (기경팔맥), 44-Hero Proficiency, and backup persistence', () => {
+    const data = loadGameData();
+    const mem = new Map<string, string>();
+    const storage: StorageLike = {
+      getItem: (k) => mem.get(k) ?? null,
+      setItem: (k, v) => {
+        mem.set(k, v);
+      },
+      removeItem: (k) => {
+        mem.delete(k);
+      },
+    };
+    const meta = new MetaStore(storage);
+    expect(meta.getProfile().cultivation.level).toBe(1);
+    expect(meta.getProfile().unspentMeridianPoints).toBe(0);
+
+    // Settle a victorious Wave 30 run with hero contributions (cheonma MVP + sword_immortal)
+    const rec = meta.settleRun({
+      wave: 30,
+      monstersSlain: 420,
+      bossesSlain: 6,
+      bountiesSlain: 2,
+      difficulty: 'hard',
+      victory: true,
+      totalDamage: 1_000_000,
+      topHeroId: 'cheonma',
+      topHeroName: '천마',
+      heroContributions: [
+        { unitId: 'cheonma', damage: 700_000, onBoard: true },
+        { unitId: 'sword_immortal', damage: 300_000, onBoard: true },
+      ],
+    });
+
+    expect(rec.cultivationXpEarned).toBeGreaterThan(500);
+    expect(rec.newCultivationLevel).toBeGreaterThanOrEqual(5);
+    expect(rec.meridianPointsEarned).toBe(rec.newCultivationLevel - 1);
+    expect(rec.heroRankUps.length).toBeGreaterThanOrEqual(2);
+    expect(rec.heroProficiencyBonusGold).toBeGreaterThan(0);
+
+    // Claim Lv.5 Realm Breakthrough Milestone (이류무사)
+    const pAfterRun = meta.getProfile();
+    expect(pAfterRun.claimableRealmCount).toBeGreaterThanOrEqual(1);
+    const claimRealm5 = meta.claimRealmMilestone(5);
+    expect(claimRealm5.ok).toBe(true);
+    if (claimRealm5.ok) {
+      expect(claimRealm5.rewardGold).toBe(150);
+      expect(claimRealm5.rewardKeys).toBe(1);
+    }
+    expect(meta.claimRealmMilestone(5).ok).toBe(false); // no double claim
+
+    // Grant extra XP so we have >= 8 Meridian points to unlock 소주천 개통 (all 8 Meridians Lv.1)
+    meta.grantCultivationXp(1500);
+    const merIds = ['ren', 'du', 'chong', 'dai', 'yangqiao', 'yinqiao', 'yangwei', 'yinwei'] as const;
+    for (const mid of merIds) {
+      const mRes = meta.upgradeMeridian(mid);
+      expect(mRes.ok).toBe(true);
+    }
+    const pCycle = meta.getProfile();
+    expect(pCycle.spentMeridianPoints).toBe(8);
+    expect(pCycle.endgameBonuses.meridianCycleTier).toBe(1); // 소주천 개통!
+    expect(pCycle.endgameBonuses.atkPct).toBe(6); // du(+2%) + 소주천(+4%)
+    expect(pCycle.endgameBonuses.startCoin).toBe(23); // ren(+8) + 소주천(+15)
+    expect(pCycle.endgameBonuses.armorShred).toBe(2);
+    expect(pCycle.endgameBonuses.speedPct).toBe(2.5);
+    expect(pCycle.endgameBonuses.gambleBonusPct).toBe(2);
+
+    // Verify Simulation applies Meridian bonuses AND per-hero Proficiency ATK%
+    const cheonmaProfPct = pCycle.heroMasteryAtkPct.cheonma ?? 0;
+    expect(cheonmaProfPct).toBeGreaterThanOrEqual(3);
+    const simPlain = new Simulation(data, 0x31310001);
+    const simProgressed = new Simulation(data, 0x31310001, {}, 'normal', null, false, {
+      endgameBonuses: pCycle.endgameBonuses,
+      heroMasteryAtkPct: pCycle.heroMasteryAtkPct,
+    });
+    expect(simProgressed.buildSnapshot(1, false).coin).toBe(
+      data.board.economy.initialCoin + pCycle.endgameBonuses.startCoin,
+    );
+    expect(simProgressed.getEffectiveGambleBonusPct()).toBe(
+      simPlain.getEffectiveGambleBonusPct() + (pCycle.endgameBonuses.gambleBonusPct ?? 0),
+    );
+    const plainCheonmaAtk = simPlain.getUnitEffectiveAtk('cheonma');
+    const progCheonmaAtk = simProgressed.getUnitEffectiveAtk('cheonma');
+    expect(progCheonmaAtk.baseAtk + progCheonmaAtk.bonusAtk).toBeGreaterThan(
+      plainCheonmaAtk.baseAtk + plainCheonmaAtk.bonusAtk,
+    );
+
+    // Backup code round-trip + Meridian reset
+    const code = meta.exportBackupCode();
+    const restored = new MetaStore(null);
+    expect(restored.importBackupCode(code).ok).toBe(true);
+    const rProf = restored.getProfile();
+    expect(rProf.cultivation.totalXp).toBe(pCycle.cultivation.totalXp);
+    expect(rProf.spentMeridianPoints).toBe(8);
+    expect(rProf.claimedRealmMilestones).toContain(5);
+    expect(rProf.heroProficiency.cheonma?.mvpCount).toBe(1);
+    expect(rProf.heroMasteryAtkPct.cheonma).toBe(cheonmaProfPct);
+
+    const resetRes = restored.resetMeridians();
+    expect(resetRes.ok).toBe(true);
+    if (resetRes.ok) {
+      expect(resetRes.refundedPoints).toBe(8);
+    }
+    expect(restored.getProfile().spentMeridianPoints).toBe(0);
+    expect(restored.getProfile().unspentMeridianPoints).toBe(rProf.cultivation.totalMeridianPoints);
+  });
 });
 
 function spawnCheonmaHelper(sim: Simulation): void {

@@ -86,6 +86,7 @@ export class Game {
         codexAtkBonusPct: metaProf.codexAtkBonusPct,
         endgameBonuses: metaProf.endgameBonuses,
         arenaRule: initialCourtDef?.arenaRule ?? null,
+        heroMasteryAtkPct: metaProf.heroMasteryAtkPct,
       },
     );
 
@@ -392,6 +393,52 @@ export class Game {
         );
         return res;
       },
+      onUpgradeMeridian: (meridianId) => {
+        const res = this.meta.upgradeMeridian(meridianId);
+        if (res.ok) {
+          this.sound.playCraft(4);
+          this.haptics.trigger('medium');
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            endgameBonuses: res.endgameBonuses,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onResetMeridians: () => {
+        const res = this.meta.resetMeridians();
+        if (res.ok) {
+          this.sound.playUiTap();
+          this.dispatchCommand({
+            type: 'syncMetaBonuses',
+            endgameBonuses: res.endgameBonuses,
+          });
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
+      onClaimRealmMilestone: (minLevel) => {
+        const res = this.meta.claimRealmMilestone(minLevel);
+        if (res.ok) {
+          this.sound.playMilestone();
+          this.haptics.trigger('success');
+        }
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return res;
+      },
       onDrawSkin: (count, payWith) => {
         const res = this.meta.drawSkinGacha(data.heroSkins, data.courtSkins, count, payWith);
         if (res.ok) {
@@ -481,6 +528,16 @@ export class Game {
           true,
         );
       },
+      onGrantDevCultivation: () => {
+        this.sound.playMilestone();
+        const cult = this.meta.grantCultivationXp(400);
+        this.ui.sync(
+          this.sim.buildSnapshot(this.loop.getSpeed(), this.loop.isPaused()),
+          performance.now(),
+          true,
+        );
+        return cult.level;
+      },
       getSelectedSlot: () => this.drag.getSelectedSlot(),
       getDragDiscardView: () => this.drag.getDragDiscardView(),
       clearSelection: () => this.drag.clearSelection(),
@@ -522,6 +579,7 @@ export class Game {
             totalDamage: snap.damageMeter.totalDamage,
             topHeroId: topEntry?.unitId ?? null,
             topHeroName: topEntry?.name ?? null,
+            heroContributions: this.sim.getRunHeroContributions(),
             usedHighFormation: snap.usedHighFormation,
             craftedImmortal: snap.craftedImmortal,
             ...(snap.dailyChallenge ? { dateKey: snap.dailyChallenge.dateKey } : {}),
@@ -586,7 +644,9 @@ export class Game {
       this.tutorialPaused ||
       cmd.type === 'rerollBoon' ||
       cmd.type === 'pickContract' ||
-      cmd.type === 'awaken';
+      cmd.type === 'awaken' ||
+      cmd.type === 'syncMetaBonuses' ||
+      cmd.type === 'syncRelics';
     if (
       flushNowWhilePaused &&
       this.loop.isPaused() &&
@@ -662,10 +722,17 @@ export class Game {
         totalDamage: snap.damageMeter.totalDamage,
         topHeroId: topEntry?.unitId ?? null,
         topHeroName: topEntry?.name ?? null,
+        heroContributions: this.sim.getRunHeroContributions(),
         usedHighFormation: snap.usedHighFormation,
         craftedImmortal: snap.craftedImmortal,
         ...(snap.dailyChallenge ? { dateKey: snap.dailyChallenge.dateKey } : {}),
       });
+      if (this.settlementRecord.heroRankUps.length > 0) {
+        this.dispatchCommand({
+          type: 'syncMetaBonuses',
+          heroMasteryAtkPct: this.meta.getHeroMasteryAtkPctMap(),
+        });
+      }
       if (this.settlementRecord.unlockedSkinIds.length > 0) {
         this.syncCosmetics(true);
       }

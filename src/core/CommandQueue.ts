@@ -43,6 +43,7 @@ export type GameCommand =
       readonly codexAtkBonusPct?: number;
       readonly endgameBonuses?: EndgameMetaBonuses;
       readonly arenaRule?: ArenaRuleId | null;
+      readonly heroMasteryAtkPct?: Readonly<Partial<Record<UnitId, number>>>;
     }
   | { readonly type: 'grantTestCoin'; readonly amount: number }
   | {

@@ -1,8 +1,10 @@
 import type { GameCommand, SlotRef } from '../core/CommandQueue';
 import {
+  computeHeroProficiencyInfo,
   DIFFICULTY_CONFIGS,
   formatCompactNumber,
   type MasteryId,
+  type MeridianId,
   TITLES_BY_ID,
   TRIAL_CONFIGS,
 } from '../core/relicFormulas';
@@ -37,7 +39,10 @@ import {
   type DailyQuestClaimResult,
   type DailyQuestId,
   type MasteryUpgradeResult,
+  type MeridianResetResult,
+  type MeridianUpgradeResult,
   type MetaProfile,
+  type RealmMilestoneClaimResult,
   RELIC_CHEST_GOLD_COST,
   type RelicBatchDrawResult,
   type RelicDrawResult,
@@ -122,12 +127,16 @@ export interface UIControlHandlers {
   onUpgradeRelic(relicId: RelicId): RelicUpgradeResult;
   onEngraveRelic(relicId: RelicId): RelicEngraveResult;
   onUpgradeMastery(masteryId: MasteryId): MasteryUpgradeResult;
+  onUpgradeMeridian(meridianId: MeridianId): MeridianUpgradeResult;
+  onResetMeridians(): MeridianResetResult;
+  onClaimRealmMilestone(minLevel: number): RealmMilestoneClaimResult;
   onDrawSkin(count: 1 | 5, payWith: 'gold' | 'key'): SkinGachaResult;
   onCraftSkin(skinId: string): SkinCraftResult;
   onEquipHeroSkin(unitId: UnitId, skinId: string | null): boolean;
   onEquipCourtSkin(courtId: CourtSkinId): boolean;
   onEquipTitle(titleId: TitleId | null): boolean;
   onGrantDevMeta(): void;
+  onGrantDevCultivation(): number;
   getSelectedSlot(): SlotRef | null;
   getDragDiscardView(): DragDiscardView;
   clearSelection(): void;
@@ -880,6 +889,11 @@ export class UIManager {
       } else if (act === 'meta') {
         this.handlers.onGrantDevMeta();
         this.showToast('DEV: +250 천하주화 · +2 열쇠 · +180 운금비단 · 전 난이도 해금');
+      } else if (act === 'cultivation') {
+        const newLv = this.handlers.onGrantDevCultivation();
+        this.prevSheetSignature = '';
+        if (this.activeSheet && this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+        this.showToast(`DEV: ☯ 단전 진기 +400 XP 수련 완료! (현재 단전 Lv.${newLv})`);
       }
     });
 
@@ -1239,6 +1253,41 @@ export class UIManager {
           this.prevSheetSignature = '';
           if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
           this.showToast(`🏔 강호 경지 단련! [${res.name}] Lv.${res.newLevel} 달성!`);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'meridian-upgrade') {
+        const meridianId = btn.dataset.meridianId as MeridianId | undefined;
+        if (!meridianId) return;
+        const res = this.handlers.onUpgradeMeridian(meridianId);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(
+            `⚡ 기경팔맥 타통! [${res.name}] Lv.${res.newLevel} 개방 (잔여 진기 ${res.unspentPoints}혈)`,
+          );
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'meridian-reset') {
+        const res = this.handlers.onResetMeridians();
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(`♻ 연세골수 완료! 기경팔맥 진기 ${res.refundedPoints}혈이 단전으로 환원되었습니다.`);
+        } else {
+          this.showToast(res.reason, true);
+        }
+      } else if (action === 'claim-realm-milestone') {
+        const minLv = Number(btn.dataset.realmLevel ?? '0');
+        if (!minLv) return;
+        const res = this.handlers.onClaimRealmMilestone(minLv);
+        if (res.ok) {
+          this.prevSheetSignature = '';
+          if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+          this.showToast(
+            `☯ [${res.realmName}] 경지 돌파 보상 수령! +${res.rewardGold}주화 · 열쇠+${res.rewardKeys} · 비단+${res.rewardSilk}필`,
+          );
         } else {
           this.showToast(res.reason, true);
         }
@@ -1736,7 +1785,15 @@ export class UIManager {
     const canDrawGold =
       meta.gold >= RELIC_CHEST_GOLD_COST &&
       this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel);
-    const relicBadgeNum = meta.keys > 0 ? String(meta.keys) : canDrawGold ? '!' : '0';
+    const hasMeridianNotif = meta.unspentMeridianPoints > 0 || meta.claimableRealmCount > 0;
+    const relicBadgeNum =
+      meta.keys > 0
+        ? String(meta.keys)
+        : meta.unspentMeridianPoints > 0
+          ? String(meta.unspentMeridianPoints)
+          : hasMeridianNotif || canDrawGold
+            ? '!'
+            : '0';
     this.setText(this.relicBadgeEl, relicBadgeNum);
     this.relicBadgeEl.classList.toggle('visible', relicBadgeNum !== '0');
     this.relicBtnEl.classList.toggle('active', this.activeSheet === 'relic');
@@ -2113,7 +2170,7 @@ export class UIManager {
       this.setText(this.gameOverRestartBtnEl, '재출정');
     }
 
-    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.endlessBonusGold ?? 0}:${rec?.endlessBonusSilk ?? 0}:${rec?.dailyChallengeScore ?? 0}:${rec?.titleBonusGold ?? 0}:${rec?.titleBonusKeys ?? 0}:${rec?.titleBonusSilk ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}:${rec?.unlockedTitleIds.join(',') ?? ''}`;
+    const sig = `${showVictory ? 'V' : 'D'}:${rec?.goldEarned ?? 0}:${rec?.keysEarned ?? 0}:${rec?.firstClearBonusSilk ?? 0}:${rec?.endlessBonusGold ?? 0}:${rec?.endlessBonusSilk ?? 0}:${rec?.dailyChallengeScore ?? 0}:${rec?.titleBonusGold ?? 0}:${rec?.titleBonusKeys ?? 0}:${rec?.titleBonusSilk ?? 0}:${rec?.cultivationXpEarned ?? 0}:${rec?.newCultivationLevel ?? 1}:${rec?.heroRankUps.length ?? 0}:${rec?.totalGold ?? 0}:${rec?.firstClearBonusGold ?? 0}:${rec?.unlockedSkinIds.join(',') ?? ''}:${rec?.unlockedTitleIds.join(',') ?? ''}`;
     if (rec && sig !== this.prevSettlementRenderedSig) {
       this.prevSettlementRenderedSig = sig;
       this.gameOverLootEl.innerHTML = buildSettlementLootHtml(this.data, snapshot, rec);
@@ -2133,11 +2190,26 @@ export class UIManager {
     const comboCount = snapshot.activeCombos.length;
     const codexAtk = snapshot.codexAtkBonusPct;
     const arenaRule = snapshot.arenaRule ?? '';
-    const sig = `${equippedTitleId}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
+    const cultLv = meta.cultivation.level;
+    const unspentQi = meta.unspentMeridianPoints;
+    const claimRealm = meta.claimableRealmCount;
+    const sig = `${equippedTitleId}:${cultLv}:${unspentQi}:${claimRealm}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
     const pills: string[] = [];
+    if (cultLv > 1 || meta.cultivation.totalXp > 0) {
+      const qiSuffix =
+        unspentQi > 0
+          ? ` · 진기 ${unspentQi}혈!`
+          : claimRealm > 0
+            ? ' · 🎁돌파!'
+            : '';
+      const alertCls = unspentQi > 0 || claimRealm > 0 ? ' has-qi-alert' : '';
+      pills.push(
+        `<span class="relic-buff-pill hud-realm-pill${alertCls}" style="border-color:${meta.cultivation.realmColor}" title="단전 내공 경지: ${escapeHtml(meta.cultivation.realmName)} (터치하여 기경팔맥 타통)">☯ ${escapeHtml(meta.cultivation.realmBadge)} Lv.${cultLv}${escapeHtml(qiSuffix)}</span>`,
+      );
+    }
     if (meta.equippedTitle) {
       const titleDef = TITLES_BY_ID.get(meta.equippedTitle);
       if (titleDef) {
@@ -2664,6 +2736,19 @@ export class UIManager {
     weaponChip.textContent = `🗡 ${weaponProfile.weaponLabel}`;
     this.unitShortcutsEl.appendChild(weaponChip);
 
+    const heroProfEntry = meta.heroProficiency[slotView.unitId];
+    if (heroProfEntry && heroProfEntry.xp > 0) {
+      const pInfo = computeHeroProficiencyInfo(heroProfEntry.xp);
+      const profChip = document.createElement('span');
+      profChip.className = 'shortcut-chip prof-chip';
+      profChip.style.borderColor = pInfo.color;
+      profChip.textContent =
+        pInfo.rank > 0
+          ? `🥋 ${pInfo.rankName} Lv.${pInfo.rank} · 전용공+${pInfo.atkBonusPct}%`
+          : `🥋 수련 중 (${pInfo.currentTierXp}/${pInfo.nextTierXp} XP)`;
+      this.unitShortcutsEl.appendChild(profChip);
+    }
+
     if (slotView.supportAura) {
       const auraChip = document.createElement('span');
       auraChip.className = 'shortcut-chip aura-chip';
@@ -2887,6 +2972,8 @@ export class UIManager {
   ): void {
     const hasRelicNotif =
       meta.keys > 0 ||
+      meta.unspentMeridianPoints > 0 ||
+      meta.claimableRealmCount > 0 ||
       (meta.gold >= RELIC_CHEST_GOLD_COST &&
         this.data.relics.some((d) => (meta.relics[d.id] ?? 0) < d.maxLevel));
     const relicDot = hasRelicNotif ? '<span class="sheet-tab-dot"></span>' : '';

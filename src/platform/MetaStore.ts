@@ -3,8 +3,15 @@ import {
   CODEX_MILESTONES,
   CODEX_MILESTONES_BY_TARGET,
   computeCodexAtkBonusPct,
+  computeCultivationProgress,
   computeEndgameMetaBonuses,
+  computeHeroProficiencyInfo,
+  computeHeroProficiencyRankUpRewards,
   computeRelicSetBonuses,
+  createEmptyMeridianLevels,
+  CULTIVATION_MILESTONE_REALMS,
+  CULTIVATION_REALMS_BY_LEVEL,
+  type CultivationProgress,
   DIFFICULTY_CONFIGS,
   DIFFICULTY_ORDER,
   type EndgameMetaBonuses,
@@ -14,6 +21,11 @@ import {
   type MasteryLevels,
   MASTERY_MAX_LEVEL,
   MASTERY_ORDER,
+  MERIDIAN_DEFS,
+  type MeridianId,
+  type MeridianLevels,
+  MERIDIAN_MAX_LEVEL,
+  MERIDIAN_ORDER,
   RELIC_ENGRAVE_GOLD_COST,
   RELIC_ENGRAVE_SILK_COST,
   RELIC_MAX_LEVEL,
@@ -149,6 +161,59 @@ export interface TitleProgress {
   readonly target: number;
 }
 
+export interface HeroProficiencyEntry {
+  readonly xp: number;
+  readonly runs: number;
+  readonly mvpCount: number;
+}
+
+export interface HeroRankUpNotice {
+  readonly unitId: UnitId;
+  readonly prevRank: number;
+  readonly newRank: number;
+  readonly rankName: string;
+  readonly atkBonusPct: number;
+}
+
+export type MeridianUpgradeResult =
+  | {
+      readonly ok: true;
+      readonly meridianId: MeridianId;
+      readonly name: string;
+      readonly newLevel: number;
+      readonly unspentPoints: number;
+      readonly endgameBonuses: EndgameMetaBonuses;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type MeridianResetResult =
+  | {
+      readonly ok: true;
+      readonly refundedPoints: number;
+      readonly endgameBonuses: EndgameMetaBonuses;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
+export type RealmMilestoneClaimResult =
+  | {
+      readonly ok: true;
+      readonly minLevel: number;
+      readonly realmName: string;
+      readonly rewardGold: number;
+      readonly rewardKeys: number;
+      readonly rewardSilk: number;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    };
+
 export type DailyQuestClaimResult =
   | {
       readonly ok: true;
@@ -157,6 +222,8 @@ export type DailyQuestClaimResult =
       readonly rewardGold: number;
       readonly rewardKeys: number;
       readonly rewardSilk: number;
+      readonly cultivationXpEarned?: number;
+      readonly leveledUpTo?: number;
       readonly unlockedTitleIds?: readonly TitleId[];
     }
   | {
@@ -219,6 +286,15 @@ export interface MetaProfile {
   readonly engravedRelics: Readonly<Partial<Record<RelicId, boolean>>>;
   readonly engravedCount: number;
   readonly masteryLevels: MasteryLevels;
+  readonly cultivation: CultivationProgress;
+  readonly meridianLevels: MeridianLevels;
+  readonly spentMeridianPoints: number;
+  readonly unspentMeridianPoints: number;
+  readonly claimedRealmMilestones: readonly number[];
+  readonly claimableRealmCount: number;
+  readonly heroProficiency: Readonly<Record<UnitId, HeroProficiencyEntry>>;
+  readonly heroMasteryAtkPct: Readonly<Record<UnitId, number>>;
+  readonly masteredHeroCount: number;
   readonly endgameBonuses: EndgameMetaBonuses;
   readonly totalRuns: number;
   readonly bestWave: number;
@@ -256,6 +332,12 @@ export interface MetaProfile {
   readonly rev: number;
 }
 
+export interface SettlementHeroContribution {
+  readonly unitId: UnitId;
+  readonly damage: number;
+  readonly onBoard?: boolean;
+}
+
 export interface SettlementInput {
   readonly wave: number;
   readonly monstersSlain: number;
@@ -269,6 +351,7 @@ export interface SettlementInput {
   readonly totalDamage?: number;
   readonly topHeroId?: UnitId | null;
   readonly topHeroName?: string | null;
+  readonly heroContributions?: readonly SettlementHeroContribution[];
   readonly usedHighFormation?: boolean;
   readonly craftedImmortal?: boolean;
   readonly dateKey?: string;
@@ -303,6 +386,15 @@ export interface SettlementRecord extends SettlementReward {
   readonly titleBonusGold: number;
   readonly titleBonusKeys: number;
   readonly titleBonusSilk: number;
+  readonly cultivationXpEarned: number;
+  readonly prevCultivationLevel: number;
+  readonly newCultivationLevel: number;
+  readonly cultivationRealmName: string;
+  readonly meridianPointsEarned: number;
+  readonly heroRankUps: readonly HeroRankUpNotice[];
+  readonly heroProficiencyBonusGold: number;
+  readonly heroProficiencyBonusKeys: number;
+  readonly heroProficiencyBonusSilk: number;
   readonly totalGold: number;
   readonly totalKeys: number;
   readonly totalSilk: number;
@@ -552,6 +644,39 @@ export function computeSettlementReward(input: SettlementInput): SettlementRewar
   };
 }
 
+export function computeSettlementCultivationXp(input: SettlementInput): number {
+  const rawWave = Math.max(1, Math.floor(input.wave));
+  const runMode = input.runMode ?? 'standard';
+  const trialCfg = runMode === 'standard' && input.trialId ? TRIAL_CONFIGS[input.trialId] : null;
+  const targetWave = trialCfg ? trialCfg.targetWave : CLEAR_TARGET_WAVE;
+  const clearedWaves = Math.max(
+    0,
+    input.victory && rawWave >= targetWave ? rawWave : rawWave - 1,
+  );
+  const bosses = Math.max(0, Math.floor(input.bossesSlain));
+  const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
+  const kills = Math.max(0, Math.floor(input.monstersSlain));
+  const diff = input.difficulty ?? 'normal';
+  const mult =
+    runMode === 'boss_rush'
+      ? 1.4
+      : runMode === 'daily_challenge'
+        ? 1.3
+        : trialCfg
+          ? trialCfg.rewardMult
+          : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0);
+
+  const baseXp =
+    20 +
+    clearedWaves * 12 +
+    bosses * 35 +
+    bounties * 20 +
+    Math.min(80, Math.floor(kills / 5)) +
+    (input.victory ? 100 : 0);
+
+  return Math.max(20, Math.round(baseXp * mult));
+}
+
 const B64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 function fnv1aHex(bytes: Uint8Array): string {
@@ -694,6 +819,10 @@ export class MetaStore {
   private readonly claimedCodexMilestones = new Set<number>();
   private readonly engravedRelics: Partial<Record<RelicId, boolean>> = {};
   private masteryLevels: Record<MasteryId, number> = { atk: 0, econ: 0, crit: 0, boss: 0 };
+  private cultivationXp = 0;
+  private meridianLevels: Record<MeridianId, number> = createEmptyMeridianLevels();
+  private readonly claimedRealmMilestones = new Set<number>();
+  private readonly heroProficiency: Record<UnitId, HeroProficiencyEntry> = {};
   private hallOfFame: HallOfFameEntry[] = [];
   private readonly unlockedTitles: Record<TitleId, boolean> = createEmptyUnlockedTitles();
   private equippedTitle: TitleId | null = null;
@@ -758,6 +887,11 @@ export class MetaStore {
       return { ok: false, reason: `과제 목표를 아직 달성하지 못했습니다 (${progress}/${def.target}).` };
     }
 
+    const prevCultLv = computeCultivationProgress(this.cultivationXp).level;
+    const questCultXp = 45;
+    this.cultivationXp += questCultXp;
+    const newCultLv = computeCultivationProgress(this.cultivationXp).level;
+
     this.dailyClaimed[questId] = true;
     this.totalDailyClaimed += 1;
     this.gold += def.rewardGold;
@@ -774,6 +908,8 @@ export class MetaStore {
       rewardGold: def.rewardGold,
       rewardKeys: def.rewardKeys,
       rewardSilk: def.rewardSilk,
+      cultivationXpEarned: questCultXp,
+      ...(newCultLv > prevCultLv ? { leveledUpTo: newCultLv } : {}),
       unlockedTitleIds: titleRes.unlockedIds,
     };
   }
@@ -818,6 +954,25 @@ export class MetaStore {
     }
   }
 
+  public getSpentMeridianPoints(): number {
+    let sum = 0;
+    for (let i = 0; i < MERIDIAN_ORDER.length; i++) {
+      sum += this.meridianLevels[MERIDIAN_ORDER[i]!] ?? 0;
+    }
+    return sum;
+  }
+
+  public getHeroMasteryAtkPctMap(): Record<UnitId, number> {
+    const out: Record<UnitId, number> = {};
+    for (const [uid, entry] of Object.entries(this.heroProficiency)) {
+      const info = computeHeroProficiencyInfo(entry.xp);
+      if (info.atkBonusPct > 0) {
+        out[uid] = info.atkBonusPct;
+      }
+    }
+    return out;
+  }
+
   public getProfile(dateKey: string = getLocalDateKey()): MetaProfile {
     const discoveredCount = Object.values(this.discoveredUnits).filter(Boolean).length;
     const ownedSkinCount = Object.values(this.ownedSkins).filter(Boolean).length;
@@ -830,7 +985,28 @@ export class MetaStore {
     ).length;
     const codexAtkBonusPct = computeCodexAtkBonusPct(this.claimedCodexMilestones);
     const engravedCount = Object.values(this.engravedRelics).filter(Boolean).length;
-    const endgameBonuses = computeEndgameMetaBonuses(this.masteryLevels, engravedCount);
+    const cultivation = computeCultivationProgress(this.cultivationXp);
+    const spentMeridianPoints = this.getSpentMeridianPoints();
+    const unspentMeridianPoints = Math.max(0, cultivation.totalMeridianPoints - spentMeridianPoints);
+    const claimableRealmCount = CULTIVATION_MILESTONE_REALMS.filter(
+      (r) => cultivation.level >= r.minLevel && !this.claimedRealmMilestones.has(r.minLevel),
+    ).length;
+    const heroProfCopy: Record<UnitId, HeroProficiencyEntry> = {};
+    const heroMasteryAtkPct: Record<UnitId, number> = {};
+    let masteredHeroCount = 0;
+    for (const [uid, entry] of Object.entries(this.heroProficiency)) {
+      heroProfCopy[uid] = { ...entry };
+      const info = computeHeroProficiencyInfo(entry.xp);
+      if (info.rank >= 1) {
+        masteredHeroCount++;
+        heroMasteryAtkPct[uid] = info.atkBonusPct;
+      }
+    }
+    const endgameBonuses = computeEndgameMetaBonuses(
+      this.masteryLevels,
+      engravedCount,
+      this.meridianLevels,
+    );
     const trialRecordsCopy: Record<TrialId, TrialRecord> = {
       trial_venom_gale: { ...this.trialRecords.trial_venom_gale },
       trial_sword_tomb: { ...this.trialRecords.trial_sword_tomb },
@@ -847,6 +1023,15 @@ export class MetaStore {
       engravedRelics: { ...this.engravedRelics },
       engravedCount,
       masteryLevels: { ...this.masteryLevels },
+      cultivation,
+      meridianLevels: { ...this.meridianLevels },
+      spentMeridianPoints,
+      unspentMeridianPoints,
+      claimedRealmMilestones: [...this.claimedRealmMilestones].sort((a, b) => a - b),
+      claimableRealmCount,
+      heroProficiency: heroProfCopy,
+      heroMasteryAtkPct,
+      masteredHeroCount,
       endgameBonuses,
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
@@ -1215,7 +1400,98 @@ export class MetaStore {
 
   public getEndgameMetaBonuses(): EndgameMetaBonuses {
     const engravedCount = Object.values(this.engravedRelics).filter(Boolean).length;
-    return computeEndgameMetaBonuses(this.masteryLevels, engravedCount);
+    return computeEndgameMetaBonuses(this.masteryLevels, engravedCount, this.meridianLevels);
+  }
+
+  public grantCultivationXp(amount: number): CultivationProgress {
+    const delta = Math.max(0, Math.floor(amount));
+    if (delta > 0) {
+      this.cultivationXp += delta;
+      this.rev++;
+      this.save();
+    }
+    return computeCultivationProgress(this.cultivationXp);
+  }
+
+  public upgradeMeridian(id: MeridianId): MeridianUpgradeResult {
+    const def = MERIDIAN_DEFS.find((m) => m.id === id);
+    if (!def) {
+      return { ok: false, reason: '존재하지 않는 기경팔맥 혈도입니다.' };
+    }
+    const prevLv = this.meridianLevels[id] ?? 0;
+    if (prevLv >= MERIDIAN_MAX_LEVEL) {
+      return { ok: false, reason: `이미 [${def.name}] 극의(Lv.${MERIDIAN_MAX_LEVEL})에 도달했습니다.` };
+    }
+    const cult = computeCultivationProgress(this.cultivationXp);
+    const spent = this.getSpentMeridianPoints();
+    const unspent = Math.max(0, cult.totalMeridianPoints - spent);
+    if (unspent < 1) {
+      return {
+        ok: false,
+        reason: '단전 진기 혈점이 부족합니다. 출정 및 과제를 통해 내공 경지를 높이세요!',
+      };
+    }
+    const newLevel = prevLv + 1;
+    this.meridianLevels[id] = newLevel;
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      meridianId: id,
+      name: def.name,
+      newLevel,
+      unspentPoints: unspent - 1,
+      endgameBonuses: this.getEndgameMetaBonuses(),
+    };
+  }
+
+  public resetMeridians(): MeridianResetResult {
+    const spent = this.getSpentMeridianPoints();
+    if (spent <= 0) {
+      return { ok: false, reason: '초기화할 기경팔맥 투자 혈점이 없습니다.' };
+    }
+    for (let i = 0; i < MERIDIAN_ORDER.length; i++) {
+      this.meridianLevels[MERIDIAN_ORDER[i]!] = 0;
+    }
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      refundedPoints: spent,
+      endgameBonuses: this.getEndgameMetaBonuses(),
+    };
+  }
+
+  public claimRealmMilestone(minLevel: number): RealmMilestoneClaimResult {
+    const targetLv = Math.floor(minLevel);
+    const realmDef = CULTIVATION_REALMS_BY_LEVEL.get(targetLv);
+    if (!realmDef) {
+      return { ok: false, reason: '존재하지 않는 내공 경지 돌파 보상입니다.' };
+    }
+    if (this.claimedRealmMilestones.has(targetLv)) {
+      return { ok: false, reason: '이미 수령한 내공 경지 돌파 보상입니다.' };
+    }
+    const cult = computeCultivationProgress(this.cultivationXp);
+    if (cult.level < targetLv) {
+      return {
+        ok: false,
+        reason: `아직 [${realmDef.name}] 경지(Lv.${targetLv})에 도달하지 못했습니다 (현재 Lv.${cult.level}).`,
+      };
+    }
+    this.claimedRealmMilestones.add(targetLv);
+    this.gold += realmDef.rewardGold;
+    this.keys += realmDef.rewardKeys;
+    this.silk += realmDef.rewardSilk;
+    this.rev++;
+    this.save();
+    return {
+      ok: true,
+      minLevel: targetLv,
+      realmName: realmDef.name,
+      rewardGold: realmDef.rewardGold,
+      rewardKeys: realmDef.rewardKeys,
+      rewardSilk: realmDef.rewardSilk,
+    };
   }
 
   public engraveRelic(def: RelicDef): RelicEngraveResult {
@@ -1622,6 +1898,74 @@ export class MetaStore {
     return diffDays === 1;
   }
 
+  private advanceHeroProficiency(
+    contributions: readonly SettlementHeroContribution[] | undefined,
+    clearedWaves: number,
+    totalDamage: number,
+    victory: boolean,
+    topHeroId: UnitId | null,
+    isOvertimeDelta: boolean,
+  ): {
+    readonly rankUps: HeroRankUpNotice[];
+    readonly bonusGold: number;
+    readonly bonusKeys: number;
+    readonly bonusSilk: number;
+  } {
+    if (!contributions || contributions.length === 0) {
+      return { rankUps: [], bonusGold: 0, bonusKeys: 0, bonusSilk: 0 };
+    }
+    const rankUps: HeroRankUpNotice[] = [];
+    let bonusGold = 0;
+    let bonusKeys = 0;
+    let bonusSilk = 0;
+    const safeTotalDmg = Math.max(1, totalDamage);
+    const wavePart = isOvertimeDelta
+      ? Math.min(25, Math.max(4, clearedWaves * 2))
+      : 15 + Math.min(45, Math.max(0, clearedWaves) * 2);
+
+    for (let i = 0; i < contributions.length; i++) {
+      const item = contributions[i]!;
+      const dmg = Math.max(0, Math.floor(item.damage));
+      if (dmg <= 0 && !item.onBoard) continue;
+      const prevEntry = this.heroProficiency[item.unitId] ?? { xp: 0, runs: 0, mvpCount: 0 };
+      const prevInfo = computeHeroProficiencyInfo(prevEntry.xp);
+
+      const shareXp = dmg > 0 ? Math.round((dmg / safeTotalDmg) * (isOvertimeDelta ? 30 : 60)) : 0;
+      const winXp = !isOvertimeDelta && victory ? 30 : 0;
+      const isMvp = !isOvertimeDelta && topHeroId !== null && item.unitId === topHeroId && dmg > 0;
+      const mvpXp = isMvp ? 35 : 0;
+      const gainedXp = Math.max(8, wavePart + shareXp + winXp + mvpXp);
+
+      const nextXp = prevEntry.xp + gainedXp;
+      this.heroProficiency[item.unitId] = {
+        xp: nextXp,
+        runs: prevEntry.runs + (isOvertimeDelta ? 0 : 1),
+        mvpCount: prevEntry.mvpCount + (isMvp ? 1 : 0),
+      };
+
+      const nextInfo = computeHeroProficiencyInfo(nextXp);
+      if (nextInfo.rank > prevInfo.rank) {
+        const rw = computeHeroProficiencyRankUpRewards(prevInfo.rank, nextInfo.rank);
+        bonusGold += rw.gold;
+        bonusKeys += rw.keys;
+        bonusSilk += rw.silk;
+        rankUps.push({
+          unitId: item.unitId,
+          prevRank: prevInfo.rank,
+          newRank: nextInfo.rank,
+          rankName: nextInfo.rankName,
+          atkBonusPct: nextInfo.atkBonusPct,
+        });
+      }
+    }
+
+    if (bonusGold > 0) this.gold += bonusGold;
+    if (bonusKeys > 0) this.keys += bonusKeys;
+    if (bonusSilk > 0) this.silk += bonusSilk;
+
+    return { rankUps, bonusGold, bonusKeys, bonusSilk };
+  }
+
   public settleRun(input: SettlementInput): SettlementRecord {
     const runMode: RunModeId = input.runMode ?? 'standard';
     const diff = input.difficulty ?? 'normal';
@@ -1766,7 +2110,22 @@ export class MetaStore {
       this.bestWave = wave;
     }
 
+    const prevCult = computeCultivationProgress(this.cultivationXp);
+    const cultivationXpEarned = computeSettlementCultivationXp(input);
+    this.cultivationXp += cultivationXpEarned;
+    const nextCult = computeCultivationProgress(this.cultivationXp);
+    const meridianPointsEarned = Math.max(0, nextCult.totalMeridianPoints - prevCult.totalMeridianPoints);
+
     const totalDamage = Math.max(0, Math.floor(input.totalDamage ?? 0));
+    const heroProfRes = this.advanceHeroProficiency(
+      input.heroContributions,
+      reward.clearedWaves,
+      totalDamage,
+      victory,
+      input.topHeroId ?? null,
+      false,
+    );
+
     const modeScore =
       dailyChallengeScore ??
       (runMode === 'boss_rush'
@@ -1821,6 +2180,15 @@ export class MetaStore {
       titleBonusGold: titleRes.bonusGold,
       titleBonusKeys: titleRes.bonusKeys,
       titleBonusSilk: titleRes.bonusSilk,
+      cultivationXpEarned,
+      prevCultivationLevel: prevCult.level,
+      newCultivationLevel: nextCult.level,
+      cultivationRealmName: nextCult.realmName,
+      meridianPointsEarned,
+      heroRankUps: heroProfRes.rankUps,
+      heroProficiencyBonusGold: heroProfRes.bonusGold,
+      heroProficiencyBonusKeys: heroProfRes.bonusKeys,
+      heroProficiencyBonusSilk: heroProfRes.bonusSilk,
       goldEarned: totalGoldGain + endlessMs.bonusGold,
       keysEarned: totalKeysGain + endlessMs.bonusKeys,
       totalGold: this.gold,
@@ -1871,6 +2239,38 @@ export class MetaStore {
     } else if (prevRecord.runMode === 'standard' && wave > this.difficultyBestWave[prevRecord.difficulty]) {
       this.difficultyBestWave[prevRecord.difficulty] = wave;
     }
+
+    const prevCultXpEst = computeSettlementCultivationXp({
+      wave: prevRecord.wave,
+      monstersSlain: prevRecord.monstersSlain,
+      bossesSlain: prevRecord.bossesSlain,
+      bountiesSlain: prevRecord.bountiesSlain,
+      difficulty: prevRecord.difficulty,
+      trialId: prevRecord.trialId,
+      runMode: prevRecord.runMode,
+      victory: prevRecord.victory,
+    });
+    const finalCultXpEst = computeSettlementCultivationXp({
+      ...finalInput,
+      difficulty: prevRecord.difficulty,
+      trialId: prevRecord.trialId,
+      runMode: prevRecord.runMode,
+      victory: prevRecord.victory,
+    });
+    const deltaCultXp = Math.max(0, finalCultXpEst - prevCultXpEst);
+    this.cultivationXp += deltaCultXp;
+    const nextCult = computeCultivationProgress(this.cultivationXp);
+    const prevStartCult = Math.max(1, prevRecord.prevCultivationLevel);
+
+    const deltaWaves = Math.max(0, finalBase.clearedWaves - prevBase.clearedWaves);
+    const overtimeHeroRes = this.advanceHeroProficiency(
+      finalInput.heroContributions,
+      deltaWaves,
+      Math.max(0, Math.floor(finalInput.totalDamage ?? 0)),
+      true,
+      finalInput.topHeroId ?? null,
+      true,
+    );
 
     const endlessMs =
       prevRecord.runMode === 'standard'
@@ -1939,6 +2339,21 @@ export class MetaStore {
       ...endlessMs.unlockedWaves.filter((w) => !prevRecord.unlockedEndlessMilestones.includes(w)),
     ].sort((a, b) => a - b);
 
+    const mergedRankUpsMap = new Map<UnitId, HeroRankUpNotice>();
+    for (const r of prevRecord.heroRankUps) {
+      mergedRankUpsMap.set(r.unitId, r);
+    }
+    for (const r of overtimeHeroRes.rankUps) {
+      const existing = mergedRankUpsMap.get(r.unitId);
+      mergedRankUpsMap.set(r.unitId, {
+        unitId: r.unitId,
+        prevRank: existing ? existing.prevRank : r.prevRank,
+        newRank: r.newRank,
+        rankName: r.rankName,
+        atkBonusPct: r.atkBonusPct,
+      });
+    }
+
     this.clearActiveRun();
     this.rev++;
     this.save();
@@ -1962,6 +2377,14 @@ export class MetaStore {
       titleBonusGold: prevRecord.titleBonusGold + overtimeTitles.bonusGold,
       titleBonusKeys: prevRecord.titleBonusKeys + overtimeTitles.bonusKeys,
       titleBonusSilk: prevRecord.titleBonusSilk + overtimeTitles.bonusSilk,
+      cultivationXpEarned: prevRecord.cultivationXpEarned + deltaCultXp,
+      newCultivationLevel: nextCult.level,
+      cultivationRealmName: nextCult.realmName,
+      meridianPointsEarned: Math.max(0, nextCult.level - prevStartCult),
+      heroRankUps: [...mergedRankUpsMap.values()],
+      heroProficiencyBonusGold: prevRecord.heroProficiencyBonusGold + overtimeHeroRes.bonusGold,
+      heroProficiencyBonusKeys: prevRecord.heroProficiencyBonusKeys + overtimeHeroRes.bonusKeys,
+      heroProficiencyBonusSilk: prevRecord.heroProficiencyBonusSilk + overtimeHeroRes.bonusSilk,
       goldEarned: prevRecord.goldEarned + deltaGold + endlessMs.bonusGold,
       keysEarned: prevRecord.keysEarned + deltaKeys + endlessMs.bonusKeys,
       totalGold: this.gold,
@@ -2150,6 +2573,19 @@ export class MetaStore {
       this.clearedTrials[t] = false;
       this.trialRecords[t] = { clears: 0, bestWave: 0, bestTicks: null };
     }
+    this.endlessMilestonesCleared.clear();
+    this.claimedCodexMilestones.clear();
+    for (const k of Object.keys(this.engravedRelics)) {
+      delete this.engravedRelics[k as RelicId];
+    }
+    this.masteryLevels = { atk: 0, econ: 0, crit: 0, boss: 0 };
+    this.cultivationXp = 0;
+    this.meridianLevels = createEmptyMeridianLevels();
+    this.claimedRealmMilestones.clear();
+    for (const k of Object.keys(this.heroProficiency)) {
+      delete this.heroProficiency[k];
+    }
+    this.hallOfFame = [];
     for (let i = 0; i < TITLE_DEFS.length; i++) {
       this.unlockedTitles[TITLE_DEFS[i]!.id] = false;
     }
@@ -2428,6 +2864,53 @@ export class MetaStore {
         }
       }
     }
+    this.cultivationXp = 0;
+    if (typeof rec.cultivationXp === 'number' && Number.isFinite(rec.cultivationXp) && rec.cultivationXp >= 0) {
+      this.cultivationXp = Math.floor(rec.cultivationXp);
+    }
+    this.meridianLevels = createEmptyMeridianLevels();
+    if (typeof rec.meridianLevels === 'object' && rec.meridianLevels !== null) {
+      const merObj = rec.meridianLevels as Record<string, unknown>;
+      const maxPts = computeCultivationProgress(this.cultivationXp).totalMeridianPoints;
+      let usedPts = 0;
+      for (const id of MERIDIAN_ORDER) {
+        const raw = merObj[id];
+        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+          const want = Math.max(0, Math.min(MERIDIAN_MAX_LEVEL, Math.floor(raw)));
+          const allow = Math.min(want, Math.max(0, maxPts - usedPts));
+          this.meridianLevels[id] = allow;
+          usedPts += allow;
+        }
+      }
+    }
+    this.claimedRealmMilestones.clear();
+    if (Array.isArray(rec.claimedRealmMilestones)) {
+      for (const lv of rec.claimedRealmMilestones) {
+        if (typeof lv === 'number' && CULTIVATION_REALMS_BY_LEVEL.has(Math.floor(lv))) {
+          this.claimedRealmMilestones.add(Math.floor(lv));
+        }
+      }
+    }
+    for (const k of Object.keys(this.heroProficiency)) {
+      delete this.heroProficiency[k];
+    }
+    if (typeof rec.heroProficiency === 'object' && rec.heroProficiency !== null) {
+      const hpObj = rec.heroProficiency as Record<string, unknown>;
+      for (const [uid, rawVal] of Object.entries(hpObj)) {
+        if (typeof rawVal === 'object' && rawVal !== null) {
+          const v = rawVal as Record<string, unknown>;
+          const xp = typeof v.xp === 'number' && Number.isFinite(v.xp) && v.xp >= 0 ? Math.floor(v.xp) : 0;
+          const runs = typeof v.runs === 'number' && Number.isFinite(v.runs) && v.runs >= 0 ? Math.floor(v.runs) : 0;
+          const mvpCount =
+            typeof v.mvpCount === 'number' && Number.isFinite(v.mvpCount) && v.mvpCount >= 0
+              ? Math.floor(v.mvpCount)
+              : 0;
+          if (xp > 0 || runs > 0 || mvpCount > 0) {
+            this.heroProficiency[uid] = { xp, runs, mvpCount };
+          }
+        }
+      }
+    }
     this.hallOfFame = [];
     if (Array.isArray(rec.hallOfFame)) {
       for (const rawH of rec.hallOfFame.slice(0, 12)) {
@@ -2484,6 +2967,10 @@ export class MetaStore {
       relics: this.relics,
       engravedRelics: this.engravedRelics,
       masteryLevels: this.masteryLevels,
+      cultivationXp: this.cultivationXp,
+      meridianLevels: this.meridianLevels,
+      claimedRealmMilestones: [...this.claimedRealmMilestones].sort((a, b) => a - b),
+      heroProficiency: this.heroProficiency,
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
       selectedRunMode: this.selectedRunMode,

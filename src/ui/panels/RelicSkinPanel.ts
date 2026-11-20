@@ -1,5 +1,6 @@
 import {
   computeRelicSetStatuses,
+  CULTIVATION_MILESTONE_REALMS,
   DIFFICULTY_CONFIGS,
   formatRelicStatSummary,
   getAbacusSummonDiscount,
@@ -17,6 +18,8 @@ import {
   getVaultInterestPct,
   MASTERY_DEFS,
   MASTERY_MAX_LEVEL,
+  MERIDIAN_DEFS,
+  MERIDIAN_MAX_LEVEL,
   RELIC_CATEGORY_MAP,
   RELIC_ENGRAVE_ATK_PCT_EACH,
   RELIC_ENGRAVE_GOLD_COST,
@@ -569,13 +572,110 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
   const endgameSummaryParts: string[] = [];
   if (eb.atkPct > 0) endgameSummaryParts.push(`공+${eb.atkPct}%`);
   if (eb.skillDamagePct > 0) endgameSummaryParts.push(`절기+${eb.skillDamagePct}%`);
+  if ((eb.speedPct ?? 0) > 0) endgameSummaryParts.push(`공속+${eb.speedPct}%`);
   if (eb.startCoin > 0) endgameSummaryParts.push(`시작+${eb.startCoin}은자·처치+${eb.killCoinPct}%`);
   if (eb.critChanceBps > 0) endgameSummaryParts.push(`치명+${(eb.critChanceBps / 100).toFixed(1)}%`);
+  if ((eb.armorShred ?? 0) > 0) endgameSummaryParts.push(`파갑+${eb.armorShred}`);
   if (eb.bossDamagePct > 0) endgameSummaryParts.push(`보스+${eb.bossDamagePct}%`);
+  if ((eb.gambleBonusPct ?? 0) > 0) endgameSummaryParts.push(`영약+${eb.gambleBonusPct}%`);
   const endgameSummaryTxt =
     endgameSummaryParts.length > 0
       ? endgameSummaryParts.join(' · ')
-      : 'Lv.15 신화 각인 및 경지 단련으로 영구 능력치를 확장하세요';
+      : '기경팔맥 타통 · Lv.15 신화 각인 · 경지 단련으로 영구 능력치를 확장하세요';
+
+  const cult = meta.cultivation;
+  const cultFillPct = cult.isMaxLevel
+    ? 100
+    : Math.min(100, Math.max(0, Math.round((cult.currentLevelXp / Math.max(1, cult.nextLevelXp)) * 100)));
+  const cycleTier = eb.meridianCycleTier ?? 0;
+  const cycleBadgeHtml =
+    cycleTier === 2
+      ? '<span class="meridian-cycle-badge max">✦ 대주천 완성 (공+12%·절기+10%·은자+40)</span>'
+      : cycleTier === 1
+        ? '<span class="meridian-cycle-badge open">☯ 소주천 개통 (공+4%·은자+15)</span>'
+        : '<span class="meridian-cycle-hint">8맥 모두 Lv.1 개통 시 소주천 · 전원 Lv.5 시 대주천 발동!</span>';
+
+  const claimedRealmSet = new Set(meta.claimedRealmMilestones);
+  const realmMilestoneHtml = CULTIVATION_MILESTONE_REALMS.map((rm) => {
+    const claimed = claimedRealmSet.has(rm.minLevel);
+    const reached = cult.level >= rm.minLevel;
+    const btnHtml = claimed
+      ? '<span class="codex-ms-done">✓ 등극완료</span>'
+      : reached
+        ? `<button type="button" class="card-cta-btn cta-gold interactive codex-ms-claim-btn" data-sheet-action="claim-realm-milestone" data-realm-level="${rm.minLevel}"><span>돌파 수령</span></button>`
+        : `<span class="codex-ms-prog">Lv.${cult.level}/${rm.minLevel}</span>`;
+    return `
+      <div class="codex-ms-card realm-ms-card${claimed ? ' claimed' : reached ? ' ready' : ''}">
+        <div class="codex-ms-head">
+          <strong style="color:${rm.color}">${escapeHtml(rm.badge)} (Lv.${rm.minLevel})</strong>
+          ${btnHtml}
+        </div>
+        <div class="codex-ms-rewards">+${rm.rewardGold}주화 · 🔑+${rm.rewardKeys} · 🧵+${rm.rewardSilk}필</div>
+      </div>
+    `;
+  }).join('');
+
+  const meridianCardsHtml = MERIDIAN_DEFS.map((m) => {
+    const lv = meta.meridianLevels[m.id] ?? 0;
+    const isMaxMer = lv >= MERIDIAN_MAX_LEVEL;
+    const canTap = !isMaxMer && meta.unspentMeridianPoints >= 1;
+    const pips = Array.from({ length: MERIDIAN_MAX_LEVEL }, (_, i) => {
+      const lit = i < lv;
+      return `<span class="meridian-pip${lit ? (isMaxMer ? ' max' : ' lit') : ''}" style="${lit ? `background:${m.color}` : ''}"></span>`;
+    }).join('');
+    return `
+      <div class="meridian-card${lv > 0 ? ' active' : ''}${isMaxMer ? ' maxed' : ''}">
+        <div class="mastery-card-top">
+          <span class="grade-pill" style="background:${m.color}">${escapeHtml(m.badge)}</span>
+          <strong class="mastery-name">${escapeHtml(m.name)}</strong>
+          <span class="mastery-lv">Lv.${lv}/${MERIDIAN_MAX_LEVEL}</span>
+        </div>
+        <div class="meridian-acupoint-line">
+          <span>${escapeHtml(m.acupointTitle)}</span>
+          <span class="meridian-pips" aria-hidden="true">${pips}</span>
+        </div>
+        <div class="mastery-desc">${escapeHtml(isMaxMer ? m.maxSummary : m.descPerLv)}</div>
+        <button
+          type="button"
+          class="card-cta-btn mastery-btn ${canTap ? 'cta-sky interactive' : 'cta-disabled'}"
+          data-sheet-action="meridian-upgrade"
+          data-meridian-id="${m.id}"
+          ${canTap ? '' : 'disabled'}
+        >
+          <span>${isMaxMer ? '타통 극의 ✓' : '⚡ 혈도 타통 (진기 1)'}</span>
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  const resetMeridianBtnHtml =
+    meta.spentMeridianPoints > 0
+      ? `<button type="button" class="meridian-reset-btn interactive" data-sheet-action="meridian-reset">♻ 연세골수 (${meta.spentMeridianPoints}혈 반환)</button>`
+      : '';
+
+  const meridianSectionHtml = `
+    <div class="meridian-panel">
+      <div class="meridian-realm-banner">
+        <div class="meridian-realm-top">
+          <div class="meridian-realm-title-wrap">
+            <span class="grade-pill" style="background:${cult.realmColor}">☯ 단전 Lv.${cult.level}</span>
+            <strong class="meridian-realm-name">${escapeHtml(cult.realmName)}</strong>
+            <span class="meridian-qi-pill${meta.unspentMeridianPoints > 0 ? ' has-pts' : ''}">🔥 미사용 진기 ${meta.unspentMeridianPoints}혈</span>
+          </div>
+          ${resetMeridianBtnHtml}
+        </div>
+        <div class="meridian-xp-row">
+          <div class="meridian-xp-track">
+            <div class="meridian-xp-fill" style="width:${cultFillPct}%;background:linear-gradient(90deg, ${cult.realmColor}, #fde047)"></div>
+          </div>
+          <span class="meridian-xp-txt">${cult.isMaxLevel ? '무극 완성 (MAX)' : `내공 ${cult.currentLevelXp}/${cult.nextLevelXp} XP (승급 시 진기+1혈)`}</span>
+        </div>
+        <div class="meridian-cycle-row">${cycleBadgeHtml}</div>
+      </div>
+      <div class="codex-milestone-strip realm-milestone-strip">${realmMilestoneHtml}</div>
+      <div class="mastery-grid meridian-grid">${meridianCardsHtml}</div>
+    </div>
+  `;
 
   const masterySectionHtml = `
     <div class="mastery-panel">
@@ -644,6 +744,7 @@ export function buildRelicPanelView(params: RelicPanelParams): RelicPanelResult 
       </div>
       ${noticeHtml}
     </div>
+    ${meridianSectionHtml}
     ${relicSetSectionHtml}
     ${masterySectionHtml}
     ${filterBarHtml}

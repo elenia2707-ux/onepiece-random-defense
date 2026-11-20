@@ -640,6 +640,290 @@ export const MASTERY_ORDER: readonly MasteryId[] = ['atk', 'econ', 'crit', 'boss
 
 export type MasteryLevels = Readonly<Record<MasteryId, number>>;
 
+export type MeridianId =
+  | 'ren'
+  | 'du'
+  | 'chong'
+  | 'dai'
+  | 'yangqiao'
+  | 'yinqiao'
+  | 'yangwei'
+  | 'yinwei';
+
+export const MERIDIAN_MAX_LEVEL = 5;
+
+export interface MeridianDef {
+  readonly id: MeridianId;
+  readonly name: string;
+  readonly acupointTitle: string;
+  readonly badge: string;
+  readonly color: string;
+  readonly descPerLv: string;
+  readonly maxSummary: string;
+}
+
+export const MERIDIAN_DEFS: readonly MeridianDef[] = [
+  {
+    id: 'ren',
+    name: '임맥 · 단전원기',
+    acupointTitle: '기해혈(氣海穴)',
+    badge: '임맥',
+    color: '#f59e0b',
+    descPerLv: 'Lv당 시작 은자 +8 · 처치 은자 +2%',
+    maxSummary: '극의: 시작 +40은자 · 처치 +10%',
+  },
+  {
+    id: 'du',
+    name: '독맥 · 파천강기',
+    acupointTitle: '백회혈(百會穴)',
+    badge: '독맥',
+    color: '#ef4444',
+    descPerLv: 'Lv당 전 협객 공격력 +2%',
+    maxSummary: '극의: 전 협객 공격력 +10%',
+  },
+  {
+    id: 'chong',
+    name: '충맥 · 질풍혈도',
+    acupointTitle: '혈해혈(血海穴)',
+    badge: '충맥',
+    color: '#10b981',
+    descPerLv: 'Lv당 전 협객 공격속도 +2.5%',
+    maxSummary: '극의: 전 협객 공속 +12.5%',
+  },
+  {
+    id: 'dai',
+    name: '대맥 · 천기절예',
+    acupointTitle: '대맥혈(帶脈穴)',
+    badge: '대맥',
+    color: '#8b5cf6',
+    descPerLv: 'Lv당 절기(스킬) 피해 +4%',
+    maxSummary: '극의: 절기 피해 +20%',
+  },
+  {
+    id: 'yangqiao',
+    name: '양교맥 · 회심안',
+    acupointTitle: '신맥혈(申脈穴)',
+    badge: '양교',
+    color: '#e11d48',
+    descPerLv: 'Lv당 치명타율 +1.0% · 치명피해 +5%',
+    maxSummary: '극의: 치명 +5.0% · 치명피해 +25%',
+  },
+  {
+    id: 'yinqiao',
+    name: '음교맥 · 투골침',
+    acupointTitle: '조해혈(照海穴)',
+    badge: '음교',
+    color: '#06b6d4',
+    descPerLv: 'Lv당 전 협객 기본 파갑 +2',
+    maxSummary: '극의: 전 협객 기본 파갑 +10',
+  },
+  {
+    id: 'yangwei',
+    name: '양유맥 · 항마투기',
+    acupointTitle: '금문혈(金門穴)',
+    badge: '양유',
+    color: '#0284c7',
+    descPerLv: 'Lv당 영물·수배범 피해 +3.5%',
+    maxSummary: '극의: 보스 피해 +18%',
+  },
+  {
+    id: 'yinwei',
+    name: '음유맥 · 조화단전',
+    acupointTitle: '축빈혈(築賓穴)',
+    badge: '음유',
+    color: '#d97706',
+    descPerLv: 'Lv당 영약 성공률 +1.6%',
+    maxSummary: '극의: 영약 복용 성공률 +8%',
+  },
+];
+
+export const MERIDIAN_ORDER: readonly MeridianId[] = [
+  'ren',
+  'du',
+  'chong',
+  'dai',
+  'yangqiao',
+  'yinqiao',
+  'yangwei',
+  'yinwei',
+];
+
+export type MeridianLevels = Readonly<Record<MeridianId, number>>;
+
+export function createEmptyMeridianLevels(): Record<MeridianId, number> {
+  return {
+    ren: 0,
+    du: 0,
+    chong: 0,
+    dai: 0,
+    yangqiao: 0,
+    yinqiao: 0,
+    yangwei: 0,
+    yinwei: 0,
+  };
+}
+
+export const CULTIVATION_MAX_LEVEL = 41;
+
+export interface CultivationRealmTier {
+  readonly minLevel: number;
+  readonly name: string;
+  readonly badge: string;
+  readonly color: string;
+  readonly rewardGold: number;
+  readonly rewardKeys: number;
+  readonly rewardSilk: number;
+}
+
+export const CULTIVATION_REALMS: readonly CultivationRealmTier[] = [
+  { minLevel: 1, name: '삼류초입 (三流初入)', badge: '삼류초입', color: '#64748b', rewardGold: 0, rewardKeys: 0, rewardSilk: 0 },
+  { minLevel: 5, name: '이류무사 (二流武士)', badge: '이류무사', color: '#10b981', rewardGold: 150, rewardKeys: 1, rewardSilk: 10 },
+  { minLevel: 10, name: '일류고수 (一流高手)', badge: '일류고수', color: '#0ea5e9', rewardGold: 250, rewardKeys: 2, rewardSilk: 20 },
+  { minLevel: 15, name: '절정대협 (絶頂大俠)', badge: '절정대협', color: '#eab308', rewardGold: 380, rewardKeys: 2, rewardSilk: 30 },
+  { minLevel: 21, name: '초절정종사 (超絶頂宗師)', badge: '초절정종사', color: '#f97316', rewardGold: 520, rewardKeys: 3, rewardSilk: 45 },
+  { minLevel: 27, name: '화경현자 (化境賢者)', badge: '화경현자', color: '#a855f7', rewardGold: 700, rewardKeys: 3, rewardSilk: 60 },
+  { minLevel: 34, name: '현경지존 (玄境至尊)', badge: '현경지존', color: '#ec4899', rewardGold: 950, rewardKeys: 4, rewardSilk: 80 },
+  { minLevel: 41, name: '무극태상 (無極太上)', badge: '무극태상', color: '#ef4444', rewardGold: 1500, rewardKeys: 5, rewardSilk: 120 },
+];
+
+export const CULTIVATION_MILESTONE_REALMS: readonly CultivationRealmTier[] = CULTIVATION_REALMS.filter(
+  (r) => r.minLevel > 1,
+);
+
+export const CULTIVATION_REALMS_BY_LEVEL: ReadonlyMap<number, CultivationRealmTier> = new Map(
+  CULTIVATION_MILESTONE_REALMS.map((r) => [r.minLevel, r]),
+);
+
+export interface CultivationProgress {
+  readonly level: number;
+  readonly totalXp: number;
+  readonly currentLevelXp: number;
+  readonly nextLevelXp: number;
+  readonly isMaxLevel: boolean;
+  readonly realmName: string;
+  readonly realmBadge: string;
+  readonly realmColor: string;
+  readonly totalMeridianPoints: number;
+}
+
+export function getCultivationStepXp(level: number): number {
+  const lv = Math.max(1, Math.floor(level));
+  return 120 + (lv - 1) * 45;
+}
+
+export function computeCultivationProgress(rawTotalXp: number): CultivationProgress {
+  const totalXp = Math.max(0, Math.floor(rawTotalXp));
+  let level = 1;
+  let rem = totalXp;
+  while (level < CULTIVATION_MAX_LEVEL) {
+    const need = getCultivationStepXp(level);
+    if (rem < need) break;
+    rem -= need;
+    level++;
+  }
+  const isMaxLevel = level >= CULTIVATION_MAX_LEVEL;
+  const nextLevelXp = isMaxLevel ? getCultivationStepXp(CULTIVATION_MAX_LEVEL - 1) : getCultivationStepXp(level);
+  const currentLevelXp = isMaxLevel ? nextLevelXp : rem;
+
+  let realm = CULTIVATION_REALMS[0]!;
+  for (let i = 0; i < CULTIVATION_REALMS.length; i++) {
+    if (level >= CULTIVATION_REALMS[i]!.minLevel) {
+      realm = CULTIVATION_REALMS[i]!;
+    }
+  }
+
+  return {
+    level,
+    totalXp,
+    currentLevelXp,
+    nextLevelXp,
+    isMaxLevel,
+    realmName: realm.name,
+    realmBadge: realm.badge,
+    realmColor: realm.color,
+    totalMeridianPoints: Math.max(0, level - 1),
+  };
+}
+
+export const HERO_PROFICIENCY_MAX_RANK = 5;
+
+export interface HeroProficiencyTierDef {
+  readonly rank: number;
+  readonly minXp: number;
+  readonly name: string;
+  readonly color: string;
+  readonly atkBonusPct: number;
+  readonly rewardGold: number;
+  readonly rewardKeys: number;
+  readonly rewardSilk: number;
+}
+
+export const HERO_PROFICIENCY_TIERS: readonly HeroProficiencyTierDef[] = [
+  { rank: 0, minXp: 0, name: '미수련', color: '#475569', atkBonusPct: 0, rewardGold: 0, rewardKeys: 0, rewardSilk: 0 },
+  { rank: 1, minXp: 60, name: '입문', color: '#10b981', atkBonusPct: 3, rewardGold: 30, rewardKeys: 0, rewardSilk: 0 },
+  { rank: 2, minXp: 180, name: '숙련', color: '#0ea5e9', atkBonusPct: 6, rewardGold: 50, rewardKeys: 0, rewardSilk: 0 },
+  { rank: 3, minXp: 380, name: '달인', color: '#eab308', atkBonusPct: 9, rewardGold: 80, rewardKeys: 0, rewardSilk: 5 },
+  { rank: 4, minXp: 700, name: '종사', color: '#a855f7', atkBonusPct: 12, rewardGold: 120, rewardKeys: 0, rewardSilk: 10 },
+  { rank: 5, minXp: 1150, name: '화신', color: '#ef4444', atkBonusPct: 15, rewardGold: 180, rewardKeys: 1, rewardSilk: 15 },
+];
+
+export interface HeroProficiencyInfo {
+  readonly rank: number;
+  readonly rankName: string;
+  readonly color: string;
+  readonly atkBonusPct: number;
+  readonly xp: number;
+  readonly currentTierXp: number;
+  readonly nextTierXp: number;
+  readonly isMaxRank: boolean;
+}
+
+export function computeHeroProficiencyInfo(rawXp: number): HeroProficiencyInfo {
+  const xp = Math.max(0, Math.floor(rawXp));
+  let tierIdx = 0;
+  for (let i = 0; i < HERO_PROFICIENCY_TIERS.length; i++) {
+    if (xp >= HERO_PROFICIENCY_TIERS[i]!.minXp) {
+      tierIdx = i;
+    }
+  }
+  const cur = HERO_PROFICIENCY_TIERS[tierIdx]!;
+  const next = HERO_PROFICIENCY_TIERS[tierIdx + 1] ?? null;
+  const isMaxRank = next === null;
+  const currentTierXp = isMaxRank ? 1 : xp - cur.minXp;
+  const nextTierXp = isMaxRank ? 1 : Math.max(1, next.minXp - cur.minXp);
+
+  return {
+    rank: cur.rank,
+    rankName: cur.name,
+    color: cur.color,
+    atkBonusPct: cur.atkBonusPct,
+    xp,
+    currentTierXp,
+    nextTierXp,
+    isMaxRank,
+  };
+}
+
+export function computeHeroProficiencyRankUpRewards(
+  prevRank: number,
+  newRank: number,
+): { readonly gold: number; readonly keys: number; readonly silk: number } {
+  const from = Math.max(0, Math.floor(prevRank));
+  const to = Math.max(from, Math.min(HERO_PROFICIENCY_MAX_RANK, Math.floor(newRank)));
+  let gold = 0;
+  let keys = 0;
+  let silk = 0;
+  for (let r = from + 1; r <= to; r++) {
+    const def = HERO_PROFICIENCY_TIERS[r];
+    if (def) {
+      gold += def.rewardGold;
+      keys += def.rewardKeys;
+      silk += def.rewardSilk;
+    }
+  }
+  return { gold, keys, silk };
+}
+
 export interface EndgameMetaBonuses {
   readonly atkPct: number;
   readonly skillDamagePct: number;
@@ -648,6 +932,10 @@ export interface EndgameMetaBonuses {
   readonly critChanceBps: number;
   readonly critMultBonus: number;
   readonly bossDamagePct: number;
+  readonly speedPct?: number;
+  readonly armorShred?: number;
+  readonly gambleBonusPct?: number;
+  readonly meridianCycleTier?: 0 | 1 | 2;
 }
 
 export const ZERO_ENDGAME_META_BONUSES: EndgameMetaBonuses = {
@@ -658,6 +946,10 @@ export const ZERO_ENDGAME_META_BONUSES: EndgameMetaBonuses = {
   critChanceBps: 0,
   critMultBonus: 0,
   bossDamagePct: 0,
+  speedPct: 0,
+  armorShred: 0,
+  gambleBonusPct: 0,
+  meridianCycleTier: 0,
 };
 
 export function getMasteryUpgradeCost(currentLv: number): { readonly gold: number; readonly silk: number } {
@@ -671,6 +963,7 @@ export function getMasteryUpgradeCost(currentLv: number): { readonly gold: numbe
 export function computeEndgameMetaBonuses(
   masteryLevels: Partial<Record<MasteryId, number>>,
   engravedRelicCount: number,
+  meridianLevels?: Partial<Record<MeridianId, number>>,
 ): EndgameMetaBonuses {
   const atkLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.atk ?? 0)));
   const econLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.econ ?? 0)));
@@ -678,15 +971,56 @@ export function computeEndgameMetaBonuses(
   const bossLv = Math.max(0, Math.min(MASTERY_MAX_LEVEL, Math.floor(masteryLevels.boss ?? 0)));
   const eng = Math.max(0, Math.floor(engravedRelicCount));
 
+  const clampMer = (id: MeridianId): number =>
+    Math.max(0, Math.min(MERIDIAN_MAX_LEVEL, Math.floor(meridianLevels?.[id] ?? 0)));
+
+  const renLv = clampMer('ren');
+  const duLv = clampMer('du');
+  const chongLv = clampMer('chong');
+  const daiLv = clampMer('dai');
+  const yangqiaoLv = clampMer('yangqiao');
+  const yinqiaoLv = clampMer('yinqiao');
+  const yangweiLv = clampMer('yangwei');
+  const yinweiLv = clampMer('yinwei');
+
+  const allOpened =
+    renLv >= 1 &&
+    duLv >= 1 &&
+    chongLv >= 1 &&
+    daiLv >= 1 &&
+    yangqiaoLv >= 1 &&
+    yinqiaoLv >= 1 &&
+    yangweiLv >= 1 &&
+    yinweiLv >= 1;
+  const allMaxed =
+    renLv >= MERIDIAN_MAX_LEVEL &&
+    duLv >= MERIDIAN_MAX_LEVEL &&
+    chongLv >= MERIDIAN_MAX_LEVEL &&
+    daiLv >= MERIDIAN_MAX_LEVEL &&
+    yangqiaoLv >= MERIDIAN_MAX_LEVEL &&
+    yinqiaoLv >= MERIDIAN_MAX_LEVEL &&
+    yangweiLv >= MERIDIAN_MAX_LEVEL &&
+    yinweiLv >= MERIDIAN_MAX_LEVEL;
+
+  const meridianCycleTier: 0 | 1 | 2 = allMaxed ? 2 : allOpened ? 1 : 0;
+  const cycleAtkPct = meridianCycleTier === 2 ? 12 : meridianCycleTier === 1 ? 4 : 0;
+  const cycleSkillPct = meridianCycleTier === 2 ? 10 : 0;
+  const cycleStartCoin = meridianCycleTier === 2 ? 40 : meridianCycleTier === 1 ? 15 : 0;
+
   return {
-    atkPct: Math.round(atkLv * 1.5) + eng * RELIC_ENGRAVE_ATK_PCT_EACH,
-    skillDamagePct: eng * RELIC_ENGRAVE_SKILL_PCT_EACH,
-    startCoin: econLv * 5,
-    killCoinPct: econLv * 2,
-    critChanceBps: critLv * 50,
-    critMultBonus: Number((critLv * 0.04).toFixed(2)),
-    bossDamagePct: Math.round(bossLv * 2.5),
+    atkPct: Math.round(atkLv * 1.5) + eng * RELIC_ENGRAVE_ATK_PCT_EACH + duLv * 2 + cycleAtkPct,
+    skillDamagePct: eng * RELIC_ENGRAVE_SKILL_PCT_EACH + daiLv * 4 + cycleSkillPct,
+    startCoin: econLv * 5 + renLv * 8 + cycleStartCoin,
+    killCoinPct: econLv * 2 + renLv * 2,
+    critChanceBps: critLv * 50 + yangqiaoLv * 100,
+    critMultBonus: Number((critLv * 0.04 + yangqiaoLv * 0.05).toFixed(2)),
+    bossDamagePct: Math.round(bossLv * 2.5 + yangweiLv * 3.5),
+    speedPct: Number((chongLv * 2.5).toFixed(1)),
+    armorShred: yinqiaoLv * 2,
+    gambleBonusPct: Math.round(yinweiLv * 1.6),
+    meridianCycleTier,
   };
 }
+
 
 

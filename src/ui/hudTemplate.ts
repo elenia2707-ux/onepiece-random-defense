@@ -97,6 +97,7 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
           <button type="button" class="dev-chip-btn interactive" data-dev-action="luck">+5 영단</button>
           ${devWispBtnsHtml}
           <button type="button" class="dev-chip-btn dev-span-2 interactive" data-dev-action="meta">+250 주화 · +2 열쇠 · +180 비단 (난이도 해금)</button>
+          <button type="button" class="dev-chip-btn dev-span-2 interactive" data-dev-action="cultivation">☯ 단전 진기 +400 XP (기경팔맥 혈점)</button>
         </div>
       </aside>
 

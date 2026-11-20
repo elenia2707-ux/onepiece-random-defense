@@ -426,7 +426,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const swiftBootsPct =
           getSwiftBootsSpeedPct(ctx.relicLv.wind_swift_boots ?? 0) +
           setBonus.speedPct +
-          resonanceSpeedPct;
+          resonanceSpeedPct +
+          (ctx.endgameBonuses?.speedPct ?? 0);
         let speedMult = (synergy.trinityActive ? 1.1 : 1.0) * (1 + swiftBootsPct / 100);
         if (trialCfg && trialCfg.globalSpeedMult !== 1) {
           speedMult *= trialCfg.globalSpeedMult;
@@ -555,7 +556,12 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const relicShred =
           getArmorGauntletShred(ctx.relicLv.armor_break_gauntlet ?? 0) + setBonus.armorShred;
         const unitBaseShred =
-          def.armorShred + crusherStacks * 6 + trialShred + relicShred + benchPassive.armorShred;
+          def.armorShred +
+          crusherStacks * 6 +
+          trialShred +
+          relicShred +
+          benchPassive.armorShred +
+          (ctx.endgameBonuses?.armorShred ?? 0);
         const echoBonusShred =
           isSkill && piercingEchoStacks > 0 ? (piercingEchoStacks >= 2 ? 34 : 18) : 0;
         const projectileShred =
