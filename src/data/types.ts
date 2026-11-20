@@ -26,7 +26,10 @@ export type VfxTrackKind =
   | 'im_venom_lord'
   | 'im_thunder_emperor'
   | 'im_hell_flame'
-  | 'im_wuji_grandmaster';
+  | 'im_wuji_grandmaster'
+  | 'im_primordial_sword'
+  | 'im_chaos_poison'
+  | 'im_void_cheonma';
 
 export type PassiveProcKind = 'execute' | 'pierce' | 'boss' | 'corrode';
 
@@ -122,6 +125,7 @@ export interface RawUnitDef {
   readonly title: string;
   readonly faction: FactionId;
   readonly grade: GradeId;
+  readonly hiddenMythic?: boolean;
   readonly leaf: boolean;
   readonly atk: number;
   readonly range: number;
@@ -142,6 +146,7 @@ export interface UnitDef {
   readonly title: string;
   readonly faction: FactionId;
   readonly grade: GradeId;
+  readonly hiddenMythic?: boolean;
   readonly leaf: boolean;
   readonly atk: number;
   readonly range: number;
@@ -161,11 +166,14 @@ export interface RecipeIngredient {
   readonly n: number;
 }
 
+export type HiddenUnlockKind = 'primordial';
+
 export interface RecipeDef {
   readonly id: RecipeId;
   readonly output: UnitId;
   readonly ingredients: readonly RecipeIngredient[];
   readonly priority: number;
+  readonly hiddenUnlock?: HiddenUnlockKind;
 }
 
 export interface Vec2 {
@@ -548,6 +556,65 @@ export interface ArmamentDef {
   readonly resonance: ArmamentResonanceDef;
 }
 
+export type SectId = 'hwasan' | 'shaolin' | 'tang' | 'cheonma_cult' | 'gaebang';
+
+export type SectVowKind =
+  | 'orthodox_rare_field'
+  | 'boss_or_bounty_kills'
+  | 'gamble_wins'
+  | 'high_rank_owned'
+  | 'field_occupied';
+
+export interface SectStartBonusDef {
+  readonly unitId: UnitId;
+  readonly coin: number;
+  readonly luck: number;
+  readonly wispGrade?: GradeId;
+  readonly wispCount?: number;
+  readonly freeUpgradeGroup?: UpgradeGroupId;
+}
+
+export interface SectPerkDef {
+  readonly faction?: FactionId;
+  readonly atkPct?: number;
+  readonly speedPct?: number;
+  readonly critChanceBps?: number;
+  readonly critMultBonus?: number;
+  readonly armorShred?: number;
+  readonly skillDamagePct?: number;
+  readonly bossDamagePct?: number;
+  readonly ccDurationPct?: number;
+  readonly gambleChancePct?: number;
+  readonly killCoinPct?: number;
+  readonly interestCapBonus?: number;
+}
+
+export interface SectVowDef {
+  readonly kind: SectVowKind;
+  readonly name: string;
+  readonly desc: string;
+  readonly target: number;
+  readonly rewardCoin: number;
+  readonly rewardLuck: number;
+  readonly rewardWispGrade?: GradeId;
+  readonly rewardWispCount?: number;
+}
+
+export interface SectDef {
+  readonly id: SectId;
+  readonly name: string;
+  readonly subtitle: string;
+  readonly badge: string;
+  readonly icon: string;
+  readonly color: string;
+  readonly faction: FactionId;
+  readonly startSummary: string;
+  readonly perkSummary: string;
+  readonly start: SectStartBonusDef;
+  readonly perk: SectPerkDef;
+  readonly vow: SectVowDef;
+}
+
 export type WaveMutantKind = 'swift_raid' | 'iron_wall' | 'blood_swarm';
 
 export interface GameDataBundle {
@@ -566,6 +633,8 @@ export interface GameDataBundle {
   readonly relicsById: ReadonlyMap<RelicId, RelicDef>;
   readonly armaments: readonly ArmamentDef[];
   readonly armamentsById: ReadonlyMap<ArmamentId, ArmamentDef>;
+  readonly sects: readonly SectDef[];
+  readonly sectsById: ReadonlyMap<SectId, SectDef>;
   readonly missions: readonly MissionDef[];
   readonly boons: readonly BoonDef[];
   readonly boonsById: ReadonlyMap<BoonId, BoonDef>;

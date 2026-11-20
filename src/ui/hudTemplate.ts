@@ -238,6 +238,24 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
         </div>
       </div>
 
+      <button id="sect-vow-pill" type="button" class="sect-vow-pill interactive">
+        🏛 5대 명문가 출정 서약 가능 (1~3장) — 후원 문파 선택!
+      </button>
+
+      <div id="sect-modal" class="boon-modal sect-modal interactive" role="dialog" aria-modal="true" aria-label="출정 문파 서약">
+        <div class="boon-shell sect-shell">
+          <div class="boon-header">
+            <div class="boon-kicker">🏛 오대 명문가 출정 후원 · 라운드당 1회</div>
+            <div class="boon-title">출정 문파 서약 선택 (제 01~03 장)</div>
+            <div class="boon-subtitle">초기 보급품 즉시 합류 + 영구 가문 비전 발동! 서약 과업 성취 시 【🌌 태고신화 진·합공식】 해금!</div>
+          </div>
+          <div id="sect-modal-cards" class="sect-modal-cards"></div>
+          <div class="boon-footer">
+            <button id="btn-sect-later" type="button" class="boon-peek-btn interactive">⏳ 전황 먼저 살펴보기 (의뢰 탭에서 3장 이내 선택)</button>
+          </div>
+        </div>
+      </div>
+
       <div id="contract-modal" class="contract-modal interactive" role="dialog" aria-modal="true" aria-label="강호 밀명 3택 1">
         <div class="boon-shell contract-shell">
           <div class="boon-header">

@@ -9,6 +9,7 @@ export type InternalVfxKind =
   | 'hit_slash'
   | 'armor_shatter'
   | 'qi_resonance'
+  | 'trinity_beam'
   | VfxTrackKind;
 
 export interface TrackVfxInstance {

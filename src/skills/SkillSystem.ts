@@ -36,10 +36,12 @@ import type {
   GradeId,
   PassiveProcKind,
   RelicId,
+  SectDef,
   TrialId,
   UnitDef,
   UnitId,
   UpgradeGroupId,
+  Vec2,
 } from '../data/types';
 import type { Board } from '../world/Board';
 import { resolveWaveDef } from '../world/WaveSystem';
@@ -345,6 +347,7 @@ export interface CombatSystemContext {
   readonly dailyRule?: DailyRuleDef | null;
   readonly arenaRule?: ArenaRuleId | null;
   readonly endgameBonuses?: EndgameMetaBonuses;
+  readonly pledgedSectDef?: SectDef | null;
   readonly clearTargetWave: number;
   readonly board: Board;
   readonly rng: Rng;
@@ -405,6 +408,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
     bloodflameHazards,
   );
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
+  const sectPerk = ctx.pledgedSectDef?.perk;
   const harmonyStacks = ctx.getBoonStacks('b_trinity_harmony');
   const pillageStacks = ctx.getBoonStacks('b_unorthodox_pillage');
   const acupointStacks = ctx.getBoonStacks('b_hidden_acupoint');
@@ -473,6 +477,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
       if (bestTarget !== null) {
         const armDef = ctx.getUnitArmament?.(u.uid) ?? null;
         const armBonus = resolveArmamentBonuses(armDef, def.faction);
+        const sectMatches =
+          sectPerk !== undefined && (!sectPerk.faction || sectPerk.faction === def.faction);
         const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
         const swiftBootsPct =
           getSwiftBootsSpeedPct(ctx.relicLv.wind_swift_boots ?? 0) +
@@ -506,6 +512,9 @@ export function stepCombat(ctx: CombatSystemContext): void {
         if (armBonus.speedPct > 0) {
           speedMult *= 1 + armBonus.speedPct / 100;
         }
+        if (sectMatches && sectPerk.speedPct && sectPerk.speedPct > 0) {
+          speedMult *= 1 + sectPerk.speedPct / 100;
+        }
         const dailyFacSpd = ctx.dailyRule?.modifiers.factionSpeedMult?.[def.faction];
         if (dailyFacSpd !== undefined && dailyFacSpd !== 1) {
           speedMult *= dailyFacSpd;
@@ -537,6 +546,13 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const isSkill = u.attackCount % effectiveEveryN === 0;
 
         const critBladeLv = ctx.relicLv.crimson_crit_blade ?? 0;
+        const sectCritBps = sectMatches ? (sectPerk.critChanceBps ?? 0) : 0;
+        const sectCritMult = sectMatches ? (sectPerk.critMultBonus ?? 0) : 0;
+        const sectSkillPct = sectMatches ? (sectPerk.skillDamagePct ?? 0) : 0;
+        const sectCcPct = sectMatches ? (sectPerk.ccDurationPct ?? 0) : 0;
+        const sectShred = sectMatches ? (sectPerk.armorShred ?? 0) : 0;
+        const sectBossPct = sectMatches ? (sectPerk.bossDamagePct ?? 0) : 0;
+
         let critChance = Math.min(
           0.95,
           def.critChance +
@@ -544,6 +560,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
             benchPassive.critChancePct / 100 +
             (ctx.endgameBonuses?.critChanceBps ?? 0) / 10000 +
             armBonus.critChanceBps / 10000 +
+            sectCritBps / 10000 +
             (ctx.arenaRule === 'sandstorm_crit' ? 0.06 : 0),
         );
         let critMult =
@@ -552,17 +569,19 @@ export function stepCombat(ctx: CombatSystemContext): void {
           setBonus.critMultBonus +
           benchPassive.critMultBonus +
           (ctx.endgameBonuses?.critMultBonus ?? 0) +
-          armBonus.critMultBonus;
+          armBonus.critMultBonus +
+          sectCritMult;
         const skillJadePct =
           getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) +
           setBonus.skillDamagePct +
           benchPassive.skillDamagePct +
           (ctx.endgameBonuses?.skillDamagePct ?? 0) +
-          armBonus.skillDamagePct;
+          armBonus.skillDamagePct +
+          sectSkillPct;
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult =
           (1 + 0.35 * acupointStacks) *
-          (1 + rangeMirrorCcPct / 100) *
+          (1 + (rangeMirrorCcPct + sectCcPct) / 100) *
           (trialCfg ? trialCfg.ccMult : 1);
 
         if (def.faction === 'orthodox') {
@@ -620,7 +639,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
           relicShred +
           benchPassive.armorShred +
           (ctx.endgameBonuses?.armorShred ?? 0) +
-          armBonus.armorShred;
+          armBonus.armorShred +
+          sectShred;
         const echoBonusShred =
           isSkill && piercingEchoStacks > 0 ? (piercingEchoStacks >= 2 ? 34 : 18) : 0;
         const projectileShred =
@@ -638,6 +658,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
           : 0;
         const baseSlowTicks =
           def.skill.slowTicks > 0 ? def.skill.slowTicks : armBonus.bonusSlowPct > 0 ? 45 : 0;
+        const totalExtraBossPct = armBonus.bossDamagePct + sectBossPct;
 
         ctx.projectiles.push({
           id: ctx.allocateProjectileId(),
@@ -669,7 +690,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
           slowPct: skillSlowPct,
           slowTicks:
             isSkill && baseSlowTicks > 0 ? Math.max(1, Math.round(baseSlowTicks * ccMult)) : 0,
-          ...(armBonus.bossDamagePct > 0 ? { bonusBossDamagePct: armBonus.bossDamagePct } : {}),
+          ...(totalExtraBossPct > 0 ? { bonusBossDamagePct: totalExtraBossPct } : {}),
         });
       }
     }
@@ -796,12 +817,22 @@ function stepComboSkills(
 
   for (let i = 0; i < COMBO_SKILLS.length; i++) {
     const def = COMBO_SKILLS[i]!;
-    const uA = fieldByUnit.get(def.requiredUnits[0])?.[0];
-    const uB = fieldByUnit.get(def.requiredUnits[1])?.[0];
-    if (!uA || !uB) {
+    if (def.requiredUnits.length < 2) continue;
+    const casters: UnitEntity[] = [];
+    let missing = false;
+    for (let rIdx = 0; rIdx < def.requiredUnits.length; rIdx++) {
+      const found = fieldByUnit.get(def.requiredUnits[rIdx]!)?.[0];
+      if (!found) {
+        missing = true;
+        break;
+      }
+      casters.push(found);
+    }
+    if (missing) {
       comboCooldowns.delete(def.id);
       continue;
     }
+    const uLead = casters[0]!;
 
     let cd = comboCooldowns.get(def.id);
     if (cd === undefined) {
@@ -836,15 +867,22 @@ function stepComboSkills(
     }
     if (!bestTarget) continue;
 
-    const tbA = tileBuffs[uA.slot.index]?.atkPct ?? 0;
-    const tbB = tileBuffs[uB.slot.index]?.atkPct ?? 0;
-    const facA = ctx.data.unitsById.get(uA.unitId)?.faction ?? 'orthodox';
-    const facB = ctx.data.unitsById.get(uB.unitId)?.faction ?? 'orthodox';
-    const armAtkA = resolveArmamentBonuses(ctx.getUnitArmament?.(uA.uid), facA).atkPct;
-    const armAtkB = resolveArmamentBonuses(ctx.getUnitArmament?.(uB.uid), facB).atkPct;
-    const atkA = ctx.getUnitEffectiveAtk(uA.unitId, synergy, tbA, uA.starLevel, armAtkA);
-    const atkB = ctx.getUnitEffectiveAtk(uB.unitId, synergy, tbB, uB.starLevel, armAtkB);
-    const avgAtk = (atkA.baseAtk + atkA.bonusAtk + atkB.baseAtk + atkB.bonusAtk) * 0.5;
+    let sumAtk = 0;
+    let sumX = 0;
+    let sumY = 0;
+    const casterPositions: Vec2[] = [];
+    for (let cIdx = 0; cIdx < casters.length; cIdx++) {
+      const cUnit = casters[cIdx]!;
+      const tb = tileBuffs[cUnit.slot.index]?.atkPct ?? 0;
+      const fac = ctx.data.unitsById.get(cUnit.unitId)?.faction ?? 'orthodox';
+      const armAtk = resolveArmamentBonuses(ctx.getUnitArmament?.(cUnit.uid), fac).atkPct;
+      const atkVal = ctx.getUnitEffectiveAtk(cUnit.unitId, synergy, tb, cUnit.starLevel, armAtk);
+      sumAtk += atkVal.baseAtk + atkVal.bonusAtk;
+      sumX += cUnit.currX;
+      sumY += cUnit.currY;
+      casterPositions.push({ x: cUnit.currX, y: cUnit.currY });
+    }
+    const avgAtk = sumAtk / casters.length;
     const baseComboDmg = Math.max(1, Math.round(avgAtk * def.atkMult));
 
     const targetX = bestTarget.currX;
@@ -865,14 +903,16 @@ function stepComboSkills(
 
     if (victims.length === 0) continue;
 
-    const primaryGrade = ctx.data.gradesById.get(ctx.data.unitsById.get(uA.unitId)?.grade ?? 'immortal');
+    const primaryGrade = ctx.data.gradesById.get(
+      ctx.data.unitsById.get(uLead.unitId)?.grade ?? 'immortal',
+    );
     const syntheticProj: ProjectileEntity = {
       id: ctx.allocateProjectileId(),
-      unitId: uA.unitId,
+      unitId: uLead.unitId,
       startTick: ctx.currentTick,
       arriveTick: ctx.currentTick,
-      fromX: uA.currX,
-      fromY: uA.currY - 12,
+      fromX: uLead.currX,
+      fromY: uLead.currY - 12,
       targetEntityId: bestTarget.entityId,
       targetX,
       targetY,
@@ -887,7 +927,7 @@ function stepComboSkills(
       isCrit: false,
       isSkill: true,
       skillName: def.name,
-      vfxTrack: ctx.data.unitsById.get(uA.unitId)?.skill.vfxTrack ?? 'im_cheonma',
+      vfxTrack: ctx.data.unitsById.get(uLead.unitId)?.skill.vfxTrack ?? 'im_cheonma',
       splashRadius: def.radius,
       stunTicks: Math.round(def.stunSec * 30),
       slowPct: def.slowPct,
@@ -910,8 +950,9 @@ function stepComboSkills(
       comboId: def.id,
       name: def.name,
       unitIds: def.requiredUnits,
-      fromX: (uA.currX + uB.currX) * 0.5,
-      fromY: (uA.currY + uB.currY) * 0.5,
+      casterPositions,
+      fromX: sumX / casters.length,
+      fromY: sumY / casters.length,
       x: targetX,
       y: targetY,
       radius: def.radius,
@@ -1151,7 +1192,8 @@ function applyHitToMonster(
       setBonus.killCoinPct +
       benchPassive.killCoinPct +
       (ctx.dailyRule?.modifiers.killCoinPctBonus ?? 0) +
-      (ctx.endgameBonuses?.killCoinPct ?? 0);
+      (ctx.endgameBonuses?.killCoinPct ?? 0) +
+      (ctx.pledgedSectDef?.perk.killCoinPct ?? 0);
     const bountyBannerCoinPct = m.isBounty
       ? getSlayerBannerBountyCoinPct(ctx.relicLv.demon_slayer_banner ?? 0)
       : 0;

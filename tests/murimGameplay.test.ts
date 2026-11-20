@@ -169,9 +169,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('packs all 44 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
+  it('packs all 47 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(44);
+    expect(data.units.length).toBe(47);
     expect(data.heroSkins.length).toBe(16);
     expect(data.courtSkins.length).toBe(8);
 
@@ -205,8 +205,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
       expect(atlasFrames[kind], `missing WebP atlas frame: ${kind}`).toBeDefined();
     }
-    expect(spriteSet.size).toBe(50);
-    expect(Object.keys(atlasFrames).length).toBe(50);
+    expect(spriteSet.size).toBe(53);
+    expect(Object.keys(atlasFrames).length).toBe(53);
 
     const webpAtlasFiles = Object.keys(import.meta.glob('../public/assets/*.webp'));
     expect(webpAtlasFiles.some((p) => p.endsWith('/sprites_atlas.webp'))).toBe(true);
@@ -1462,9 +1462,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 44 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 47 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(44);
+    expect(data.units.length).toBe(47);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1983,16 +1983,16 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(rec2.firstClearBonusSilk).toBe(0);
   });
 
-  it('differentiates all 7 현경·신마 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
+  it('differentiates all 10 현경·신마 & 태고신화 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
     const data = loadGameData();
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(immortals.length).toBe(7);
+    expect(immortals.length).toBe(10);
 
     // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.0x max/min ATK)
     const atks = immortals.map((u) => u.atk);
     const passiveIds = new Set(immortals.map((u) => u.passiveTrait?.id).filter(Boolean));
-    expect(new Set(atks).size).toBe(7);
-    expect(passiveIds.size).toBe(7);
+    expect(new Set(atks).size).toBe(10);
+    expect(passiveIds.size).toBe(10);
     expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.0);
 
     // Verify SlotView exposes passiveTrait and sword_immortal's 70% armorPiercePct out-scales un-pierced armor reduction
@@ -2142,18 +2142,18 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(data.unitsById.get('blood_shadow_sovereign')?.skill?.vfxTrack).toBe('tx_blood_sovereign');
     expect(data.unitsById.get('wuji_grandmaster')?.skill?.vfxTrack).toBe('im_wuji_grandmaster');
 
-    // 2. All 8 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 7 Immortals have unique im_* VFX tracks
+    // 2. All 8 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 10 Immortals have unique im_* VFX tracks
     const transcendents = data.units.filter((u) => u.grade === 'transcendent');
     const immortals = data.units.filter((u) => u.grade === 'immortal');
     expect(transcendents.length).toBe(8);
-    expect(immortals.length).toBe(7);
+    expect(immortals.length).toBe(10);
 
     const txTracks = new Set(transcendents.map((u) => u.skill?.vfxTrack));
     const txPassives = new Set(transcendents.map((u) => u.passiveTrait?.id));
     const imTracks = new Set(immortals.map((u) => u.skill?.vfxTrack));
     expect(txTracks.size).toBe(8);
     expect(txPassives.size).toBe(8);
-    expect(imTracks.size).toBe(7);
+    expect(imTracks.size).toBe(10);
     for (const tr of txTracks) expect(tr?.startsWith('tx_')).toBe(true);
     for (const tr of imTracks) expect(tr?.startsWith('im_')).toBe(true);
 
@@ -3756,6 +3756,167 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     const snapAfterShatter = simPhoenix.buildSnapshot(1, false);
     expect(snapAfterShatter.luckStone).toBeGreaterThanOrEqual(luckAtEgg + 1);
     expect(snapAfterShatter.coin).toBeGreaterThanOrEqual(coinAtEgg + 80);
+  });
+
+  it('executes v3.4 5-Sect Starting Vows (supplies, perks, vow quest) and unlocks v3.5 Hidden Primordial Mythic 3-Transcendent recipes + 3-Hero Trinity Combos deterministically', () => {
+    const data = loadGameData();
+
+    // 1. Verify all 5 Sects grant starting supplies & perks, reject duplicate pledges and Wave > 3 pledges
+    for (const sectId of ['hwasan', 'shaolin', 'tang', 'cheonma_cult', 'gaebang'] as const) {
+      const s = new Simulation(data, 0x20263435);
+      const before = s.buildSnapshot(1, false);
+      expect(before.sect.canPledge).toBe(true);
+      expect(before.primordialUnlocked).toBe(false);
+
+      s.commands.enqueue({ type: 'pledgeSect', sectId });
+      s.tick();
+
+      const after = s.buildSnapshot(1, false);
+      const def = data.sectsById.get(sectId)!;
+      expect(after.sect.pledgedId).toBe(sectId);
+      expect(after.sect.canPledge).toBe(false);
+      expect(after.coin).toBe(before.coin + def.start.coin);
+      expect(after.luckStone).toBe(before.luckStone + def.start.luck);
+      if (def.start.freeUpgradeGroup) {
+        expect(after.upgradeLv[def.start.freeUpgradeGroup]).toBe(1);
+      }
+      if (def.start.unitId) {
+        expect(after.field.some((slot) => slot?.unitId === def.start.unitId)).toBe(true);
+      }
+
+      // Duplicate pledge rejected
+      s.commands.enqueue({ type: 'pledgeSect', sectId: 'hwasan' });
+      s.tick();
+      expect(s.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'pledgeSect')).toBe(true);
+    }
+
+    // Wave > 3 pledge rejected
+    const simLate = new Simulation(data, 0x77778888);
+    const lateSave = { ...simLate.exportRunSave(1), waveNumber: 4 };
+    expect(simLate.restoreRunSave(lateSave)).toBe(true);
+    expect(simLate.buildSnapshot(1, false).sect.canPledge).toBe(false);
+    simLate.commands.enqueue({ type: 'pledgeSect', sectId: 'gaebang' });
+    simLate.tick();
+    expect(simLate.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'pledgeSect')).toBe(true);
+
+    // 2. Verify Primordial recipes are sealed until Sect Vow completion, then unseal & craft all 3 Primordial Mythics + trigger 3-hero Trinity Combo!
+    const simMythic = new Simulation(data, 0x34350001);
+    const craftTranscendent = (sim: Simulation, recipeId: string): void => {
+      const leaves = sim.recipeGraph.leafCost.get(recipeId)!;
+      for (const [unitId, count] of leaves) {
+        for (let i = 0; i < count; i++) {
+          sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+          sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId });
+        }
+      }
+      sim.tick();
+      sim.commands.enqueue({ type: 'craft', recipeId, chain: true });
+      sim.tick();
+    };
+
+    // Assemble the 3 Transcendents for r_primordial_sword_god BEFORE unlocking primordial
+    craftTranscendent(simMythic, 'r_sword_saint');
+    craftTranscendent(simMythic, 'r_murim_lord');
+    craftTranscendent(simMythic, 'r_ice_palace_empress');
+
+    const sealedSnap = simMythic.buildSnapshot(1, false);
+    expect(sealedSnap.primordialUnlocked).toBe(false);
+    expect(sealedSnap.craft.recipes.r_primordial_sword_god?.lamp).toBe('partial');
+    expect(sealedSnap.craft.readyCount).toBe(0);
+
+    // Attempting to craft sealed r_primordial_sword_god is rejected
+    simMythic.commands.enqueue({ type: 'craft', recipeId: 'r_primordial_sword_god', chain: false });
+    simMythic.tick();
+    expect(simMythic.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'craft')).toBe(true);
+
+    // Pledge Cheonma Cult (Vow: own >= 2 rank >= 4 heroes -> already satisfied by our 3 Transcendents!)
+    let vowFulfilledSeen = false;
+    let mythicUnlockedSeen = false;
+    simMythic.events.on('sect:vow_fulfilled', () => {
+      vowFulfilledSeen = true;
+    });
+    simMythic.events.on('mythic:unlocked', () => {
+      mythicUnlockedSeen = true;
+    });
+    const atkBeforeSect = simMythic.getUnitEffectiveAtk('heavenly_demon_heir');
+    simMythic.commands.enqueue({ type: 'pledgeSect', sectId: 'cheonma_cult' });
+    simMythic.tick();
+    const atkAfterSect = simMythic.getUnitEffectiveAtk('heavenly_demon_heir');
+    expect(atkAfterSect.baseAtk + atkAfterSect.bonusAtk).toBeGreaterThan(
+      atkBeforeSect.baseAtk + atkBeforeSect.bonusAtk,
+    );
+
+    expect(vowFulfilledSeen).toBe(true);
+    expect(mythicUnlockedSeen).toBe(true);
+    const unsealedSnap = simMythic.buildSnapshot(1, false);
+    expect(unsealedSnap.sect.vowCompleted).toBe(true);
+    expect(unsealedSnap.primordialUnlocked).toBe(true);
+    expect(unsealedSnap.craft.recipes.r_primordial_sword_god?.lamp).toBe('ready');
+
+    // Craft primordial_sword_god!
+    simMythic.commands.enqueue({ type: 'craft', recipeId: 'r_primordial_sword_god', chain: false });
+    simMythic.tick();
+    expect(simMythic.getUnits().some((u) => u.unitId === 'primordial_sword_god')).toBe(true);
+
+    // Craft chaos_poison_emperor & void_heavenly_demon as well to complete the Primordial Trinity!
+    craftTranscendent(simMythic, 'r_mad_demon');
+    craftTranscendent(simMythic, 'r_poison_dragon');
+    craftTranscendent(simMythic, 'r_blood_shadow_sovereign');
+    simMythic.commands.enqueue({ type: 'craft', recipeId: 'r_chaos_poison_emperor', chain: false });
+    simMythic.tick();
+
+    craftTranscendent(simMythic, 'r_heavenly_demon_heir');
+    craftTranscendent(simMythic, 'r_nether_blade_queen');
+    craftTranscendent(simMythic, 'r_mad_demon');
+    simMythic.commands.enqueue({ type: 'craft', recipeId: 'r_void_heavenly_demon', chain: false });
+    simMythic.tick();
+
+    const trinitySnap = simMythic.buildSnapshot(1, false);
+    expect(
+      trinitySnap.activeCombos.some(
+        (c) => c.id === 'combo_primordial_genesis' && c.unitIds.length === 3,
+      ),
+    ).toBe(true);
+
+    // Save/restore round-trip preserves pledgedSect, sectVowCompleted, and primordialUnlocked
+    const saved = simMythic.exportRunSave(999);
+    const restored = new Simulation(data, 0x11112222);
+    expect(restored.restoreRunSave(saved)).toBe(true);
+    expect(restored.hashState()).toBe(simMythic.hashState());
+
+    // Let monsters spawn and verify 3-hero Trinity Combo triggers with 3 casterPositions!
+    let trinityTriggered = false;
+    let trinityCasterCount = 0;
+    simMythic.events.on('combo:triggered', (ev) => {
+      if (ev.comboId === 'combo_primordial_genesis') {
+        trinityTriggered = true;
+        trinityCasterCount = ev.casterPositions?.length ?? 0;
+      }
+    });
+    for (let t = 0; t < 300 && !trinityTriggered; t++) {
+      simMythic.tick();
+    }
+    expect(trinityTriggered).toBe(true);
+    expect(trinityCasterCount).toBe(3);
+
+    // Verify 1x vs 3x determinism with pledgeSect + gamble!
+    const det1x = new Simulation(data, 0x3435abcd);
+    const det3x = new Simulation(data, 0x3435abcd);
+    const log = [
+      { tick: 0, command: { type: 'pledgeSect' as const, sectId: 'tang' as const } },
+      { tick: 3, command: { type: 'summon' as const } },
+      { tick: 6, command: { type: 'gamble' as const, tier: 'uncommon' } },
+      { tick: 9, command: { type: 'gamble' as const, tier: 'uncommon' } },
+    ];
+    det1x.scheduleCommandsForReplay(log);
+    det3x.scheduleCommandsForReplay(log);
+    for (let t = 0; t < 180; t++) det1x.tick();
+    for (let t = 0; t < 180; t += 3) {
+      det3x.tick();
+      det3x.tick();
+      det3x.tick();
+    }
+    expect(det3x.hashState()).toBe(det1x.hashState());
   });
 });
 

@@ -826,7 +826,9 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
 
   it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs (all 7 Immortals)', () => {
     const data = loadGameData();
-    const immortalIds = data.units.filter((u) => u.grade === 'immortal').map((u) => u.id);
+    const immortalIds = data.units
+      .filter((u) => u.grade === 'immortal' && !u.hiddenMythic)
+      .map((u) => u.id);
     expect(immortalIds.length).toBe(7);
 
     const midRelics: Partial<Record<RelicId, number>> = {

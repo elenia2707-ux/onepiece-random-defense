@@ -1,0 +1,161 @@
+[
+  {
+    "id": "hwasan",
+    "name": "화산파",
+    "subtitle": "매화검종 · 구파일방 선봉",
+    "badge": "🌸 화산파",
+    "icon": "🌸",
+    "color": "#f43f5e",
+    "faction": "orthodox",
+    "startSummary": "화산 막내도사 1인 합류 · 삼류 기연 +1 · 은자 +30",
+    "perkSummary": "정파 협객 회심률 +8%p · 정파 절기 피해 +15%",
+    "start": {
+      "unitId": "hwasan_novice",
+      "coin": 30,
+      "luck": 0,
+      "wispGrade": "common",
+      "wispCount": 1
+    },
+    "perk": {
+      "faction": "orthodox",
+      "critChanceBps": 800,
+      "skillDamagePct": 15
+    },
+    "vow": {
+      "kind": "orthodox_rare_field",
+      "name": "매화만개 검진",
+      "desc": "정파 일류(3등급) 이상 협객 3인 비무대 동시 출전",
+      "target": 3,
+      "rewardCoin": 180,
+      "rewardLuck": 3,
+      "rewardWispGrade": "rare",
+      "rewardWispCount": 1
+    }
+  },
+  {
+    "id": "shaolin",
+    "name": "소림사",
+    "subtitle": "천하무종 · 금강불괴",
+    "badge": "🔔 소림사",
+    "icon": "🔔",
+    "color": "#f59e0b",
+    "faction": "orthodox",
+    "startSummary": "소림 동자승 1인 합류 · 정파 내공 Lv.1 무상 전수 · 은자 +40",
+    "perkSummary": "전 협객 기절·둔화 제어시간 +20% · 영물·수배범 피해 +14%",
+    "start": {
+      "unitId": "shaolin_novice",
+      "coin": 40,
+      "luck": 0,
+      "freeUpgradeGroup": "orthodox"
+    },
+    "perk": {
+      "ccDurationPct": 20,
+      "bossDamagePct": 14
+    },
+    "vow": {
+      "kind": "boss_or_bounty_kills",
+      "name": "항마복마 발원",
+      "desc": "영물 보스 또는 현상수배범 누적 2기 토벌",
+      "target": 2,
+      "rewardCoin": 200,
+      "rewardLuck": 3,
+      "rewardWispGrade": "uncommon",
+      "rewardWispCount": 2
+    }
+  },
+  {
+    "id": "tang",
+    "name": "사천당가",
+    "subtitle": "만독세가 · 오대세가 비문",
+    "badge": "☠ 사천당가",
+    "icon": "☠",
+    "color": "#22c55e",
+    "faction": "unorthodox",
+    "startSummary": "사천당문 암기수 1인 합류 · 영단 +3",
+    "perkSummary": "전 협객 기본 파갑 +10 · 영약 복용 성공률 +8%p",
+    "start": {
+      "unitId": "tang_assassin",
+      "coin": 0,
+      "luck": 3
+    },
+    "perk": {
+      "armorShred": 10,
+      "gambleChancePct": 8
+    },
+    "vow": {
+      "kind": "gamble_wins",
+      "name": "만독영단 정제",
+      "desc": "영약 복용 환골탈태 2회 성공",
+      "target": 2,
+      "rewardCoin": 160,
+      "rewardLuck": 4,
+      "rewardWispGrade": "rare",
+      "rewardWispCount": 1
+    }
+  },
+  {
+    "id": "cheonma_cult",
+    "name": "천마신교",
+    "subtitle": "십만대산 · 마도패황",
+    "badge": "🩸 천마신교",
+    "icon": "🩸",
+    "color": "#e11d48",
+    "faction": "demonic",
+    "startSummary": "마교 초입교도 1인 합류 · 마교 마공 Lv.1 무상 전수 · 영단 +1",
+    "perkSummary": "마교 협객 공격력 +14% · 마교 치명타 배율 +0.28x",
+    "start": {
+      "unitId": "cult_initiate",
+      "coin": 0,
+      "luck": 1,
+      "freeUpgradeGroup": "demonic"
+    },
+    "perk": {
+      "faction": "demonic",
+      "atkPct": 14,
+      "critMultBonus": 0.28
+    },
+    "vow": {
+      "kind": "high_rank_owned",
+      "name": "천마혈혈 등극",
+      "desc": "절정(4등급) 이상 고수 2인 보유 (출전 또는 대기)",
+      "target": 2,
+      "rewardCoin": 220,
+      "rewardLuck": 3,
+      "rewardWispGrade": "rare",
+      "rewardWispCount": 1
+    }
+  },
+  {
+    "id": "gaebang",
+    "name": "개방",
+    "subtitle": "천하제일방 · 만리풍운",
+    "badge": "🍶 개방",
+    "icon": "🍶",
+    "color": "#10b981",
+    "faction": "orthodox",
+    "startSummary": "개방 거지 1인 합류 · 은자 +85 · 삼류 기연 +1",
+    "perkSummary": "모든 처치 은자 +20% · 복리 이자 상한 +60 · 전 협객 공속 +8%",
+    "start": {
+      "unitId": "gaebang_beggar",
+      "coin": 85,
+      "luck": 0,
+      "wispGrade": "common",
+      "wispCount": 1
+    },
+    "perk": {
+      "killCoinPct": 20,
+      "interestCapBonus": 60,
+      "speedPct": 8
+    },
+    "vow": {
+      "kind": "field_occupied",
+      "name": "군웅운집 개방진",
+      "desc": "비무대 협객 10인 이상 동시 출전 달성",
+      "target": 10,
+      "rewardCoin": 260,
+      "rewardLuck": 3,
+      "rewardWispGrade": "uncommon",
+      "rewardWispCount": 2
+    }
+  }
+]

@@ -642,6 +642,7 @@ export class Game {
     this.runSaveDirty = true;
     const flushNowWhilePaused =
       this.tutorialPaused ||
+      cmd.type === 'pledgeSect' ||
       cmd.type === 'rerollBoon' ||
       cmd.type === 'pickContract' ||
       cmd.type === 'awaken' ||
@@ -790,11 +791,17 @@ export class Game {
       const unitDef = this.sim.data.unitsById.get(ev.outputUnitId);
       const gradeDef = this.sim.data.gradesById.get(ev.grade);
       const skin = this.equippedHeroSkinsMap.get(ev.outputUnitId);
-      const color = skin?.primaryColor ?? gradeDef?.color ?? '#fbbf24';
+      const color = unitDef?.hiddenMythic
+        ? '#fde047'
+        : (skin?.primaryColor ?? gradeDef?.color ?? '#fbbf24');
       const rank = gradeDef?.rank ?? 2;
       const unitName = unitDef?.name ?? ev.outputUnitId;
+      const gradeLabel = unitDef?.hiddenMythic ? '태고신화' : (gradeDef?.name ?? '');
 
       this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, color, rank, ev.tick);
+      if (unitDef?.hiddenMythic) {
+        this.vfx.triggerScreenFlash('#fde047', 0.18, 0.28, ev.tick);
+      }
       if (rank >= 4) {
         this.haptics.trigger(rank >= 6 ? 'heavy' : 'medium');
       }
@@ -802,7 +809,11 @@ export class Game {
         ev.inheritedStarLevel && ev.inheritedStarLevel > 0
           ? ` (⭐ ${'★'.repeat(ev.inheritedStarLevel)} 계승 · 자동잠금!)`
           : '';
-      this.ui.showToast(`⚔️ [${gradeDef?.name ?? ''}] ${unitName} 합공 등선!${starPart}`);
+      this.ui.showToast(
+        unitDef?.hiddenMythic
+          ? `🌌 [${gradeLabel}] ${unitName} 태고 진·합공 강림!${starPart}`
+          : `⚔️ [${gradeLabel}] ${unitName} 합공 등선!${starPart}`,
+      );
 
       if (gradeDef?.isCutInTier && unitDef && !this.seenCutInUnits.has(unitDef.id)) {
         this.seenCutInUnits.add(unitDef.id);
@@ -811,7 +822,7 @@ export class Game {
           this.sprites.unitToken(unitDef, gradeDef, skin),
           this.sprites.cutInBanner(
             unitDef.id,
-            gradeDef.name,
+            gradeLabel,
             unitDef.name,
             unitDef.skill.name,
             color,
@@ -824,7 +835,7 @@ export class Game {
         this.sound.playCraft(rank);
         if (gradeDef?.showSkillCallout) {
           this.vfx.showCraftCelebrationBanner(
-            gradeDef.name,
+            gradeLabel,
             unitName,
             color,
             performance.now(),
@@ -1027,6 +1038,56 @@ export class Game {
       );
     });
 
+    this.sim.events.on('sect:pledged', (ev) => {
+      this.sound.playCraft(5);
+      this.haptics.trigger('success');
+      this.vfx.triggerScreenFlash(ev.color, 0.14, 0.22, ev.tick);
+      if (ev.pos) {
+        this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, ev.color, 5, ev.tick);
+      }
+      this.vfx.showCraftCelebrationBanner('출정 문파 서약', ev.badge, ev.color, performance.now());
+      this.ui.showToast(`🏛 [${ev.badge}] 가문 서약 체결! (${ev.startSummary})`);
+    });
+
+    this.sim.events.on('sect:vow_fulfilled', (ev) => {
+      this.sound.playVictory();
+      this.haptics.trigger('heavy');
+      this.vfx.triggerScreenFlash('#fde047', 0.16, 0.26, ev.tick);
+      this.vfx.showCraftCelebrationBanner(
+        `${ev.sectName} 서약 성취`,
+        `${ev.vowName} · 🌌태고합공 개방!`,
+        ev.color,
+        performance.now(),
+      );
+      const rewards: string[] = [];
+      if (ev.rewardCoin > 0) rewards.push(`은자 +${ev.rewardCoin}`);
+      if (ev.rewardLuck > 0) rewards.push(`영단 +${ev.rewardLuck}`);
+      if (ev.rewardWispGrade) {
+        const gName =
+          this.sim.data.gradesById.get(ev.rewardWispGrade)?.name ?? ev.rewardWispGrade;
+        rewards.push(`${gName} 기연 +${ev.rewardWispCount ?? 1}`);
+      }
+      this.ui.showToast(
+        `🏆 [${ev.sectName}] 서약 완수! ${rewards.join(' · ')} + 🌌태고신화 진·합공식 해금!`,
+      );
+    });
+
+    this.sim.events.on('mythic:unlocked', (ev) => {
+      if (ev.reason === '출정 문파 서약 완수') {
+        return; // Already celebrated alongside sect:vow_fulfilled
+      }
+      this.sound.playMilestone();
+      this.haptics.trigger('heavy');
+      this.vfx.triggerScreenFlash('#fde047', 0.16, 0.25, ev.tick);
+      this.vfx.showCraftCelebrationBanner(
+        '🌌 태고신화 해금',
+        ev.reason,
+        '#fde047',
+        performance.now(),
+      );
+      this.ui.showToast(`🌌 [${ev.reason}] 달성! 합공보의 태고신화 진·합공식 3종이 봉인 해제되었습니다!`);
+    });
+
     this.sim.events.on('boss:slain', (ev) => {
       this.sound.playCoinReward();
       const wispGradeName =
@@ -1201,7 +1262,19 @@ export class Game {
     this.sim.events.on('combo:triggered', (ev) => {
       this.sound.playComboSkill();
       this.haptics.trigger('heavy');
-      const uDef = this.sim.data.unitsById.get(ev.unitIds[0]);
+      const firstId = ev.unitIds[0];
+      const uDef = firstId ? this.sim.data.unitsById.get(firstId) : undefined;
+      const isTrinity = ev.unitIds.length >= 3;
+      if (isTrinity && ev.casterPositions && ev.casterPositions.length >= 2) {
+        this.vfx.spawnTrinityComboFx(
+          ev.casterPositions,
+          ev.x,
+          ev.y,
+          ev.radius,
+          ev.color,
+          ev.tick,
+        );
+      }
       this.vfx.spawnSkillTrack(
         uDef?.skill.vfxTrack ?? 'im_cheonma',
         ev.fromX,
@@ -1216,9 +1289,18 @@ export class Game {
         '#fde047',
         'sword',
       );
-      this.vfx.triggerScreenFlash(ev.color, 0.11, 0.2, ev.tick);
-      this.vfx.showCraftCelebrationBanner('문파 연환절기', ev.name, ev.color, performance.now());
-      this.ui.showToast(`⚡ 연환절기 【${ev.name}】 작렬! (${ev.hitCount}기 명중)`);
+      this.vfx.triggerScreenFlash(ev.color, isTrinity ? 0.18 : 0.11, isTrinity ? 0.28 : 0.2, ev.tick);
+      const bannerTitle = isTrinity
+        ? ev.comboId === 'combo_primordial_genesis'
+          ? '🌌 태고삼신 합체기'
+          : '☯ 삼재 합체기'
+        : '문파 연환절기';
+      this.vfx.showCraftCelebrationBanner(bannerTitle, ev.name, ev.color, performance.now());
+      this.ui.showToast(
+        isTrinity
+          ? `🌌 3인 삼재합체기 【${ev.name}】 개천 작렬! (${ev.hitCount}기 초토화)`
+          : `⚡ 연환절기 【${ev.name}】 작렬! (${ev.hitCount}기 명중)`,
+      );
     });
 
     this.sim.events.on('gamble:result', (ev) => {

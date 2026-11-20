@@ -166,7 +166,7 @@ export class SpriteCache {
     Promise.all([
       fonts.load(
         `40px "Black Han Sans"`,
-        'BOSS 0123456789 剛破天魔毒血雷龍劍覇狂仙修炎魂 회심 파갑 참살 처형 관통 패왕 부식 화신 자하 현중 화우 혈마 백옥 파천',
+        'BOSS 0123456789 剛破天魔毒血雷龍劍覇狂仙修炎魂極神混無 회심 파갑 참살 처형 관통 패왕 부식 화신 태고 자하 현중 화우 혈마 백옥 파천',
       ),
       fonts.load(`40px "Jua"`, '초출강호 합공 등선 환골탈태 주화입마 출현 매화만개 천마군림보 화경 현경 강림'),
     ])
@@ -209,6 +209,8 @@ export class SpriteCache {
     }
     const avatarBadge = this.cache.get('badge:avatar_mastery');
     if (avatarBadge) this.paintAvatarMasterySealBadge(avatarBadge);
+    const primordialBadge = this.cache.get('badge:primordial_mythic');
+    if (primordialBadge) this.paintPrimordialMythicSealBadge(primordialBadge);
     const benchBadge = this.cache.get('badge:bench_passive');
     if (benchBadge) this.paintBenchPassiveBadge(benchBadge);
   }
@@ -1012,6 +1014,50 @@ export class SpriteCache {
     ctx.strokeText('화신', c.width * 0.5, c.height * 0.5 + 0.5);
     ctx.fillStyle = '#fef9c3';
     ctx.fillText('화신', c.width * 0.5, c.height * 0.5 + 0.5);
+    ctx.restore();
+  }
+
+  /** Pre-rendered celestial '✦태고' seal for Hidden Primordial Mythic heroes (zero per-frame fillText). */
+  public primordialMythicSealBadge(): HTMLCanvasElement {
+    const key = 'badge:primordial_mythic';
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(76, 28);
+    this.paintPrimordialMythicSealBadge(c);
+    this.cache.set(key, c);
+    return c;
+  }
+
+  private paintPrimordialMythicSealBadge(c: HTMLCanvasElement): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(3, 3, c.width - 6, c.height - 6, 9);
+    const bg = ctx.createLinearGradient(0, 3, c.width, c.height - 3);
+    bg.addColorStop(0, '#0284c7');
+    bg.addColorStop(0.5, '#7e22ce');
+    bg.addColorStop(1, '#be123c');
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 3.6;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#fde047';
+    ctx.stroke();
+
+    ctx.font = `14px ${DISPLAY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText('✦태고', c.width * 0.5, c.height * 0.5 + 0.5);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillText('✦태고', c.width * 0.5, c.height * 0.5 + 0.5);
     ctx.restore();
   }
 

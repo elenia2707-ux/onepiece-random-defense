@@ -73,6 +73,8 @@ import type {
   PassiveProcKind,
   PassiveTraitDef,
   RelicId,
+  SectDef,
+  SectId,
   SupportAuraDef,
   TrialId,
   UnitId,
@@ -144,9 +146,13 @@ export type {
   ContractId,
   FactionSynergySnapshot,
   RunSaveData,
+  SectDef,
+  SectId,
   TileAuraBuff,
   WaveMutantMeta,
 };
+
+export const SECT_PLEDGE_MAX_WAVE = 3;
 
 export const MAX_ARMAMENT_SLOTS = 3;
 export const ARMAMENT_REFORGE_COST_COIN = 110;
@@ -444,7 +450,8 @@ export interface SimEventMap {
   'combo:triggered': {
     readonly comboId: ComboSkillId;
     readonly name: string;
-    readonly unitIds: readonly [UnitId, UnitId];
+    readonly unitIds: readonly UnitId[];
+    readonly casterPositions?: readonly Vec2[];
     readonly fromX: number;
     readonly fromY: number;
     readonly x: number;
@@ -453,6 +460,30 @@ export interface SimEventMap {
     readonly color: string;
     readonly totalDamage: number;
     readonly hitCount: number;
+    readonly tick: number;
+  };
+  'sect:pledged': {
+    readonly sectId: SectId;
+    readonly name: string;
+    readonly badge: string;
+    readonly color: string;
+    readonly startSummary: string;
+    readonly pos: Vec2 | null;
+    readonly tick: number;
+  };
+  'sect:vow_fulfilled': {
+    readonly sectId: SectId;
+    readonly sectName: string;
+    readonly vowName: string;
+    readonly color: string;
+    readonly rewardCoin: number;
+    readonly rewardLuck: number;
+    readonly rewardWispGrade?: GradeId;
+    readonly rewardWispCount?: number;
+    readonly tick: number;
+  };
+  'mythic:unlocked': {
+    readonly reason: string;
     readonly tick: number;
   };
   'armament:forged': {
@@ -646,12 +677,21 @@ export interface ActiveComboView {
   readonly id: ComboSkillId;
   readonly name: string;
   readonly desc: string;
-  readonly unitIds: readonly [UnitId, UnitId];
+  readonly unitIds: readonly UnitId[];
   readonly color: string;
   readonly tierLabel: string;
   readonly cooldownLeftTicks: number;
   readonly cooldownTotalTicks: number;
   readonly triggerCount: number;
+}
+
+export interface SectSnapshot {
+  readonly canPledge: boolean;
+  readonly maxPledgeWave: number;
+  readonly pledgedId: SectId | null;
+  readonly vowProgress: number;
+  readonly vowTarget: number;
+  readonly vowCompleted: boolean;
 }
 
 export interface SimulationModeOptions {
@@ -708,6 +748,8 @@ export interface UISnapshot {
   readonly queuedContractCount: number;
   readonly contracts: readonly ContractItemSnapshot[];
   readonly armory: ArmorySnapshot;
+  readonly sect: SectSnapshot;
+  readonly primordialUnlocked: boolean;
   readonly benchPassives: BenchPassiveSummary;
   readonly preserveBenchPassives: boolean;
   readonly missions: readonly MissionItemSnapshot[];
@@ -776,6 +818,9 @@ export class Simulation {
   private arenaRule: ArenaRuleId | null = null;
   private heroMasteryAtkPct: Readonly<Partial<Record<UnitId, number>>> = {};
   private readonly armory: ArmamentSlotState[] = [];
+  private pledgedSect: SectId | null = null;
+  private sectVowCompleted = false;
+  private primordialUnlocked = false;
 
   private readonly rng: Rng;
   private readonly summonableGrades: readonly GradeDef[];
@@ -921,6 +966,7 @@ export class Simulation {
       this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
       this.rng = new Rng(seed);
     }
+    this.primordialUnlocked = this.trialId !== null || this.difficulty === 'abyss';
 
     this.board = new Board(data.board);
     this.path = new LoopPath(data.board.path.waypoints);
@@ -963,6 +1009,7 @@ export class Simulation {
     this.summonableGrades = data.grades.filter((g) => g.summonable && g.summonWeight > 0);
     const byGrade = new Map<GradeId, UnitId[]>();
     for (const u of data.units) {
+      if (u.hiddenMythic) continue;
       const list = byGrade.get(u.grade) ?? [];
       list.push(u.id);
       byGrade.set(u.grade, list);
@@ -1094,6 +1141,10 @@ export class Simulation {
     return this.activeBoons[id] ?? 0;
   }
 
+  public getPledgedSectDef(): SectDef | null {
+    return this.pledgedSect ? (this.data.sectsById.get(this.pledgedSect) ?? null) : null;
+  }
+
   public computeBenchPassives(): BenchPassiveSummary {
     return computeBenchPassiveSummary(
       this.units,
@@ -1110,13 +1161,16 @@ export class Simulation {
     const benchBonus = this.computeBenchPassives();
     const usuryStacks = this.getBoonStacks('b_usury_vault');
     const dailyMod = this.dailyChallengeSpec?.rule.modifiers;
+    const sectDef = this.getPledgedSectDef();
+    const sectCapBonus = sectDef?.perk.interestCapBonus ?? 0;
     const basePct = getVaultInterestPct(this.relicLv.golden_vault);
     const pct =
       basePct +
       usuryStacks * 3 +
       setBonus.interestPct +
       benchBonus.interestPct +
-      (dailyMod?.interestPctBonus ?? 0);
+      (dailyMod?.interestPctBonus ?? 0) +
+      (sectCapBonus > 0 ? 2 : 0);
     if (pct <= 0) {
       return { pct: 0, cap: 0 };
     }
@@ -1129,7 +1183,8 @@ export class Simulation {
         usuryStacks * 60 +
         setBonus.interestCap +
         benchBonus.interestCap +
-        (dailyMod?.interestCapBonus ?? 0),
+        (dailyMod?.interestCapBonus ?? 0) +
+        sectCapBonus,
     };
   }
 
@@ -1148,6 +1203,7 @@ export class Simulation {
     const benchBonus = this.computeBenchPassives();
     const trialBonus = this.trialId ? TRIAL_CONFIGS[this.trialId].gambleBonusPct : 0;
     const dailyBonus = this.dailyChallengeSpec?.rule.modifiers.gambleBonusPct ?? 0;
+    const sectBonus = this.getPledgedSectDef()?.perk.gambleChancePct ?? 0;
     return (
       getFurnaceChanceBonusPct(this.relicLv.immortal_furnace) +
       this.getBoonStacks('b_elixir_jackpot') * 12 +
@@ -1155,6 +1211,7 @@ export class Simulation {
       benchBonus.gambleBonusPct +
       trialBonus +
       dailyBonus +
+      sectBonus +
       (this.endgameBonuses.gambleBonusPct ?? 0)
     );
   }
@@ -1286,6 +1343,7 @@ export class Simulation {
     extraArmamentAtkPct = 0,
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
     const setBonus = computeRelicSetBonuses(this.relicLv);
+    const def = this.data.unitsById.get(unitId);
     let extraTraitPct = 0;
     if (this.getBoonStacks('b_relic_resonance') > 0) {
       let ownedRelics = 0;
@@ -1312,6 +1370,13 @@ export class Simulation {
     if (extraArmamentAtkPct > 0) {
       extraTraitPct += extraArmamentAtkPct;
     }
+    const sectDef = this.getPledgedSectDef();
+    if (
+      sectDef?.perk.atkPct &&
+      (!sectDef.perk.faction || sectDef.perk.faction === def?.faction)
+    ) {
+      extraTraitPct += sectDef.perk.atkPct;
+    }
     if (this.arenaRule === 'bloodflame_forge') {
       extraTraitPct += 5;
     }
@@ -1331,7 +1396,6 @@ export class Simulation {
         getStarAtkBps(starLevel),
       extraTraitPct,
     );
-    const def = this.data.unitsById.get(unitId);
     const dailyFacMult = def
       ? this.dailyChallengeSpec?.rule.modifiers.factionAtkMult?.[def.faction]
       : undefined;
@@ -1428,10 +1492,11 @@ export class Simulation {
       this.priorityDirty = true;
     }
 
-    // 6. Deterministic in-run mission & contract evaluation (강호 의뢰 · 밀명 계약)
+    // 6. Deterministic in-run mission, sect vow, mythic unlock & contract evaluation
     if (!this.gameOver) {
       this.evaluateMissions();
       this.evaluateContracts();
+      this.evaluateSectAndMythicUnlock();
     }
 
     this.currentTick++;
@@ -1453,6 +1518,7 @@ export class Simulation {
     if (!this.gameOver) {
       this.evaluateMissions();
       this.evaluateContracts();
+      this.evaluateSectAndMythicUnlock();
     }
   }
 
@@ -1558,6 +1624,7 @@ export class Simulation {
       dailyRule: this.dailyChallengeSpec?.rule ?? null,
       arenaRule: this.arenaRule,
       endgameBonuses: this.endgameBonuses,
+      pledgedSectDef: this.getPledgedSectDef(),
       clearTargetWave: this.clearTargetWave,
       board: this.board,
       rng: this.rng,
@@ -2253,6 +2320,14 @@ export class Simulation {
       }
 
       case 'craft': {
+        const targetRecipe = this.recipeGraph.recipesById.get(cmd.recipeId);
+        if (targetRecipe?.hiddenUnlock === 'primordial' && !this.primordialUnlocked) {
+          this.reject(
+            'craft',
+            '태고신화 진·합공식이 아직 봉인되어 있습니다! (문파 서약 완수 · 비경 · 무간 · 무한 31장+ 해금)',
+          );
+          return;
+        }
         const freedArmamentSlots: number[] = [];
         const res = this.craftSystem.execute(cmd.recipeId, cmd.chain, this.inventoryIndex, {
           getUnitStarLevel: (uid) => this.unitsByUid.get(uid)?.starLevel ?? 0,
@@ -2326,6 +2401,7 @@ export class Simulation {
             const r = this.recipeGraph.recipesById.get(rid);
             const st = cSnap.recipes[rid];
             if (!r || !st || (st.lamp !== 'ready' && st.lamp !== 'chainReady')) continue;
+            if (r.hiddenUnlock === 'primordial' && !this.primordialUnlocked) continue;
             const outDef = this.data.unitsById.get(r.output);
             const outRank = outDef ? (this.data.gradesById.get(outDef.grade)?.rank ?? 0) : 0;
             const isTriple = r.ingredients.length === 1 && r.ingredients[0]!.n >= 3;
@@ -2406,6 +2482,65 @@ export class Simulation {
           });
         }
         this.priorityDirty = true;
+        return;
+      }
+
+      case 'pledgeSect': {
+        if (this.pledgedSect !== null) {
+          this.reject('pledgeSect', '이번 출정에서는 이미 가문 서약을 맺었습니다.');
+          return;
+        }
+        if (this.waveNumber > SECT_PLEDGE_MAX_WAVE) {
+          this.reject(
+            'pledgeSect',
+            `출정 문파 서약은 제 0${SECT_PLEDGE_MAX_WAVE} 장 이내에만 맺을 수 있습니다.`,
+          );
+          return;
+        }
+        const sectDef = this.data.sectsById.get(cmd.sectId);
+        if (!sectDef) {
+          this.reject('pledgeSect', '유효하지 않은 명문가입니다.');
+          return;
+        }
+        this.pledgedSect = sectDef.id;
+        if (sectDef.start.coin > 0) {
+          this.coin += sectDef.start.coin;
+        }
+        if (sectDef.start.luck > 0) {
+          this.luckStone += sectDef.start.luck;
+        }
+        if (sectDef.start.freeUpgradeGroup) {
+          const g = sectDef.start.freeUpgradeGroup;
+          const upDef = this.data.upgrades.find((u) => u.id === g);
+          const cap = upDef?.maxLevel ?? 40;
+          this.upgradeLv[g] = Math.min(cap, (this.upgradeLv[g] ?? 0) + 1);
+        }
+        let spawnedPos: Vec2 | null = null;
+        if (sectDef.start.unitId) {
+          const slot = this.board.findPlacementSlot();
+          if (slot) {
+            const uid = this.createUnit(sectDef.start.unitId, slot, 'wisp');
+            const spawned = this.unitsByUid.get(uid);
+            if (spawned) {
+              spawnedPos = { x: spawned.currX, y: spawned.currY };
+            }
+          }
+        }
+        if (sectDef.start.wispGrade && (sectDef.start.wispCount ?? 0) > 0) {
+          const gId = sectDef.start.wispGrade;
+          this.wisps[gId] = (this.wisps[gId] ?? 0) + (sectDef.start.wispCount ?? 1);
+          this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+        }
+        this.priorityDirty = true;
+        this.events.emit('sect:pledged', {
+          sectId: sectDef.id,
+          name: sectDef.name,
+          badge: sectDef.badge,
+          color: sectDef.color,
+          startSummary: sectDef.startSummary,
+          pos: spawnedPos,
+          tick: this.currentTick,
+        });
         return;
       }
 
@@ -2821,6 +2956,104 @@ export class Simulation {
           rewardCoin: mDef.rewardCoin,
           rewardLuck: mDef.rewardLuck,
           rewardWispGrade: mDef.rewardWispGrade,
+          tick: this.currentTick,
+        });
+      }
+    }
+  }
+
+  private computeSectVowProgress(sectDef: SectDef): number {
+    switch (sectDef.vow.kind) {
+      case 'orthodox_rare_field': {
+        let count = 0;
+        for (let i = 0; i < this.units.length; i++) {
+          const u = this.units[i]!;
+          if (u.slot.area !== 'field') continue;
+          const uDef = this.data.unitsById.get(u.unitId);
+          const rank = this.data.gradesById.get(u.grade)?.rank ?? 1;
+          if (uDef?.faction === 'orthodox' && rank >= 3) {
+            count++;
+          }
+        }
+        return count;
+      }
+      case 'boss_or_bounty_kills':
+        return this.bossesSlain + this.bountiesSlain;
+      case 'gamble_wins':
+        return this.gambleWins;
+      case 'high_rank_owned': {
+        let count = 0;
+        for (let i = 0; i < this.units.length; i++) {
+          const u = this.units[i]!;
+          const rank = this.data.gradesById.get(u.grade)?.rank ?? 1;
+          if (rank >= 4) {
+            count++;
+          }
+        }
+        return count;
+      }
+      case 'field_occupied':
+        return this.board.field.countOccupied();
+    }
+  }
+
+  private evaluateSectAndMythicUnlock(): void {
+    const sectDef = this.getPledgedSectDef();
+    if (sectDef && !this.sectVowCompleted) {
+      const prog = this.computeSectVowProgress(sectDef);
+      if (prog >= sectDef.vow.target) {
+        this.sectVowCompleted = true;
+        if (sectDef.vow.rewardCoin > 0) {
+          this.coin += sectDef.vow.rewardCoin;
+        }
+        if (sectDef.vow.rewardLuck > 0) {
+          this.luckStone += sectDef.vow.rewardLuck;
+        }
+        if (sectDef.vow.rewardWispGrade && (sectDef.vow.rewardWispCount ?? 0) > 0) {
+          const gId = sectDef.vow.rewardWispGrade;
+          this.wisps[gId] = (this.wisps[gId] ?? 0) + (sectDef.vow.rewardWispCount ?? 1);
+          this.wispSystem.recomputeHintsIfOwned(this.wisps, this.inventoryIndex);
+        }
+        this.priorityDirty = true;
+        this.events.emit('sect:vow_fulfilled', {
+          sectId: sectDef.id,
+          sectName: sectDef.name,
+          vowName: sectDef.vow.name,
+          color: sectDef.color,
+          rewardCoin: sectDef.vow.rewardCoin,
+          rewardLuck: sectDef.vow.rewardLuck,
+          ...(sectDef.vow.rewardWispGrade !== undefined
+            ? { rewardWispGrade: sectDef.vow.rewardWispGrade }
+            : {}),
+          ...(sectDef.vow.rewardWispCount !== undefined
+            ? { rewardWispCount: sectDef.vow.rewardWispCount }
+            : {}),
+          tick: this.currentTick,
+        });
+      }
+    }
+
+    if (!this.primordialUnlocked) {
+      let unlockReason: string | null = null;
+      if (this.sectVowCompleted) {
+        unlockReason = '출정 문파 서약 완수';
+      } else if (this.trialId !== null) {
+        unlockReason = '비경 시련 개방';
+      } else if (this.difficulty === 'abyss') {
+        unlockReason = '무간지옥 개방';
+      } else if (this.endlessMode || this.waveNumber > 30) {
+        unlockReason = '무한 파도 개방';
+      } else if (this.runMode === 'boss_rush' && this.waveNumber >= 6) {
+        unlockReason = '보스 러시 심층 개방';
+      } else if (this.craftedImmortal && this.computeFieldSynergy().trinityActive) {
+        unlockReason = '삼재일체 · 신화 등극 공명';
+      }
+
+      if (unlockReason !== null) {
+        this.primordialUnlocked = true;
+        this.priorityDirty = true;
+        this.events.emit('mythic:unlocked', {
+          reason: unlockReason,
           tick: this.currentTick,
         });
       }
@@ -3393,10 +3626,14 @@ export class Simulation {
     const activeCombos: ActiveComboView[] = [];
     for (let i = 0; i < COMBO_SKILLS.length; i++) {
       const cDef = COMBO_SKILLS[i]!;
-      if (
-        fieldUnitSet.has(cDef.requiredUnits[0]) &&
-        fieldUnitSet.has(cDef.requiredUnits[1])
-      ) {
+      let allPresent = cDef.requiredUnits.length >= 2;
+      for (let k = 0; k < cDef.requiredUnits.length; k++) {
+        if (!fieldUnitSet.has(cDef.requiredUnits[k]!)) {
+          allPresent = false;
+          break;
+        }
+      }
+      if (allPresent) {
         activeCombos.push({
           id: cDef.id,
           name: cDef.name,
@@ -3429,6 +3666,73 @@ export class Simulation {
       this.armory.length < MAX_ARMAMENT_SLOTS
         ? (ARMAMENT_FORGE_COSTS[this.armory.length] ?? { coin: 380, luck: 4 })
         : null;
+
+    const pledgedSectDef = this.getPledgedSectDef();
+    const vowTarget = pledgedSectDef ? pledgedSectDef.vow.target : 0;
+    const vowProgress = pledgedSectDef
+      ? this.sectVowCompleted
+        ? vowTarget
+        : Math.min(vowTarget, this.computeSectVowProgress(pledgedSectDef))
+      : 0;
+    const sectSnapshot: SectSnapshot = {
+      canPledge:
+        this.pledgedSect === null &&
+        this.waveNumber <= SECT_PLEDGE_MAX_WAVE &&
+        !this.gameOver &&
+        !this.victoryHold,
+      maxPledgeWave: SECT_PLEDGE_MAX_WAVE,
+      pledgedId: this.pledgedSect,
+      vowProgress,
+      vowTarget,
+      vowCompleted: this.sectVowCompleted,
+    };
+
+    const rawCraftView = this.craftIndex.getView();
+    let craftView: CraftView = rawCraftView;
+    if (!this.primordialUnlocked) {
+      let readySub = 0;
+      let chainSub = 0;
+      const maskedRecipes: Record<string, (typeof rawCraftView.recipes)[string]> = {
+        ...rawCraftView.recipes,
+      };
+      const maskedByGrade: Record<GradeId, { ready: number; chainReady: number }> = {};
+      for (const [gId, counts] of Object.entries(rawCraftView.byGrade)) {
+        maskedByGrade[gId] = { ready: counts.ready, chainReady: counts.chainReady };
+      }
+      for (let i = 0; i < this.data.recipes.length; i++) {
+        const r = this.data.recipes[i]!;
+        if (r.hiddenUnlock !== 'primordial') continue;
+        const st = maskedRecipes[r.id];
+        if (!st) continue;
+        const outDef = this.data.unitsById.get(r.output);
+        const outGrade = outDef?.grade;
+        if (st.lamp === 'ready') {
+          readySub++;
+          if (outGrade && maskedByGrade[outGrade]) {
+            maskedByGrade[outGrade]!.ready = Math.max(0, maskedByGrade[outGrade]!.ready - 1);
+          }
+        } else if (st.lamp === 'chainReady') {
+          chainSub++;
+          if (outGrade && maskedByGrade[outGrade]) {
+            maskedByGrade[outGrade]!.chainReady = Math.max(
+              0,
+              maskedByGrade[outGrade]!.chainReady - 1,
+            );
+          }
+        }
+        maskedRecipes[r.id] = {
+          ...st,
+          lamp: st.have > 0 ? 'partial' : 'none',
+        };
+      }
+      craftView = {
+        rev: rawCraftView.rev,
+        readyCount: Math.max(0, rawCraftView.readyCount - readySub),
+        chainReadyCount: Math.max(0, rawCraftView.chainReadyCount - chainSub),
+        byGrade: maskedByGrade,
+        recipes: maskedRecipes,
+      };
+    }
 
     return {
       tick: this.currentTick,
@@ -3496,6 +3800,8 @@ export class Simulation {
         reforgeCostCoin: ARMAMENT_REFORGE_COST_COIN,
         slots: armorySlots,
       },
+      sect: sectSnapshot,
+      primordialUnlocked: this.primordialUnlocked,
       benchPassives,
       preserveBenchPassives: this.preserveBenchPassives,
       missions: missionItems,
@@ -3537,7 +3843,7 @@ export class Simulation {
       fieldOccupied: this.board.field.countOccupied(),
       benchOccupied: this.board.bench.countOccupied(),
       benchSurplusCommonCount,
-      craft: this.craftIndex.getView(),
+      craft: craftView,
       wispHints: this.wispSystem.getHints(),
       rejects,
     };
@@ -3555,6 +3861,11 @@ export class Simulation {
     const faction = def?.faction ?? 'orthodox';
     const eqSlot = this.getEquippedArmamentSlotForUid(u.uid);
     const armBonus = resolveArmamentBonuses(eqSlot?.def ?? null, faction);
+    const sectDef = this.getPledgedSectDef();
+    const sectShred =
+      sectDef && (!sectDef.perk.faction || sectDef.perk.faction === faction)
+        ? (sectDef.perk.armorShred ?? 0)
+        : 0;
     const starLevel = u.starLevel ?? 0;
     const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
       u.unitId,
@@ -3600,7 +3911,8 @@ export class Simulation {
         relicShred +
         benchPassives.armorShred +
         (this.endgameBonuses.armorShred ?? 0) +
-        armBonus.armorShred,
+        armBonus.armorShred +
+        sectShred,
       supportAura: def?.supportAura,
       passiveTrait: def?.passiveTrait,
       benchPassive: def?.benchPassive,
@@ -3694,6 +4006,9 @@ export class Simulation {
         armamentId: s.armamentId,
         equippedUid: s.equippedUid,
       })),
+      pledgedSect: this.pledgedSect,
+      sectVowCompleted: this.sectVowCompleted,
+      primordialUnlocked: this.primordialUnlocked,
       preserveBenchPassives: this.preserveBenchPassives,
       bossRetryUsed: this.bossRetryUsed,
       comboCooldowns: Object.fromEntries(this.comboCooldowns),
@@ -3845,6 +4160,16 @@ export class Simulation {
         }
       }
     }
+    this.pledgedSect =
+      typeof save.pledgedSect === 'string' && this.data.sectsById.has(save.pledgedSect as SectId)
+        ? (save.pledgedSect as SectId)
+        : null;
+    this.sectVowCompleted = Boolean(save.sectVowCompleted);
+    this.primordialUnlocked =
+      Boolean(save.primordialUnlocked) ||
+      this.sectVowCompleted ||
+      this.trialId !== null ||
+      this.difficulty === 'abyss';
     this.preserveBenchPassives = save.preserveBenchPassives !== false;
     this.bossRetryUsed = Boolean(save.bossRetryUsed);
 
@@ -4008,6 +4333,9 @@ export class Simulation {
 
     feedInt(this.currentTick);
     feedStr(this.trialId ?? 'std');
+    feedStr(this.pledgedSect ?? 'none');
+    feedInt(this.sectVowCompleted ? 1 : 0);
+    feedInt(this.primordialUnlocked ? 1 : 0);
     feedInt(this.rng.getState());
     feedInt(this.coin);
     feedInt(this.luckStone);

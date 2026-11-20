@@ -417,6 +417,30 @@ export const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> =
     secondary: '#fde047',
     heavyBlade: true,
   },
+  primordial_sword_god: {
+    style: 'flying_sword',
+    sect: 'namgung',
+    weaponLabel: '개벽 만검신조',
+    primary: '#fde047',
+    secondary: '#38bdf8',
+    heavyBlade: true,
+  },
+  chaos_poison_emperor: {
+    style: 'fan',
+    sect: 'tang_poison',
+    weaponLabel: '혼원 만독성하선',
+    primary: '#4ade80',
+    secondary: '#c084fc',
+    dualWield: true,
+  },
+  void_heavenly_demon: {
+    style: 'sword',
+    sect: 'magyo_sword',
+    weaponLabel: '무극 일식마검',
+    primary: '#f43f5e',
+    secondary: '#fde047',
+    heavyBlade: true,
+  },
 };
 
 export function getUnitCombatProfile(unitId: UnitId): UnitCombatProfile {

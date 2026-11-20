@@ -7,6 +7,7 @@ import rawGrades from './grades.json';
 import rawMissions from './missions.json';
 import rawRecipes from './recipes.json';
 import rawRelics from './relics.json';
+import rawSects from './sects.json';
 import rawSkins from './skins.json';
 import rawTitles from './titles.json';
 import rawTrials from './trials.json';
@@ -36,6 +37,7 @@ import type {
   GradeDef,
   GridSpec,
   HeroSkinDef,
+  HiddenUnlockKind,
   MissionConditionKind,
   MissionDef,
   MonsterKind,
@@ -45,6 +47,12 @@ import type {
   RecipeDef,
   RelicDef,
   RelicId,
+  SectDef,
+  SectId,
+  SectPerkDef,
+  SectStartBonusDef,
+  SectVowDef,
+  SectVowKind,
   SkinCrestKind,
   SkinRarity,
   SkinUnlockCond,
@@ -92,6 +100,9 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'im_thunder_emperor',
   'im_hell_flame',
   'im_wuji_grandmaster',
+  'im_primordial_sword',
+  'im_chaos_poison',
+  'im_void_cheonma',
 ]);
 
 const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
@@ -531,6 +542,10 @@ export function validateUnits(
       row.benchPassive !== undefined
         ? validateBenchPassive(row.benchPassive, `units[${i}].benchPassive`)
         : undefined;
+    const hiddenMythic =
+      row.hiddenMythic !== undefined
+        ? assertBoolean(row.hiddenMythic, `units[${i}].hiddenMythic`)
+        : undefined;
     const skill = validateUnitSkill(row.skill, `units[${i}].skill`);
 
     out.push({
@@ -539,6 +554,7 @@ export function validateUnits(
       title,
       faction: factionStr as FactionId,
       grade,
+      ...(hiddenMythic ? { hiddenMythic: true } : {}),
       leaf: row.leaf,
       atk,
       range,
@@ -604,7 +620,22 @@ export function validateRecipesShape(input: unknown): RecipeDef[] {
       );
     }
 
-    out.push({ id, output, ingredients, priority });
+    let hiddenUnlock: HiddenUnlockKind | undefined;
+    if (row.hiddenUnlock !== undefined) {
+      const hu = assertNonEmptyString(row.hiddenUnlock, `recipes[${i}].hiddenUnlock`);
+      if (hu !== 'primordial') {
+        throw new Error(`[DataValidation] recipes[${i}].hiddenUnlock invalid: ${hu}`);
+      }
+      hiddenUnlock = hu;
+    }
+
+    out.push({
+      id,
+      output,
+      ingredients,
+      priority,
+      ...(hiddenUnlock ? { hiddenUnlock } : {}),
+    });
   }
   return out;
 }
@@ -1452,6 +1483,241 @@ export function validateArmaments(input: unknown): ArmamentDef[] {
   });
 }
 
+const VALID_SECT_IDS: ReadonlySet<string> = new Set<SectId>([
+  'hwasan',
+  'shaolin',
+  'tang',
+  'cheonma_cult',
+  'gaebang',
+]);
+
+const VALID_SECT_VOW_KINDS: ReadonlySet<string> = new Set<SectVowKind>([
+  'orthodox_rare_field',
+  'boss_or_bounty_kills',
+  'gamble_wins',
+  'high_rank_owned',
+  'field_occupied',
+]);
+
+export function validateSects(
+  input: unknown,
+  unitsById: ReadonlyMap<string, UnitDef>,
+  gradesById: ReadonlyMap<string, GradeDef>,
+): SectDef[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error('[DataValidation] sects.json must be a non-empty array');
+  }
+  const seen = new Set<string>();
+  return input.map((raw, i) => {
+    const row = assertRecord(raw, `sects[${i}]`);
+    const idStr = assertNonEmptyString(row.id, `sects[${i}].id`);
+    if (!VALID_SECT_IDS.has(idStr)) {
+      throw new Error(`[DataValidation] sects[${i}].id invalid: ${idStr}`);
+    }
+    if (seen.has(idStr)) {
+      throw new Error(`[DataValidation] duplicate sect id: ${idStr}`);
+    }
+    seen.add(idStr);
+
+    const name = assertNonEmptyString(row.name, `sects[${i}].name`);
+    const subtitle = assertNonEmptyString(row.subtitle, `sects[${i}].subtitle`);
+    const badge = assertNonEmptyString(row.badge, `sects[${i}].badge`);
+    const icon = assertNonEmptyString(row.icon, `sects[${i}].icon`);
+    const color = assertNonEmptyString(row.color, `sects[${i}].color`);
+    const factionStr = assertNonEmptyString(row.faction, `sects[${i}].faction`);
+    if (!VALID_FACTIONS.has(factionStr)) {
+      throw new Error(`[DataValidation] sects[${i}].faction invalid: ${factionStr}`);
+    }
+    const startSummary = assertNonEmptyString(row.startSummary, `sects[${i}].startSummary`);
+    const perkSummary = assertNonEmptyString(row.perkSummary, `sects[${i}].perkSummary`);
+
+    const startRaw = assertRecord(row.start, `sects[${i}].start`);
+    const startUnitId = assertNonEmptyString(startRaw.unitId, `sects[${i}].start.unitId`);
+    if (!unitsById.has(startUnitId)) {
+      throw new Error(`[DataValidation] sects[${i}].start.unitId unknown: ${startUnitId}`);
+    }
+    const startCoin = Math.round(assertNonNegativeNumber(startRaw.coin, `sects[${i}].start.coin`));
+    const startLuck = Math.round(assertNonNegativeNumber(startRaw.luck, `sects[${i}].start.luck`));
+    let startWispGrade: string | undefined;
+    let startWispCount: number | undefined;
+    if (startRaw.wispGrade !== undefined) {
+      const wg = assertNonEmptyString(startRaw.wispGrade, `sects[${i}].start.wispGrade`);
+      if (!gradesById.has(wg)) {
+        throw new Error(`[DataValidation] sects[${i}].start.wispGrade unknown: ${wg}`);
+      }
+      startWispGrade = wg;
+      startWispCount = Math.round(
+        assertPositiveNumber(startRaw.wispCount ?? 1, `sects[${i}].start.wispCount`),
+      );
+    }
+    let freeUpgradeGroup: UpgradeGroupId | undefined;
+    if (startRaw.freeUpgradeGroup !== undefined) {
+      const ug = assertNonEmptyString(
+        startRaw.freeUpgradeGroup,
+        `sects[${i}].start.freeUpgradeGroup`,
+      );
+      if (!VALID_UPGRADE_GROUPS.has(ug)) {
+        throw new Error(`[DataValidation] sects[${i}].start.freeUpgradeGroup invalid: ${ug}`);
+      }
+      freeUpgradeGroup = ug as UpgradeGroupId;
+    }
+    const start: SectStartBonusDef = {
+      unitId: startUnitId,
+      coin: startCoin,
+      luck: startLuck,
+      ...(startWispGrade !== undefined ? { wispGrade: startWispGrade } : {}),
+      ...(startWispCount !== undefined ? { wispCount: startWispCount } : {}),
+      ...(freeUpgradeGroup !== undefined ? { freeUpgradeGroup } : {}),
+    };
+
+    const perkRaw = assertRecord(row.perk, `sects[${i}].perk`);
+    let perkFaction: FactionId | undefined;
+    if (perkRaw.faction !== undefined) {
+      const pf = assertNonEmptyString(perkRaw.faction, `sects[${i}].perk.faction`);
+      if (!VALID_FACTIONS.has(pf)) {
+        throw new Error(`[DataValidation] sects[${i}].perk.faction invalid: ${pf}`);
+      }
+      perkFaction = pf as FactionId;
+    }
+    const perk: SectPerkDef = {
+      ...(perkFaction !== undefined ? { faction: perkFaction } : {}),
+      ...(perkRaw.atkPct !== undefined
+        ? { atkPct: assertPositiveNumber(perkRaw.atkPct, `sects[${i}].perk.atkPct`) }
+        : {}),
+      ...(perkRaw.speedPct !== undefined
+        ? { speedPct: assertPositiveNumber(perkRaw.speedPct, `sects[${i}].perk.speedPct`) }
+        : {}),
+      ...(perkRaw.critChanceBps !== undefined
+        ? {
+            critChanceBps: Math.round(
+              assertPositiveNumber(perkRaw.critChanceBps, `sects[${i}].perk.critChanceBps`),
+            ),
+          }
+        : {}),
+      ...(perkRaw.critMultBonus !== undefined
+        ? {
+            critMultBonus: assertPositiveNumber(
+              perkRaw.critMultBonus,
+              `sects[${i}].perk.critMultBonus`,
+            ),
+          }
+        : {}),
+      ...(perkRaw.armorShred !== undefined
+        ? {
+            armorShred: Math.round(
+              assertPositiveNumber(perkRaw.armorShred, `sects[${i}].perk.armorShred`),
+            ),
+          }
+        : {}),
+      ...(perkRaw.skillDamagePct !== undefined
+        ? {
+            skillDamagePct: assertPositiveNumber(
+              perkRaw.skillDamagePct,
+              `sects[${i}].perk.skillDamagePct`,
+            ),
+          }
+        : {}),
+      ...(perkRaw.bossDamagePct !== undefined
+        ? {
+            bossDamagePct: assertPositiveNumber(
+              perkRaw.bossDamagePct,
+              `sects[${i}].perk.bossDamagePct`,
+            ),
+          }
+        : {}),
+      ...(perkRaw.ccDurationPct !== undefined
+        ? {
+            ccDurationPct: assertPositiveNumber(
+              perkRaw.ccDurationPct,
+              `sects[${i}].perk.ccDurationPct`,
+            ),
+          }
+        : {}),
+      ...(perkRaw.gambleChancePct !== undefined
+        ? {
+            gambleChancePct: assertPositiveNumber(
+              perkRaw.gambleChancePct,
+              `sects[${i}].perk.gambleChancePct`,
+            ),
+          }
+        : {}),
+      ...(perkRaw.killCoinPct !== undefined
+        ? {
+            killCoinPct: assertPositiveNumber(
+              perkRaw.killCoinPct,
+              `sects[${i}].perk.killCoinPct`,
+            ),
+          }
+        : {}),
+      ...(perkRaw.interestCapBonus !== undefined
+        ? {
+            interestCapBonus: Math.round(
+              assertPositiveNumber(
+                perkRaw.interestCapBonus,
+                `sects[${i}].perk.interestCapBonus`,
+              ),
+            ),
+          }
+        : {}),
+    };
+
+    const vowRaw = assertRecord(row.vow, `sects[${i}].vow`);
+    const vowKindStr = assertNonEmptyString(vowRaw.kind, `sects[${i}].vow.kind`);
+    if (!VALID_SECT_VOW_KINDS.has(vowKindStr)) {
+      throw new Error(`[DataValidation] sects[${i}].vow.kind invalid: ${vowKindStr}`);
+    }
+    const vowName = assertNonEmptyString(vowRaw.name, `sects[${i}].vow.name`);
+    const vowDesc = assertNonEmptyString(vowRaw.desc, `sects[${i}].vow.desc`);
+    const vowTarget = Math.round(assertPositiveNumber(vowRaw.target, `sects[${i}].vow.target`));
+    const vowRewardCoin = Math.round(
+      assertNonNegativeNumber(vowRaw.rewardCoin, `sects[${i}].vow.rewardCoin`),
+    );
+    const vowRewardLuck = Math.round(
+      assertNonNegativeNumber(vowRaw.rewardLuck, `sects[${i}].vow.rewardLuck`),
+    );
+    let vowWispGrade: string | undefined;
+    let vowWispCount: number | undefined;
+    if (vowRaw.rewardWispGrade !== undefined) {
+      const wg = assertNonEmptyString(
+        vowRaw.rewardWispGrade,
+        `sects[${i}].vow.rewardWispGrade`,
+      );
+      if (!gradesById.has(wg)) {
+        throw new Error(`[DataValidation] sects[${i}].vow.rewardWispGrade unknown: ${wg}`);
+      }
+      vowWispGrade = wg;
+      vowWispCount = Math.round(
+        assertPositiveNumber(vowRaw.rewardWispCount ?? 1, `sects[${i}].vow.rewardWispCount`),
+      );
+    }
+    const vow: SectVowDef = {
+      kind: vowKindStr as SectVowKind,
+      name: vowName,
+      desc: vowDesc,
+      target: vowTarget,
+      rewardCoin: vowRewardCoin,
+      rewardLuck: vowRewardLuck,
+      ...(vowWispGrade !== undefined ? { rewardWispGrade: vowWispGrade } : {}),
+      ...(vowWispCount !== undefined ? { rewardWispCount: vowWispCount } : {}),
+    };
+
+    return {
+      id: idStr as SectId,
+      name,
+      subtitle,
+      badge,
+      icon,
+      color,
+      faction: factionStr as FactionId,
+      startSummary,
+      perkSummary,
+      start,
+      perk,
+      vow,
+    };
+  });
+}
+
 let cachedBundle: GameDataBundle | null = null;
 
 export function loadGameData(): GameDataBundle {
@@ -1476,6 +1742,8 @@ export function loadGameData(): GameDataBundle {
   const relicsById = new Map<RelicId, RelicDef>(relics.map((rel) => [rel.id, rel]));
   const armaments = validateArmaments(rawArmaments);
   const armamentsById = new Map<ArmamentId, ArmamentDef>(armaments.map((a) => [a.id, a]));
+  const sects = validateSects(rawSects, unitsById, gradesById);
+  const sectsById = new Map<SectId, SectDef>(sects.map((s) => [s.id, s]));
   const missions = validateMissions(rawMissions, gradesById);
   const boons = validateBoons(rawBoons);
   const boonsById = new Map<BoonId, BoonDef>(boons.map((b) => [b.id, b]));
@@ -1513,6 +1781,8 @@ export function loadGameData(): GameDataBundle {
     relicsById,
     armaments,
     armamentsById,
+    sects,
+    sectsById,
     missions,
     boons,
     boonsById,

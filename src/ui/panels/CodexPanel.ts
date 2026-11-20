@@ -268,10 +268,11 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
             })
             .join(' + '),
         );
+        const mythicSuffix = u.hiddenMythic ? ' [문파서약·비경·무간·무한 해금]' : '';
         lowerLine =
           lowerRecs.length > 1
-            ? `조합식(${lowerRecs.length}종): ${formulaStrings.join('  ｜  ')}`
-            : `하위 조합: ${formulaStrings[0]!}`;
+            ? `조합식(${lowerRecs.length}종): ${formulaStrings.join('  ｜  ')}${mythicSuffix}`
+            : `하위 조합: ${formulaStrings[0]!}${mythicSuffix}`;
       } else if (!u.leaf) {
         lowerLine = '획득처: 영약 복용 · 기연 초빙';
       }
@@ -329,14 +330,19 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
             `
           : '';
 
+      const mythicBadgeHtml = u.hiddenMythic
+        ? '<span class="route-pill primordial">🌌 태고신화</span>'
+        : '';
+
       return `
-        <div class="sheet-card codex-card${discovered ? ' codex-discovered' : ' codex-undiscovered'}">
+        <div class="sheet-card codex-card${discovered ? ' codex-discovered' : ' codex-undiscovered'}${u.hiddenMythic ? ' card-primordial' : ''}">
           <div class="card-left">
             <div class="card-avatar"><img src="${portrait}" alt="${escapeHtml(u.name)}" /></div>
             <div class="card-info">
               <div class="card-name-row">
                 <span class="grade-pill" style="background:${g.color}">${escapeHtml(g.name)}</span>
                 <span class="grade-pill" style="background:${fMeta.color}">${fMeta.label}</span>
+                ${mythicBadgeHtml}
                 <span class="card-name">${escapeHtml(u.name)}</span>
                 ${roleBadges}
                 ${profBadgeHtml}
@@ -471,16 +477,18 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
 
   const activeComboIds = new Set(snapshot.activeCombos.map((c) => c.id));
   const comboCardsHtml = COMBO_SKILLS.map((c) => {
-    const u0 = data.unitsById.get(c.requiredUnits[0])?.name ?? c.requiredUnits[0];
-    const u1 = data.unitsById.get(c.requiredUnits[1])?.name ?? c.requiredUnits[1];
+    const reqNames = c.requiredUnits
+      .map((uid) => data.unitsById.get(uid)?.name ?? uid)
+      .join(' + ');
     const isActive = activeComboIds.has(c.id);
+    const isTrinity = c.requiredUnits.length >= 3;
     const cdSec = Math.round(c.cooldownTicks / 30);
     return `
-      <div class="combo-card${isActive ? ' active' : ''}" style="border-left:4px solid ${c.color}">
+      <div class="combo-card${isActive ? ' active' : ''}${isTrinity ? ' combo-trinity' : ''}" style="border-left:4px solid ${c.color}">
         <div class="card-name-row">
           <span class="grade-pill" style="background:${c.color}">${escapeHtml(c.tierLabel)}</span>
           <span class="card-name">${escapeHtml(c.name)}</span>
-          <span class="diff-best-pill">${escapeHtml(u0)} + ${escapeHtml(u1)}</span>
+          <span class="diff-best-pill">${escapeHtml(reqNames)}</span>
           ${isActive ? '<span class="diff-clear-pill">⚡ 발동 중</span>' : `<span class="trial-rule-tag">${cdSec}초</span>`}
         </div>
         <div class="card-sub">${escapeHtml(c.desc)}</div>

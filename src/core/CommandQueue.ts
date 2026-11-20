@@ -6,6 +6,7 @@ import type {
   GradeId,
   RecipeId,
   RelicId,
+  SectId,
   UnitId,
   UpgradeGroupId,
 } from '../data/types';
@@ -37,6 +38,7 @@ export type GameCommand =
   | { readonly type: 'rerollBoon' }
   | { readonly type: 'pickContract'; readonly contractId: ContractId }
   | { readonly type: 'dismissContractOffer' }
+  | { readonly type: 'pledgeSect'; readonly sectId: SectId }
   | { readonly type: 'forgeArmament' }
   | { readonly type: 'reforgeArmament'; readonly slotIndex: number }
   | { readonly type: 'equipArmament'; readonly slotIndex: number; readonly targetUid: number | null }

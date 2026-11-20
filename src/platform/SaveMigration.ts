@@ -13,6 +13,7 @@ import type {
   GameOverReason,
   GradeId,
   RelicId,
+  SectId,
   TrialId,
   UnitId,
   UpgradeGroupId,
@@ -54,6 +55,9 @@ export interface RunSaveData {
     readonly armamentId: ArmamentId;
     readonly equippedUid: number | null;
   }>;
+  readonly pledgedSect?: SectId | null;
+  readonly sectVowCompleted?: boolean;
+  readonly primordialUnlocked?: boolean;
   readonly bossSpawnTick?: number;
   readonly awakenCount?: number;
   readonly preserveBenchPassives?: boolean;

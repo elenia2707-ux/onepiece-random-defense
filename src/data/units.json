@@ -1374,5 +1374,125 @@
       "slowSec": 3.2,
       "vfxTrack": "im_wuji_grandmaster"
     }
+  },
+  {
+    "id": "primordial_sword_god",
+    "name": "태고검신",
+    "title": "개벽만검 태고시조",
+    "faction": "orthodox",
+    "grade": "immortal",
+    "hiddenMythic": true,
+    "leaf": false,
+    "atk": 6450,
+    "range": 415,
+    "attackIntervalSec": 0.36,
+    "critChance": 0.68,
+    "critMult": 3.85,
+    "sellCoin": 2600,
+    "armorShred": 58,
+    "supportAura": {
+      "name": "태고개벽검진",
+      "atkPct": 38,
+      "speedPct": 24
+    },
+    "passiveTrait": {
+      "id": "primordial_genesis_edge",
+      "name": "개벽신검",
+      "desc": "적 호신강기 80% 관통 · 영물 보스 피해 +55% · 최상위 개벽검진(공+38%·속+24%) 고무",
+      "armorPiercePct": 0.8,
+      "bossDamagePct": 55
+    },
+    "skill": {
+      "name": "개벽만검 · 천지일섬",
+      "desc": "3타마다 12자루 태고 신검과 개벽 일섬이 공간을 양단해 495% 광역 관통 피해 및 1.4초 기절",
+      "everyN": 3,
+      "atkRatio": 4.95,
+      "splashRadius": 245,
+      "stunSec": 1.4,
+      "slowPct": 0.62,
+      "slowSec": 3.4,
+      "vfxTrack": "im_primordial_sword"
+    }
+  },
+  {
+    "id": "chaos_poison_emperor",
+    "name": "혼원만독제",
+    "title": "무간창생 혼원독제",
+    "faction": "unorthodox",
+    "grade": "immortal",
+    "hiddenMythic": true,
+    "leaf": false,
+    "atk": 4680,
+    "range": 375,
+    "attackIntervalSec": 0.26,
+    "critChance": 0.62,
+    "critMult": 3.55,
+    "sellCoin": 2600,
+    "armorShred": 96,
+    "supportAura": {
+      "name": "혼원만독성역",
+      "atkPct": 30,
+      "speedPct": 32
+    },
+    "passiveTrait": {
+      "id": "chaos_miasma_apocalypse",
+      "name": "혼원멸독",
+      "desc": "0.26초 초극속 파갑(96) · 파갑 적 피해 +56% · 체력 50% 이하 처형 피해 +48%",
+      "shreddedDamagePct": 56,
+      "executeBelowHpPct": 0.5,
+      "executeDamagePct": 48
+    },
+    "skill": {
+      "name": "혼원멸세 · 만독성하",
+      "desc": "3타마다 비취·자수정 만독 은하 소용돌이가 폭발해 465% 광역 부식 피해 및 72% 극감속",
+      "everyN": 3,
+      "atkRatio": 4.65,
+      "splashRadius": 250,
+      "stunSec": 1.25,
+      "slowPct": 0.72,
+      "slowSec": 3.8,
+      "vfxTrack": "im_chaos_poison"
+    }
+  },
+  {
+    "id": "void_heavenly_demon",
+    "name": "무극태상천마",
+    "title": "삼계초월 태고마신",
+    "faction": "demonic",
+    "grade": "immortal",
+    "hiddenMythic": true,
+    "leaf": false,
+    "atk": 6880,
+    "range": 365,
+    "attackIntervalSec": 0.38,
+    "critChance": 0.64,
+    "critMult": 3.75,
+    "sellCoin": 2600,
+    "armorShred": 68,
+    "supportAura": {
+      "name": "무극천마신역",
+      "atkPct": 40,
+      "speedPct": 20
+    },
+    "passiveTrait": {
+      "id": "void_demon_omnipotence",
+      "name": "무극마신",
+      "desc": "영물 보스 피해 +52% · 체력 45% 이하 처형 피해 +52% · 적 강기 45% 관통",
+      "bossDamagePct": 52,
+      "executeBelowHpPct": 0.45,
+      "executeDamagePct": 52,
+      "armorPiercePct": 0.45
+    },
+    "skill": {
+      "name": "무극천마 · 귀원멸세겁",
+      "desc": "3타마다 칠흑·황금 일식 마안과 공간붕괴 혈뢰가 작렬해 515% 전장 초토화 및 1.45초 기절",
+      "everyN": 3,
+      "atkRatio": 5.15,
+      "splashRadius": 255,
+      "stunSec": 1.45,
+      "slowPct": 0.65,
+      "slowSec": 3.5,
+      "vfxTrack": "im_void_cheonma"
+    }
   }
 ]

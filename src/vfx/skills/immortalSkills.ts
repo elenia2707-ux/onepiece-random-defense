@@ -15,7 +15,10 @@ export type ImmortalSkillTrack =
   | 'im_venom_lord'
   | 'im_thunder_emperor'
   | 'im_hell_flame'
-  | 'im_wuji_grandmaster';
+  | 'im_wuji_grandmaster'
+  | 'im_primordial_sword'
+  | 'im_chaos_poison'
+  | 'im_void_cheonma';
 
 export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
   return (
@@ -25,7 +28,10 @@ export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
     kind === 'im_venom_lord' ||
     kind === 'im_thunder_emperor' ||
     kind === 'im_hell_flame' ||
-    kind === 'im_wuji_grandmaster'
+    kind === 'im_wuji_grandmaster' ||
+    kind === 'im_primordial_sword' ||
+    kind === 'im_chaos_poison' ||
+    kind === 'im_void_cheonma'
   );
 }
 
@@ -238,6 +244,90 @@ export function spawnImmortalSkillVfx(
       api.emitRadialBurst(x, y, c1, 22, 195, 0.42, -16, startTick);
       api.emitRadialBurst(x, y, c2, 16, 165, 0.4, 8, startTick);
       api.triggerScreenFlash(c1, 0.09, 0.15, startTick);
+      break;
+    }
+
+    case 'im_primordial_sword': {
+      // 개벽만검 · 천지일섬: 12 celestial golden-cyan genesis swords + horizon rift + '神'
+      const c1 = skinPrimary ?? '#fde047';
+      const c2 = skinSecondary ?? '#38bdf8';
+      api.pushTrack({
+        kind: track,
+        weaponStyle,
+        startTick,
+        durationSec: 0.72,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 26,
+        toRadius: Math.min(168, visR * 1.08),
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.8,
+        glowRadius: 122,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 26, 220, 0.44, 0, startTick);
+      api.emitRadialBurst(x, y, c2, 18, 185, 0.4, 0, startTick);
+      api.triggerScreenFlash(c1, 0.11, 0.16, startTick);
+      break;
+    }
+
+    case 'im_chaos_poison': {
+      // 혼원멸세 · 만독성하: swirling emerald-amethyst nebula vortex + 8 chaos stars + '混'
+      const c1 = skinPrimary ?? '#4ade80';
+      const c2 = skinSecondary ?? '#c084fc';
+      api.pushTrack({
+        kind: track,
+        weaponStyle,
+        startTick,
+        durationSec: 0.7,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 26,
+        toRadius: Math.min(168, visR * 1.08),
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.6,
+        glowRadius: 120,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 24, 205, 0.44, -25, startTick);
+      api.emitRadialBurst(x, y, c2, 18, 175, 0.42, 12, startTick);
+      api.triggerScreenFlash(c2, 0.1, 0.16, startTick);
+      break;
+    }
+
+    case 'im_void_cheonma': {
+      // 무극천마 · 귀원멸세겁: crimson-gold total solar eclipse eye + 10 dimensional rifts + '無'
+      const c1 = skinPrimary ?? '#f43f5e';
+      const c2 = skinSecondary ?? '#fde047';
+      api.pushTrack({
+        kind: track,
+        weaponStyle,
+        startTick,
+        durationSec: 0.74,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 28,
+        toRadius: Math.min(172, visR * 1.1),
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 7,
+        glowRadius: 126,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 28, 230, 0.46, 0, startTick);
+      api.emitRadialBurst(x, y, c2, 18, 190, 0.42, 0, startTick);
+      api.triggerScreenFlash(c1, 0.12, 0.18, startTick);
       break;
     }
   }
@@ -666,6 +756,136 @@ export function renderImmortalSkillAir(
       const sz = 86 * (0.85 + inv * 0.25);
       ctx.globalAlpha = inv * 0.96;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_primordial_sword': {
+      // 12 Celestial Genesis Swords raining onto impact + golden horizon cleave + '神'
+      const r = inst.toRadius * (0.48 + easeOutCubic(p) * 0.56);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.96;
+
+      // Blinding golden-cyan horizon cleave
+      ctx.beginPath();
+      ctx.moveTo(-r * 1.15, -r * 0.22);
+      ctx.lineTo(r * 1.15, r * 0.22);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 11 * inv + 2;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = 6 * inv + 1.5;
+      ctx.strokeStyle = inst.color;
+      ctx.stroke();
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      // 12 radial genesis spirit swords
+      for (let i = 0; i < 12; i++) {
+        const a = (i * Math.PI * 2) / 12 + p * 2.6;
+        const inner = r * 0.34;
+        const outer = r * (i % 2 === 0 ? 1.04 : 0.84);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+        ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+        ctx.lineWidth = 6.5 * inv + 1.4;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 3.4 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('神', inst.color);
+      const sz = 92 * (0.86 + inv * 0.26);
+      ctx.globalAlpha = inv * 0.98;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 30 - p * 28 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_chaos_poison': {
+      // Swirling emerald-amethyst Chaos Miasma Nebula + 8 venom stars + '混'
+      const r = inst.toRadius * (0.46 + easeOutCubic(p) * 0.56);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(-p * 4.2);
+      ctx.globalAlpha = inv * 0.95;
+
+      for (let arm = 0; arm < 4; arm++) {
+        const baseA = (arm * Math.PI) / 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * (0.58 + (arm % 2) * 0.24), baseA, baseA + Math.PI * 0.95);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 8 * inv + 2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 4.4 * inv + 1;
+        ctx.strokeStyle = arm % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI * 2) / 8 + p * 3.5;
+        const ox = Math.cos(a) * r * 0.78;
+        const oy = Math.sin(a) * r * 0.78;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 6.2 * inv + 2, 0, Math.PI * 2);
+        ctx.fillStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('混', inst.color);
+      const sz = 92 * (0.86 + inv * 0.26);
+      ctx.globalAlpha = inv * 0.98;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 30 - p * 28 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_void_cheonma': {
+      // Total Void Eclipse Eye + 10 crimson-gold dimensional lightning rifts + '無'
+      const r = inst.toRadius * (0.48 + easeOutCubic(p) * 0.56);
+      const coreR = r * 0.42;
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.96;
+
+      for (let i = 0; i < 10; i++) {
+        const a = (i * Math.PI * 2) / 10 + p * 1.8;
+        const midR = r * 0.7;
+        const outR = r * (i % 2 === 0 ? 1.08 : 0.88);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * coreR, Math.sin(a) * coreR);
+        ctx.lineTo(Math.cos(a + 0.16) * midR, Math.sin(a + 0.16) * midR);
+        ctx.lineTo(Math.cos(a - 0.08) * outR, Math.sin(a - 0.08) * outR);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 7 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 3.6 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+      }
+
+      // Eclipse black-sun core with golden corona rim
+      ctx.beginPath();
+      ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.fill();
+      ctx.lineWidth = 4.2;
+      ctx.strokeStyle = inst.secondaryColor;
+      ctx.stroke();
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('無', inst.color);
+      const sz = 92 * (0.86 + inv * 0.26);
+      ctx.globalAlpha = inv * 0.98;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 30 - p * 28 - sz * 0.5, sz, sz);
       return true;
     }
   }

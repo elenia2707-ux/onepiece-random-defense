@@ -96,9 +96,13 @@ export function buildRecipeCardHtml(
   const st = snapshot.craft.recipes[recipe.id];
   const lamp = st?.lamp ?? 'none';
   const isPinned = pinnedRecipeId === recipe.id;
+  const isPrimordial = recipe.hiddenUnlock === 'primordial' || Boolean(outUnit.hiddenMythic);
+  const isSealedPrimordial = recipe.hiddenUnlock === 'primordial' && !snapshot.primordialUnlocked;
   const cardStateClass =
     (lamp === 'ready' ? ' card-ready' : lamp === 'chainReady' ? ' card-chain' : '') +
-    (isPinned ? ' card-pinned' : '');
+    (isPinned ? ' card-pinned' : '') +
+    (isPrimordial ? ' card-primordial' : '') +
+    (isSealedPrimordial ? ' card-primordial-sealed' : '');
 
   const portraitUrl = sprites.unitPortraitUrl(
     outUnit,
@@ -109,7 +113,9 @@ export function buildRecipeCardHtml(
 
   const isTriple = recipe.ingredients.length === 1 && recipe.ingredients[0]!.n >= 3;
   let routeBadgeHtml = '<span class="route-pill canon">정통 합공</span>';
-  if (outGrade.fx === 'rainbow') {
+  if (isPrimordial) {
+    routeBadgeHtml = '<span class="route-pill primordial">🌌 태고신화 진·합공</span>';
+  } else if (outGrade.fx === 'rainbow') {
     routeBadgeHtml = '<span class="route-pill immortal">✦ 은거진선 비전</span>';
   } else if (isTriple) {
     routeBadgeHtml = '<span class="route-pill triple">×3 동문합일</span>';
@@ -135,7 +141,9 @@ export function buildRecipeCardHtml(
 
   const fallbackNeed = recipe.ingredients.reduce((s, x) => s + x.n, 0);
   let ctaHtml = '';
-  if (lamp === 'ready') {
+  if (isSealedPrimordial) {
+    ctaHtml = `<button type="button" class="card-cta-btn cta-disabled" disabled><span>🔒 봉인중</span><span class="mini-price">${st?.have ?? 0}/${st?.need ?? fallbackNeed}</span></button>`;
+  } else if (lamp === 'ready') {
     ctaHtml = `<button type="button" class="card-cta-btn interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="0"><span>합공</span></button>`;
   } else if (lamp === 'chainReady') {
     ctaHtml = `<button type="button" class="card-cta-btn cta-sky interactive" data-sheet-action="craft" data-recipe-id="${recipe.id}" data-chain="1"><span>연쇄 등선</span></button>`;
@@ -143,7 +151,13 @@ export function buildRecipeCardHtml(
     ctaHtml = `<button type="button" class="card-cta-btn cta-disabled" disabled><span>${st?.have ?? 0}/${st?.need ?? fallbackNeed}</span></button>`;
   }
 
-  const pinBtnHtml = `<button type="button" class="recipe-pin-btn${isPinned ? ' active' : ''} interactive" data-sheet-action="${isPinned ? 'unpin-recipe' : 'pin-recipe'}" data-recipe-id="${recipe.id}" title="${isPinned ? '목표 고정 해제' : '이 협객을 목표 합공으로 고정'}">${isPinned ? '📌 해제' : '📌 고정'}</button>`;
+  const primordialSealHtml = isSealedPrimordial
+    ? `<div class="primordial-seal-note">🔒 해금: 출정 문파 서약 완수 · 비경 · 무간지옥 · 무한(31장+) · 삼재+신화 등극</div>`
+    : isPrimordial
+      ? `<div class="primordial-seal-note unlocked">🌌 태고신화 봉인 해제됨! 화경 3인 진·합공 강림 가능</div>`
+      : '';
+
+  const pinBtnHtml = `<button type="button" class="recipe-pin-btn${isPinned ? ' active' : ''} interactive" data-sheet-action="${isPinned ? 'unpin-recipe' : 'pin-recipe'}" data-recipe-id="${recipe.id}" data-chain="0" title="${isPinned ? '목표 고정 해제' : '이 협객을 목표 합공으로 고정'}">${isPinned ? '📌 해제' : '📌 고정'}</button>`;
 
   return `
       <div class="sheet-card${cardStateClass}">
@@ -159,6 +173,7 @@ export function buildRecipeCardHtml(
               <span class="card-sub">⚔${outUnit.atk} · ${escapeHtml(outUnit.skill.name)}</span>
             </div>
             <div class="ing-list">${ingChips}</div>
+            ${primordialSealHtml}
           </div>
         </div>
         <div class="recipe-cta-col">
@@ -193,7 +208,8 @@ export function buildCraftSheetView(params: {
     factionFilter,
     searchQuery,
   } = params;
-  const subtitle = `총 ${data.recipes.length}식 합공보 · 즉시 합공 ${snapshot.craft.readyCount} · 연쇄 등선 ${snapshot.craft.chainReadyCount}`;
+  const primordialNote = snapshot.primordialUnlocked ? ' · 🌌태고합공 개방됨' : ' · 🔒태고합공 봉인중';
+  const subtitle = `총 ${data.recipes.length}식 합공보 · 즉시 합공 ${snapshot.craft.readyCount} · 연쇄 등선 ${snapshot.craft.chainReadyCount}${primordialNote}`;
 
   const tabsHtml = craftTabs
     .map((tab) => {
@@ -225,10 +241,13 @@ export function buildCraftSheetView(params: {
     if (qNorm.length > 0) {
       const inName = outUnit.name.toLowerCase().includes(qNorm);
       const inSkill = outUnit.skill.name.toLowerCase().includes(qNorm);
+      const inPrimordial =
+        Boolean(r.hiddenUnlock === 'primordial' || outUnit.hiddenMythic) &&
+        ('태고'.includes(qNorm) || '히든'.includes(qNorm) || '진합공'.includes(qNorm));
       const inIng = r.ingredients.some((ing) =>
         (data.unitsById.get(ing.unit)?.name ?? '').toLowerCase().includes(qNorm),
       );
-      if (!inName && !inSkill && !inIng) return false;
+      if (!inName && !inSkill && !inIng && !inPrimordial) return false;
     }
     return true;
   };
@@ -296,15 +315,6 @@ export function buildCraftSheetView(params: {
 
   const readyIds = new Set(readyList.map((r) => r.id));
 
-  const restRecipes = filteredAll.filter((r) => {
-    const outUnit = data.unitsById.get(r.output);
-    if (!outUnit) return false;
-    if (activeTab === 'all') {
-      return !readyIds.has(r.id);
-    }
-    return outUnit.grade === activeTab;
-  });
-
   if (readyList.length > 0 && activeTab === 'all') {
     parts.push('<div class="sheet-section-label">⚡ 지금 합공 · 등선 가능</div>');
     for (let i = 0; i < readyList.length; i++) {
@@ -314,13 +324,62 @@ export function buildCraftSheetView(params: {
     }
   }
 
+  // Dedicated Primordial Mythic showcase section at the top of All / Immortal tab
+  const primordialRecipes = filteredAll
+    .filter(
+      (r) =>
+        r.hiddenUnlock === 'primordial' &&
+        (activeTab !== 'all' || !readyIds.has(r.id)) &&
+        (activeTab === 'all' || data.unitsById.get(r.output)?.grade === activeTab),
+    )
+    .sort((a, b) => {
+      const lampRank = (id: string): number => {
+        const lamp = snapshot.craft.recipes[id]?.lamp;
+        return lamp === 'ready' ? 0 : lamp === 'chainReady' ? 1 : lamp === 'partial' ? 2 : 3;
+      };
+      const diff = lampRank(a.id) - lampRank(b.id);
+      return diff !== 0 ? diff : a.priority - b.priority;
+    });
+  if (primordialRecipes.length > 0) {
+    const sealStateLabel = snapshot.primordialUnlocked
+      ? '봉인 해제됨✦ · 화경 3인 진·합공 가능'
+      : '봉인중🔒 · 문파 서약 완수 / 비경 / 무간 / 무한 해금';
+    parts.push(
+      `<div class="sheet-section-label primordial-section-label">🌌 태고신화 진·합공식 (${primordialRecipes.length}식 · ${sealStateLabel})</div>`,
+    );
+    for (let i = 0; i < primordialRecipes.length; i++) {
+      parts.push(
+        buildRecipeCardHtml(
+          data,
+          sprites,
+          primordialRecipes[i]!,
+          snapshot,
+          unlocked,
+          meta,
+          pinnedRecipeId,
+        ),
+      );
+    }
+  }
+  const primordialShownIds = new Set(primordialRecipes.map((r) => r.id));
+
+  const restRecipes = filteredAll.filter((r) => {
+    if (primordialShownIds.has(r.id)) return false;
+    const outUnit = data.unitsById.get(r.output);
+    if (!outUnit) return false;
+    if (activeTab === 'all') {
+      return !readyIds.has(r.id);
+    }
+    return outUnit.grade === activeTab;
+  });
+
   const sectionTitle =
     activeTab === 'all'
       ? `전체 무림 합공보 (${filteredAll.length}식 표시 / 총 ${data.recipes.length}식)`
       : `${craftTabs.find((t) => t.id === activeTab)?.label ?? ''} 경지 합공보 (${restRecipes.length}식)`;
   parts.push(`<div class="sheet-section-label">${escapeHtml(sectionTitle)}</div>`);
 
-  if (restRecipes.length === 0 && readyList.length === 0) {
+  if (restRecipes.length === 0 && readyList.length === 0 && primordialRecipes.length === 0) {
     parts.push(
       '<div class="boon-owned-empty">조건에 맞는 합공식이 없습니다. 필터나 검색어를 초기화해 보세요.</div>',
     );
@@ -1101,7 +1160,58 @@ export function buildMissionSheetView(
     })
     .join('');
 
+  let sectSectionHtml = '';
+  const pledgedDef = snapshot.sect.pledgedId
+    ? data.sectsById.get(snapshot.sect.pledgedId)
+    : undefined;
+  if (pledgedDef) {
+    const vowPct = Math.min(
+      100,
+      Math.round((snapshot.sect.vowProgress / Math.max(1, snapshot.sect.vowTarget)) * 100),
+    );
+    const vowRewards = formatContractRewards(pledgedDef.vow);
+    const vowStamp = snapshot.sect.vowCompleted
+      ? '<span class="mission-stamp done">서약 성취 · 🌌태고개방 ✓</span>'
+      : `<span class="mission-stamp">${snapshot.sect.vowProgress} / ${snapshot.sect.vowTarget}</span>`;
+    sectSectionHtml = `
+      <div class="sheet-section-label sect-section-label">🏛 출정 가문 서약 (${escapeHtml(pledgedDef.badge)} · 영구 비전 발동 중)</div>
+      <div class="sheet-card mission-card sect-active-card${snapshot.sect.vowCompleted ? ' mission-done' : ''}" style="border-color:${pledgedDef.color}">
+        <div class="mission-main">
+          <div class="card-name-row">
+            <span class="grade-pill" style="background:${pledgedDef.color}">${escapeHtml(pledgedDef.badge)}</span>
+            <span class="card-name">${escapeHtml(pledgedDef.vow.name)}</span>
+            <div class="mission-rewards">${vowRewards}<span class="mission-reward-pill gold">🌌태고합공 개방</span></div>
+          </div>
+          <div class="card-sub">가문 비전: <b>${escapeHtml(pledgedDef.perkSummary)}</b></div>
+          <div class="card-sub">서약 과업: ${escapeHtml(pledgedDef.vow.desc)}</div>
+          <div class="mission-prog-track">
+            <div class="mission-prog-fill" style="width:${vowPct}%;background:${pledgedDef.color}"></div>
+          </div>
+        </div>
+        ${vowStamp}
+      </div>
+    `;
+  } else if (snapshot.sect.canPledge) {
+    sectSectionHtml = `
+      <div class="sheet-section-label sect-section-label">🏛 오대 명문가 출정 후원 · 제 01~0${snapshot.sect.maxPledgeWave} 장 한정</div>
+      <div class="sheet-card sect-prompt-card">
+        <div class="mission-main">
+          <div class="card-name-row">
+            <span class="grade-pill" style="background:#d97706">출정 서약 가능</span>
+            <span class="card-name">화산파 · 소림사 · 사천당가 · 천마신교 · 개방</span>
+          </div>
+          <div class="card-sub">5대 명문가 중 한 곳과 서약을 맺어 초기 보급품과 영구 비전을 받고, 서약 과업을 성취해 <b>【🌌 태고신화 진·합공식】</b>을 해금하세요!</div>
+        </div>
+        <button type="button" class="card-cta-btn cta-gold interactive" data-sheet-action="open-sect-modal">
+          <span>🏛 문파 선택</span>
+          <span class="mini-price">무료 후원</span>
+        </button>
+      </div>
+    `;
+  }
+
   const bodyHtml = `
+    ${sectSectionHtml}
     ${contractSectionHtml}
     ${bountyStripHtml}
     <div class="sheet-section-label daily-section-label">📅 일일 강호 수련 과제 (${escapeHtml(meta.dailyDate)} · 영구 재화 지급 · 누적 완료 ${meta.totalDailyClaimed}회)</div>

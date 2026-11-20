@@ -1214,6 +1214,90 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'primordial_sword_god': {
+      // PRIMORDIAL MYTHIC: 태고검신 (Primordial Sword God) — golden-cyan genesis halo + 4 spirit swords + celestial jade-gold greatsword
+      for (let a = 0; a < 16; a++) {
+        const rad = (a * Math.PI * 2) / 16;
+        const hx = Math.round(14 + Math.cos(rad) * 12);
+        const hy = Math.round(13 + Math.sin(rad) * 11);
+        p.set(hx, hy, a % 2 === 0 ? '#fde047' : '#38bdf8', LAYER_BACK);
+      }
+      // 4 levitating spirit blades fanning behind shoulders
+      p.line(5, 13, 2, 4, '#38bdf8', LAYER_BACK, 2);
+      p.line(8, 9, 5, 2, '#fde047', LAYER_BACK, 1);
+      p.line(22, 9, 26, 2, '#fde047', LAYER_BACK, 1);
+      p.line(24, 13, 29, 5, '#38bdf8', LAYER_BACK, 2);
+      paintCapeLeft(p, ROBE_AZURE, true);
+      paintHead34(p, SKIN_WARM, { glint: '#fef08a', browColor: '#ffffff' });
+      paintFlowingMane(p, HAIR_SILVER, '#facc15');
+      // Genesis golden sword-crown
+      p.rect(11, 2, 6, 3, '#facc15', LAYER_HEAD);
+      p.vline(14, 1, 4, '#38bdf8', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_WHITE, GOLD_QI, '#0284c7');
+      paintDiagonalSword(p, CYAN_QI, '#fde047', true);
+      p.line(18, 22, 29, 13, '#fef08a', LAYER_FX, 1);
+      p.disc(4, 18, 1.8, GOLD_QI, LAYER_FX);
+      p.disc(27, 19, 1.8, CYAN_QI, LAYER_FX);
+      break;
+    }
+
+    case 'chaos_poison_emperor': {
+      // PRIMORDIAL MYTHIC: 혼원만독제 (Chaos Poison Emperor) — emerald-violet galaxy halo + sovereign venom war-fan + miasma orbs
+      for (let a = 0; a < 16; a++) {
+        const rad = (a * Math.PI * 2) / 16;
+        const hx = Math.round(14 + Math.cos(rad) * 12);
+        const hy = Math.round(13 + Math.sin(rad) * 11);
+        p.set(hx, hy, a % 2 === 0 ? '#4ade80' : '#c084fc', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_PALE, { glint: '#86efac', browColor: '#d8b4fe', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#4ade80');
+      // Chaos jade-amethyst dragon crown
+      p.rect(11, 2, 6, 3, '#a855f7', LAYER_HEAD);
+      p.set(14, 2, '#4ade80', LAYER_HEAD);
+      p.line(10, 4, 7, 2, '#fde047', LAYER_HEAD, 1);
+      p.line(18, 4, 21, 2, '#fde047', LAYER_HEAD, 1);
+      paintMartialBody34(p, ROBE_OBSIDIAN, VENOM_QI, '#a855f7');
+      // Unfolded emerald-amethyst Chaos Sovereign War-Fan
+      for (let i = -3; i <= 3; i++) {
+        p.line(
+          19,
+          21,
+          29 - Math.abs(i % 2),
+          14 + i * 2,
+          i % 2 === 0 ? '#4ade80' : '#c084fc',
+          LAYER_FRONT,
+          1,
+        );
+      }
+      p.disc(5, 9, 2.2, VENOM_QI, LAYER_FX);
+      p.disc(26, 7, 2.2, ROBE_VIOLET, LAYER_FX);
+      break;
+    }
+
+    case 'void_heavenly_demon': {
+      // PRIMORDIAL MYTHIC: 무극태상천마 (Void Heavenly Demon) — crimson-gold eclipse ring + demon god horns + colossal eclipse greatsword
+      for (let a = 0; a < 16; a++) {
+        const rad = (a * Math.PI * 2) / 16;
+        const hx = Math.round(14 + Math.cos(rad) * 12);
+        const hy = Math.round(13 + Math.sin(rad) * 11);
+        p.set(hx, hy, a % 2 === 0 ? '#f43f5e' : '#fde047', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#fde047', browColor: '#fda4af', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#e11d48');
+      // Twin golden-obsidian primordial demon horns + forehead crimson third-eye gem
+      p.line(9, 6, 5, 2, '#facc15', LAYER_HEAD, 2);
+      p.line(19, 6, 23, 2, '#facc15', LAYER_HEAD, 2);
+      p.set(14, 9, '#f43f5e', LAYER_FRONT);
+      paintMartialBody34(p, ROBE_DEMON, GOLD_QI, '#e11d48');
+      paintDiagonalSword(p, ROBE_CRIMSON, '#fde047', true);
+      p.line(17, 22, 29, 10, '#fde047', LAYER_FX, 1);
+      p.disc(4, 12, 2.2, ROBE_CRIMSON, LAYER_FX);
+      p.disc(27, 20, 2.2, GOLD_QI, LAYER_FX);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

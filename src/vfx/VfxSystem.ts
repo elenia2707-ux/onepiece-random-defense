@@ -828,6 +828,43 @@ export class VfxSystem {
     }
   }
 
+  /**
+   * 3-Hero Trinity Ultimate Combo (삼재 합체기 / 태고 합체기):
+   * Converging tri-element qi beams from every participating hero into a central Bagua detonation!
+   */
+  public spawnTrinityComboFx(
+    casterPositions: ReadonlyArray<{ readonly x: number; readonly y: number }>,
+    x: number,
+    y: number,
+    radius: number,
+    color: string,
+    startTick: number,
+  ): void {
+    const beamColors = ['#38bdf8', '#4ade80', '#f43f5e'];
+    for (let i = 0; i < casterPositions.length; i++) {
+      const pos = casterPositions[i]!;
+      const bCol = beamColors[i % beamColors.length]!;
+      this.pushTrack({
+        kind: 'trinity_beam',
+        startTick,
+        durationSec: 0.62,
+        fromX: pos.x,
+        fromY: pos.y - 18,
+        x,
+        y,
+        fromRadius: 18,
+        toRadius: Math.min(165, Math.max(96, radius * 0.64)),
+        color: bCol,
+        secondaryColor: color,
+        lineWidth: 6.2,
+        glowRadius: i === 0 ? 115 : 0,
+        gradeRank: 6,
+      });
+      this.emitRadialBurst(pos.x, pos.y - 18, bCol, 10, 145, 0.34, 0, startTick);
+    }
+    this.emitRadialBurst(x, y, '#fde047', 26, 225, 0.45, 0, startTick);
+  }
+
   public spawnHitFx(
     entityId: number,
     x: number,
@@ -1198,6 +1235,57 @@ export class VfxSystem {
         ctx.fillRect(inst.x - colW, inst.y - colH, colW * 2, colH + 12);
         ctx.fillStyle = '#fffbeb';
         ctx.fillRect(inst.x - colW * 0.4, inst.y - colH, colW * 0.8, colH + 8);
+        break;
+      }
+
+      case 'trinity_beam': {
+        // Converging 3-Hero Trinity Qi Beam from hero position -> target + central Bagua sigil
+        const reach = easeOutCubic(Math.min(1, p * 2.6));
+        const bx = inst.fromX + (inst.x - inst.fromX) * reach;
+        const by = inst.fromY + (inst.y - inst.fromY) * reach;
+        const midX = (inst.fromX + bx) * 0.5;
+        const midY = (inst.fromY + by) * 0.5 - 32 * inv;
+
+        ctx.globalAlpha = inv * 0.95;
+        ctx.beginPath();
+        ctx.moveTo(inst.fromX, inst.fromY);
+        ctx.quadraticCurveTo(midX, midY, bx, by);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = Math.max(2.4, 9.5 * inv);
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = Math.max(1.5, 5.4 * inv);
+        ctx.strokeStyle = inst.color;
+        ctx.stroke();
+        ctx.lineWidth = Math.max(1, 2.2 * inv);
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // Central Trinity hexagram ring (rendered once on lead beam with glowRadius > 0)
+        if (inst.glowRadius > 0) {
+          const sigR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
+          ctx.save();
+          ctx.translate(inst.x, inst.y);
+          ctx.rotate(p * 3.6);
+          for (let tri = 0; tri < 2; tri++) {
+            ctx.beginPath();
+            for (let v = 0; v < 3; v++) {
+              const va = tri * Math.PI + (v * Math.PI * 2) / 3;
+              const vx = Math.cos(va) * sigR * 0.78;
+              const vy = Math.sin(va) * sigR * 0.78;
+              if (v === 0) ctx.moveTo(vx, vy);
+              else ctx.lineTo(vx, vy);
+            }
+            ctx.closePath();
+            ctx.lineWidth = Math.max(2, 5.2 * inv);
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = Math.max(1.2, 2.6 * inv);
+            ctx.strokeStyle = tri === 0 ? '#fde047' : inst.secondaryColor;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
         break;
       }
 

@@ -740,6 +740,39 @@
       { "unit": "gaebang_elder", "n": 1 }
     ],
     "priority": 601
+  },
+  {
+    "id": "r_primordial_sword_god",
+    "output": "primordial_sword_god",
+    "ingredients": [
+      { "unit": "sword_saint", "n": 1 },
+      { "unit": "murim_lord", "n": 1 },
+      { "unit": "ice_palace_empress", "n": 1 }
+    ],
+    "priority": 680,
+    "hiddenUnlock": "primordial"
+  },
+  {
+    "id": "r_chaos_poison_emperor",
+    "output": "chaos_poison_emperor",
+    "ingredients": [
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "poison_dragon", "n": 1 },
+      { "unit": "blood_shadow_sovereign", "n": 1 }
+    ],
+    "priority": 681,
+    "hiddenUnlock": "primordial"
+  },
+  {
+    "id": "r_void_heavenly_demon",
+    "output": "void_heavenly_demon",
+    "ingredients": [
+      { "unit": "heavenly_demon_heir", "n": 1 },
+      { "unit": "nether_blade_queen", "n": 1 },
+      { "unit": "mad_demon", "n": 1 }
+    ],
+    "priority": 682,
+    "hiddenUnlock": "primordial"
   }
 ]
 

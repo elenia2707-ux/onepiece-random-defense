@@ -7,13 +7,16 @@ export type ComboSkillId =
   | 'combo_taegeuk_sword'
   | 'combo_demon_blood'
   | 'combo_venom_hellfire'
-  | 'combo_thunder_sword';
+  | 'combo_thunder_sword'
+  | 'combo_trinity_immortals'
+  | 'combo_four_elements_calamity'
+  | 'combo_primordial_genesis';
 
 export interface ComboSkillDef {
   readonly id: ComboSkillId;
   readonly name: string;
   readonly desc: string;
-  readonly requiredUnits: readonly [UnitId, UnitId];
+  readonly requiredUnits: readonly UnitId[];
   readonly cooldownTicks: number;
   readonly atkMult: number;
   readonly radius: number;
@@ -138,6 +141,54 @@ export const COMBO_SKILLS: readonly ComboSkillDef[] = [
     bossBonusPct: 16,
     color: '#facc15',
     tierLabel: '현경 연환',
+  },
+  {
+    id: 'combo_trinity_immortals',
+    name: '삼교귀원 · 천지개벽진',
+    desc: '태상검선 + 혈해수라왕 + 절대천마 3인 동시 출진 · 20초마다 정·사·마 삼재 합체기로 전장 파쇄 (보스 +32%)',
+    requiredUnits: ['sword_immortal', 'asura_emperor', 'cheonma'],
+    cooldownTicks: 600,
+    atkMult: 2.85,
+    radius: 280,
+    armorShred: 45,
+    stunSec: 1.35,
+    slowPct: 0.65,
+    slowSec: 3.5,
+    bossBonusPct: 32,
+    color: '#fde047',
+    tierLabel: '삼재 합체',
+  },
+  {
+    id: 'combo_four_elements_calamity',
+    name: '사상멸세 · 무간신뢰진',
+    desc: '남궁뇌제 + 만독신군 + 구천염황 3인 동시 출진 · 21초마다 뇌·독·염 삼원소 대폭발로 파갑 52 및 극감속',
+    requiredUnits: ['thunder_emperor', 'thousand_venom_lord', 'hell_flame_sovereign'],
+    cooldownTicks: 630,
+    atkMult: 2.75,
+    radius: 285,
+    armorShred: 52,
+    stunSec: 1.3,
+    slowPct: 0.68,
+    slowSec: 3.6,
+    bossBonusPct: 28,
+    color: '#c084fc',
+    tierLabel: '삼재 합체',
+  },
+  {
+    id: 'combo_primordial_genesis',
+    name: '태고삼신 · 혼원창세겁',
+    desc: '태고검신 + 혼원만독제 + 무극태상천마 3신 동시 출진 · 18초마다 창세 삼재신공으로 파갑 75·보스 +45% 초토화',
+    requiredUnits: ['primordial_sword_god', 'chaos_poison_emperor', 'void_heavenly_demon'],
+    cooldownTicks: 540,
+    atkMult: 3.4,
+    radius: 320,
+    armorShred: 75,
+    stunSec: 1.6,
+    slowPct: 0.75,
+    slowSec: 4.0,
+    bossBonusPct: 45,
+    color: '#38bdf8',
+    tierLabel: '태고 합체',
   },
 ];
 

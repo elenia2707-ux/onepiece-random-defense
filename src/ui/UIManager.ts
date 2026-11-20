@@ -27,6 +27,7 @@ import type {
   GradeId,
   RecipeDef,
   RelicId,
+  SectId,
   TitleId,
   TrialId,
   UnitId,
@@ -313,6 +314,13 @@ export class UIManager {
   private contractDeclineBtnEl!: HTMLButtonElement;
   private contractModalOpen = false;
   private prevContractModalSig = '';
+
+  private sectVowPillEl!: HTMLButtonElement;
+  private sectModalEl!: HTMLElement;
+  private sectModalCardsEl!: HTMLElement;
+  private sectLaterBtnEl!: HTMLButtonElement;
+  private sectModalOpen = false;
+  private prevSectModalSig = '';
 
   private gameOverModalEl!: HTMLElement;
   private gameOverCardEl!: HTMLElement;
@@ -609,6 +617,11 @@ export class UIManager {
     this.contractLaterBtnEl = this.mustGet('btn-contract-later') as HTMLButtonElement;
     this.contractDeclineBtnEl = this.mustGet('btn-contract-decline') as HTMLButtonElement;
 
+    this.sectVowPillEl = this.mustGet('sect-vow-pill') as HTMLButtonElement;
+    this.sectModalEl = this.mustGet('sect-modal');
+    this.sectModalCardsEl = this.mustGet('sect-modal-cards');
+    this.sectLaterBtnEl = this.mustGet('btn-sect-later') as HTMLButtonElement;
+
     this.gameOverModalEl = this.mustGet('gameover-modal');
     this.gameOverCardEl = this.mustGet('gameover-card');
     this.gameOverTitleEl = this.mustGet('gameover-title');
@@ -624,6 +637,7 @@ export class UIManager {
   private isTutorialBlocked(): boolean {
     return (
       this.activeSheet !== null ||
+      this.sectModalOpen ||
       this.dpsOpen ||
       this.devOpen ||
       this.handlers.getDragDiscardView().active
@@ -635,13 +649,44 @@ export class UIManager {
     this.relicBtnEl.addEventListener('click', () => this.toggleSheet('relic'));
     this.relicBuffStripEl.addEventListener('click', (ev) => {
       const targetEl = ev.target as HTMLElement | null;
-      if (targetEl?.closest('[data-open-titles]')) {
+      if (targetEl?.closest('[data-open-sect]')) {
+        if (this.lastSnapshot?.sect.canPledge) {
+          this.openSectModal();
+        } else {
+          this.toggleSheet('mission');
+        }
+      } else if (targetEl?.closest('[data-open-primordial]')) {
+        this.craftTab = 'immortal';
+        this.openSheet('craft');
+      } else if (targetEl?.closest('[data-open-titles]')) {
         this.toggleSheet('codex');
       } else if (targetEl?.closest('[data-open-boons]')) {
         this.toggleSheet('upgrade');
       } else {
         this.toggleSheet('relic');
       }
+    });
+    this.sectVowPillEl.addEventListener('click', () => {
+      this.openSectModal();
+    });
+    this.sectLaterBtnEl.addEventListener('click', () => {
+      this.sectModalOpen = false;
+      this.prevSectModalSig = '';
+      this.sectModalEl.classList.remove('open');
+      if (this.lastSnapshot) {
+        this.refreshSectVowUi(this.lastSnapshot);
+        this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
+      }
+      this.showToast('🏛 출정 문파 서약은 제 03 장 이내 상단 배너나 [의뢰] 탭에서 맺을 수 있습니다.');
+    });
+    this.sectModalCardsEl.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-sect-id]');
+      const sectId = btn?.dataset.sectId as SectId | undefined;
+      if (!sectId || btn?.disabled) return;
+      this.sectModalOpen = false;
+      this.prevSectModalSig = '';
+      this.sectModalEl.classList.remove('open');
+      this.handlers.onDispatch({ type: 'pledgeSect', sectId });
     });
     this.boonCardsEl.addEventListener('click', (ev) => {
       const btn = (ev.target as HTMLElement | null)?.closest<HTMLElement>('[data-boon-id]');
@@ -1138,6 +1183,9 @@ export class UIManager {
         this.craftSearchQuery = '';
         this.prevSheetSignature = '';
         if (this.lastSnapshot) this.refreshSheet(this.lastSnapshot);
+      } else if (action === 'open-sect-modal') {
+        this.closeSheet();
+        this.openSectModal();
       } else if (action === 'pick-contract') {
         const contractId = btn.dataset.contractId as ContractId | undefined;
         if (contractId) {
@@ -1949,15 +1997,114 @@ export class UIManager {
       this.refreshSheet(snapshot);
     }
 
-    // 6. Boss Reward 3-Choice Roguelike Boon Modal & Contract 3-Choice Modal
+    // 6. Boss Reward 3-Choice Roguelike Boon Modal, Sect Vow & Contract 3-Choice Modal
     this.refreshBoonModal(snapshot);
     this.refreshContractModal(snapshot);
+    this.refreshSectVowUi(snapshot);
 
     // 7. Victory / Game Over Settlement Modal
     this.refreshSettlementModal(snapshot, waveStr);
 
     // 8. Interactive First-Run Tutorial Coach
     this.tutorial.sync(snapshot, this.isTutorialBlocked());
+  }
+
+  public openSectModal(): void {
+    if (!this.lastSnapshot?.sect.canPledge) return;
+    if (this.activeSheet) {
+      this.closeSheet();
+    }
+    this.sectModalOpen = true;
+    this.prevSectModalSig = '';
+    this.refreshSectVowUi(this.lastSnapshot);
+    this.tutorial.sync(this.lastSnapshot, this.isTutorialBlocked());
+  }
+
+  private refreshSectVowUi(snapshot: UISnapshot): void {
+    const canPledge = snapshot.sect.canPledge;
+    const blockedByOtherOverlay =
+      snapshot.pendingBoonOffer !== null ||
+      snapshot.pendingContractOffer !== null ||
+      snapshot.gameOver ||
+      snapshot.victoryHold;
+    const showPill =
+      canPledge &&
+      !this.sectModalOpen &&
+      this.activeSheet === null &&
+      !this.dpsOpen &&
+      !blockedByOtherOverlay &&
+      this.handlers.isTutorialDone();
+    this.sectVowPillEl.classList.toggle('visible', showPill);
+    this.sectVowPillEl.classList.toggle('boss-active', Boolean(snapshot.boss));
+
+    if (!canPledge || !this.sectModalOpen || blockedByOtherOverlay) {
+      if (this.sectModalOpen && !canPledge) {
+        this.sectModalOpen = false;
+      }
+      if (this.prevSectModalSig !== 'closed') {
+        this.prevSectModalSig = 'closed';
+        this.sectModalEl.classList.remove('open');
+      }
+      return;
+    }
+
+    const meta = this.handlers.getMetaProfile();
+    const sig = `open:${meta.rev}:${snapshot.wave}`;
+    if (sig === this.prevSectModalSig) return;
+    this.prevSectModalSig = sig;
+
+    this.sectModalCardsEl.innerHTML = this.data.sects
+      .map((sect) => {
+        const fMeta = FACTION_META[sect.faction];
+        const startUnit = sect.start.unitId ? this.data.unitsById.get(sect.start.unitId) : undefined;
+        const startGrade = startUnit ? this.data.gradesById.get(startUnit.grade) : undefined;
+        const portraitUrl =
+          startUnit && startGrade
+            ? this.sprites.unitPortraitUrl(
+                startUnit,
+                startGrade,
+                getEquippedSkinDef(this.data, startUnit.id, meta),
+              )
+            : '';
+        const vowRewards: string[] = [];
+        if (sect.vow.rewardCoin > 0) vowRewards.push(`은자 +${sect.vow.rewardCoin}`);
+        if (sect.vow.rewardLuck > 0) vowRewards.push(`영단 +${sect.vow.rewardLuck}`);
+        if (sect.vow.rewardWispGrade) {
+          const gName =
+            this.data.gradesById.get(sect.vow.rewardWispGrade)?.name ?? sect.vow.rewardWispGrade;
+          vowRewards.push(`${gName} 기연 ×${sect.vow.rewardWispCount ?? 1}`);
+        }
+        vowRewards.push('🌌태고합공 해금');
+
+        return `
+          <button
+            type="button"
+            class="boon-card sect-vow-card interactive"
+            style="border-color:${sect.color}"
+            data-sect-id="${sect.id}"
+          >
+            <div class="sect-vow-avatar" style="border-color:${sect.color}">
+              ${portraitUrl ? `<img src="${portraitUrl}" alt="${escapeHtml(sect.name)}" />` : `<span>${escapeHtml(sect.icon)}</span>`}
+            </div>
+            <div class="boon-card-body">
+              <div class="boon-card-top">
+                <span class="boon-rarity-pill" style="background:${sect.color}">${escapeHtml(sect.badge)}</span>
+                <span class="boon-rarity-pill" style="background:${fMeta.color}">${fMeta.label}</span>
+                <span class="boon-tag-pill">${escapeHtml(sect.subtitle)}</span>
+              </div>
+              <div class="sect-vow-line">🎁 초기 보급: <b>${escapeHtml(sect.startSummary)}</b></div>
+              <div class="sect-vow-line perk">☯ 영구 비전: <b>${escapeHtml(sect.perkSummary)}</b></div>
+              <div class="sect-vow-line vow">🏆 서약 [${escapeHtml(sect.vow.name)}]: ${escapeHtml(sect.vow.desc)} → <b>${escapeHtml(vowRewards.join(' · '))}</b></div>
+            </div>
+            <div class="boon-card-cta">
+              <span>서약</span>
+            </div>
+          </button>
+        `;
+      })
+      .join('');
+
+    this.sectModalEl.classList.add('open');
   }
 
   public promptContractModal(_seq: number): void {
@@ -2223,11 +2370,32 @@ export class UIManager {
     const unspentQi = meta.unspentMeridianPoints;
     const claimRealm = meta.claimableRealmCount;
     const armoryCount = snapshot.armory.slots.length;
-    const sig = `${equippedTitleId}:${cultLv}:${unspentQi}:${claimRealm}:${armoryCount}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
+    const sectSig = `${snapshot.sect.canPledge ? 1 : 0}:${snapshot.sect.pledgedId ?? ''}:${snapshot.sect.vowProgress}/${snapshot.sect.vowCompleted ? 1 : 0}:${snapshot.primordialUnlocked ? 1 : 0}`;
+    const sig = `${equippedTitleId}:${cultLv}:${unspentQi}:${claimRealm}:${armoryCount}:${sectSig}:${vaultLv}:${vaultPct}:${swordLv}:${swordBps}:${boonStacks}:${comboCount}:${codexAtk}:${arenaRule}:${activeRelicCount}:${meta.keys}`;
     if (sig === this.prevRelicStripSig) return;
     this.prevRelicStripSig = sig;
 
     const pills: string[] = [];
+    if (snapshot.sect.pledgedId) {
+      const sDef = this.data.sectsById.get(snapshot.sect.pledgedId);
+      if (sDef) {
+        const vowPart = snapshot.sect.vowCompleted
+          ? ' · 🌌태고개방'
+          : ` ${snapshot.sect.vowProgress}/${snapshot.sect.vowTarget}`;
+        pills.push(
+          `<span class="relic-buff-pill sect-active" data-open-sect="1" style="border-color:${sDef.color}" title="출정 가문 서약: ${escapeHtml(sDef.perkSummary)}">${escapeHtml(sDef.badge)}${escapeHtml(vowPart)}</span>`,
+        );
+      }
+    } else if (snapshot.sect.canPledge) {
+      pills.push(
+        `<span class="relic-buff-pill sect-ready" data-open-sect="1" title="제 03 장 이내 5대 명문가 출정 서약 가능!">🏛 문파서약!</span>`,
+      );
+    }
+    if (snapshot.primordialUnlocked && !snapshot.sect.vowCompleted) {
+      pills.push(
+        `<span class="relic-buff-pill primordial-open" data-open-primordial="1" title="태고신화 진·합공식 3종 봉인 해제됨!">🌌 태고합공</span>`,
+      );
+    }
     if (cultLv > 1 || meta.cultivation.totalXp > 0) {
       const qiSuffix =
         unspentQi > 0
@@ -2362,6 +2530,7 @@ export class UIManager {
     for (let i = 0; i < this.recipeGraph.topo.length; i++) {
       const r = this.recipeGraph.recipesById.get(this.recipeGraph.topo[i]!);
       if (!r) continue;
+      if (r.hiddenUnlock === 'primordial' && !snapshot.primordialUnlocked) continue;
       const st = snapshot.craft.recipes[r.id];
       if (!st) continue;
       const rank =
@@ -2696,7 +2865,7 @@ export class UIManager {
       snapshot.armory.nextForgeCost !== null &&
       snapshot.coin >= snapshot.armory.nextForgeCost.coin &&
       snapshot.luckStone >= snapshot.armory.nextForgeCost.luck;
-    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${armSig}:${canForgeNow ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
+    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${armSig}:${canForgeNow ? 1 : 0}:${snapshot.primordialUnlocked ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
     if (sig === this.prevSelectSignature) {
       return;
     }
@@ -2717,8 +2886,8 @@ export class UIManager {
     );
     this.unitPortraitImgEl.alt = slotView.name;
 
-    this.unitGradePillEl.textContent = gradeDef.name;
-    this.unitGradePillEl.style.backgroundColor = gradeDef.color;
+    this.unitGradePillEl.textContent = unitDef.hiddenMythic ? '태고신화' : gradeDef.name;
+    this.unitGradePillEl.style.backgroundColor = unitDef.hiddenMythic ? '#d97706' : gradeDef.color;
     this.unitFactionPillEl.textContent = fMeta.label;
     this.unitFactionPillEl.style.backgroundColor = fMeta.color;
     const starSuffix = slotView.starLevel > 0 ? ` ${'★'.repeat(slotView.starLevel)}` : '';
@@ -2838,7 +3007,9 @@ export class UIManager {
     if (upperRecipes.length === 0) {
       const doneChip = document.createElement('span');
       doneChip.className = 'shortcut-chip ready';
-      doneChip.textContent = `★ 무림 지존 · ${slotView.skillName}`;
+      doneChip.textContent = unitDef.hiddenMythic
+        ? `🌌 태고삼신 극의 · ${slotView.skillName}`
+        : `★ 무림 지존 · ${slotView.skillName}`;
       this.unitShortcutsEl.appendChild(doneChip);
     } else {
       for (let i = 0; i < upperRecipes.length; i++) {
@@ -2862,7 +3033,14 @@ export class UIManager {
         }
 
         const isTriple = rec.ingredients.length === 1 && rec.ingredients[0]!.n >= 3;
-        const routePrefix = isTriple ? '×3 ' : '';
+        const isPrimordial = rec.hiddenUnlock === 'primordial';
+        const routePrefix = isPrimordial
+          ? snapshot.primordialUnlocked
+            ? '🌌 '
+            : '🔒 '
+          : isTriple
+            ? '×3 '
+            : '';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `shortcut-chip interactive${isCraftable ? ' ready' : ''}`;
@@ -2930,7 +3108,7 @@ export class UIManager {
     const confirmArmed = this.abandonConfirmUntilMs > performance.now() ? 1 : 0;
     let sig = '';
     if (kind === 'craft') {
-      sig = `craft:${meta.rev}:${this.craftTab}:${this.craftFactionFilter}:${this.craftSearchQuery}:${this.pinnedRecipeId ?? ''}:${snapshot.craft.rev}:${totalSlotsUsed}`;
+      sig = `craft:${meta.rev}:${this.craftTab}:${this.craftFactionFilter}:${this.craftSearchQuery}:${this.pinnedRecipeId ?? ''}:${snapshot.primordialUnlocked ? 1 : 0}:${snapshot.craft.rev}:${totalSlotsUsed}`;
     } else if (kind === 'wisp') {
       const wispCountsSig = Object.entries(snapshot.wisps)
         .map(([k, v]) => `${k}=${v ?? 0}`)
@@ -2952,10 +3130,11 @@ export class UIManager {
       const dailySig = meta.dailyQuests
         .map((q) => `${q.def.id}=${q.progress}/${q.claimed ? 1 : 0}`)
         .join(',');
+      const sectMissionSig = `${snapshot.sect.canPledge ? 1 : 0}:${snapshot.sect.pledgedId ?? ''}:${snapshot.sect.vowProgress}/${snapshot.sect.vowCompleted ? 1 : 0}`;
       const contractSig = `${snapshot.pendingContractOffer?.seq ?? 0}:${snapshot.contracts.map((c) => `${c.contractId}=${c.progress}/${c.status}`).join(',')}`;
       const bnt = snapshot.bounty;
       const bountySig = `${bnt.canCall ? 1 : 0}:${bnt.canCallElite ? 1 : 0}:${bnt.active ? 1 : 0}:${Math.ceil(bnt.cooldownTicksLeft / 30)}:${Math.ceil(bnt.activeTicksLeft / 30)}`;
-      sig = `mission:${meta.rev}:${snapshot.wave}:${contractSig}:${bountySig}:${dailySig}:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
+      sig = `mission:${meta.rev}:${snapshot.wave}:${sectMissionSig}:${contractSig}:${bountySig}:${dailySig}:${snapshot.missions.map((m) => `${m.id}=${m.progress}/${m.completed ? 1 : 0}`).join(',')}`;
     } else {
       sig = `relic:${this.relicFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.wave}:${snapshot.monstersSlain}:${snapshot.bossesSlain}:${snapshot.bounty.bountiesSlain}:${snapshot.coin}:${snapshot.victoryHold ? 1 : 0}:${snapshot.gameOver ? 1 : 0}:${this.lastRelicNotice?.seq ?? 0}:${confirmArmed}`;
     }

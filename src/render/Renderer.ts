@@ -1636,15 +1636,18 @@ export class Renderer {
         });
       }
 
-      // 6d. Lv.5 Avatar Mastery ('화신') golden crest seal — pre-rendered sprite
-      if (isAvatarMaster && !isDraggedOrigin) {
+      // 6d. Lv.5 Avatar Mastery ('화신') or Hidden Primordial ('✦태고') golden crest seal
+      if ((def.hiddenMythic || isAvatarMaster) && !isDraggedOrigin) {
+        const isPrimordial = Boolean(def.hiddenMythic);
         this.buckets[RenderLayer.WorldUI]!.push({
           layer: RenderLayer.WorldUI,
           sortY: drawY + 3.1,
           render: (ctx) => {
-            const badge = this.sprites.avatarMasterySealBadge();
-            const bw = isField ? 38 : 32;
-            const bh = isField ? 17 : 14;
+            const badge = isPrimordial
+              ? this.sprites.primordialMythicSealBadge()
+              : this.sprites.avatarMasterySealBadge();
+            const bw = isPrimordial ? (isField ? 48 : 41) : isField ? 38 : 32;
+            const bh = isPrimordial ? (isField ? 18 : 15) : isField ? 17 : 14;
             const bx = drawX + spriteSize * 0.32;
             const by = drawFootY - idleHoverY - spriteSize * 0.22;
             ctx.drawImage(badge, Math.round(bx - bw * 0.5), Math.round(by - bh * 0.5), bw, bh);
