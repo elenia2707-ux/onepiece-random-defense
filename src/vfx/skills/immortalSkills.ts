@@ -16,6 +16,8 @@ export type ImmortalSkillTrack =
   | 'im_thunder_emperor'
   | 'im_hell_flame'
   | 'im_wuji_grandmaster'
+  | 'im_tyrant_overlord'
+  | 'im_myriad_demon'
   | 'im_primordial_sword'
   | 'im_chaos_poison'
   | 'im_void_cheonma';
@@ -29,6 +31,8 @@ export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
     kind === 'im_thunder_emperor' ||
     kind === 'im_hell_flame' ||
     kind === 'im_wuji_grandmaster' ||
+    kind === 'im_tyrant_overlord' ||
+    kind === 'im_myriad_demon' ||
     kind === 'im_primordial_sword' ||
     kind === 'im_chaos_poison' ||
     kind === 'im_void_cheonma'
@@ -328,6 +332,62 @@ export function spawnImmortalSkillVfx(
       api.emitRadialBurst(x, y, c1, 28, 230, 0.46, 0, startTick);
       api.emitRadialBurst(x, y, c2, 18, 190, 0.42, 0, startTick);
       api.triggerScreenFlash(c1, 0.12, 0.18, startTick);
+      break;
+    }
+
+    case 'im_tyrant_overlord': {
+      // 패왕멸세참 · 천지붕괴: golden-crimson霸王 sovereign quake + heaven-cleaving impact
+      const c1 = skinPrimary ?? '#facc15';
+      const c2 = skinSecondary ?? '#ef4444';
+      api.pushTrack({
+        kind: track,
+        weaponStyle,
+        startTick,
+        durationSec: 0.68,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 24,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.6,
+        glowRadius: 116,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 24, 210, 0.42, 0, startTick);
+      api.emitRadialBurst(x, y, c2, 16, 175, 0.4, 0, startTick);
+      api.triggerScreenFlash(c1, 0.09, 0.15, startTick);
+      break;
+    }
+
+    case 'im_myriad_demon': {
+      // 만마귀종 · 혈천만검: violet-crimson myriad spirit demon blades + '萬' seal
+      const c1 = skinPrimary ?? '#a855f7';
+      const c2 = skinSecondary ?? '#f43f5e';
+      api.pushTrack({
+        kind: track,
+        weaponStyle,
+        startTick,
+        durationSec: 0.68,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 24,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.4,
+        glowRadius: 114,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 22, 200, 0.42, -10, startTick);
+      api.emitRadialBurst(x, y, c2, 16, 170, 0.4, 10, startTick);
+      api.triggerScreenFlash(c1, 0.09, 0.15, startTick);
       break;
     }
   }
@@ -886,6 +946,63 @@ export function renderImmortalSkillAir(
       const sz = 92 * (0.86 + inv * 0.26);
       ctx.globalAlpha = inv * 0.98;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 30 - p * 28 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_tyrant_overlord': {
+      // 8-spoke golden-crimson霸王 sovereign shockwave blades + '覇' seal
+      const r = inst.toRadius * (0.45 + easeOutCubic(p) * 0.55);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.96;
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI * 2) / 8 + p * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.24, Math.sin(a) * r * 0.24);
+        ctx.lineTo(Math.cos(a) * r * (i % 2 === 0 ? 1.06 : 0.86), Math.sin(a) * r * (i % 2 === 0 ? 1.06 : 0.86));
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 7.5 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 3.8 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('覇', inst.color);
+      const sz = 88 * (0.85 + inv * 0.25);
+      ctx.globalAlpha = inv * 0.96;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_myriad_demon': {
+      // 8 orbiting violet-crimson demon spirit swords converging + '萬' seal
+      const r = inst.toRadius * (0.46 + easeOutCubic(p) * 0.54);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(-p * 2.4);
+      ctx.globalAlpha = inv * 0.96;
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI * 2) / 8;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.3, Math.sin(a) * r * 0.3);
+        ctx.lineTo(Math.cos(a + 0.12) * r * 1.02, Math.sin(a + 0.12) * r * 1.02);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 7 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 3.6 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('萬', inst.color);
+      const sz = 88 * (0.85 + inv * 0.25);
+      ctx.globalAlpha = inv * 0.96;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
       return true;
     }
   }

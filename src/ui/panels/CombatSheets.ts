@@ -1193,14 +1193,14 @@ export function buildMissionSheetView(
     `;
   } else if (snapshot.sect.canPledge) {
     sectSectionHtml = `
-      <div class="sheet-section-label sect-section-label">🏛 오대 명문가 출정 후원 · 제 01~0${snapshot.sect.maxPledgeWave} 장 한정</div>
+      <div class="sheet-section-label sect-section-label">🏛 칠대 명문가 출정 후원 · 제 01~0${snapshot.sect.maxPledgeWave} 장 한정</div>
       <div class="sheet-card sect-prompt-card">
         <div class="mission-main">
           <div class="card-name-row">
             <span class="grade-pill" style="background:#d97706">출정 서약 가능</span>
-            <span class="card-name">화산파 · 소림사 · 사천당가 · 천마신교 · 개방</span>
+            <span class="card-name">화산 · 소림 · 개방 · 당가 · 하오문 · 천마 · 만마혈전</span>
           </div>
-          <div class="card-sub">5대 명문가 중 한 곳과 서약을 맺어 초기 보급품과 영구 비전을 받고, 서약 과업을 성취해 <b>【🌌 태고신화 진·합공식】</b>을 해금하세요!</div>
+          <div class="card-sub">7대 명문가 중 한 곳과 서약을 맺어 초기 보급품과 영구 비전을 받고, 서약 과업을 성취해 <b>【🌌 태고신화 진·합공식】</b>을 해금하세요!</div>
         </div>
         <button type="button" class="card-cta-btn cta-gold interactive" data-sheet-action="open-sect-modal">
           <span>🏛 문파 선택</span>

@@ -20,6 +20,7 @@ export type VfxTrackKind =
   | 'tx_nether_queen'
   | 'tx_ice_empress'
   | 'tx_blood_sovereign'
+  | 'tx_abyss_emperor'
   | 'im_cheonma'
   | 'im_sword_immortal'
   | 'im_asura_emperor'
@@ -27,6 +28,8 @@ export type VfxTrackKind =
   | 'im_thunder_emperor'
   | 'im_hell_flame'
   | 'im_wuji_grandmaster'
+  | 'im_tyrant_overlord'
+  | 'im_myriad_demon'
   | 'im_primordial_sword'
   | 'im_chaos_poison'
   | 'im_void_cheonma';
@@ -556,10 +559,19 @@ export interface ArmamentDef {
   readonly resonance: ArmamentResonanceDef;
 }
 
-export type SectId = 'hwasan' | 'shaolin' | 'tang' | 'cheonma_cult' | 'gaebang';
+export type SectId =
+  | 'hwasan'
+  | 'shaolin'
+  | 'tang'
+  | 'cheonma_cult'
+  | 'gaebang'
+  | 'haomun'
+  | 'blood_citadel';
 
 export type SectVowKind =
   | 'orthodox_rare_field'
+  | 'unorthodox_rare_field'
+  | 'demonic_rare_field'
   | 'boss_or_bounty_kills'
   | 'gamble_wins'
   | 'high_rank_owned'

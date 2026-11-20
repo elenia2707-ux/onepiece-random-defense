@@ -824,12 +824,12 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
     expect(sanctum15Wins).toBeGreaterThanOrEqual(2);
   }, 35_000);
 
-  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs (all 7 Immortals)', () => {
+  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs (all 9 Immortals)', () => {
     const data = loadGameData();
     const immortalIds = data.units
       .filter((u) => u.grade === 'immortal' && !u.hiddenMythic)
       .map((u) => u.id);
-    expect(immortalIds.length).toBe(7);
+    expect(immortalIds.length).toBe(9);
 
     const midRelics: Partial<Record<RelicId, number>> = {
       founding_jade_seal: 3,
@@ -874,7 +874,7 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       const pct = totalImmortalDmg > 0 ? ((immortalDmg[id] ?? 0) / totalImmortalDmg) * 100 : 0;
       immortalSharePct[id] = Number(pct.toFixed(1));
       if (pct > maxSharePct) maxSharePct = pct;
-      if (pct >= 5) activeImmortalCount++;
+      if (pct >= 4) activeImmortalCount++;
     }
 
     console.info('[BalanceAudit][Immortals]', {
@@ -887,8 +887,8 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
       immortalSurviveCount,
     });
 
-    // At least 5 of 7 Immortals must participate meaningfully (>= 5% Immortal share each)
-    expect(activeImmortalCount).toBeGreaterThanOrEqual(5);
+    // At least 6 of 9 Immortals must participate meaningfully (>= 4% Immortal share each)
+    expect(activeImmortalCount).toBeGreaterThanOrEqual(6);
     // No single Immortal may monopolize > 35% of total Immortal damage
     expect(maxSharePct).toBeLessThanOrEqual(35);
     // Previously never-surviving sword_immortal & asura_emperor must actually appear in runs

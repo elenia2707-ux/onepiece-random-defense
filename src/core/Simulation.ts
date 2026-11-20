@@ -3021,14 +3021,22 @@ export class Simulation {
 
   private computeSectVowProgress(sectDef: SectDef): number {
     switch (sectDef.vow.kind) {
-      case 'orthodox_rare_field': {
+      case 'orthodox_rare_field':
+      case 'unorthodox_rare_field':
+      case 'demonic_rare_field': {
+        const targetFac: FactionId =
+          sectDef.vow.kind === 'orthodox_rare_field'
+            ? 'orthodox'
+            : sectDef.vow.kind === 'unorthodox_rare_field'
+              ? 'unorthodox'
+              : 'demonic';
         let count = 0;
         for (let i = 0; i < this.units.length; i++) {
           const u = this.units[i]!;
           if (u.slot.area !== 'field') continue;
           const uDef = this.data.unitsById.get(u.unitId);
           const rank = this.data.gradesById.get(u.grade)?.rank ?? 1;
-          if (uDef?.faction === 'orthodox' && rank >= 3) {
+          if (uDef?.faction === targetFac && rank >= 3) {
             count++;
           }
         }

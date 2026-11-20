@@ -16,7 +16,8 @@ export type TranscendentSkillTrack =
   | 'tx_demon_heir'
   | 'tx_nether_queen'
   | 'tx_ice_empress'
-  | 'tx_blood_sovereign';
+  | 'tx_blood_sovereign'
+  | 'tx_abyss_emperor';
 
 export function isTranscendentSkillTrack(kind: string): kind is TranscendentSkillTrack {
   return (
@@ -27,7 +28,8 @@ export function isTranscendentSkillTrack(kind: string): kind is TranscendentSkil
     kind === 'tx_demon_heir' ||
     kind === 'tx_nether_queen' ||
     kind === 'tx_ice_empress' ||
-    kind === 'tx_blood_sovereign'
+    kind === 'tx_blood_sovereign' ||
+    kind === 'tx_abyss_emperor'
   );
 }
 
@@ -253,6 +255,32 @@ export function spawnTranscendentSkillVfx(
       });
       api.emitRadialBurst(x, y, c1, 20, 195, 0.38, 0, startTick);
       api.emitRadialBurst(x, y, PIXEL_OUTLINE, 10, 150, 0.36, 0, startTick);
+      break;
+    }
+
+    case 'tx_abyss_emperor': {
+      // 구유혈겁 · 적월파천: crimson blood-moon crescent saber arc + golden abyss sparks
+      const c1 = skinPrimary ?? '#e11d48';
+      const c2 = skinSecondary ?? '#fde047';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'saber',
+        startTick,
+        durationSec: 0.58,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 20,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.0,
+        glowRadius: 96,
+        gradeRank,
+      });
+      api.emitRadialBurst(x, y, c1, 20, 190, 0.4, -10, startTick);
+      api.emitRadialBurst(x, y, c2, 12, 155, 0.38, 10, startTick);
       break;
     }
   }
@@ -608,6 +636,32 @@ export function renderTranscendentSkillAir(
 
       const seal = rc.sprites.kanjiSeal('血', inst.color);
       const sz = 74 * (0.85 + inv * 0.22);
+      ctx.globalAlpha = inv * 0.95;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'tx_abyss_emperor': {
+      // Giant crimson blood-moon crescent arc + golden rift slash + '魔' seal
+      const r = inst.toRadius * (0.48 + easeOutCubic(p) * 0.54);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(-0.35 + p * 0.9);
+      ctx.globalAlpha = inv * 0.96;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r, -Math.PI * 0.72, Math.PI * 0.52);
+      ctx.arc(-r * 0.22, -r * 0.08, r * 0.86, Math.PI * 0.52, -Math.PI * 0.72, true);
+      ctx.closePath();
+      ctx.fillStyle = inst.color;
+      ctx.fill();
+      ctx.lineWidth = 3.2 * inv;
+      ctx.strokeStyle = inst.secondaryColor;
+      ctx.stroke();
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('魔', inst.color);
+      const sz = 76 * (0.85 + inv * 0.22);
       ctx.globalAlpha = inv * 0.95;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
       return true;

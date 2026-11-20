@@ -375,9 +375,9 @@
     "id": "r_alt_mudang_master",
     "output": "mudang_master",
     "ingredients": [
-      { "unit": "plum_elder", "n": 1 },
+      { "unit": "shaolin_elder", "n": 1 },
       { "unit": "shaolin_monk", "n": 1 },
-      { "unit": "shaolin_novice", "n": 1 }
+      { "unit": "mudang_disciple", "n": 1 }
     ],
     "priority": 460
   },
@@ -385,8 +385,9 @@
     "id": "r_alt_tang_patriarch",
     "output": "tang_patriarch",
     "ingredients": [
-      { "unit": "plum_elder", "n": 1 },
-      { "unit": "poison_healer", "n": 2 }
+      { "unit": "haomun_strategist", "n": 1 },
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "tang_assassin", "n": 1 }
     ],
     "priority": 470
   },
@@ -394,9 +395,9 @@
     "id": "r_alt_sword_demon",
     "output": "sword_demon",
     "ingredients": [
-      { "unit": "plum_elder", "n": 1 },
-      { "unit": "blood_blade", "n": 1 },
-      { "unit": "black_wind", "n": 1 }
+      { "unit": "soul_warlock", "n": 1 },
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
     ],
     "priority": 480
   },
@@ -769,12 +770,294 @@
     "ingredients": [
       { "unit": "heavenly_demon_heir", "n": 1 },
       { "unit": "nether_blade_queen", "n": 1 },
-      { "unit": "mad_demon", "n": 1 }
+      { "unit": "abyss_blood_emperor", "n": 1 }
     ],
     "priority": 682,
     "hiddenUnlock": "primordial"
+  },
+  {
+    "id": "r_murong_blade",
+    "output": "murong_blade",
+    "ingredients": [
+      { "unit": "sahaebang_pirate", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 }
+    ],
+    "priority": 45
+  },
+  {
+    "id": "r_alt_murong_blade",
+    "output": "murong_blade",
+    "ingredients": [
+      { "unit": "sahaebang_pirate", "n": 1 },
+      { "unit": "tang_assassin", "n": 1 }
+    ],
+    "priority": 46
+  },
+  {
+    "id": "r_3x_sahaebang_pirate",
+    "output": "murong_blade",
+    "ingredients": [
+      { "unit": "sahaebang_pirate", "n": 3 }
+    ],
+    "priority": 375
+  },
+  {
+    "id": "r_bone_shaman",
+    "output": "bone_shaman",
+    "ingredients": [
+      { "unit": "soul_acolyte", "n": 1 },
+      { "unit": "bone_fiend", "n": 1 }
+    ],
+    "priority": 65
+  },
+  {
+    "id": "r_alt_bone_shaman",
+    "output": "bone_shaman",
+    "ingredients": [
+      { "unit": "soul_acolyte", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 66
+  },
+  {
+    "id": "r_3x_soul_acolyte",
+    "output": "bone_shaman",
+    "ingredients": [
+      { "unit": "soul_acolyte", "n": 3 }
+    ],
+    "priority": 398
+  },
+  {
+    "id": "r_shaolin_elder",
+    "output": "shaolin_elder",
+    "ingredients": [
+      { "unit": "shaolin_monk", "n": 1 },
+      { "unit": "shaolin_novice", "n": 1 },
+      { "unit": "hwasan_novice", "n": 1 }
+    ],
+    "priority": 85
+  },
+  {
+    "id": "r_alt_shaolin_elder",
+    "output": "shaolin_elder",
+    "ingredients": [
+      { "unit": "shaolin_monk", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 },
+      { "unit": "gaebang_beggar", "n": 1 }
+    ],
+    "priority": 415
+  },
+  {
+    "id": "r_haomun_strategist",
+    "output": "haomun_strategist",
+    "ingredients": [
+      { "unit": "murong_blade", "n": 1 },
+      { "unit": "haomun_ronin", "n": 1 },
+      { "unit": "sahaebang_pirate", "n": 1 }
+    ],
+    "priority": 102
+  },
+  {
+    "id": "r_alt_haomun_strategist",
+    "output": "haomun_strategist",
+    "ingredients": [
+      { "unit": "murong_blade", "n": 1 },
+      { "unit": "poison_healer", "n": 1 },
+      { "unit": "sahaebang_pirate", "n": 1 }
+    ],
+    "priority": 435
+  },
+  {
+    "id": "r_soul_warlock",
+    "output": "soul_warlock",
+    "ingredients": [
+      { "unit": "bone_shaman", "n": 1 },
+      { "unit": "cult_protector", "n": 1 },
+      { "unit": "soul_acolyte", "n": 1 }
+    ],
+    "priority": 112
+  },
+  {
+    "id": "r_alt_soul_warlock",
+    "output": "soul_warlock",
+    "ingredients": [
+      { "unit": "bone_shaman", "n": 1 },
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 445
+  },
+  {
+    "id": "r_shaolin_abbot",
+    "output": "shaolin_abbot",
+    "ingredients": [
+      { "unit": "shaolin_elder", "n": 1 },
+      { "unit": "shaolin_monk", "n": 1 },
+      { "unit": "gaebang_beggar", "n": 1 }
+    ],
+    "priority": 135
+  },
+  {
+    "id": "r_alt_shaolin_abbot",
+    "output": "shaolin_abbot",
+    "ingredients": [
+      { "unit": "gaebang_elder", "n": 1 },
+      { "unit": "shaolin_elder", "n": 1 },
+      { "unit": "shaolin_novice", "n": 1 }
+    ],
+    "priority": 465
+  },
+  {
+    "id": "r_alt_hwasan_master_thunder",
+    "output": "hwasan_master",
+    "ingredients": [
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 },
+      { "unit": "shaolin_novice", "n": 1 }
+    ],
+    "priority": 452
+  },
+  {
+    "id": "r_black_alliance_lord",
+    "output": "black_alliance_lord",
+    "ingredients": [
+      { "unit": "haomun_strategist", "n": 1 },
+      { "unit": "murong_blade", "n": 1 },
+      { "unit": "nokrim_bandit", "n": 1 }
+    ],
+    "priority": 155
+  },
+  {
+    "id": "r_alt_black_alliance_lord",
+    "output": "black_alliance_lord",
+    "ingredients": [
+      { "unit": "nokrim_chief", "n": 1 },
+      { "unit": "murong_blade", "n": 1 },
+      { "unit": "sahaebang_pirate", "n": 1 }
+    ],
+    "priority": 485
+  },
+  {
+    "id": "r_blood_fiend_lord",
+    "output": "blood_fiend_lord",
+    "ingredients": [
+      { "unit": "blood_bishop", "n": 1 },
+      { "unit": "bone_shaman", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 175
+  },
+  {
+    "id": "r_alt_blood_fiend_lord",
+    "output": "blood_fiend_lord",
+    "ingredients": [
+      { "unit": "soul_warlock", "n": 1 },
+      { "unit": "black_wind", "n": 1 },
+      { "unit": "soul_acolyte", "n": 1 }
+    ],
+    "priority": 492
+  },
+  {
+    "id": "r_abyss_blood_emperor",
+    "output": "abyss_blood_emperor",
+    "ingredients": [
+      { "unit": "blood_fiend_lord", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 },
+      { "unit": "bone_shaman", "n": 1 }
+    ],
+    "priority": 536
+  },
+  {
+    "id": "r_alt_abyss_blood_emperor",
+    "output": "abyss_blood_emperor",
+    "ingredients": [
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "soul_warlock", "n": 1 },
+      { "unit": "blood_acolyte", "n": 1 }
+    ],
+    "priority": 517
+  },
+  {
+    "id": "r_alt_sword_saint_abbot",
+    "output": "sword_saint",
+    "ingredients": [
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "shaolin_abbot", "n": 1 }
+    ],
+    "priority": 512
+  },
+  {
+    "id": "r_alt_murim_lord_abbot",
+    "output": "murim_lord",
+    "ingredients": [
+      { "unit": "shaolin_abbot", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 },
+      { "unit": "namgung_thunder", "n": 1 }
+    ],
+    "priority": 538
+  },
+  {
+    "id": "r_alt_blood_shadow_alliance",
+    "output": "blood_shadow_sovereign",
+    "ingredients": [
+      { "unit": "black_alliance_lord", "n": 1 },
+      { "unit": "haomun_strategist", "n": 1 },
+      { "unit": "murong_blade", "n": 1 }
+    ],
+    "priority": 535
+  },
+  {
+    "id": "r_tyrant_overlord",
+    "output": "tyrant_overlord",
+    "ingredients": [
+      { "unit": "blood_shadow_sovereign", "n": 1 },
+      { "unit": "black_alliance_lord", "n": 1 },
+      { "unit": "haomun_strategist", "n": 1 }
+    ],
+    "priority": 606
+  },
+  {
+    "id": "r_alt_tyrant_overlord",
+    "output": "tyrant_overlord",
+    "ingredients": [
+      { "unit": "mad_demon", "n": 1 },
+      { "unit": "black_alliance_lord", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 }
+    ],
+    "priority": 587
+  },
+  {
+    "id": "r_myriad_demon_emperor",
+    "output": "myriad_demon_emperor",
+    "ingredients": [
+      { "unit": "abyss_blood_emperor", "n": 1 },
+      { "unit": "blood_fiend_lord", "n": 1 },
+      { "unit": "soul_warlock", "n": 1 }
+    ],
+    "priority": 608
+  },
+  {
+    "id": "r_alt_myriad_demon_emperor",
+    "output": "myriad_demon_emperor",
+    "ingredients": [
+      { "unit": "heavenly_demon_heir", "n": 1 },
+      { "unit": "blood_fiend_lord", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 }
+    ],
+    "priority": 588
+  },
+  {
+    "id": "r_alt_sword_immortal_abbot",
+    "output": "sword_immortal",
+    "ingredients": [
+      { "unit": "sword_saint", "n": 1 },
+      { "unit": "shaolin_abbot", "n": 1 },
+      { "unit": "shaolin_elder", "n": 1 }
+    ],
+    "priority": 605
   }
 ]
+
 
 
 

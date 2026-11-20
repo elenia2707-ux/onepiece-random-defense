@@ -8,6 +8,8 @@ export type ComboSkillId =
   | 'combo_demon_blood'
   | 'combo_venom_hellfire'
   | 'combo_thunder_sword'
+  | 'combo_tyrant_asura'
+  | 'combo_myriad_cheonma'
   | 'combo_trinity_immortals'
   | 'combo_four_elements_calamity'
   | 'combo_primordial_genesis';
@@ -140,6 +142,38 @@ export const COMBO_SKILLS: readonly ComboSkillDef[] = [
     slowSec: 2.8,
     bossBonusPct: 16,
     color: '#facc15',
+    tierLabel: '현경 연환',
+  },
+  {
+    id: 'combo_tyrant_asura',
+    name: '패왕수라 · 천하무간진',
+    desc: '무간패황 + 혈해수라왕 동시 출진 · 22초마다 패왕 수라참으로 광역 파갑 38·보스 +24%',
+    requiredUnits: ['tyrant_overlord', 'asura_emperor'],
+    cooldownTicks: 660,
+    atkMult: 2.35,
+    radius: 250,
+    armorShred: 38,
+    stunSec: 0.9,
+    slowPct: 0.54,
+    slowSec: 3.0,
+    bossBonusPct: 24,
+    color: '#f97316',
+    tierLabel: '현경 연환',
+  },
+  {
+    id: 'combo_myriad_cheonma',
+    name: '만마천마 · 구유개벽진',
+    desc: '만마태상제 + 절대천마 동시 출진 · 22초마다 혈천만마 공간참으로 1.0초 기절·보스 +22%',
+    requiredUnits: ['myriad_demon_emperor', 'cheonma'],
+    cooldownTicks: 660,
+    atkMult: 2.35,
+    radius: 250,
+    armorShred: 34,
+    stunSec: 1.0,
+    slowPct: 0.54,
+    slowSec: 3.0,
+    bossBonusPct: 22,
+    color: '#c084fc',
     tierLabel: '현경 연환',
   },
   {

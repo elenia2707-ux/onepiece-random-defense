@@ -93,6 +93,7 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'tx_nether_queen',
   'tx_ice_empress',
   'tx_blood_sovereign',
+  'tx_abyss_emperor',
   'im_cheonma',
   'im_sword_immortal',
   'im_asura_emperor',
@@ -100,6 +101,8 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'im_thunder_emperor',
   'im_hell_flame',
   'im_wuji_grandmaster',
+  'im_tyrant_overlord',
+  'im_myriad_demon',
   'im_primordial_sword',
   'im_chaos_poison',
   'im_void_cheonma',
@@ -1489,10 +1492,14 @@ const VALID_SECT_IDS: ReadonlySet<string> = new Set<SectId>([
   'tang',
   'cheonma_cult',
   'gaebang',
+  'haomun',
+  'blood_citadel',
 ]);
 
 const VALID_SECT_VOW_KINDS: ReadonlySet<string> = new Set<SectVowKind>([
   'orthodox_rare_field',
+  'unorthodox_rare_field',
+  'demonic_rare_field',
   'boss_or_bounty_kills',
   'gamble_wins',
   'high_rank_owned',

@@ -633,6 +633,7 @@ export const CODEX_MILESTONES: readonly CodexMilestoneDef[] = [
   { target: 30, name: '무림명감 (30인)', rewardGold: 500, rewardKeys: 3, rewardSilk: 30, atkBonusPct: 5 },
   { target: 44, name: '천하대도감 (44인)', rewardGold: 1200, rewardKeys: 6, rewardSilk: 80, atkBonusPct: 9 },
   { target: 47, name: '태고삼신록 (47인)', rewardGold: 800, rewardKeys: 4, rewardSilk: 60, atkBonusPct: 5 },
+  { target: 60, name: '삼분천하 대도감 (60인)', rewardGold: 1500, rewardKeys: 8, rewardSilk: 100, atkBonusPct: 6 },
 ];
 
 export const CODEX_MILESTONES_BY_TARGET: ReadonlyMap<number, CodexMilestoneDef> = new Map(

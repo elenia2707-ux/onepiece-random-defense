@@ -4,41 +4,55 @@ import { loadGameData } from '../../src/data/loader';
 import type { RecipeDef, UnitDef } from '../../src/data/types';
 
 describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
-  it('validates production Murim 3-faction game data cleanly (47 units, 81 recipes, R1..R5, symmetric 3-ingredient Immortal & Primordial routes)', () => {
+  it('validates production Murim 3-faction game data cleanly (60 units [20:20:20], 110 recipes, R1..R5, symmetric 3-ingredient Immortal & Primordial routes)', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(47);
-    expect(data.recipes.length).toBe(81);
+    expect(data.units.length).toBe(60);
+    expect(data.recipes.length).toBe(110);
+    expect(data.units.filter((u) => u.faction === 'orthodox').length).toBe(20);
+    expect(data.units.filter((u) => u.faction === 'unorthodox').length).toBe(20);
+    expect(data.units.filter((u) => u.faction === 'demonic').length).toBe(20);
+    expect(data.units.filter((u) => u.leaf && u.faction === 'orthodox').length).toBe(4);
+    expect(data.units.filter((u) => u.leaf && u.faction === 'unorthodox').length).toBe(4);
+    expect(data.units.filter((u) => u.leaf && u.faction === 'demonic').length).toBe(4);
     const graph = new RecipeGraph(data.units, data.gradesById, data.recipes);
     expect(graph.topo.length).toBe(data.recipes.length);
     expect(data.unitsById.get('blood_acolyte')?.leaf).toBe(true);
+    expect(data.unitsById.get('sahaebang_pirate')?.leaf).toBe(true);
+    expect(data.unitsById.get('soul_acolyte')?.leaf).toBe(true);
     expect(data.unitsById.get('nether_blade_queen')?.grade).toBe('transcendent');
     expect(data.unitsById.get('ice_palace_empress')?.grade).toBe('transcendent');
     expect(data.unitsById.get('blood_shadow_sovereign')?.grade).toBe('transcendent');
+    expect(data.unitsById.get('abyss_blood_emperor')?.grade).toBe('transcendent');
     expect(data.unitsById.get('wuji_grandmaster')?.grade).toBe('immortal');
+    expect(data.unitsById.get('tyrant_overlord')?.grade).toBe('immortal');
+    expect(data.unitsById.get('myriad_demon_emperor')?.grade).toBe('immortal');
     expect(data.unitsById.get('primordial_sword_god')?.hiddenMythic).toBe(true);
     expect(data.unitsById.get('chaos_poison_emperor')?.hiddenMythic).toBe(true);
     expect(data.unitsById.get('void_heavenly_demon')?.hiddenMythic).toBe(true);
     expect(graph.byOutput.get('nether_blade_queen')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('ice_palace_empress')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('blood_shadow_sovereign')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('abyss_blood_emperor')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('cheonma')?.length).toBe(3);
-    expect(graph.byOutput.get('sword_immortal')?.length).toBe(2);
+    expect(graph.byOutput.get('sword_immortal')?.length).toBe(3);
     expect(graph.byOutput.get('asura_emperor')?.length).toBe(3);
     expect(graph.byOutput.get('thousand_venom_lord')?.length).toBe(2);
     expect(graph.byOutput.get('thunder_emperor')?.length).toBe(2);
     expect(graph.byOutput.get('hell_flame_sovereign')?.length).toBe(2);
     expect(graph.byOutput.get('wuji_grandmaster')?.length).toBe(3);
+    expect(graph.byOutput.get('tyrant_overlord')?.length).toBe(2);
+    expect(graph.byOutput.get('myriad_demon_emperor')?.length).toBe(2);
     expect(graph.byOutput.get('primordial_sword_god')?.length).toBe(1);
     expect(graph.byOutput.get('chaos_poison_emperor')?.length).toBe(1);
     expect(graph.byOutput.get('void_heavenly_demon')?.length).toBe(1);
 
     // Every standard Immortal recipe uses 1 Transcendent + 1 Legendary + 1 Rare;
-    // every Hidden Primordial recipe uses 3 distinct Transcendent heroes!
+    // every Hidden Primordial recipe uses 3 distinct Transcendent heroes of the SAME pure faction!
     const standardImmortalRecipes = data.recipes.filter(
       (r) => data.unitsById.get(r.output)?.grade === 'immortal' && !r.hiddenUnlock,
     );
     const primordialRecipes = data.recipes.filter((r) => r.hiddenUnlock === 'primordial');
-    expect(standardImmortalRecipes.length).toBe(17);
+    expect(standardImmortalRecipes.length).toBe(22);
     expect(primordialRecipes.length).toBe(3);
 
     for (const rec of standardImmortalRecipes) {
@@ -224,17 +238,19 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     expect(data.waves[29]?.monsterKind).toBe('blood_patriarch');
   });
 
-  it('validates v3.4 sects.json (5 Murim Sects) and v3.5 3-hero Trinity Combo definitions', async () => {
+  it('validates v3.4/v4.0 sects.json (7 Murim Sects across 3 factions) and v3.5 3-hero Trinity Combo definitions', async () => {
     const { validateSects } = await import('../../src/data/loader');
     const { COMBO_SKILLS } = await import('../../src/data/comboSkills');
     const data = loadGameData();
-    expect(data.sects).toHaveLength(5);
+    expect(data.sects).toHaveLength(7);
     expect(data.sects.map((s) => s.id)).toEqual([
       'hwasan',
       'shaolin',
-      'tang',
-      'cheonma_cult',
       'gaebang',
+      'tang',
+      'haomun',
+      'cheonma_cult',
+      'blood_citadel',
     ]);
     expect(() =>
       validateSects(

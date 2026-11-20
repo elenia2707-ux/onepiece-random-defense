@@ -174,9 +174,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('packs all 47 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
+  it('packs all 60 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(47);
+    expect(data.units.length).toBe(60);
     expect(data.heroSkins.length).toBe(16);
     expect(data.courtSkins.length).toBe(8);
 
@@ -187,7 +187,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
 
     const atlasFrames = atlasRaw.frames as Record<
       string,
-      { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
+      { readonly x: number; readonly y: number; w: number; h: number }
     >;
 
     for (const unit of data.units) {
@@ -210,8 +210,8 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
       expect(atlasFrames[kind], `missing WebP atlas frame: ${kind}`).toBeDefined();
     }
-    expect(spriteSet.size).toBe(53);
-    expect(Object.keys(atlasFrames).length).toBe(53);
+    expect(spriteSet.size).toBe(66);
+    expect(Object.keys(atlasFrames).length).toBe(66);
 
     const webpAtlasFiles = Object.keys(import.meta.glob('../public/assets/*.webp'));
     expect(webpAtlasFiles.some((p) => p.endsWith('/sprites_atlas.webp'))).toBe(true);
@@ -1467,9 +1467,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 47 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 60 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(47);
+    expect(data.units.length).toBe(60);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1988,16 +1988,16 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(rec2.firstClearBonusSilk).toBe(0);
   });
 
-  it('differentiates all 10 현경·신마 & 태고신화 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
+  it('differentiates all 12 현경·신마 & 태고신화 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
     const data = loadGameData();
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(immortals.length).toBe(10);
+    expect(immortals.length).toBe(12);
 
     // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.0x max/min ATK)
     const atks = immortals.map((u) => u.atk);
     const passiveIds = new Set(immortals.map((u) => u.passiveTrait?.id).filter(Boolean));
-    expect(new Set(atks).size).toBe(10);
-    expect(passiveIds.size).toBe(10);
+    expect(new Set(atks).size).toBe(12);
+    expect(passiveIds.size).toBe(12);
     expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.0);
 
     // Verify SlotView exposes passiveTrait and sword_immortal's 70% armorPiercePct out-scales un-pierced armor reduction
@@ -2147,18 +2147,18 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(data.unitsById.get('blood_shadow_sovereign')?.skill?.vfxTrack).toBe('tx_blood_sovereign');
     expect(data.unitsById.get('wuji_grandmaster')?.skill?.vfxTrack).toBe('im_wuji_grandmaster');
 
-    // 2. All 8 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 10 Immortals have unique im_* VFX tracks
+    // 2. All 9 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 12 Immortals have unique im_* VFX tracks
     const transcendents = data.units.filter((u) => u.grade === 'transcendent');
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(transcendents.length).toBe(8);
-    expect(immortals.length).toBe(10);
+    expect(transcendents.length).toBe(9);
+    expect(immortals.length).toBe(12);
 
     const txTracks = new Set(transcendents.map((u) => u.skill?.vfxTrack));
     const txPassives = new Set(transcendents.map((u) => u.passiveTrait?.id));
     const imTracks = new Set(immortals.map((u) => u.skill?.vfxTrack));
-    expect(txTracks.size).toBe(8);
-    expect(txPassives.size).toBe(8);
-    expect(imTracks.size).toBe(10);
+    expect(txTracks.size).toBe(9);
+    expect(txPassives.size).toBe(9);
+    expect(imTracks.size).toBe(12);
     for (const tr of txTracks) expect(tr?.startsWith('tx_')).toBe(true);
     for (const tr of imTracks) expect(tr?.startsWith('im_')).toBe(true);
 
@@ -2773,9 +2773,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
   it('v2.3 build variety & strategy: Bench Passives (unique per unitId), Wave 5 3-choice Contracts, Boon Reroll, Elite Bounty, and Hero Awakening (★1-★3 + Save round-trip)', () => {
     const data = loadGameData();
 
-    // 1. Track A — Bench Passives on 9 Rank 1-3 heroes & unique-per-unitId non-stacking
+    // 1. Track A — Bench Passives on 13 Rank 1-3 heroes & unique-per-unitId non-stacking
     const benchUnits = data.units.filter((u) => Boolean(u.benchPassive));
-    expect(benchUnits.length).toBe(9);
+    expect(benchUnits.length).toBe(13);
     const simBench = new Simulation(data, 0x23230001);
     const baseInterest = simBench.getEffectiveInterestConfig();
     const baseGamble = simBench.getEffectiveGambleBonusPct();
@@ -3872,7 +3872,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
 
     craftTranscendent(simMythic, 'r_heavenly_demon_heir');
     craftTranscendent(simMythic, 'r_nether_blade_queen');
-    craftTranscendent(simMythic, 'r_mad_demon');
+    craftTranscendent(simMythic, 'r_abyss_blood_emperor');
     simMythic.commands.enqueue({ type: 'craft', recipeId: 'r_void_heavenly_demon', chain: false });
     simMythic.tick();
 

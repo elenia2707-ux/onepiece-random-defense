@@ -2536,7 +2536,7 @@ export class UIManager {
       }
     } else if (snapshot.sect.canPledge) {
       pills.push(
-        `<span class="relic-buff-pill sect-ready" data-open-sect="1" title="제 03 장 이내 5대 명문가 출정 서약 가능!">🏛 문파서약!</span>`,
+        `<span class="relic-buff-pill sect-ready" data-open-sect="1" title="제 03 장 이내 7대 명문가 출정 서약 가능!">🏛 문파서약!</span>`,
       );
     }
     if (snapshot.primordialUnlocked && !snapshot.sect.vowCompleted) {

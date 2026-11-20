@@ -1298,6 +1298,152 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'sahaebang_pirate': {
+      paintHead34(p, SKIN_WARM, { glint: '#2dd4bf', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#0d9488', false);
+      paintMartialBody34(p, ROBE_JADE, ROBE_CRIMSON, '#eab308');
+      paintCurvedSaber(p, CYAN_QI, '#eab308');
+      break;
+    }
+
+    case 'soul_acolyte': {
+      paintHead34(p, SKIN_PALE, { glint: '#c084fc', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#be123c', false);
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_VIOLET, '#e11d48');
+      p.disc(26, 14, 2.4, ROBE_VIOLET, LAYER_FX);
+      p.set(26, 14, '#fb7185', LAYER_FX);
+      break;
+    }
+
+    case 'murong_blade': {
+      paintHead34(p, SKIN_WARM, { glint: '#c084fc' });
+      paintHairTopknot(p, HAIR_SILVER, '#34d399', true);
+      paintMartialBody34(p, ROBE_VIOLET, GOLD_QI, '#a855f7');
+      paintDiagonalSword(p, CYAN_QI, '#fde047', false);
+      break;
+    }
+
+    case 'bone_shaman': {
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#fef3c7', false);
+      paintMartialBody34(p, ROBE_DEMON, ROBE_CRIMSON, '#fde68a');
+      p.line(8, 22, 27, 17, '#fef3c7', LAYER_FRONT, 2);
+      p.disc(27, 15, 2.6, ROBE_CRIMSON, LAYER_FX);
+      break;
+    }
+
+    case 'shaolin_elder': {
+      paintHead34(p, SKIN_WARM, { glint: '#fde047', browColor: '#ffffff' });
+      p.hline(10, 17, 7, SKIN_WARM[0], LAYER_HEAD);
+      p.hline(11, 16, 6, SKIN_WARM[0], LAYER_HEAD);
+      paintMartialBody34(p, GOLD_QI, ROBE_CRIMSON, '#b45309');
+      p.disc(26, 16, 2.8, GOLD_QI, LAYER_FX);
+      break;
+    }
+
+    case 'haomun_strategist': {
+      paintCapeLeft(p, ROBE_OBSIDIAN, true);
+      paintHead34(p, SKIN_WARM, { glint: '#34d399' });
+      paintHairTopknot(p, HAIR_BLACK, '#10b981', true);
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_JADE, '#10b981');
+      for (let i = -2; i <= 2; i++) {
+        p.line(20, 21, 28, 15 + i * 2, i % 2 === 0 ? '#1f2937' : '#10b981', LAYER_FRONT, 1);
+      }
+      p.disc(26, 8, 1.8, GOLD_QI, LAYER_FX);
+      break;
+    }
+
+    case 'soul_warlock': {
+      paintCapeLeft(p, ROBE_VIOLET, true);
+      paintHead34(p, SKIN_PALE, { glint: '#e879f9', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#a855f7');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_VIOLET, '#ec4899');
+      p.disc(5, 11, 2.2, ROBE_VIOLET, LAYER_FX);
+      p.disc(26, 12, 2.4, ROBE_VIOLET, LAYER_FX);
+      break;
+    }
+
+    case 'shaolin_abbot': {
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      paintHead34(p, SKIN_WARM, { glint: '#fde047', browColor: '#ffffff' });
+      p.hline(10, 17, 7, SKIN_WARM[0], LAYER_HEAD);
+      p.hline(11, 16, 6, SKIN_WARM[0], LAYER_HEAD);
+      paintMartialBody34(p, ROBE_CRIMSON, GOLD_QI, '#facc15');
+      p.vline(25, 4, 28, '#facc15', LAYER_FRONT);
+      p.disc(25, 6, 2.5, GOLD_QI, LAYER_FX);
+      break;
+    }
+
+    case 'black_alliance_lord': {
+      paintCapeLeft(p, ROBE_OBSIDIAN, true);
+      paintHead34(p, SKIN_WARM, { glint: '#ef4444', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#facc15');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#facc15');
+      paintCurvedSaber(p, ROBE_CRIMSON, '#facc15');
+      break;
+    }
+
+    case 'blood_fiend_lord': {
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#e11d48');
+      paintMartialBody34(p, ROBE_CRIMSON, ROBE_OBSIDIAN, '#e11d48');
+      p.line(7, 26, 29, 7, '#e11d48', LAYER_FRONT, 2);
+      p.set(28, 7, '#fde047', LAYER_FX);
+      break;
+    }
+
+    case 'abyss_blood_emperor': {
+      for (let a = 0; a < 12; a++) {
+        const rad = (a * Math.PI * 2) / 12;
+        p.set(Math.round(12 + Math.cos(rad) * 11), Math.round(13 + Math.sin(rad) * 10), '#e11d48', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#facc15');
+      paintMartialBody34(p, ROBE_DEMON, GOLD_QI, '#e11d48');
+      paintCurvedSaber(p, ROBE_CRIMSON, '#fde047');
+      break;
+    }
+
+    case 'tyrant_overlord': {
+      for (let a = 0; a < 14; a++) {
+        const rad = (a * Math.PI * 2) / 14;
+        p.set(
+          Math.round(14 + Math.cos(rad) * 11.5),
+          Math.round(13 + Math.sin(rad) * 10.5),
+          a % 2 === 0 ? '#fde047' : '#ef4444',
+          LAYER_BACK,
+        );
+      }
+      paintCapeLeft(p, ROBE_CRIMSON, true);
+      paintHead34(p, SKIN_WARM, { glint: '#fde047', fierce: true });
+      paintFlowingMane(p, HAIR_BLACK, '#facc15');
+      paintMartialBody34(p, ROBE_OBSIDIAN, GOLD_QI, '#ef4444');
+      paintDiagonalSword(p, GOLD_QI, '#ef4444', true);
+      break;
+    }
+
+    case 'myriad_demon_emperor': {
+      for (let a = 0; a < 14; a++) {
+        const rad = (a * Math.PI * 2) / 14;
+        p.set(
+          Math.round(14 + Math.cos(rad) * 11.5),
+          Math.round(13 + Math.sin(rad) * 10.5),
+          a % 2 === 0 ? '#a855f7' : '#fde047',
+          LAYER_BACK,
+        );
+      }
+      p.line(5, 13, 2, 4, '#c084fc', LAYER_BACK, 2);
+      p.line(24, 13, 29, 5, '#e11d48', LAYER_BACK, 2);
+      paintCapeLeft(p, ROBE_OBSIDIAN, true);
+      paintHead34(p, SKIN_PALE, { glint: '#e879f9', fierce: true });
+      paintFlowingMane(p, HAIR_SILVER, '#a855f7');
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_VIOLET, '#fde047');
+      paintDiagonalSword(p, ROBE_VIOLET, '#f43f5e', true);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

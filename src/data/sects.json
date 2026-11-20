@@ -7,26 +7,28 @@
     "icon": "🌸",
     "color": "#f43f5e",
     "faction": "orthodox",
-    "startSummary": "화산 막내도사 1인 합류 · 삼류 기연 +1 · 은자 +30",
-    "perkSummary": "정파 협객 회심률 +8%p · 정파 절기 피해 +15%",
+    "startSummary": "화산 막내도사 1인 합류 · 삼류 기연 +1 · 은자 +55",
+    "perkSummary": "정파 외공 +12% · 회심률 +8%p · 절기 +18% · 보스 피해 +14%",
     "start": {
       "unitId": "hwasan_novice",
-      "coin": 30,
+      "coin": 55,
       "luck": 0,
       "wispGrade": "common",
       "wispCount": 1
     },
     "perk": {
       "faction": "orthodox",
+      "atkPct": 12,
       "critChanceBps": 800,
-      "skillDamagePct": 15
+      "skillDamagePct": 18,
+      "bossDamagePct": 14
     },
     "vow": {
       "kind": "orthodox_rare_field",
       "name": "매화만개 검진",
       "desc": "정파 일류(3등급) 이상 협객 3인 비무대 동시 출전",
       "target": 3,
-      "rewardCoin": 180,
+      "rewardCoin": 200,
       "rewardLuck": 3,
       "rewardWispGrade": "rare",
       "rewardWispCount": 1
@@ -64,6 +66,39 @@
     }
   },
   {
+    "id": "gaebang",
+    "name": "개방",
+    "subtitle": "천하제일방 · 만리풍운",
+    "badge": "🍶 개방",
+    "icon": "🍶",
+    "color": "#10b981",
+    "faction": "orthodox",
+    "startSummary": "개방 거지 1인 합류 · 은자 +65 · 삼류 기연 +1",
+    "perkSummary": "모든 처치 은자 +20% · 복리 이자 상한 +60 · 전 협객 공속 +8%",
+    "start": {
+      "unitId": "gaebang_beggar",
+      "coin": 65,
+      "luck": 0,
+      "wispGrade": "common",
+      "wispCount": 1
+    },
+    "perk": {
+      "killCoinPct": 20,
+      "interestCapBonus": 60,
+      "speedPct": 8
+    },
+    "vow": {
+      "kind": "field_occupied",
+      "name": "군웅운집 개방진",
+      "desc": "비무대 협객 12인 이상 동시 출전 달성",
+      "target": 12,
+      "rewardCoin": 230,
+      "rewardLuck": 3,
+      "rewardWispGrade": "uncommon",
+      "rewardWispCount": 2
+    }
+  },
+  {
     "id": "tang",
     "name": "사천당가",
     "subtitle": "만독세가 · 오대세가 비문",
@@ -71,24 +106,61 @@
     "icon": "☠",
     "color": "#22c55e",
     "faction": "unorthodox",
-    "startSummary": "사천당문 암기수 1인 합류 · 영단 +3",
-    "perkSummary": "전 협객 기본 파갑 +10 · 영약 복용 성공률 +8%p",
+    "startSummary": "사천당문 암기수 1인 합류 · 은자 +35 · 영단 +3",
+    "perkSummary": "전 협객 기본 파갑 +16 · 절기 +14% · 보스 피해 +16% · 영약 성공률 +8%p",
     "start": {
       "unitId": "tang_assassin",
-      "coin": 0,
+      "coin": 35,
       "luck": 3
     },
     "perk": {
-      "armorShred": 10,
+      "armorShred": 16,
+      "skillDamagePct": 14,
+      "bossDamagePct": 16,
       "gambleChancePct": 8
     },
     "vow": {
       "kind": "gamble_wins",
       "name": "만독영단 정제",
-      "desc": "영약 복용 환골탈태 2회 성공",
-      "target": 2,
-      "rewardCoin": 160,
+      "desc": "영약 복용 환골탈태 3회 성공",
+      "target": 3,
+      "rewardCoin": 210,
       "rewardLuck": 4,
+      "rewardWispGrade": "rare",
+      "rewardWispCount": 1
+    }
+  },
+  {
+    "id": "haomun",
+    "name": "하오문",
+    "subtitle": "천하정보망 · 기문흑도",
+    "badge": "🎭 하오문",
+    "icon": "🎭",
+    "color": "#14b8a6",
+    "faction": "unorthodox",
+    "startSummary": "하오문 낭인 1인 합류 · 이류 기연 +1 · 은자 +50 · 영단 +1",
+    "perkSummary": "사파 외공 +15% · 공속 +14% · 회심배율 +0.28x · 전 처치 은자 +15%",
+    "start": {
+      "unitId": "haomun_ronin",
+      "coin": 50,
+      "luck": 1,
+      "wispGrade": "uncommon",
+      "wispCount": 1
+    },
+    "perk": {
+      "faction": "unorthodox",
+      "atkPct": 15,
+      "speedPct": 14,
+      "critMultBonus": 0.28,
+      "killCoinPct": 15
+    },
+    "vow": {
+      "kind": "unorthodox_rare_field",
+      "name": "흑도기문 포진",
+      "desc": "사파 일류(3등급) 이상 협객 3인 비무대 동시 출전",
+      "target": 3,
+      "rewardCoin": 210,
+      "rewardLuck": 3,
       "rewardWispGrade": "rare",
       "rewardWispCount": 1
     }
@@ -126,36 +198,37 @@
     }
   },
   {
-    "id": "gaebang",
-    "name": "개방",
-    "subtitle": "천하제일방 · 만리풍운",
-    "badge": "🍶 개방",
-    "icon": "🍶",
-    "color": "#10b981",
-    "faction": "orthodox",
-    "startSummary": "개방 거지 1인 합류 · 은자 +85 · 삼류 기연 +1",
-    "perkSummary": "모든 처치 은자 +20% · 복리 이자 상한 +60 · 전 협객 공속 +8%",
+    "id": "blood_citadel",
+    "name": "만마혈전",
+    "subtitle": "유혼백골 · 구유마도",
+    "badge": "🔮 만마혈전",
+    "icon": "🔮",
+    "color": "#a855f7",
+    "faction": "demonic",
+    "startSummary": "마교 섭혼술사 1인 합류 · 삼류 기연 +1 · 은자 +45 · 영단 +2",
+    "perkSummary": "마교 절기 피해 +20% · 파갑 +14 · 보스·수배범 피해 +16%",
     "start": {
-      "unitId": "gaebang_beggar",
-      "coin": 85,
-      "luck": 0,
+      "unitId": "soul_acolyte",
+      "coin": 45,
+      "luck": 2,
       "wispGrade": "common",
       "wispCount": 1
     },
     "perk": {
-      "killCoinPct": 20,
-      "interestCapBonus": 60,
-      "speedPct": 8
+      "faction": "demonic",
+      "skillDamagePct": 20,
+      "armorShred": 14,
+      "bossDamagePct": 16
     },
     "vow": {
-      "kind": "field_occupied",
-      "name": "군웅운집 개방진",
-      "desc": "비무대 협객 10인 이상 동시 출전 달성",
-      "target": 10,
-      "rewardCoin": 260,
+      "kind": "demonic_rare_field",
+      "name": "만귀야행 혈진",
+      "desc": "마교 일류(3등급) 이상 협객 3인 비무대 동시 출전",
+      "target": 3,
+      "rewardCoin": 210,
       "rewardLuck": 3,
-      "rewardWispGrade": "uncommon",
-      "rewardWispCount": 2
+      "rewardWispGrade": "rare",
+      "rewardWispCount": 1
     }
   }
 ]

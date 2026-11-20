@@ -7,9 +7,11 @@
     "nokrim_bandit",
     "tang_assassin",
     "haomun_ronin",
+    "sahaebang_pirate",
     "cult_initiate",
     "bone_fiend",
-    "blood_acolyte"
+    "blood_acolyte",
+    "soul_acolyte"
   ],
   "uncommon": [
     "plum_swordsman",
@@ -17,15 +19,20 @@
     "namgung_thunder",
     "poison_healer",
     "blood_blade",
+    "murong_blade",
     "black_wind",
-    "cult_protector"
+    "cult_protector",
+    "bone_shaman"
   ],
   "rare": [
     "plum_elder",
     "gaebang_elder",
+    "shaolin_elder",
     "nokrim_chief",
     "tang_elder",
+    "haomun_strategist",
     "cult_elder",
-    "blood_bishop"
+    "blood_bishop",
+    "soul_warlock"
   ]
 }
