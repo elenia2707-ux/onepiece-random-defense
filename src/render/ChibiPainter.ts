@@ -1117,6 +1117,73 @@ export function paintUnitChibi(
       break;
     }
 
+    case 'ice_palace_empress': {
+      // North Sea Ice Palace Empress (북해 빙궁주): snow-white hair, frost-lotus diadem & sapphire ice folding fan
+      paintCapeLeft(p, ROBE_AZURE, true);
+      paintHead34(p, SKIN_PALE, { glint: '#38bdf8', browColor: '#e0f2fe', blush: '#fbcfe8' });
+      paintFlowingMane(p, HAIR_SILVER, '#38bdf8');
+      // Ice-lotus crystal tiara
+      p.set(14, 2, '#ffffff', LAYER_HEAD);
+      p.set(12, 3, '#7dd3fc', LAYER_HEAD);
+      p.set(16, 3, '#7dd3fc', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_WHITE, ROBE_AZURE, '#38bdf8');
+      // Unfolded frost-lotus crystal war fan
+      for (let i = -3; i <= 3; i++) {
+        p.line(
+          20,
+          21,
+          28 - Math.abs(i % 2),
+          14 + i * 2,
+          i % 2 === 0 ? '#e0f2fe' : '#38bdf8',
+          LAYER_FRONT,
+          1,
+        );
+      }
+      p.set(27, 8, '#ffffff', LAYER_FX);
+      p.set(5, 11, '#7dd3fc', LAYER_FX);
+      p.set(28, 23, '#bae6fd', LAYER_FX);
+      break;
+    }
+
+    case 'blood_shadow_sovereign': {
+      // Blood-Shadow Sovereign (혈영귀왕): obsidian shinobi mask + blazing crimson shadow blades
+      paintCapeLeft(p, ROBE_DEMON, true);
+      paintHead34(p, SKIN_PALE, { glint: '#f43f5e', fierce: true });
+      paintHairTopknot(p, HAIR_BLACK, '#e11d48', true);
+      // Crimson-trimmed shadow face mask
+      p.rect(9, 15, 11, 3, '#1f1630', LAYER_FRONT);
+      p.hline(10, 18, 15, '#e11d48', LAYER_FRONT);
+      p.hline(9, 18, 9, '#facc15', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_OBSIDIAN, ROBE_CRIMSON, '#e11d48');
+      // Twin blood-shadow curved blades
+      paintCurvedSaber(p, ROBE_CRIMSON, '#facc15');
+      p.line(7, 22, 2, 13, '#e11d48', LAYER_FRONT, 2);
+      p.set(27, 6, '#fda4af', LAYER_FX);
+      p.set(4, 10, '#f43f5e', LAYER_FX);
+      break;
+    }
+
+    case 'wuji_grandmaster': {
+      // IMMORTAL: Taiji Wuji Grandmaster (태극무극선) — celestial jade-gold halo + five-element orbs + jade divine sword
+      for (let a = 0; a < 12; a++) {
+        const rad = (a * Math.PI * 2) / 12;
+        const hx = Math.round(14 + Math.cos(rad) * 11.5);
+        const hy = Math.round(13 + Math.sin(rad) * 10.5);
+        p.set(hx, hy, a % 2 === 0 ? '#2dd4bf' : '#fde047', LAYER_BACK);
+      }
+      paintCapeLeft(p, ROBE_JADE, true);
+      paintHead34(p, SKIN_WARM, { glint: '#2dd4bf', browColor: '#ffffff' });
+      paintFlowingMane(p, HAIR_SILVER, '#fde047');
+      p.rect(12, 2, 4, 3, '#fde047', LAYER_HEAD);
+      p.set(14, 2, '#2dd4bf', LAYER_HEAD);
+      paintMartialBody34(p, ROBE_WHITE, GOLD_QI, '#0d9488');
+      paintDiagonalSword(p, CYAN_QI, '#fde047', true);
+      // Orbiting elemental pearls
+      p.disc(5, 7, 1.8, GOLD_QI, LAYER_FX);
+      p.disc(25, 7, 1.8, CYAN_QI, LAYER_FX);
+      break;
+    }
+
     default: {
       paintHead34(p, SKIN_WARM);
       paintHairTopknot(p, HAIR_BLACK, '#38bdf8', false);

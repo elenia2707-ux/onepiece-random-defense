@@ -181,6 +181,12 @@ export class SpriteCache {
       const c = this.cache.get(key);
       if (c) this.paintHitBadge(c, kind);
     }
+    for (const [key, kind] of this.statusBadgeSpecs) {
+      const c = this.cache.get(key);
+      if (c) this.paintStatusBadge(c, kind);
+    }
+    const benchBadge = this.cache.get('badge:bench_passive');
+    if (benchBadge) this.paintBenchPassiveBadge(benchBadge);
   }
 
   public get areFontsReady(): boolean {
@@ -261,6 +267,145 @@ export class SpriteCache {
     }
     this.cache.set(key, c);
     return c;
+  }
+
+  /** Pre-rendered 10-point jagged Wuxia impact starburst backdrop behind critical & armor-broken hits. */
+  public critBurst(primaryColor = '#f97316', innerColor = '#fef08a'): HTMLCanvasElement {
+    const key = `critburst:${primaryColor}:${innerColor}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const w = 132;
+    const h = 84;
+    const c = this.createOffscreen(w, h);
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      const spikes = 12;
+      ctx.save();
+      ctx.beginPath();
+      for (let i = 0; i < spikes * 2; i++) {
+        const ang = (i * Math.PI) / spikes - Math.PI * 0.5;
+        const isTip = i % 2 === 0;
+        const jitter = isTip ? (i % 4 === 0 ? 1.0 : 0.84) : 0.44;
+        const rx = cx * 0.9 * jitter;
+        const ry = cy * 0.88 * jitter;
+        const px = cx + Math.cos(ang) * rx;
+        const py = cy + Math.sin(ang) * ry;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, cx * 0.88);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.45, innerColor);
+      grad.addColorStop(1, primaryColor);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.lineWidth = 4.5;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.restore();
+    }
+    this.cache.set(key, c);
+    return c;
+  }
+
+  /** Pre-rendered vector awakening star crest (★ / ★★ / ★★★) — zero per-frame fillText. */
+  public starBadge(starLevel: number): HTMLCanvasElement {
+    const count = Math.max(1, Math.min(3, Math.floor(starLevel)));
+    const key = `badge:stars:${count}`;
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const w = count * 28 + 16;
+    const h = 34;
+    const c = this.createOffscreen(w, h);
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      const spacing = 24;
+      const startX = w * 0.5 - ((count - 1) * spacing) * 0.5;
+      const cy = h * 0.52;
+      for (let s = 0; s < count; s++) {
+        const sx = startX + s * spacing;
+        const isCenterBig = count === 3 && s === 1;
+        const outerR = isCenterBig ? 12.5 : 10.5;
+        const innerR = outerR * 0.48;
+        ctx.beginPath();
+        for (let v = 0; v < 10; v++) {
+          const ang = -Math.PI * 0.5 + (v * Math.PI) / 5;
+          const r = v % 2 === 0 ? outerR : innerR;
+          const px = sx + Math.cos(ang) * r;
+          const py = cy + Math.sin(ang) * r;
+          if (v === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.lineWidth = 5;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+
+        const g = ctx.createLinearGradient(sx, cy - outerR, sx, cy + outerR);
+        g.addColorStop(0, count >= 3 ? '#ffffff' : '#fef9c3');
+        g.addColorStop(0.5, '#facc15');
+        g.addColorStop(1, '#d97706');
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
+    }
+    this.cache.set(key, c);
+    return c;
+  }
+
+  /** Pre-rendered jade '진' bench-passive seal — zero per-frame fillText. */
+  public benchPassiveBadge(): HTMLCanvasElement {
+    const key = 'badge:bench_passive';
+    const existing = this.cache.get(key);
+    if (existing) return existing;
+
+    const c = this.createOffscreen(44, 44);
+    this.paintBenchPassiveBadge(c);
+    this.cache.set(key, c);
+    return c;
+  }
+
+  private paintBenchPassiveBadge(c: HTMLCanvasElement): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    const cx = c.width * 0.5;
+    const cy = c.height * 0.5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+    const g = ctx.createLinearGradient(cx, cy - 18, cx, cy + 18);
+    g.addColorStop(0, '#2dd4bf');
+    g.addColorStop(1, '#0f766e');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 4.4;
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14.5, 0, Math.PI * 2);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = '#fef08a';
+    ctx.stroke();
+
+    ctx.font = `bold 20px ${BODY_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = PIXEL_OUTLINE;
+    ctx.strokeText('진', cx, cy + 1);
+    ctx.fillStyle = '#fefce8';
+    ctx.fillText('진', cx, cy + 1);
+    ctx.restore();
   }
 
   /**
@@ -786,11 +931,23 @@ export class SpriteCache {
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.stroke();
 
+    // Upper glossy lacquer sheen & crisp warm rim
+    ctx.beginPath();
+    ctx.roundRect(12, 7.5, c.width - 24, 7.5, 6);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.34)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.roundRect(10.2, 7.2, c.width - 20.4, c.height - 14.4, 9.5);
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = 'rgba(255, 251, 235, 0.72)';
+    ctx.stroke();
+
     ctx.font = `20px ${DISPLAY_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 6.2;
     ctx.strokeStyle = PIXEL_OUTLINE;
     ctx.strokeText(label, c.width * 0.5, c.height * 0.5 + 1);
     ctx.fillStyle = '#fffbeb';
@@ -877,10 +1034,15 @@ export class SpriteCache {
     return url;
   }
 
-  /** Pre-rendered monster pixel sprite + pure-white hit-flash silhouette (zero ctx.filter). */
-  public monsterSprite(kind: MonsterKind, hitFlash = false): HTMLCanvasElement {
+  /** Pre-rendered monster pixel sprite + hit-flash silhouette (zero ctx.filter). */
+  public monsterSprite(
+    kind: MonsterKind,
+    hitFlash = false,
+    flashTint: 'white' | 'gold' = 'white',
+  ): HTMLCanvasElement {
     const baseKey = `monster:${kind}:base`;
-    const flashKey = `monster:${kind}:flash`;
+    const flashKey =
+      flashTint === 'gold' ? `monster:${kind}:flash:gold` : `monster:${kind}:flash`;
 
     let baseCanvas = this.cache.get(baseKey);
     if (!baseCanvas) {
@@ -895,8 +1057,10 @@ export class SpriteCache {
 
       this.probeExternal(kind, (img, frame) => {
         this.paintExternal(created, img, frame);
-        const flash = this.cache.get(flashKey);
-        if (flash) this.paintFlash(flash, created);
+        const whiteFlash = this.cache.get(`monster:${kind}:flash`);
+        if (whiteFlash) this.paintFlash(whiteFlash, created, '#ffffff');
+        const goldFlash = this.cache.get(`monster:${kind}:flash:gold`);
+        if (goldFlash) this.paintFlash(goldFlash, created, '#fef08a');
         this.portraitUrls.delete(`url:monster:${kind}`);
         this.notifySpriteUpdated();
       });
@@ -907,12 +1071,12 @@ export class SpriteCache {
     const existingFlash = this.cache.get(flashKey);
     if (existingFlash) return existingFlash;
     const flashCanvas = this.createOffscreen(baseCanvas.width, baseCanvas.height);
-    this.paintFlash(flashCanvas, baseCanvas);
+    this.paintFlash(flashCanvas, baseCanvas, flashTint === 'gold' ? '#fef08a' : '#ffffff');
     this.cache.set(flashKey, flashCanvas);
     return flashCanvas;
   }
 
-  private paintFlash(target: HTMLCanvasElement, base: HTMLCanvasElement): void {
+  private paintFlash(target: HTMLCanvasElement, base: HTMLCanvasElement, fillColor: string): void {
     target.width = base.width;
     target.height = base.height;
     const fctx = target.getContext('2d');
@@ -921,7 +1085,7 @@ export class SpriteCache {
     fctx.clearRect(0, 0, target.width, target.height);
     fctx.drawImage(base, 0, 0);
     fctx.globalCompositeOperation = 'source-in';
-    fctx.fillStyle = '#ffffff';
+    fctx.fillStyle = fillColor;
     fctx.fillRect(0, 0, target.width, target.height);
     fctx.globalCompositeOperation = 'source-over';
   }

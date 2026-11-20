@@ -678,14 +678,32 @@ export class VfxSystem {
       y,
       burstColor,
       burstCount,
-      slain ? 162 : isCrit ? 144 : 104,
-      isCrit || slain ? 0.28 : 0.22,
-      18,
+      slain ? 175 : isCrit ? 158 : 112,
+      isCrit || slain ? 0.3 : 0.23,
+      20,
+      startTick,
+    );
+
+    // Directional kinetic sparks spraying along the strike vector
+    const hitDx = x - fromX;
+    const hitDy = y - fromY;
+    const hasDir = Math.abs(hitDx) + Math.abs(hitDy) > 2;
+    const strikeAng = hasDir
+      ? Math.atan2(hitDy, hitDx)
+      : (((startTick * 37 + Math.round(x) * 7) % 10) - 5) * 0.24 - Math.PI * 0.24;
+    this.emitDirectionalSparks(
+      x,
+      y,
+      strikeAng,
+      isCrit ? '#fffbeb' : secondaryColor,
+      slain ? 8 : isCrit ? 7 : isSkill ? 5 : 3,
+      isCrit || slain ? 210 : 155,
+      isCrit || slain ? 0.24 : 0.18,
       startTick,
     );
 
     if (armorBroken) {
-      this.emitRadialBurst(x, y, '#f43f5e', 5, 130, 0.24, 10, startTick);
+      this.emitRadialBurst(x, y, '#f43f5e', 5, 136, 0.24, 12, startTick);
     }
 
     if (justShattered) {
@@ -709,36 +727,36 @@ export class VfxSystem {
     }
 
     if (isCrit || isSkill || slain) {
-      this.emitRadialBurst(x, y, '#fffbeb', isCrit ? 6 : 4, 120, 0.2, 0, startTick);
+      this.emitRadialBurst(x, y, '#fffbeb', isCrit ? 6 : 4, 132, 0.21, 0, startTick);
       this.pushTrack({
         kind: 'hit_slash',
         weaponStyle,
         startTick,
-        durationSec: isCrit ? 0.27 : 0.22,
+        durationSec: isCrit ? 0.29 : 0.24,
         fromX,
         fromY,
         x,
         y,
-        fromRadius: 8,
-        toRadius: isCrit ? 46 : slain ? 38 : 32,
+        fromRadius: 10,
+        toRadius: isCrit ? 52 : slain ? 42 : 36,
         color: isCrit ? '#facc15' : armorBroken ? '#e879f9' : color,
-        secondaryColor: armorBroken ? '#f43f5e' : secondaryColor,
-        lineWidth: isCrit ? 5.0 : 3.6,
-        glowRadius: isCrit ? 34 : 20,
+        secondaryColor: isCrit ? '#fb923c' : armorBroken ? '#f43f5e' : secondaryColor,
+        lineWidth: isCrit ? 5.2 : 3.8,
+        glowRadius: isCrit ? 40 : 24,
       });
       if (isCrit || slain) {
         this.pushTrack({
           kind: 'ring',
           startTick,
-          durationSec: 0.23,
+          durationSec: 0.24,
           fromX: x,
           fromY: y,
           x,
           y,
-          fromRadius: 8,
-          toRadius: isCrit ? 36 : 32,
+          fromRadius: 10,
+          toRadius: isCrit ? 42 : 36,
           color: isCrit ? '#fde047' : '#fb7185',
-          lineWidth: 3.0,
+          lineWidth: 3.4,
           glowRadius: 0,
         });
       }
@@ -748,17 +766,17 @@ export class VfxSystem {
         kind: 'hit_slash',
         weaponStyle,
         startTick,
-        durationSec: 0.17,
+        durationSec: 0.19,
         fromX,
         fromY,
         x,
         y,
-        fromRadius: 6,
-        toRadius: 24,
+        fromRadius: 7,
+        toRadius: 28,
         color: armorBroken ? '#e879f9' : color,
         secondaryColor,
-        lineWidth: 2.8,
-        glowRadius: 12,
+        lineWidth: 3.0,
+        glowRadius: 15,
       });
     }
 
@@ -1009,253 +1027,429 @@ export class VfxSystem {
       }
 
       case 'hit_slash': {
-        // 10 Bespoke Per-Weapon Monster Hit / Damage Impact VFX oriented along attack trajectory!
+        // 10 Bespoke Per-Weapon Calligraphic Hit / Damage Impact VFX oriented along attack trajectory!
         const isHeavy = inst.lineWidth >= 3.4;
         const slashR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
         const hasDir = Math.abs(inst.x - inst.fromX) + Math.abs(inst.y - inst.fromY) > 2;
         const aimAng = hasDir
           ? Math.atan2(inst.y - inst.fromY, inst.x - inst.fromX)
           : (((inst.startTick * 37 + Math.round(inst.x) * 7) % 10) - 5) * 0.24 - Math.PI * 0.24;
-        ctx.globalAlpha = inv * 0.98;
+        const sliceHead = easeOutCubic(Math.min(1, p * 2.2));
+        const sliceTail = easeOutCubic(Math.max(0, (p - 0.14) / 0.86));
+        ctx.globalAlpha = inv * 0.99;
 
-        const strokeCut = (ang: number, len: number, w: number, col: string): void => {
-          const dx = Math.cos(ang) * len;
-          const dy = Math.sin(ang) * len;
+        // Calligraphic razor-tapered curved slash polygon (needle tips, dark ink outline, luminous core)
+        const drawTaperedSlash = (
+          cx: number,
+          cy: number,
+          ang: number,
+          halfLen: number,
+          maxThick: number,
+          curveBow: number,
+          fillCol: string,
+          coreCol: string,
+        ): void => {
+          const t0 = -1 + sliceTail * 1.45;
+          const t1 = -1 + sliceHead * 2.0;
+          if (t1 - t0 <= 0.06) return;
+          const startL = halfLen * t0;
+          const endL = halfLen * t1;
+          const midL = (startL + endL) * 0.5;
+          const w = Math.max(1.2, maxThick * inv);
+          const bow = curveBow * (0.65 + 0.35 * inv);
+
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(ang);
+
+          // Outer dark-ink outline + saturated blade body
           ctx.beginPath();
-          ctx.moveTo(inst.x - dx, inst.y - dy);
-          ctx.lineTo(inst.x + dx, inst.y + dy);
-          ctx.lineCap = 'round';
-          ctx.lineWidth = Math.max(1, w * inv);
-          ctx.strokeStyle = col;
+          ctx.moveTo(startL, 0);
+          ctx.quadraticCurveTo(midL, bow - w, endL, 0);
+          ctx.quadraticCurveTo(midL, bow + w * 0.72, startL, 0);
+          ctx.closePath();
+          ctx.fillStyle = fillCol;
+          ctx.fill();
+          ctx.lineWidth = Math.max(1.6, 2.5 * inv);
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = PIXEL_OUTLINE;
           ctx.stroke();
+
+          // Blinding inner razor highlight spine
+          const coreStart = startL + (endL - startL) * 0.14;
+          const coreEnd = endL - (endL - startL) * 0.08;
+          const coreMid = (coreStart + coreEnd) * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(coreStart, 0);
+          ctx.quadraticCurveTo(coreMid, bow - w * 0.42, coreEnd, 0);
+          ctx.quadraticCurveTo(coreMid, bow + w * 0.24, coreStart, 0);
+          ctx.closePath();
+          ctx.fillStyle = coreCol;
+          ctx.fill();
+
+          ctx.restore();
+        };
+
+        // Crisp 4-point concave anime/Wuxia impact starburst flare
+        const drawImpactStar = (
+          cx: number,
+          cy: number,
+          ang: number,
+          majorR: number,
+          minorR: number,
+          fillCol: string,
+        ): void => {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(ang);
+          const waist = Math.max(1.6, minorR * 0.26);
+          ctx.beginPath();
+          ctx.moveTo(majorR, 0);
+          ctx.quadraticCurveTo(waist, waist, 0, minorR);
+          ctx.quadraticCurveTo(-waist, waist, -majorR, 0);
+          ctx.quadraticCurveTo(-waist, -waist, 0, -minorR);
+          ctx.quadraticCurveTo(waist, -waist, majorR, 0);
+          ctx.closePath();
+          ctx.fillStyle = fillCol;
+          ctx.fill();
+          ctx.lineWidth = Math.max(1.4, 2.0 * inv);
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.restore();
         };
 
         switch (inst.weaponStyle) {
           case 'fan': {
-            // 부채꼴 독풍 파열 + 5방 독침 (Snapping 5-rib Tang fan sector + 5 radiating poison needles!)
+            // 부채꼴 독풍/빙풍 파열 + 5방 예리한 침격 (Snapping fan gale + 5 tapered dart needles!)
             ctx.save();
             ctx.translate(inst.x, inst.y);
             ctx.rotate(aimAng);
-            const fr = slashR * 1.05;
-            const span = 0.85;
+            const fr = slashR * 1.08;
+            const span = 0.88;
+            const pivotX = -fr * 0.36;
+
             ctx.beginPath();
-            ctx.arc(-fr * 0.35, 0, fr, -span, span);
-            ctx.lineTo(-fr * 0.35, 0);
+            ctx.arc(pivotX, 0, fr, -span, span);
+            ctx.arc(pivotX, 0, fr * 0.42, span, -span, true);
             ctx.closePath();
-            ctx.fillStyle = hexWithAlpha(inst.color, 0.38 * inv);
+            ctx.fillStyle = hexWithAlpha(inst.color, 0.42 * inv);
             ctx.fill();
 
             ctx.beginPath();
-            ctx.arc(-fr * 0.35, 0, fr, -span, span);
+            ctx.arc(pivotX, 0, fr, -span, span);
             ctx.lineCap = 'round';
-            ctx.lineWidth = Math.max(1.5, (inst.lineWidth + 3.2) * inv);
+            ctx.lineWidth = Math.max(1.8, (inst.lineWidth + 3.4) * inv);
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
-            ctx.lineWidth = Math.max(1, inst.lineWidth * inv);
+            ctx.lineWidth = Math.max(1.1, (inst.lineWidth + 0.4) * inv);
             ctx.strokeStyle = inst.secondaryColor;
+            ctx.stroke();
+            ctx.lineWidth = Math.max(0.9, 1.5 * inv);
+            ctx.strokeStyle = '#ffffff';
             ctx.stroke();
 
             for (let k = -2; k <= 2; k++) {
               const na = k * 0.36;
-              const n0 = fr * 0.35;
-              const n1 = fr * 1.15;
+              const n0 = fr * (0.28 + sliceTail * 0.42);
+              const n1 = fr * (0.48 + sliceHead * 0.82);
+              const nx = pivotX + Math.cos(na) * ((n0 + n1) * 0.5);
+              const ny = Math.sin(na) * ((n0 + n1) * 0.5);
+              const nHalf = Math.max(3, (n1 - n0) * 0.5);
+              ctx.save();
+              ctx.translate(nx, ny);
+              ctx.rotate(na);
+              const nw = Math.max(1.3, (k === 0 ? 3.2 : 2.3) * inv);
               ctx.beginPath();
-              ctx.moveTo(-fr * 0.35 + Math.cos(na) * n0, Math.sin(na) * n0);
-              ctx.lineTo(-fr * 0.35 + Math.cos(na) * n1, Math.sin(na) * n1);
-              ctx.lineWidth = Math.max(1.2, 3.4 * inv);
+              ctx.moveTo(-nHalf, 0);
+              ctx.lineTo(0, -nw);
+              ctx.lineTo(nHalf, 0);
+              ctx.lineTo(0, nw);
+              ctx.closePath();
+              ctx.fillStyle = k === 0 ? '#ffffff' : k % 2 === 0 ? inst.secondaryColor : inst.color;
+              ctx.fill();
+              ctx.lineWidth = 1.4;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
-              ctx.lineWidth = Math.max(1, 1.8 * inv);
-              ctx.strokeStyle = k === 0 ? '#ffffff' : inst.color;
-              ctx.stroke();
+              ctx.restore();
             }
             ctx.restore();
             break;
           }
 
           case 'dual_sword': {
-            // 쌍검 X자 교차 참격 (Symmetrical X twin-blade cross-slash!)
-            const a1 = aimAng + 0.62;
-            const a2 = aimAng - 0.62;
-            strokeCut(a1, slashR, inst.lineWidth + 4, PIXEL_OUTLINE);
-            strokeCut(a1, slashR, inst.lineWidth + 0.8, inst.color);
-            strokeCut(a1, slashR * 0.76, 1.9, '#ffffff');
-
-            strokeCut(a2, slashR * 0.92, inst.lineWidth + 3.6, PIXEL_OUTLINE);
-            strokeCut(a2, slashR * 0.92, inst.lineWidth + 0.6, inst.secondaryColor);
-            strokeCut(a2, slashR * 0.7, 1.8, '#ffffff');
+            // 쌍검 X자 교차 이단참 (Staggered razor twin-blade X-scissor tapered slashes!)
+            const a1 = aimAng + 0.64;
+            const a2 = aimAng - 0.64;
+            drawTaperedSlash(
+              inst.x,
+              inst.y,
+              a1,
+              slashR * 1.15,
+              inst.lineWidth * 1.55,
+              -5.5,
+              inst.color,
+              '#ffffff',
+            );
+            drawTaperedSlash(
+              inst.x,
+              inst.y,
+              a2,
+              slashR * 1.06,
+              inst.lineWidth * 1.42,
+              5.5,
+              inst.secondaryColor,
+              '#fffbeb',
+            );
             break;
           }
 
           case 'flying_sword': {
-            // 어검 삼중 비검 관통광 (3 converging spirit-sword light lances!)
+            // 어검 삼중 비검 관통광 (3 converging tapered spirit-sword light lances + crisp seal ring!)
+            const sealR = slashR * 0.44;
+            ctx.beginPath();
+            ctx.arc(inst.x, inst.y, sealR, 0, Math.PI * 2);
+            ctx.lineWidth = Math.max(1.2, 3.0 * inv);
+            ctx.strokeStyle = PIXEL_OUTLINE;
+            ctx.stroke();
+            ctx.lineWidth = Math.max(0.9, 1.6 * inv);
+            ctx.strokeStyle = inst.secondaryColor;
+            ctx.stroke();
+
             for (let k = -1; k <= 1; k++) {
-              const ba = aimAng + k * 0.44;
-              const len = slashR * (k === 0 ? 1.18 : 0.92);
-              strokeCut(ba, len, inst.lineWidth + 3.2, PIXEL_OUTLINE);
-              strokeCut(ba, len, inst.lineWidth + 0.4, k === 0 ? inst.color : inst.secondaryColor);
-              strokeCut(ba, len * 0.78, 1.6, '#ffffff');
+              const ba = aimAng + k * 0.42;
+              const len = slashR * (k === 0 ? 1.28 : 1.02);
+              drawTaperedSlash(
+                inst.x,
+                inst.y,
+                ba,
+                len,
+                inst.lineWidth * (k === 0 ? 1.38 : 1.05),
+                k * 3.2,
+                k === 0 ? inst.color : inst.secondaryColor,
+                '#ffffff',
+              );
             }
             break;
           }
 
           case 'saber': {
-            // 패도·대도 반달 중참격 (Thick curved heavy-cleave crescent gash + forge sparks!)
+            // 패도·대도 반달 중참격 (Thick sweeping curved heavy-cleave crescent + blazing inner spine!)
+            const flip = (inst.startTick & 1) === 0 ? 1 : -1;
             ctx.save();
             ctx.translate(inst.x, inst.y);
-            ctx.rotate(aimAng + (((inst.startTick & 1) === 0 ? 1 : -1) * 0.35));
-            const cr = slashR * 0.95;
+            ctx.rotate(aimAng + flip * 0.34);
+            const cr = slashR * 1.04;
+            const a0 = -1.02;
+            const a1 = -1.02 + 2.04 * sliceHead;
             ctx.beginPath();
-            ctx.arc(-cr * 0.25, 0, cr, -0.95, 0.95);
-            ctx.quadraticCurveTo(cr * 0.15, 0, -cr * 0.25 + Math.cos(-0.95) * cr, Math.sin(-0.95) * cr);
+            ctx.arc(-cr * 0.26, 0, cr, a0, a1);
+            ctx.quadraticCurveTo(
+              cr * 0.14,
+              0,
+              -cr * 0.26 + Math.cos(a0) * cr,
+              Math.sin(a0) * cr,
+            );
             ctx.closePath();
             ctx.fillStyle = inst.color;
             ctx.fill();
-            ctx.lineWidth = Math.max(1.5, 2.8 * inv);
+            ctx.lineWidth = Math.max(1.6, 3.0 * inv);
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
 
+            // Glowing white-gold razor edge along outer belly
             ctx.beginPath();
-            ctx.arc(-cr * 0.25, 0, cr - 2, -0.82, 0.82);
-            ctx.lineWidth = Math.max(1.2, 2.2 * inv);
+            ctx.arc(-cr * 0.26, 0, cr - 2.2, a0 + 0.18, a1);
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(1.4, (isHeavy ? 3.2 : 2.3) * inv);
             ctx.strokeStyle = isHeavy ? '#ffffff' : inst.secondaryColor;
+            ctx.stroke();
+
+            // Outer shockwave echo line
+            ctx.beginPath();
+            ctx.arc(-cr * 0.26, 0, cr + 5, a0 + 0.24, a1 - 0.1);
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(1, 1.8 * inv);
+            ctx.strokeStyle = hexWithAlpha(inst.secondaryColor, 0.85);
             ctx.stroke();
             ctx.restore();
             break;
           }
 
           case 'spear_staff': {
-            // 창·봉 관통 충격파 (Directional piercing lance + perpendicular sonic shock ring!)
+            // 창·봉 관통 충격파 (Razor tapered lance beam + dual tilted sonic shock rings!)
+            drawTaperedSlash(
+              inst.x + Math.cos(aimAng) * slashR * 0.12,
+              inst.y + Math.sin(aimAng) * slashR * 0.12,
+              aimAng,
+              slashR * 1.24,
+              inst.lineWidth * 1.5,
+              0,
+              inst.color,
+              '#ffffff',
+            );
+
             ctx.save();
             ctx.translate(inst.x, inst.y);
             ctx.rotate(aimAng);
-            ctx.beginPath();
-            ctx.moveTo(-slashR * 0.85, 0);
-            ctx.lineTo(slashR * 1.2, 0);
-            ctx.lineCap = 'round';
-            ctx.lineWidth = Math.max(1.5, (inst.lineWidth + 4.4) * inv);
-            ctx.strokeStyle = PIXEL_OUTLINE;
-            ctx.stroke();
-            ctx.lineWidth = Math.max(1.2, (inst.lineWidth + 1.2) * inv);
-            ctx.strokeStyle = inst.color;
-            ctx.stroke();
-            ctx.lineWidth = Math.max(1, 2 * inv);
-            ctx.strokeStyle = '#ffffff';
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.ellipse(0, 0, Math.max(2, slashR * 0.22), slashR * 0.68, 0, 0, Math.PI * 2);
-            ctx.lineWidth = Math.max(1.2, 3.2 * inv);
-            ctx.strokeStyle = PIXEL_OUTLINE;
-            ctx.stroke();
-            ctx.lineWidth = Math.max(1, 1.8 * inv);
-            ctx.strokeStyle = inst.secondaryColor;
-            ctx.stroke();
+            for (let ring = 0; ring < 2; ring++) {
+              const rxPos = (ring === 0 ? -0.14 : 0.22) * slashR;
+              const ringH = slashR * (ring === 0 ? 0.72 : 0.48);
+              ctx.beginPath();
+              ctx.ellipse(rxPos, 0, Math.max(2, slashR * 0.19), ringH, 0, 0, Math.PI * 2);
+              ctx.lineWidth = Math.max(1.3, 3.2 * inv);
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.lineWidth = Math.max(1, 1.8 * inv);
+              ctx.strokeStyle = ring === 0 ? inst.secondaryColor : '#ffffff';
+              ctx.stroke();
+            }
             ctx.restore();
             break;
           }
 
           case 'palm_fist': {
-            // 권풍·경타 파열원진 (Concussive martial shockwave ring + 8-ray impact burst!)
-            const pr = slashR * 0.82;
+            // 권풍·경타 파열원진 (Concussive dual shockwave ring + 8 tapered radial impact spikes!)
+            const pr = slashR * 0.86;
             ctx.beginPath();
             ctx.arc(inst.x, inst.y, pr, 0, Math.PI * 2);
-            ctx.lineWidth = Math.max(1.5, (inst.lineWidth + 4.2) * inv);
+            ctx.lineWidth = Math.max(1.6, (inst.lineWidth + 4.2) * inv);
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
-            ctx.lineWidth = Math.max(1.2, (inst.lineWidth + 1.2) * inv);
+            ctx.lineWidth = Math.max(1.2, (inst.lineWidth + 1.1) * inv);
             ctx.strokeStyle = inst.color;
             ctx.stroke();
 
-            for (let rIdx = 0; rIdx < 6; rIdx++) {
-              const ra = aimAng + (rIdx * Math.PI) / 3;
-              const r0 = pr * 0.45;
-              const r1 = pr * 1.22;
+            if (isHeavy) {
               ctx.beginPath();
-              ctx.moveTo(inst.x + Math.cos(ra) * r0, inst.y + Math.sin(ra) * r0);
-              ctx.lineTo(inst.x + Math.cos(ra) * r1, inst.y + Math.sin(ra) * r1);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = Math.max(1, 2.4 * inv);
-              ctx.strokeStyle = rIdx % 2 === 0 ? '#ffffff' : inst.secondaryColor;
+              ctx.arc(inst.x, inst.y, pr * 0.56, 0, Math.PI * 2);
+              ctx.lineWidth = Math.max(1, 2.2 * inv);
+              ctx.strokeStyle = '#ffffff';
               ctx.stroke();
+            }
+
+            const spikes = isHeavy ? 8 : 6;
+            for (let rIdx = 0; rIdx < spikes; rIdx++) {
+              const ra = aimAng + (rIdx * Math.PI * 2) / spikes;
+              const r0 = pr * 0.42;
+              const r1 = pr * (rIdx % 2 === 0 ? 1.34 : 1.08);
+              const mx = inst.x + Math.cos(ra) * ((r0 + r1) * 0.5);
+              const my = inst.y + Math.sin(ra) * ((r0 + r1) * 0.5);
+              const halfS = (r1 - r0) * 0.5;
+              const sw = Math.max(1.2, (rIdx % 2 === 0 ? 3.2 : 2.2) * inv);
+              ctx.save();
+              ctx.translate(mx, my);
+              ctx.rotate(ra);
+              ctx.beginPath();
+              ctx.moveTo(-halfS, 0);
+              ctx.lineTo(0, -sw);
+              ctx.lineTo(halfS, 0);
+              ctx.lineTo(0, sw);
+              ctx.closePath();
+              ctx.fillStyle = rIdx % 2 === 0 ? '#ffffff' : inst.secondaryColor;
+              ctx.fill();
+              ctx.lineWidth = 1.4;
+              ctx.strokeStyle = PIXEL_OUTLINE;
+              ctx.stroke();
+              ctx.restore();
             }
             break;
           }
 
           case 'dagger_hidden': {
-            // 암기·독비수 3연 관통흔 (3 pinpoint poison-dagger puncture streaks!)
+            // 암기·독비수 3연 관통흔 (3 offset needle-tapered kunai puncture cuts!)
             for (let d = -1; d <= 1; d++) {
-              const da = aimAng + d * 0.3;
-              const offPerp = d * 4;
+              const da = aimAng + d * 0.26;
+              const offPerp = d * 5.2;
               const px = inst.x + Math.cos(aimAng + Math.PI * 0.5) * offPerp;
               const py = inst.y + Math.sin(aimAng + Math.PI * 0.5) * offPerp;
-              const len = slashR * (d === 0 ? 1.05 : 0.8);
-              ctx.beginPath();
-              ctx.moveTo(px - Math.cos(da) * len * 0.7, py - Math.sin(da) * len * 0.7);
-              ctx.lineTo(px + Math.cos(da) * len, py + Math.sin(da) * len);
-              ctx.lineCap = 'round';
-              ctx.lineWidth = Math.max(1.2, 4.2 * inv);
-              ctx.strokeStyle = PIXEL_OUTLINE;
-              ctx.stroke();
-              ctx.lineWidth = Math.max(1, 2.1 * inv);
-              ctx.strokeStyle = d === 0 ? '#ffffff' : d < 0 ? inst.color : inst.secondaryColor;
-              ctx.stroke();
+              const len = slashR * (d === 0 ? 1.15 : 0.88);
+              drawTaperedSlash(
+                px,
+                py,
+                da,
+                len,
+                (d === 0 ? 3.6 : 2.6) * (isHeavy ? 1.25 : 1),
+                0,
+                d < 0 ? inst.color : inst.secondaryColor,
+                '#ffffff',
+              );
             }
             break;
           }
 
           case 'staff_gourd': {
-            // 독호리병 맹독 기포 파열 (Splashing emerald-violet venom ring + 5 rising poison bubbles!)
-            const vr = slashR * 0.78;
+            // 독호리병 맹독 기포 파열 (Splashing emerald-violet venom crown + glossy bubbles!)
+            const vr = slashR * 0.82;
             ctx.beginPath();
             ctx.arc(inst.x, inst.y, vr, 0, Math.PI * 2);
-            ctx.fillStyle = hexWithAlpha(inst.color, 0.34 * inv);
+            ctx.fillStyle = hexWithAlpha(inst.color, 0.36 * inv);
             ctx.fill();
-            ctx.lineWidth = Math.max(1.4, 3.2 * inv);
+            ctx.lineWidth = Math.max(1.5, 3.4 * inv);
             ctx.strokeStyle = PIXEL_OUTLINE;
             ctx.stroke();
-            ctx.lineWidth = Math.max(1, 1.8 * inv);
+            ctx.lineWidth = Math.max(1, 2.0 * inv);
             ctx.strokeStyle = inst.color;
             ctx.stroke();
 
-            for (let b = 0; b < 5; b++) {
-              const ba = (b * Math.PI * 2) / 5 + p * 1.4;
-              const bx = inst.x + Math.cos(ba) * vr * 0.75;
-              const by = inst.y + Math.sin(ba) * vr * 0.65 - p * 10;
-              const br = Math.max(1.8, (4.2 - (b % 2)) * inv);
+            for (let b = 0; b < 6; b++) {
+              const ba = (b * Math.PI * 2) / 6 + p * 1.5;
+              const bx = inst.x + Math.cos(ba) * vr * (0.68 + (b % 2) * 0.2);
+              const by = inst.y + Math.sin(ba) * vr * 0.62 - p * 12;
+              const br = Math.max(2.0, (4.8 - (b % 2)) * inv);
               ctx.beginPath();
               ctx.arc(bx, by, br, 0, Math.PI * 2);
               ctx.fillStyle = b % 2 === 0 ? inst.color : inst.secondaryColor;
               ctx.fill();
-              ctx.lineWidth = 1.4;
+              ctx.lineWidth = 1.5;
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
+              // Bubble specular highlight
+              ctx.beginPath();
+              ctx.arc(bx - br * 0.3, by - br * 0.3, Math.max(0.8, br * 0.32), 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
             }
             break;
           }
 
           case 'sorcery_qi': {
-            // 마교 혈마구·마염 폭발 (Dark-crimson core implosion + counter-rotating hellfire arcs!)
-            const mr = slashR * 0.85;
+            // 마교 혈마구·마염 폭발 (Dark-crimson void core + jagged hellfire lightning + arcs!)
+            const mr = slashR * 0.9;
             ctx.beginPath();
-            ctx.arc(inst.x, inst.y, mr * 0.42, 0, Math.PI * 2);
+            ctx.arc(inst.x, inst.y, mr * 0.44, 0, Math.PI * 2);
             ctx.fillStyle = PIXEL_OUTLINE;
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(inst.x, inst.y, mr * 0.26, 0, Math.PI * 2);
+            ctx.arc(inst.x, inst.y, mr * 0.28, 0, Math.PI * 2);
             ctx.fillStyle = '#fde047';
             ctx.fill();
 
             for (let ring = 0; ring < 2; ring++) {
-              const aStart = (ring === 0 ? 1 : -1) * p * 5 + ring * Math.PI;
+              const aStart = (ring === 0 ? 1 : -1) * p * 5.2 + ring * Math.PI;
               ctx.beginPath();
-              ctx.arc(inst.x, inst.y, mr * (0.72 + ring * 0.24), aStart, aStart + Math.PI * 1.25);
+              ctx.arc(inst.x, inst.y, mr * (0.7 + ring * 0.26), aStart, aStart + Math.PI * 1.28);
               ctx.lineCap = 'round';
-              ctx.lineWidth = Math.max(1.4, 4.4 * inv);
+              ctx.lineWidth = Math.max(1.5, 4.6 * inv);
               ctx.strokeStyle = PIXEL_OUTLINE;
               ctx.stroke();
-              ctx.lineWidth = Math.max(1, 2.2 * inv);
+              ctx.lineWidth = Math.max(1, 2.3 * inv);
               ctx.strokeStyle = ring === 0 ? inst.color : inst.secondaryColor;
+              ctx.stroke();
+            }
+
+            // 4 jagged demonic crackle arcs radiating outward
+            for (let j = 0; j < 4; j++) {
+              const ja = aimAng + (j * Math.PI) / 2 + 0.4;
+              const jx1 = inst.x + Math.cos(ja + 0.25) * mr * 0.56;
+              const jy1 = inst.y + Math.sin(ja + 0.25) * mr * 0.56;
+              const jx2 = inst.x + Math.cos(ja - 0.12) * mr * 1.12;
+              const jy2 = inst.y + Math.sin(ja - 0.12) * mr * 1.12;
+              ctx.beginPath();
+              ctx.moveTo(inst.x, inst.y);
+              ctx.lineTo(jx1, jy1);
+              ctx.lineTo(jx2, jy2);
+              ctx.lineWidth = Math.max(1, 2.0 * inv);
+              ctx.strokeStyle = j % 2 === 0 ? '#ffffff' : inst.secondaryColor;
               ctx.stroke();
             }
             break;
@@ -1263,34 +1457,51 @@ export class VfxSystem {
 
           case 'sword':
           default: {
-            // 정통 명검 일섬 (Crisp diagonal Wuxia sword cut + optional heavy cross-flash!)
-            const cutAng =
-              aimAng + (((inst.startTick + Math.round(inst.x)) & 1) === 0 ? 0.34 : -0.34);
-            strokeCut(cutAng, slashR * 1.08, inst.lineWidth + 4.4, PIXEL_OUTLINE);
-            strokeCut(cutAng, slashR * 1.08, inst.lineWidth + 1.2, inst.color);
-            strokeCut(cutAng, slashR * 0.84, 2.2, '#ffffff');
+            // 정통 명검 일섬 (Curved calligraphic sword cut + heavy X-cross flash & outer shock-arc!)
+            const flip = ((inst.startTick + Math.round(inst.x)) & 1) === 0 ? 1 : -1;
+            const cutAng = aimAng + flip * 0.36;
+            drawTaperedSlash(
+              inst.x,
+              inst.y,
+              cutAng,
+              slashR * 1.22,
+              inst.lineWidth * 1.65,
+              flip * 6.2,
+              inst.color,
+              '#ffffff',
+            );
 
             if (isHeavy) {
-              const crossAng = cutAng + Math.PI * 0.52;
-              strokeCut(crossAng, slashR * 0.74, inst.lineWidth + 3.2, PIXEL_OUTLINE);
-              strokeCut(crossAng, slashR * 0.74, inst.lineWidth, inst.secondaryColor);
-              strokeCut(crossAng, slashR * 0.58, 1.8, '#fffbeb');
+              const crossAng = cutAng + Math.PI * 0.54;
+              drawTaperedSlash(
+                inst.x,
+                inst.y,
+                crossAng,
+                slashR * 0.92,
+                inst.lineWidth * 1.32,
+                -flip * 4.5,
+                inst.secondaryColor,
+                '#fffbeb',
+              );
             }
             break;
           }
         }
 
-        // Sharp central impact star glint during initial hit frames
-        if (p < 0.5) {
-          const starInv = 1 - p / 0.5;
-          const sr = (isHeavy ? 12 : 8) * starInv;
-          ctx.beginPath();
-          ctx.arc(inst.x, inst.y, sr * 0.52, 0, Math.PI * 2);
-          ctx.fillStyle = '#ffffff';
-          ctx.fill();
-          ctx.lineWidth = 1.8;
-          ctx.strokeStyle = PIXEL_OUTLINE;
-          ctx.stroke();
+        // Sharp 4-point concave anime/Wuxia impact starburst flare during initial hit frames
+        if (p < 0.56) {
+          const starInv = 1 - p / 0.56;
+          const majorR = (isHeavy ? 22 : 14) * starInv;
+          const minorR = (isHeavy ? 11 : 7) * starInv;
+          drawImpactStar(inst.x, inst.y, aimAng, majorR, minorR, '#ffffff');
+          if (isHeavy && p < 0.36) {
+            const flashRingR = slashR * (0.45 + (p / 0.36) * 0.55);
+            ctx.beginPath();
+            ctx.arc(inst.x, inst.y, flashRingR, 0, Math.PI * 2);
+            ctx.lineWidth = Math.max(1.2, 2.4 * (1 - p / 0.36));
+            ctx.strokeStyle = '#fffbeb';
+            ctx.stroke();
+          }
         }
         break;
       }
@@ -1373,6 +1584,38 @@ export class VfxSystem {
       this.pGravity[idx] = gravity;
       this.pSize[idx] = 2.8 + (i % 3) * 1.2;
       this.pColor[idx] = color;
+    }
+  }
+
+  private emitDirectionalSparks(
+    x: number,
+    y: number,
+    baseAngle: number,
+    color: string,
+    count: number,
+    speed: number,
+    lifeSec: number,
+    startTick: number,
+  ): void {
+    const mid = (count - 1) * 0.5;
+    for (let i = 0; i < count; i++) {
+      const idx = this.particleCursor;
+      this.particleCursor = (this.particleCursor + 1) % MAX_PARTICLES;
+
+      const spread = (i - mid) * 0.24 + (((startTick + i * 7) % 5) - 2) * 0.05;
+      const angle = baseAngle + spread;
+      const spdScale = 0.78 + ((i * 5 + startTick) % 7) * 0.065;
+
+      this.pActive[idx] = 1;
+      this.pStartTick[idx] = startTick;
+      this.pLifeSec[idx] = lifeSec;
+      this.pOriginX[idx] = x;
+      this.pOriginY[idx] = y;
+      this.pVx[idx] = Math.cos(angle) * speed * spdScale;
+      this.pVy[idx] = Math.sin(angle) * speed * spdScale;
+      this.pGravity[idx] = 26;
+      this.pSize[idx] = 2.6 + (i % 2) * 1.1;
+      this.pColor[idx] = i % 3 === 0 ? '#ffffff' : color;
     }
   }
 
@@ -1608,18 +1851,68 @@ export class VfxSystem {
       const p = elapsed / life;
       const inv = 1 - p;
       const drag = 1 - p * 0.32;
-      const x = this.pOriginX[i]! + this.pVx[i]! * elapsed * drag;
-      const y =
-        this.pOriginY[i]! +
-        this.pVy[i]! * elapsed * drag +
-        0.5 * this.pGravity[i]! * elapsed * elapsed;
-      const size = this.pSize[i]! * (0.45 + inv * 0.72);
+      const vx = this.pVx[i]!;
+      const vy = this.pVy[i]!;
+      const grav = this.pGravity[i]!;
+      const x = this.pOriginX[i]! + vx * elapsed * drag;
+      const y = this.pOriginY[i]! + vy * elapsed * drag + 0.5 * grav * elapsed * elapsed;
+      const size = this.pSize[i]! * (0.42 + inv * 0.74);
 
-      ctx.globalAlpha = inv * 0.95;
-      ctx.fillStyle = PIXEL_OUTLINE;
-      ctx.fillRect(x - size - 1, y - size - 1, size * 2 + 2, size * 2 + 2);
-      ctx.fillStyle = this.pColor[i]!;
-      ctx.fillRect(x - size, y - size, size * 2, size * 2);
+      // Instantaneous velocity direction for kinetic spark streaks (zero save()/restore()!)
+      const curVx = vx * (1 - p * 0.64);
+      const curVy = vy * (1 - p * 0.64) + grav * elapsed;
+      const spd = Math.hypot(curVx, curVy);
+
+      ctx.globalAlpha = inv * 0.96;
+      if (spd > 52) {
+        const ux = curVx / spd;
+        const uy = curVy / spd;
+        const px = -uy;
+        const py = ux;
+        const lenF = size * Math.min(3.1, 1.35 + spd * 0.0085);
+        const lenB = lenF * 1.15;
+        const w = size * 0.76;
+        const pad = 1.15;
+
+        // Crisp ink-outlined tapered spark streak
+        ctx.beginPath();
+        ctx.moveTo(x + ux * (lenF + pad), y + uy * (lenF + pad));
+        ctx.lineTo(x + px * (w + pad), y + py * (w + pad));
+        ctx.lineTo(x - ux * (lenB + pad), y - uy * (lenB + pad));
+        ctx.lineTo(x - px * (w + pad), y - py * (w + pad));
+        ctx.closePath();
+        ctx.fillStyle = PIXEL_OUTLINE;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(x + ux * lenF, y + uy * lenF);
+        ctx.lineTo(x + px * w, y + py * w);
+        ctx.lineTo(x - ux * lenB, y - uy * lenB);
+        ctx.lineTo(x - px * w, y - py * w);
+        ctx.closePath();
+        ctx.fillStyle = this.pColor[i]!;
+        ctx.fill();
+      } else {
+        // Crisp ink-outlined floating ember diamond
+        const d = size * 1.18;
+        ctx.beginPath();
+        ctx.moveTo(x, y - d - 1.1);
+        ctx.lineTo(x + d + 1.1, y);
+        ctx.lineTo(x, y + d + 1.1);
+        ctx.lineTo(x - d - 1.1, y);
+        ctx.closePath();
+        ctx.fillStyle = PIXEL_OUTLINE;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(x, y - d);
+        ctx.lineTo(x + d, y);
+        ctx.lineTo(x, y + d);
+        ctx.lineTo(x - d, y);
+        ctx.closePath();
+        ctx.fillStyle = this.pColor[i]!;
+        ctx.fill();
+      }
     }
 
     ctx.globalAlpha = prevAlpha;
@@ -1667,12 +1960,12 @@ export class VfxSystem {
       if (!item.active) continue;
       const hasPassive = item.passiveProc !== null;
       const life = item.isCrit
-        ? 0.82
+        ? 0.84
         : hasPassive
-          ? 0.78
+          ? 0.8
           : item.isShred || item.isSkill
-            ? 0.7
-            : 0.58;
+            ? 0.72
+            : 0.6;
       const elapsed = this.currentSimTimeSec - item.startTick * TICK_DT;
       if (elapsed >= life || elapsed < 0) {
         item.active = false;
@@ -1680,28 +1973,30 @@ export class VfxSystem {
       }
       const p = elapsed / life;
       const rawDrawX = item.x + item.offsetX + item.driftVx * elapsed;
-      const riseDist = item.isCrit || hasPassive ? 46 : item.isShred || item.isSkill ? 36 : 28;
-      const riseY = item.y - easeOutCubic(p) * riseDist;
+      const riseDist = item.isCrit || hasPassive ? 50 : item.isShred || item.isSkill ? 38 : 30;
+      // Snappy ballistic arc impulse on initial frames, settling cleanly upward
+      const popArc = Math.sin(Math.min(1, p * 2.4) * Math.PI) * (item.isCrit ? 7 : 3.5);
+      const riseY = item.y - easeOutCubic(p) * riseDist - popArc;
       const fade = p < 0.72 ? 1 : 1 - (p - 0.72) / 0.28;
 
       let scale: number;
       if (item.isCrit) {
         scale =
-          p < 0.13
-            ? 0.78 + (p / 0.13) * 0.48
-            : p < 0.28
-              ? 1.26 - ((p - 0.13) / 0.15) * 0.34
-              : 0.92 - (p - 0.28) * 0.08;
+          p < 0.11
+            ? 0.82 + (p / 0.11) * 0.54
+            : p < 0.26
+              ? 1.36 - ((p - 0.11) / 0.15) * 0.42
+              : 0.94 - (p - 0.26) * 0.08;
       } else if (hasPassive || item.isShred || item.isSkill) {
         scale =
-          p < 0.14
-            ? 0.64 + (p / 0.14) * 0.34
-            : 0.98 - Math.min(0.18, (p - 0.14) * 0.28);
+          p < 0.13
+            ? 0.66 + (p / 0.13) * 0.38
+            : 1.04 - Math.min(0.2, (p - 0.13) * 0.32);
       } else {
         scale =
-          p < 0.14
-            ? 0.52 + (p / 0.14) * 0.24
-            : 0.76 - Math.min(0.16, (p - 0.14) * 0.28);
+          p < 0.13
+            ? 0.54 + (p / 0.13) * 0.25
+            : 0.79 - Math.min(0.17, (p - 0.13) * 0.28);
       }
 
       const formatted = formatDamageValue(item.value);
@@ -1715,6 +2010,21 @@ export class VfxSystem {
           : item.isSkill || hasPassive
             ? 'skill'
             : 'normal';
+
+      // Comic/Wuxia jagged impact starburst backdrop behind Critical / Armor-Shred hits!
+      if ((item.isCrit || item.isShred) && p < 0.4) {
+        const bp = p / 0.4;
+        const burstScale = (0.52 + easeOutCubic(bp) * 0.36) * Math.min(1.15, scale);
+        const burstSprite = item.isCrit
+          ? this.sprites.critBurst('#ea580c', '#fef08a')
+          : this.sprites.critBurst('#9333ea', '#f0abfc');
+        const bw = burstSprite.width * burstScale;
+        const bh = burstSprite.height * burstScale;
+        ctx.globalAlpha = prevAlpha * (1 - bp) * 0.85;
+        ctx.drawImage(burstSprite, drawX - bw * 0.5, riseY - bh * 0.5, bw, bh);
+        ctx.globalAlpha = prevAlpha;
+      }
+
       this.sprites.drawGlyphString(ctx, label, drawX, riseY, scale, fade, style);
 
       // Pre-rendered mini Wuxia stamp above passive proc / critical / armor-broken / heavy kill hits
@@ -1732,11 +2042,11 @@ export class VfxSystem {
                   : null;
       if (badgeKind) {
         const badge = this.sprites.hitBadge(badgeKind);
-        const bScale = (item.isCrit || hasPassive ? 0.56 : 0.48) * Math.min(1.08, scale / 0.8);
+        const bScale = (item.isCrit || hasPassive ? 0.58 : 0.49) * Math.min(1.08, scale / 0.8);
         const bw = badge.width * bScale;
         const bh = badge.height * bScale;
         ctx.globalAlpha = prevAlpha * Math.max(0, Math.min(1, fade * 0.96));
-        ctx.drawImage(badge, drawX - bw * 0.5, riseY - 23 * scale - bh * 0.75, bw, bh);
+        ctx.drawImage(badge, drawX - bw * 0.5, riseY - 24 * scale - bh * 0.75, bw, bh);
       }
     }
 
