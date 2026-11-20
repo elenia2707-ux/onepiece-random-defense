@@ -62,10 +62,10 @@ export default defineConfig({
         background_color: '#0d3632',
         theme_color: '#0d3632',
         icons: [
-          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icons/icon-192.png?v=4', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/icon-512.png?v=4', sizes: '512x512', type: 'image/png' },
           {
-            src: 'icons/icon-512-maskable.png',
+            src: 'icons/icon-512-maskable.png?v=4',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
