@@ -217,12 +217,15 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     expect(() => new RecipeGraph(data.units, data.gradesById, dupRecipes)).toThrow(/\[R5\]/);
   });
 
-  it('validates v3.2 armaments.json (6 Divine Armaments across all 3 factions) and v3.3 Four Symbols Boss waves', async () => {
+  it('validates v3.2/v4.3 armaments.json (12 Divine Armaments, 4:4:4 across all 3 factions) and v3.3 Four Symbols Boss waves', async () => {
     const { validateArmaments } = await import('../../src/data/loader');
     const data = loadGameData();
-    expect(data.armaments).toHaveLength(6);
+    expect(data.armaments).toHaveLength(12);
     const factions = new Set(data.armaments.map((a) => a.resonance.faction));
     expect(factions).toEqual(new Set(['orthodox', 'unorthodox', 'demonic']));
+    expect(data.armaments.filter((a) => a.resonance.faction === 'orthodox')).toHaveLength(4);
+    expect(data.armaments.filter((a) => a.resonance.faction === 'unorthodox')).toHaveLength(4);
+    expect(data.armaments.filter((a) => a.resonance.faction === 'demonic')).toHaveLength(4);
 
     // Duplicate armament id rejected
     expect(() => validateArmaments([data.armaments[0], data.armaments[0], data.armaments[1]])).toThrow(

@@ -20,7 +20,12 @@ import {
 } from '../core/Simulation';
 import { ticksToClock } from '../core/time';
 import { CONTRACTS_BY_ID } from '../data/contracts';
-import type { RunModeId } from '../data/specialModes';
+import {
+  type ChronicleId,
+  CHRONICLES_BY_ID,
+  type CommandSkillId,
+  type RunModeId,
+} from '../data/specialModes';
 import type { RecipeGraph } from '../craft/RecipeGraph';
 import type {
   BoonId,
@@ -124,6 +129,7 @@ export interface UIControlHandlers {
   onSelectTrial(trialId: TrialId | null): boolean;
   onSelectAscensionLevel(level: number): boolean;
   onSelectRunMode(mode: RunModeId): boolean;
+  onSelectChronicle(chronicleId: ChronicleId): boolean;
   onEnterEndless(): void;
   onRestart(): void;
   onSettleAndRestart(): void;
@@ -241,6 +247,13 @@ export class UIManager {
   private unitSellBtnEl!: HTMLButtonElement;
   private selectedBestAscendRecipe: { readonly recipeId: string; readonly chain: boolean } | null =
     null;
+
+  private commandSkillBarEl!: HTMLElement;
+  private cmdQiFillEl!: HTMLElement;
+  private cmdQiValEl!: HTMLElement;
+  private cmdSkillBtnEls!: Record<CommandSkillId, HTMLButtonElement>;
+  private cmdSkillMetaEls!: Record<CommandSkillId, HTMLElement>;
+  private prevCmdBarSig = '';
 
   private coinValEl!: HTMLElement;
   private luckValEl!: HTMLElement;
@@ -575,6 +588,20 @@ export class UIManager {
     this.unitLockBtnEl = this.mustGet('btn-unit-lock') as HTMLButtonElement;
     this.unitSellBtnEl = this.mustGet('btn-unit-sell') as HTMLButtonElement;
 
+    this.commandSkillBarEl = this.mustGet('command-skill-bar');
+    this.cmdQiFillEl = this.mustGet('cmd-qi-fill');
+    this.cmdQiValEl = this.mustGet('cmd-qi-val');
+    this.cmdSkillBtnEls = {
+      cmd_sword_barrage: this.mustGet('btn-cmd-sword') as HTMLButtonElement,
+      cmd_bagua_bind: this.mustGet('btn-cmd-bagua') as HTMLButtonElement,
+      cmd_heaven_cannon: this.mustGet('btn-cmd-cannon') as HTMLButtonElement,
+    };
+    this.cmdSkillMetaEls = {
+      cmd_sword_barrage: this.mustGet('cmd-meta-sword'),
+      cmd_bagua_bind: this.mustGet('cmd-meta-bagua'),
+      cmd_heaven_cannon: this.mustGet('cmd-meta-cannon'),
+    };
+
     this.coinValEl = this.mustGet('val-coin');
     this.luckValEl = this.mustGet('val-luck');
     this.wispValEl = this.mustGet('val-wisp');
@@ -661,6 +688,12 @@ export class UIManager {
   private bindEvents(): void {
     this.waveBoxEl.addEventListener('click', () => this.toggleSheet('codex'));
     this.relicBtnEl.addEventListener('click', () => this.toggleSheet('relic'));
+    this.commandSkillBarEl.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-cmd-skill]');
+      const skillId = btn?.dataset.cmdSkill as CommandSkillId | undefined;
+      if (!skillId) return;
+      this.handlers.onDispatch({ type: 'castCommandSkill', skillId });
+    });
     this.relicBuffStripEl.addEventListener('click', (ev) => {
       const targetEl = ev.target as HTMLElement | null;
       if (targetEl?.closest('[data-open-sect]')) {
@@ -1154,6 +1187,11 @@ export class UIManager {
         }
       } else if (action === 'forge-armament') {
         this.handlers.onDispatch({ type: 'forgeArmament' });
+      } else if (action === 'temper-armament') {
+        const slotIndex = Number(btn.dataset.slotIndex ?? '-1');
+        if (slotIndex >= 0) {
+          this.handlers.onDispatch({ type: 'temperArmament', slotIndex });
+        }
       } else if (action === 'reforge-armament') {
         const slotIndex = Number(btn.dataset.slotIndex ?? '-1');
         if (slotIndex >= 0) {
@@ -1624,6 +1662,22 @@ export class UIManager {
         if (!ok) {
           this.showToast('전환할 수 없는 출정 모드입니다.', true);
         }
+      } else if (action === 'select-chronicle') {
+        const chronicleId = btn.dataset.chronicleId as ChronicleId | undefined;
+        if (!chronicleId) return;
+        const ch = CHRONICLES_BY_ID.get(chronicleId);
+        if (
+          this.lastSnapshot &&
+          this.lastSnapshot.runMode === 'chronicle' &&
+          this.lastSnapshot.chronicle?.id === chronicleId
+        ) {
+          this.showToast(`현재 [${ch?.name ?? chronicleId}] 강호 전기 출정 중입니다.`);
+          return;
+        }
+        const ok = this.handlers.onSelectChronicle(chronicleId);
+        if (!ok) {
+          this.showToast('선택할 수 없는 강호 전기 챕터입니다.', true);
+        }
       } else if (action === 'claim-codex-milestone') {
         const target = Number(btn.dataset.codexTarget ?? '0');
         if (!target) return;
@@ -1807,8 +1861,15 @@ export class UIManager {
     this.waveBoxEl.classList.toggle('trial-mode', trialCfg !== null);
     this.waveBoxEl.classList.toggle('daily-mode', snapshot.runMode === 'daily_challenge');
     this.waveBoxEl.classList.toggle('boss-rush-mode', snapshot.runMode === 'boss_rush');
+    this.waveBoxEl.classList.toggle('chronicle-mode', snapshot.runMode === 'chronicle');
     const prefix = snapshot.isBossWave ? '영물' : snapshot.endlessMode ? '혈투' : '제';
-    if (snapshot.runMode === 'boss_rush') {
+    if (snapshot.runMode === 'chronicle' && snapshot.chronicle) {
+      const targetStr = String(snapshot.clearTargetWave).padStart(2, '0');
+      const rightTag = snapshot.waveMutant
+        ? snapshot.waveMutant.badge
+        : `제${snapshot.chronicle.chapterNo}전`;
+      this.setText(this.waveBadgeEl, `📜 ${waveStr}/${targetStr}장 · ${rightTag}`);
+    } else if (snapshot.runMode === 'boss_rush') {
       const targetStr = String(snapshot.clearTargetWave).padStart(2, '0');
       const stageLabel = snapshot.endlessMode
         ? `무한 ${waveStr}관문`
@@ -1834,12 +1895,15 @@ export class UIManager {
       this.setText(this.waveBadgeEl, `${prefix} ${waveStr}장 · ${waveRight}`);
     }
     this.setText(this.waveTimerEl, ticksToClock(snapshot.waveTicksLeft));
+    const nextWaveHasBoss = snapshot.chronicle
+      ? Boolean(snapshot.chronicle.bossSchedule[snapshot.wave + 1])
+      : (snapshot.wave + 1) % 5 === 0;
     if (
       snapshot.runMode !== 'boss_rush' &&
       !snapshot.isBossWave &&
       !snapshot.gameOver &&
       !snapshot.victoryHold &&
-      (snapshot.wave + 1) % 5 === 0 &&
+      nextWaveHasBoss &&
       snapshot.waveTicksLeft > 0 &&
       snapshot.waveTicksLeft <= 300 &&
       this.lastBossPreWarnWave !== snapshot.wave
@@ -2134,7 +2198,8 @@ export class UIManager {
       this.showToast(snapshot.rejects[i]!.reason, true);
     }
 
-    // 4. Drag discard zone, selected unit bar & recommended ascension bar
+    // 4. Command Skill bar, Drag discard zone, selected unit bar & recommended ascension bar
+    this.refreshCommandSkillBar(snapshot);
     this.refreshDragDiscardZone(snapshot);
     this.refreshSelectedUnitBar(snapshot);
     this.refreshRecommendBar(snapshot);
@@ -2155,6 +2220,35 @@ export class UIManager {
 
     // 8. Interactive First-Run Tutorial Coach
     this.tutorial.sync(snapshot, this.isTutorialBlocked());
+  }
+
+  private refreshCommandSkillBar(snapshot: UISnapshot): void {
+    const cs = snapshot.commandSkills;
+    const sig = `${cs.qi}:${cs.skills.map((s) => `${s.id}:${s.canCast ? 1 : 0}:${Math.ceil(s.cooldownLeftTicks / 30)}:${Math.ceil(s.activeTicksLeft / 30)}`).join(',')}`;
+    if (sig === this.prevCmdBarSig) return;
+    this.prevCmdBarSig = sig;
+
+    const pct = Math.min(100, Math.max(0, Math.round((cs.qi / Math.max(1, cs.maxQi)) * 100)));
+    this.cmdQiFillEl.style.width = `${pct}%`;
+    this.setText(this.cmdQiValEl, String(cs.qi));
+
+    for (let i = 0; i < cs.skills.length; i++) {
+      const sk = cs.skills[i]!;
+      const btn = this.cmdSkillBtnEls[sk.id];
+      const metaEl = this.cmdSkillMetaEls[sk.id];
+      if (!btn || !metaEl) continue;
+      const isActive = sk.activeTicksLeft > 0;
+      const onCd = sk.cooldownLeftTicks > 0;
+      btn.classList.toggle('ready', sk.canCast && !isActive);
+      btn.classList.toggle('is-active', isActive);
+      btn.classList.toggle('on-cd', onCd && !isActive);
+      const metaTxt = isActive
+        ? `${Math.ceil(sk.activeTicksLeft / 30)}s`
+        : onCd
+          ? `${Math.ceil(sk.cooldownLeftTicks / 30)}s`
+          : String(sk.qiCost);
+      this.setText(metaEl, metaTxt);
+    }
   }
 
   public openSectModal(): void {
@@ -2423,7 +2517,18 @@ export class UIManager {
     this.gameOverCardEl.classList.toggle('victory-theme', showVictory || snapshot.victoryAchieved);
 
     if (showVictory) {
-      if (snapshot.runMode === 'daily_challenge' && snapshot.dailyChallenge) {
+      if (snapshot.runMode === 'chronicle' && snapshot.chronicle) {
+        const ch = snapshot.chronicle;
+        this.setText(
+          this.gameOverTitleEl,
+          `📜 강호 전기 제${ch.chapterNo}전 제패 · 출정 정산`,
+        );
+        this.setText(
+          this.gameOverSubEl,
+          `${ch.name} (${ch.targetWave}장) 완전 정복! (마물 ${snapshot.monstersSlain}기 토벌)`,
+        );
+        this.gameOverEndlessBtnEl.style.display = 'none';
+      } else if (snapshot.runMode === 'daily_challenge' && snapshot.dailyChallenge) {
         this.setText(this.gameOverTitleEl, '📅 오늘의 강호 비무 제패 · 출정 정산');
         this.setText(
           this.gameOverSubEl,
@@ -2473,13 +2578,15 @@ export class UIManager {
           ? '제한시간 초과'
           : `마물 ${snapshot.monsterCap}기 돌파`;
       const modeTag =
-        snapshot.runMode === 'daily_challenge'
-          ? '[📅 오늘의 비무] · '
-          : snapshot.runMode === 'boss_rush'
-            ? '[⚔ 보스 러시] · '
-            : trialCfg
-              ? `[${trialCfg.badge}] · `
-              : '';
+        snapshot.runMode === 'chronicle' && snapshot.chronicle
+          ? `[📜 제${snapshot.chronicle.chapterNo}전] · `
+          : snapshot.runMode === 'daily_challenge'
+            ? '[📅 오늘의 비무] · '
+            : snapshot.runMode === 'boss_rush'
+              ? '[⚔ 보스 러시] · '
+              : trialCfg
+                ? `[${trialCfg.badge}] · `
+                : '';
       const reachTxt =
         snapshot.runMode === 'boss_rush'
           ? `제 ${snapshot.wave} 관문 도달`
@@ -3007,13 +3114,13 @@ export class UIManager {
     const canAffordAwaken =
       slotView.awakenCost !== null && snapshot.coin >= slotView.awakenCost;
     const armSig = snapshot.armory.slots
-      .map((s) => `${s.slotIndex}:${s.armamentId}:${s.equippedUid ?? 0}`)
+      .map((s) => `${s.slotIndex}:${s.armamentId}:${s.equippedUid ?? 0}:${s.temperLevel}`)
       .join(',');
     const canForgeNow =
       snapshot.armory.nextForgeCost !== null &&
       snapshot.coin >= snapshot.armory.nextForgeCost.coin &&
       snapshot.luckStone >= snapshot.armory.nextForgeCost.luck;
-    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${armSig}:${canForgeNow ? 1 : 0}:${snapshot.primordialUnlocked ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
+    const sig = `${meta.rev}:${slotView.uid}:${slotView.locked}:${slotView.starLevel}:${canAffordAwaken ? 1 : 0}:${slotView.bonusAtk}:${slotView.tileBuffAtkPct}:${slotView.tileBuffSpeedPct}:${slotView.spiritTile ?? ''}:${slotView.sealed ? 1 : 0}:${slotView.hazardWarning ? 1 : 0}:${armSig}:${canForgeNow ? 1 : 0}:${snapshot.primordialUnlocked ? 1 : 0}:${sel.area}:${sel.index}:${snapshot.craft.rev}`;
     if (sig === this.prevSelectSignature) {
       return;
     }
@@ -3039,7 +3146,13 @@ export class UIManager {
     this.unitFactionPillEl.textContent = fMeta.label;
     this.unitFactionPillEl.style.backgroundColor = fMeta.color;
     const starSuffix = slotView.starLevel > 0 ? ` ${'★'.repeat(slotView.starLevel)}` : '';
-    const armPrefix = slotView.equippedArmament ? `🗡[${slotView.equippedArmament.badge}] ` : '';
+    const armTemperTag =
+      slotView.equippedArmament && slotView.equippedArmament.temperLevel > 0
+        ? `+${slotView.equippedArmament.temperLevel}`
+        : '';
+    const armPrefix = slotView.equippedArmament
+      ? `🗡[${slotView.equippedArmament.badge}${armTemperTag}] `
+      : '';
     this.unitNameEl.textContent = `${armPrefix}${slotView.name}${starSuffix}`;
 
     const atkText =
@@ -3074,6 +3187,16 @@ export class UIManager {
       this.unitShortcutsEl.appendChild(warnChip);
     }
 
+    if (slotView.spiritTile) {
+      const spiritChip = document.createElement('span');
+      spiritChip.className = `shortcut-chip spirit-chip ${slotView.spiritTile}`;
+      spiritChip.textContent =
+        slotView.spiritTile === 'solar'
+          ? '☀ 화양혈 영맥 · 외공+16% · 절기+16%'
+          : '🍃 청풍혈 영맥 · 공속+16% · 사거리+34';
+      this.unitShortcutsEl.appendChild(spiritChip);
+    }
+
     // Divine Armament quick-equip / unequip chips right on the selected hero bar!
     if (slotView.equippedArmament) {
       const eqBtn = document.createElement('button');
@@ -3082,7 +3205,11 @@ export class UIManager {
       eqBtn.dataset.shortcutArmSlot = String(slotView.equippedArmament.slotIndex);
       eqBtn.dataset.targetUid = '';
       const resTag = slotView.equippedArmament.resonanceActive ? ' · ✦공명' : '';
-      eqBtn.textContent = `🗡 ${slotView.equippedArmament.name}${resTag} (해제)`;
+      const tTag =
+        slotView.equippedArmament.temperLevel > 0
+          ? ` +${slotView.equippedArmament.temperLevel}강`
+          : '';
+      eqBtn.textContent = `🗡 ${slotView.equippedArmament.name}${tTag}${resTag} (해제)`;
       this.unitShortcutsEl.appendChild(eqBtn);
     }
     for (let i = 0; i < snapshot.armory.slots.length; i++) {
@@ -3096,7 +3223,8 @@ export class UIManager {
       eqBtn.dataset.shortcutArmSlot = String(aSlot.slotIndex);
       eqBtn.dataset.targetUid = String(slotView.uid);
       const willResonate = aDef.resonance.faction === slotView.faction;
-      eqBtn.textContent = `🗡 [${aDef.badge}] 수여${willResonate ? '✦공명' : ''}`;
+      const tTag = aSlot.temperLevel > 0 ? `+${aSlot.temperLevel}` : '';
+      eqBtn.textContent = `🗡 [${aDef.badge}${tTag}] 수여${willResonate ? '✦공명' : ''}`;
       this.unitShortcutsEl.appendChild(eqBtn);
     }
     if (snapshot.armory.slots.length === 0 && canForgeNow) {
@@ -3266,14 +3394,17 @@ export class UIManager {
       sig = `gamble:${meta.rev}:${snapshot.luckStone}:${snapshot.lastGambleResult?.seq ?? 0}:${snapshot.relicBonus.gambleBonusPct}:${totalSlotsUsed}`;
     } else if (kind === 'upgrade') {
       const armSheetSig = snapshot.armory.slots
-        .map((s) => `${s.slotIndex}:${s.armamentId}:${s.equippedUid ?? 0}:${s.resonanceActive ? 1 : 0}`)
+        .map(
+          (s) =>
+            `${s.slotIndex}:${s.armamentId}:${s.equippedUid ?? 0}:${s.resonanceActive ? 1 : 0}:${s.temperLevel}`,
+        )
         .join(',');
       const selUid = this.getSelectedSlotView(snapshot)?.uid ?? 0;
       sig = `upgrade:${meta.rev}:${snapshot.coin}:${snapshot.luckStone}:${snapshot.upgradeLv.orthodox}:${snapshot.upgradeLv.unorthodox}:${snapshot.upgradeLv.demonic}:${armSheetSig}:${selUid}:${snapshot.totalBoonStacks}:${meta.keys}:${meta.discoveredCount}`;
     } else if (kind === 'wardrobe') {
       sig = `wardrobe:${this.wardrobeSubTab}:${meta.rev}:${this.lastSkinPull?.seq ?? 0}`;
     } else if (kind === 'codex') {
-      sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.ascensionLevel}:${snapshot.craft.rev}`;
+      sig = `codex:${this.codexFilter}:${meta.rev}:${snapshot.runMode}:${snapshot.chronicle?.id ?? 'none'}:${snapshot.difficulty}:${snapshot.trialId ?? 'std'}:${snapshot.ascensionLevel}:${snapshot.craft.rev}`;
     } else if (kind === 'mission') {
       const dailySig = meta.dailyQuests
         .map((q) => `${q.def.id}=${q.progress}/${q.claimed ? 1 : 0}`)

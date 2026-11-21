@@ -4,8 +4,10 @@ import type { Rng } from '../core/Rng';
 import type { SimEventMap } from '../core/Simulation';
 import {
   BOSS_RUSH_STAGES,
+  type ChronicleChapterDef,
   type DailyRuleDef,
   resolveBossRushWaveDef,
+  resolveChronicleWaveDef,
   type RunModeId,
 } from '../data/specialModes';
 import type {
@@ -81,8 +83,20 @@ export const WAVE_MUTANT_META: Readonly<Record<WaveMutantKind, WaveMutantMeta>> 
   },
 };
 
-export function getWaveMutantKind(waveNum: number, isBoss: boolean): WaveMutantKind | null {
-  if (isBoss || waveNum < 6) return null;
+export function getWaveMutantKind(
+  waveNum: number,
+  isBoss: boolean,
+  customEveryN?: number,
+): WaveMutantKind | null {
+  if (isBoss) return null;
+  if (customEveryN && customEveryN > 0) {
+    if (waveNum < customEveryN || waveNum % customEveryN !== 0) return null;
+    const cycleIdx = Math.floor(waveNum / customEveryN) % 3;
+    if (cycleIdx === 0) return 'iron_wall';
+    if (cycleIdx === 1) return 'swift_raid';
+    return 'blood_swarm';
+  }
+  if (waveNum < 6) return null;
   const rem = waveNum % 5;
   if (rem !== 2 && rem !== 4) return null;
   const cycleIdx = (Math.floor(waveNum / 5) + (rem === 4 ? 1 : 0)) % 3;
@@ -230,6 +244,7 @@ export interface WaveSystemContext {
   readonly trialId: TrialId | null;
   readonly ascensionLevel?: number;
   readonly runMode?: RunModeId;
+  readonly chronicleDef?: ChronicleChapterDef | null;
   readonly dailyRule?: DailyRuleDef | null;
   readonly arenaRule?: ArenaRuleId | null;
   readonly rookieMode?: boolean;
@@ -286,7 +301,9 @@ export function spawnBountyOutlaw(
   const waveDef =
     ctx.runMode === 'boss_rush'
       ? resolveBossRushWaveDef(waveNumber)
-      : resolveWaveDef(ctx.data.waves, waveNumber);
+      : ctx.chronicleDef
+        ? resolveChronicleWaveDef(ctx.data.waves, ctx.chronicleDef, waveNumber)
+        : resolveWaveDef(ctx.data.waves, waveNumber);
   const waveBaseHp = waveDef.monsterHp;
   const hpScale =
     ctx.runMode === 'boss_rush'
@@ -365,7 +382,11 @@ export function spawnBountyOutlaw(
 export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
   const ascLv = ctx.ascensionLevel ?? 0;
   const ascMod =
-    ctx.runMode !== 'boss_rush' && ctx.difficulty === 'abyss' && !ctx.trialId && ascLv > 0
+    ctx.runMode !== 'boss_rush' &&
+    !ctx.chronicleDef &&
+    ctx.difficulty === 'abyss' &&
+    !ctx.trialId &&
+    ascLv > 0
       ? computeAscensionModifiers(ascLv)
       : null;
 
@@ -400,10 +421,15 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
 
   const waveNumber = ctx.getWaveNumber();
   const isBossRush = ctx.runMode === 'boss_rush';
+  const chron = ctx.chronicleDef ?? null;
   const waveDef = isBossRush
     ? resolveBossRushWaveDef(waveNumber)
-    : resolveWaveDef(ctx.data.waves, waveNumber);
-  const mutantKind = isBossRush ? null : getWaveMutantKind(waveNumber, waveDef.isBoss);
+    : chron
+      ? resolveChronicleWaveDef(ctx.data.waves, chron, waveNumber)
+      : resolveWaveDef(ctx.data.waves, waveNumber);
+  const mutantKind = isBossRush
+    ? null
+    : getWaveMutantKind(waveNumber, waveDef.isBoss, chron?.mutantEveryNWaves);
   const mutantMeta = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
   const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
@@ -411,9 +437,10 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
   const hpScale = isBossRush
     ? 1
     : computeWaveHpScale(ctx.data, ctx.difficulty, ctx.trialId, waveNumber, waveDef.isBoss, ascLv);
-  const resolvedBossName = isBossRush
-    ? waveDef.bossName
-    : resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, waveNumber, waveDef);
+  const resolvedBossName =
+    isBossRush || chron
+      ? waveDef.bossName
+      : resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, waveNumber, waveDef);
 
   const effectiveSpawnCount = mutantMeta
     ? Math.max(4, Math.round(waveDef.spawnCount * mutantMeta.countMult))
@@ -427,7 +454,10 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     const startPos = ctx.path.sample(0);
     const dailyHpMult =
       (dailyMod?.monsterHpMult ?? 1) * (waveDef.isBoss ? (dailyMod?.bossHpMult ?? 1) : 1);
-    const hpMult = (mutantMeta ? mutantMeta.hpMult : 1) * dailyHpMult;
+    const chronHpMult = chron
+      ? chron.modifiers.hpMult * (waveDef.isBoss ? chron.modifiers.bossHpMult : 1)
+      : 1;
+    const hpMult = (mutantMeta ? mutantMeta.hpMult : 1) * dailyHpMult * chronHpMult;
     const speedMult =
       (mutantMeta ? mutantMeta.speedMult : 1) *
       (trialCfg ? trialCfg.speedMult : 1) *
@@ -436,7 +466,8 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     const bonusCoin = mutantMeta ? mutantMeta.bonusCoin : 0;
     const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale * hpMult));
 
-    const bossCdMult = trialCfg ? trialCfg.bossCooldownMult : 1;
+    const bossCdMult =
+      (trialCfg ? trialCfg.bossCooldownMult : 1) * (chron ? chron.modifiers.bossCooldownMult : 1);
     const initialSkillDelay = !waveDef.isBoss
       ? 999999999
       : Math.max(
@@ -503,11 +534,51 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     };
     ctx.monsters.push(monster);
 
+    // Chronicle Ch.5 Wave 30 Twin Boss (e.g. 천마신군 + 창궁청룡 합동 결전!)
+    const chronBossEntry = chron?.bossSchedule[waveNumber];
+    if (chronBossEntry?.twinKind && waveDef.isBoss && spawnedInWave === 0) {
+      const twinHp = Math.max(1, Math.round(scaledHp * 0.62));
+      const twinPos = ctx.path.sample(0);
+      const twinBoss: MonsterEntity = {
+        entityId: ctx.allocateMonsterId(),
+        kind: chronBossEntry.twinKind,
+        isBoss: true,
+        bossName: chronBossEntry.twinName ?? `합동강림 · ${resolvedBossName ?? '신수'}`,
+        hp: twinHp,
+        maxHp: twinHp,
+        armor: Math.max(0, armorVal - 10),
+        armorShred: 0,
+        shredExpireTick: 0,
+        shieldHp: 0,
+        shieldMaxHp: 0,
+        shieldExpireTick: 0,
+        hasteUntilTick: 0,
+        nextBossSkillTick: ctx.currentTick + initialSkillDelay + 55,
+        phaseTriggered: false,
+        speedPerTick: waveDef.monsterSpeedPerTick * diffCfg.speedMult * speedMult * 0.94,
+        radius: 23,
+        rewardCoin: Math.max(120, Math.round(waveDef.rewardCoin * 0.7)),
+        spawnTick: ctx.currentTick,
+        stunUntilTick: 0,
+        slowUntilTick: 0,
+        slowFactor: 1,
+        lastHitTick: -100,
+        prevDistance: 0,
+        currDistance: 0,
+        prevX: twinPos.x,
+        prevY: twinPos.y,
+        currX: twinPos.x,
+        currY: twinPos.y,
+      };
+      ctx.monsters.push(twinBoss);
+    }
+
     // Ascension 15중천+: Twin Lieutenant Boss accompanies Main Boss on Wave 15+!
     if (
       ascMod &&
       ascMod.twinBossAtLateWaves &&
       !isBossRush &&
+      !chron &&
       waveDef.isBoss &&
       waveNumber >= 15 &&
       spawnedInWave === 0
@@ -600,7 +671,9 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     ctx.setWaveNumber(nextWaveNum);
     const nextWaveDef = isBossRush
       ? resolveBossRushWaveDef(nextWaveNum)
-      : resolveWaveDef(ctx.data.waves, nextWaveNum);
+      : chron
+        ? resolveChronicleWaveDef(ctx.data.waves, chron, nextWaveNum)
+        : resolveWaveDef(ctx.data.waves, nextWaveNum);
     const rookieBossBonus =
       !isBossRush && ctx.rookieMode && nextWaveDef.isBoss && nextWaveNum <= 10 ? 1.25 : 1;
     ctx.setWaveTicksLeft(Math.round(nextWaveDef.durationTicks * rookieBossBonus));
@@ -630,7 +703,7 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
 
     if (nextWaveDef.isBoss) {
       const nextBossName =
-        (isBossRush
+        (isBossRush || chron
           ? nextWaveDef.bossName
           : resolveTargetBossName(ctx.trialId, ctx.clearTargetWave, nextWaveNum, nextWaveDef)) ??
         '웨이브 보스';
@@ -641,7 +714,7 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
         tick: ctx.currentTick,
       });
     } else {
-      const nextMutant = getWaveMutantKind(nextWaveNum, false);
+      const nextMutant = getWaveMutantKind(nextWaveNum, false, chron?.mutantEveryNWaves);
       if (nextMutant) {
         const meta = WAVE_MUTANT_META[nextMutant];
         ctx.events.emit('wave:mutant', {
@@ -779,7 +852,9 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
 
   const spawnedEscorts: MonsterEntity[] = [];
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
-  const bossCdMult = trialCfg ? trialCfg.bossCooldownMult : 1;
+  const bossCdMult =
+    (trialCfg ? trialCfg.bossCooldownMult : 1) *
+    (ctx.chronicleDef ? ctx.chronicleDef.modifiers.bossCooldownMult : 1);
   const waveNumber = ctx.getWaveNumber();
 
   for (let i = 0; i < ctx.monsters.length; i++) {

@@ -22,9 +22,15 @@ import type { SimEventMap } from '../core/Simulation';
 import { COMBO_SKILLS, type ComboSkillId } from '../data/comboSkills';
 import {
   BOSS_RUSH_STAGES,
+  type ChronicleChapterDef,
   type DailyRuleDef,
   resolveBossRushWaveDef,
+  resolveChronicleWaveDef,
   type RunModeId,
+  SPIRIT_TILE_SOLAR_ATK_PCT,
+  SPIRIT_TILE_SOLAR_SKILL_PCT,
+  SPIRIT_TILE_WIND_RANGE_BONUS,
+  SPIRIT_TILE_WIND_SPEED_PCT,
 } from '../data/specialModes';
 import type {
   ArenaRuleId,
@@ -37,6 +43,7 @@ import type {
   PassiveProcKind,
   RelicId,
   SectDef,
+  SpiritTileSpec,
   TrialId,
   UnitDef,
   UnitId,
@@ -309,6 +316,7 @@ export interface ResolvedArmamentBonuses {
 export function resolveArmamentBonuses(
   arm: ArmamentDef | null | undefined,
   faction: FactionId,
+  temperLevel = 0,
 ): ResolvedArmamentBonuses {
   if (!arm) {
     return {
@@ -325,16 +333,21 @@ export function resolveArmamentBonuses(
     };
   }
   const res = arm.resonance.faction === faction ? arm.resonance : null;
+  const clampedTemper = Math.max(0, Math.min(3, Math.floor(temperLevel)));
+  const mult = 1 + clampedTemper * 0.25;
+  const scaleInt = (v: number): number => (clampedTemper > 0 ? Math.round(v * mult) : v);
+  const scaleFloat = (v: number): number =>
+    clampedTemper > 0 ? Math.round(v * mult * 100) / 100 : v;
   return {
-    atkPct: arm.atkPct + (res?.atkPct ?? 0),
-    speedPct: (arm.speedPct ?? 0) + (res?.speedPct ?? 0),
-    critChanceBps: (arm.critChanceBps ?? 0) + (res?.critChanceBps ?? 0),
-    critMultBonus: (arm.critMultBonus ?? 0) + (res?.critMultBonus ?? 0),
-    armorShred: (arm.armorShred ?? 0) + (res?.armorShred ?? 0),
-    skillDamagePct: (arm.skillDamagePct ?? 0) + (res?.skillDamagePct ?? 0),
-    bossDamagePct: (arm.bossDamagePct ?? 0) + (res?.bossDamagePct ?? 0),
-    splashBonus: arm.splashBonus ?? 0,
-    bonusSlowPct: arm.bonusSlowPct ?? 0,
+    atkPct: scaleInt(arm.atkPct + (res?.atkPct ?? 0)),
+    speedPct: scaleInt((arm.speedPct ?? 0) + (res?.speedPct ?? 0)),
+    critChanceBps: scaleInt((arm.critChanceBps ?? 0) + (res?.critChanceBps ?? 0)),
+    critMultBonus: scaleFloat((arm.critMultBonus ?? 0) + (res?.critMultBonus ?? 0)),
+    armorShred: scaleInt((arm.armorShred ?? 0) + (res?.armorShred ?? 0)),
+    skillDamagePct: scaleInt((arm.skillDamagePct ?? 0) + (res?.skillDamagePct ?? 0)),
+    bossDamagePct: scaleInt((arm.bossDamagePct ?? 0) + (res?.bossDamagePct ?? 0)),
+    splashBonus: scaleInt(arm.splashBonus ?? 0),
+    bonusSlowPct: scaleInt(arm.bonusSlowPct ?? 0),
     resonanceActive: res !== null,
   };
 }
@@ -344,10 +357,13 @@ export interface CombatSystemContext {
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
   readonly runMode?: RunModeId;
+  readonly chronicleDef?: ChronicleChapterDef | null;
   readonly dailyRule?: DailyRuleDef | null;
   readonly arenaRule?: ArenaRuleId | null;
   readonly endgameBonuses?: EndgameMetaBonuses;
   readonly pledgedSectDef?: SectDef | null;
+  readonly spiritTiles?: readonly SpiritTileSpec[];
+  readonly cmdSwordBarrageTicksLeft?: number;
   readonly clearTargetWave: number;
   readonly board: Board;
   readonly rng: Rng;
@@ -368,6 +384,7 @@ export interface CombatSystemContext {
   getBoonStacks(id: BoonId): number;
   isFieldSlotSealed(fieldIndex: number): boolean;
   getUnitArmament?(uid: number): ArmamentDef | null;
+  getUnitArmamentSlot?(uid: number): { readonly def: ArmamentDef; readonly temperLevel: number } | null;
   getUnitEffectiveAtk(
     unitId: UnitId,
     synergy: FactionSynergySnapshot,
@@ -436,6 +453,16 @@ export function stepCombat(ctx: CombatSystemContext): void {
   const rangeMirrorCcPct =
     getRangeMirrorCcPct(ctx.relicLv.dragon_range_mirror ?? 0) + setBonus.ccPct;
 
+  const spiritTileByIndex = new Map<number, SpiritTileSpec['kind']>();
+  if (ctx.spiritTiles) {
+    for (let sIdx = 0; sIdx < ctx.spiritTiles.length; sIdx++) {
+      const st = ctx.spiritTiles[sIdx]!;
+      spiritTileByIndex.set(st.fieldIndex, st.kind);
+    }
+  }
+  const swordBarrageActive = (ctx.cmdSwordBarrageTicksLeft ?? 0) > 0;
+  const chronMod = ctx.chronicleDef?.modifiers;
+
   if (ctx.monsters.length > 0) {
     for (let i = 0; i < ctx.units.length; i++) {
       const u = ctx.units[i]!;
@@ -455,7 +482,12 @@ export function stepCombat(ctx: CombatSystemContext): void {
       const def = ctx.data.unitsById.get(u.unitId);
       if (!def) continue;
 
-      const effectiveRange = def.range + harmonyStacks * 25 + rangeMirrorBonus;
+      const spiritKind = spiritTileByIndex.get(u.slot.index);
+      const effectiveRange =
+        def.range +
+        harmonyStacks * 25 +
+        rangeMirrorBonus +
+        (spiritKind === 'wind' ? SPIRIT_TILE_WIND_RANGE_BONUS : 0);
       const rangeSq = effectiveRange * effectiveRange;
       let bestTarget: MonsterEntity | null = null;
 
@@ -477,8 +509,10 @@ export function stepCombat(ctx: CombatSystemContext): void {
       }
 
       if (bestTarget !== null) {
-        const armDef = ctx.getUnitArmament?.(u.uid) ?? null;
-        const armBonus = resolveArmamentBonuses(armDef, def.faction);
+        const armSlot = ctx.getUnitArmamentSlot?.(u.uid) ?? null;
+        const armDef = armSlot ? armSlot.def : (ctx.getUnitArmament?.(u.uid) ?? null);
+        const armTemper = armSlot ? armSlot.temperLevel : 0;
+        const armBonus = resolveArmamentBonuses(armDef, def.faction, armTemper);
         const sectMatches =
           sectPerk !== undefined && (!sectPerk.faction || sectPerk.faction === def.faction);
         const tileBuff = tileBuffs[u.slot.index] ?? { atkPct: 0, speedPct: 0 };
@@ -503,9 +537,15 @@ export function stepCombat(ctx: CombatSystemContext): void {
           if (trialCfg && trialCfg.unorthodoxSpeedMult !== 1) {
             speedMult *= trialCfg.unorthodoxSpeedMult;
           }
+          if (chronMod?.unorthodoxSpeedPct && chronMod.unorthodoxSpeedPct > 0) {
+            speedMult *= 1 + chronMod.unorthodoxSpeedPct / 100;
+          }
         }
         if (tileBuff.speedPct > 0) {
           speedMult *= 1 + tileBuff.speedPct / 100;
+        }
+        if (spiritKind === 'wind') {
+          speedMult *= 1 + SPIRIT_TILE_WIND_SPEED_PCT / 100;
         }
         const starSpeedPct = getStarSpeedPct(u.starLevel ?? 0);
         if (starSpeedPct > 0) {
@@ -520,6 +560,9 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const dailyFacSpd = ctx.dailyRule?.modifiers.factionSpeedMult?.[def.faction];
         if (dailyFacSpd !== undefined && dailyFacSpd !== 1) {
           speedMult *= dailyFacSpd;
+        }
+        if (swordBarrageActive) {
+          speedMult *= 1.45;
         }
         u.cooldownTicks = Math.max(1, Math.round(def.attackIntervalTicks / speedMult));
         u.attackCount++;
@@ -536,10 +579,11 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const gradeColor = armDef?.color ?? gradeDef.color;
         const gradeRank = gradeDef.rank;
 
+        const solarAtkBonus = spiritKind === 'solar' ? SPIRIT_TILE_SOLAR_ATK_PCT : 0;
         const { baseAtk, bonusAtk } = ctx.getUnitEffectiveAtk(
           u.unitId,
           synergy,
-          tileBuff.atkPct,
+          tileBuff.atkPct + solarAtkBonus,
           u.starLevel ?? 0,
           armBonus.atkPct,
         );
@@ -563,7 +607,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
             (ctx.endgameBonuses?.critChanceBps ?? 0) / 10000 +
             armBonus.critChanceBps / 10000 +
             sectCritBps / 10000 +
-            (ctx.arenaRule === 'sandstorm_crit' ? 0.06 : 0),
+            (ctx.arenaRule === 'sandstorm_crit' ? 0.06 : 0) +
+            (swordBarrageActive ? 0.25 : 0),
         );
         let critMult =
           def.critMult +
@@ -579,11 +624,12 @@ export function stepCombat(ctx: CombatSystemContext): void {
           benchPassive.skillDamagePct +
           (ctx.endgameBonuses?.skillDamagePct ?? 0) +
           armBonus.skillDamagePct +
-          sectSkillPct;
+          sectSkillPct +
+          (spiritKind === 'solar' ? SPIRIT_TILE_SOLAR_SKILL_PCT : 0);
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult =
           (1 + 0.35 * acupointStacks) *
-          (1 + (rangeMirrorCcPct + sectCcPct) / 100) *
+          (1 + (rangeMirrorCcPct + sectCcPct + (chronMod?.ccDurationPct ?? 0)) / 100) *
           (trialCfg ? trialCfg.ccMult : 1);
 
         if (def.faction === 'orthodox') {
@@ -618,6 +664,9 @@ export function stepCombat(ctx: CombatSystemContext): void {
           if (trialCfg && trialCfg.demonicSkillRatioMult !== 1) {
             skillRatio *= trialCfg.demonicSkillRatioMult;
           }
+          if (chronMod?.demonicSkillPct && chronMod.demonicSkillPct > 0) {
+            skillRatio *= 1 + chronMod.demonicSkillPct / 100;
+          }
         }
 
         const isCrit = ctx.rng.nextInt(1000) < Math.round(critChance * 1000);
@@ -632,12 +681,15 @@ export function stepCombat(ctx: CombatSystemContext): void {
 
         const trialShred =
           def.faction === 'unorthodox' && trialCfg ? trialCfg.unorthodoxBonusShred : 0;
+        const chronShred =
+          def.faction === 'unorthodox' && chronMod?.unorthodoxShred ? chronMod.unorthodoxShred : 0;
         const relicShred =
           getArmorGauntletShred(ctx.relicLv.armor_break_gauntlet ?? 0) + setBonus.armorShred;
         const unitBaseShred =
           def.armorShred +
           crusherStacks * 6 +
           trialShred +
+          chronShred +
           relicShred +
           benchPassive.armorShred +
           (ctx.endgameBonuses?.armorShred ?? 0) +
@@ -877,7 +929,9 @@ function stepComboSkills(
       const cUnit = casters[cIdx]!;
       const tb = tileBuffs[cUnit.slot.index]?.atkPct ?? 0;
       const fac = ctx.data.unitsById.get(cUnit.unitId)?.faction ?? 'orthodox';
-      const armAtk = resolveArmamentBonuses(ctx.getUnitArmament?.(cUnit.uid), fac).atkPct;
+      const cArmSlot = ctx.getUnitArmamentSlot?.(cUnit.uid) ?? null;
+      const cArmDef = cArmSlot ? cArmSlot.def : (ctx.getUnitArmament?.(cUnit.uid) ?? null);
+      const armAtk = resolveArmamentBonuses(cArmDef, fac, cArmSlot?.temperLevel ?? 0).atkPct;
       const atkVal = ctx.getUnitEffectiveAtk(cUnit.unitId, synergy, tb, cUnit.starLevel, armAtk);
       sumAtk += atkVal.baseAtk + atkVal.bonusAtk;
       sumX += cUnit.currX;
@@ -966,6 +1020,80 @@ function stepComboSkills(
   }
 }
 
+interface HitOverrideOpts {
+  readonly armorPiercePct?: number;
+  readonly shieldMult?: number;
+  readonly skipUnitDamageLog?: boolean;
+}
+
+export function applyCommandCannonBlast(
+  ctx: CombatSystemContext,
+  baseDamage: number,
+  color: string,
+): { readonly hitCount: number; readonly totalDamage: number } {
+  if (ctx.monsters.length === 0) {
+    return { hitCount: 0, totalDamage: 0 };
+  }
+  const synergy = computeFieldSynergy(ctx.units, ctx.data.unitsById);
+  const benchPassive = computeBenchPassiveSummary(
+    ctx.units,
+    ctx.data.unitsById,
+    ctx.dailyRule?.modifiers.benchPassiveMult ?? 1,
+  );
+  const setBonus = computeRelicSetBonuses(ctx.rawRelicLv ?? ctx.relicLv);
+  const victims = ctx.monsters
+    .slice()
+    .sort((a, b) =>
+      b.currDistance !== a.currDistance
+        ? b.currDistance - a.currDistance
+        : a.entityId - b.entityId,
+    );
+
+  let totalDamage = 0;
+  let hitCount = 0;
+  for (let i = 0; i < victims.length; i++) {
+    const m = victims[i]!;
+    if (m.hp <= 0) continue;
+    const hpBefore = m.hp + m.shieldHp;
+    const syntheticProj: ProjectileEntity = {
+      id: ctx.allocateProjectileId(),
+      unitId: '',
+      startTick: ctx.currentTick,
+      arriveTick: ctx.currentTick,
+      fromX: 360,
+      fromY: 220,
+      targetEntityId: m.entityId,
+      targetX: m.currX,
+      targetY: m.currY,
+      prevX: m.currX,
+      prevY: m.currY,
+      currX: m.currX,
+      currY: m.currY,
+      damage: baseDamage,
+      armorShred: 0,
+      color,
+      gradeRank: 6,
+      isCrit: true,
+      isSkill: true,
+      skillName: '천지개벽포',
+      vfxTrack: 'im_void_cheonma',
+      splashRadius: 0,
+      stunTicks: 0,
+      slowPct: 0,
+      slowTicks: 0,
+    };
+    applyHitToMonster(ctx, m, baseDamage, syntheticProj, synergy, setBonus, benchPassive, {
+      armorPiercePct: 0.5,
+      shieldMult: 2.5,
+      skipUnitDamageLog: true,
+    });
+    const hpAfter = Math.max(0, m.hp) + Math.max(0, m.shieldHp);
+    totalDamage += Math.max(1, Math.round(hpBefore - hpAfter));
+    hitCount++;
+  }
+  return { hitCount, totalDamage };
+}
+
 function applyHitToMonster(
   ctx: CombatSystemContext,
   m: MonsterEntity,
@@ -974,11 +1102,12 @@ function applyHitToMonster(
   synergy: FactionSynergySnapshot,
   setBonus: ReturnType<typeof computeRelicSetBonuses>,
   benchPassive: BenchPassiveSummary,
+  overrideOpts?: HitOverrideOpts,
 ): void {
   const idx = ctx.monsters.indexOf(m);
   if (idx === -1) return;
 
-  const attackerDef = ctx.data.unitsById.get(p.unitId);
+  const attackerDef = p.unitId ? ctx.data.unitsById.get(p.unitId) : undefined;
   const passive = attackerDef?.passiveTrait;
 
   const prevShredBeforeHit = ctx.currentTick < m.shredExpireTick ? m.armorShred : 0;
@@ -1052,7 +1181,7 @@ function applyHitToMonster(
     }
   }
 
-  const piercePct = passive?.armorPiercePct ?? 0;
+  const piercePct = Math.max(passive?.armorPiercePct ?? 0, overrideOpts?.armorPiercePct ?? 0);
   const pierceProc = rawNetArmor > 0 && piercePct > 0;
   const netArmor = pierceProc ? Math.max(0, Math.round(rawNetArmor * (1 - piercePct))) : rawNetArmor;
   const passiveProc: PassiveProcKind | undefined = executeProc
@@ -1074,6 +1203,12 @@ function applyHitToMonster(
     damage = Math.max(1, Math.round(effectiveRaw * (1 + amp)));
   }
 
+  const logDamage = (amt: number): void => {
+    if (!overrideOpts?.skipUnitDamageLog && p.unitId) {
+      ctx.recordDamage(p.unitId, amt);
+    }
+  };
+
   // Boss barrier absorption:
   // - Black Serpent poison-shell: armor-shredding attacks deal 1.8x bonus!
   // - Vermilion Bird Nirvana flame-egg: BOTH critical hits & armor-shredding attacks deal 1.8x bonus,
@@ -1081,12 +1216,12 @@ function applyHitToMonster(
   if (m.shieldHp > 0 && ctx.currentTick < m.shieldExpireTick) {
     const isPhoenix = m.kind === 'vermilion_bird';
     const hasCounterMult = p.armorShred > 0 || (isPhoenix && p.isCrit);
-    const shieldMult = hasCounterMult ? 1.8 : 1;
-    const shieldDamage = hasCounterMult ? Math.round(damage * 1.8) : damage;
+    const shieldMult = overrideOpts?.shieldMult ?? (hasCounterMult ? 1.8 : 1);
+    const shieldDamage = shieldMult !== 1 ? Math.round(damage * shieldMult) : damage;
     if (shieldDamage < m.shieldHp) {
       m.shieldHp -= shieldDamage;
       m.lastHitTick = ctx.currentTick;
-      ctx.recordDamage(p.unitId, damage);
+      logDamage(damage);
       damage = shieldDamage;
     } else {
       const overflow = Math.max(0, Math.round((shieldDamage - m.shieldHp) / shieldMult));
@@ -1099,7 +1234,7 @@ function applyHitToMonster(
       m.armorShred = Math.min(200, activeShred + (isPhoenix ? 30 : 25));
       m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + (isPhoenix ? 180 : 150));
       justShattered = true;
-      ctx.recordDamage(p.unitId, damage);
+      logDamage(damage);
       if (isPhoenix) {
         ctx.addLuckStone(1);
         ctx.addCoin(80, false);
@@ -1118,7 +1253,7 @@ function applyHitToMonster(
   } else {
     m.hp -= damage;
     m.lastHitTick = ctx.currentTick;
-    ctx.recordDamage(p.unitId, damage);
+    logDamage(damage);
     if (m.kind === 'vermilion_bird' && m.isBoss && !m.isBounty && !m.phaseTriggered && m.hp <= 0) {
       m.hp = 1;
       m.phaseTriggered = true;
@@ -1144,7 +1279,7 @@ function applyHitToMonster(
   if (reaperStacks > 0 && !m.isBoss && m.hp > 0) {
     const thresh = reaperStacks >= 2 ? 0.18 : 0.12;
     if (m.hp <= Math.round(m.maxHp * thresh)) {
-      ctx.recordDamage(p.unitId, m.hp);
+      logDamage(m.hp);
       m.hp = 0;
       executeProc = true;
     }
@@ -1241,7 +1376,9 @@ function applyHitToMonster(
 
         const waveDef = isBossRush
           ? resolveBossRushWaveDef(ctx.waveNumber)
-          : resolveWaveDef(ctx.data.waves, ctx.waveNumber);
+          : ctx.chronicleDef
+            ? resolveChronicleWaveDef(ctx.data.waves, ctx.chronicleDef, ctx.waveNumber)
+            : resolveWaveDef(ctx.data.waves, ctx.waveNumber);
         const fallbackWispGrade =
           Object.keys(ctx.data.wispPools)[1] ?? Object.keys(ctx.data.wispPools)[0]!;
         const rewardGrade = waveDef.rewardWispGrade ?? fallbackWispGrade;

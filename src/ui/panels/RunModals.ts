@@ -107,13 +107,16 @@ export function buildSettlementLootHtml(
 ): string {
   const diffCfg = DIFFICULTY_CONFIGS[snapshot.difficulty];
   const trialCfg = snapshot.trialId ? TRIAL_CONFIGS[snapshot.trialId] : null;
-  const multBadge = trialCfg
-    ? ` <span class="settlement-mult-badge">${escapeHtml(trialCfg.badge)} ${trialCfg.rewardMult}x</span>`
-    : (rec.ascensionLevel ?? snapshot.ascensionLevel) > 0
-      ? ` <span class="settlement-mult-badge">🏯 등선 ${rec.ascensionLevel ?? snapshot.ascensionLevel}중천</span>`
-      : diffCfg.rewardMult > 1
-        ? ` <span class="settlement-mult-badge">${escapeHtml(diffCfg.badge)}</span>`
-        : '';
+  const chronCfg = snapshot.chronicle;
+  const multBadge = chronCfg
+    ? ` <span class="settlement-mult-badge">📜 제${chronCfg.chapterNo}전 · ${escapeHtml(chronCfg.badge)}</span>`
+    : trialCfg
+      ? ` <span class="settlement-mult-badge">${escapeHtml(trialCfg.badge)} ${trialCfg.rewardMult}x</span>`
+      : (rec.ascensionLevel ?? snapshot.ascensionLevel) > 0
+        ? ` <span class="settlement-mult-badge">🏯 등선 ${rec.ascensionLevel ?? snapshot.ascensionLevel}중천</span>`
+        : diffCfg.rewardMult > 1
+          ? ` <span class="settlement-mult-badge">${escapeHtml(diffCfg.badge)}</span>`
+          : '';
 
   let firstClearBanner = '';
   if (rec.firstClearBonusGold > 0 || (rec.shardsEarned ?? 0) > 0) {
@@ -126,14 +129,16 @@ export function buildSettlementLootHtml(
       : rec.unlockedNextAscensionLevel
         ? ` · [구천등선 ${rec.unlockedNextAscensionLevel}중천] 해금!`
         : '';
-    const clearKind = rec.trialId
-      ? '초회 비경 제패'
-      : (rec.ascensionLevel ?? 0) > 0
-        ? `구천등선 ${rec.ascensionLevel}중천 제패`
-        : '초회 천하통일';
+    const clearKind = chronCfg
+      ? `강호 전기 제${chronCfg.chapterNo}전 제패`
+      : rec.trialId
+        ? '초회 비경 제패'
+        : (rec.ascensionLevel ?? 0) > 0
+          ? `구천등선 ${rec.ascensionLevel}중천 제패`
+          : '초회 천하통일';
     const goldKeyPart =
       rec.firstClearBonusGold > 0
-        ? `+${rec.firstClearBonusGold} 주화 · 열쇠 +${rec.firstClearBonusKeys}`
+        ? `+${rec.firstClearBonusGold} 주화${rec.firstClearBonusKeys > 0 ? ` · 열쇠 +${rec.firstClearBonusKeys}` : ''}`
         : '등선 토벌 보너스';
     firstClearBanner = `
           <div class="first-clear-banner">

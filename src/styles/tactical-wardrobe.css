@@ -2702,3 +2702,113 @@
   opacity: 0.55;
   cursor: default;
 }
+
+/* =========================================================
+   v4.1 — 강호 전기 (5장 시나리오 비전록) & v4.3 담금질/영맥 칩
+   ========================================================= */
+.chronicle-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chronicle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 2.5px solid var(--ink);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.92) 100%);
+  box-shadow: 0 3px 0 var(--ink);
+  color: #f8fafc;
+}
+
+.chronicle-card.cleared {
+  border-color: #facc15;
+  background: linear-gradient(135deg, rgba(20, 40, 35, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%);
+}
+
+.chronicle-card.diff-active {
+  box-shadow: 0 3px 0 var(--ink), 0 0 0 2px #38bdf8;
+}
+
+.chronicle-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chronicle-card .card-name {
+  color: #fef9c3;
+}
+
+.chronicle-card .card-sub {
+  color: #cbd5e1;
+}
+
+.chronicle-story-line {
+  font-size: 11.5px;
+  color: #93c5fd;
+  line-height: 1.35;
+}
+
+.chronicle-reward-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #fde68a;
+  font-weight: 700;
+}
+
+.chronicle-card .card-cta-btn {
+  flex-shrink: 0;
+  min-width: 96px;
+}
+
+.arm-temper-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f97316 0%, #b91c1c 100%);
+  border: 1.8px solid var(--ink);
+  color: #fef08a;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  text-shadow: var(--outline-1);
+}
+
+.arm-temper-pill.is-max {
+  background: linear-gradient(180deg, #e879f9 0%, #7e22ce 100%);
+  color: #ffffff;
+}
+
+.armament-cta-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.shortcut-chip.spirit-chip.solar {
+  background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+  color: #fffbeb;
+  border-color: #fde047;
+}
+
+.shortcut-chip.spirit-chip.wind {
+  background: linear-gradient(180deg, #06b6d4 0%, #0f766e 100%);
+  color: #ecfeff;
+  border-color: #67e8f9;
+}
+
+.wave-box.chronicle-mode {
+  background: linear-gradient(180deg, #4c1d95 0%, #1e1b4b 100%);
+  border-color: #c084fc;
+}

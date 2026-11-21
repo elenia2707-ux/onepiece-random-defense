@@ -10,6 +10,9 @@ export type InternalVfxKind =
   | 'armor_shatter'
   | 'qi_resonance'
   | 'trinity_beam'
+  | 'cmd_sword_barrage'
+  | 'cmd_bagua_bind'
+  | 'cmd_heaven_cannon'
   | VfxTrackKind;
 
 export interface TrackVfxInstance {

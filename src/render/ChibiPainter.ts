@@ -2189,6 +2189,27 @@ export function paintArmamentPixelArt(
       p.line(16, 12, 22, 18, secondary, LAYER_FX, 1);
       break;
     }
+    case 'staff': {
+      // 금강항마장 — Shaolin golden Khakkhara monk staff with sacred finial & rings
+      p.line(6, 26, 22, 10, '#a16207', LAYER_BODY, 2);
+      p.line(7, 25, 21, 11, primary, LAYER_FRONT, 1);
+      p.disc(24, 8, 4.2, ['#ffffff', secondary, primary, '#b45309'], LAYER_FRONT);
+      p.disc(24, 8, 2.0, ['#1e293b', '#1e293b', '#1e293b', '#1e293b'], LAYER_FRONT);
+      p.set(20, 6, secondary, LAYER_FX);
+      p.set(26, 12, secondary, LAYER_FX);
+      p.set(27, 5, '#ffffff', LAYER_FX);
+      break;
+    }
+    case 'mirror': {
+      // 태극음양경 — Wudang Bagua celestial bronze mirror with Yin-Yang core
+      p.disc(16, 16, 9.2, ['#fef08a', '#f59e0b', '#b45309', '#451a03'], LAYER_BODY);
+      p.disc(16, 16, 6.5, ['#f8fafc', secondary, primary, '#1d4ed8'], LAYER_FRONT);
+      p.disc(14, 14, 2.4, ['#ffffff', '#f8fafc', '#e2e8f0', '#cbd5e1'], LAYER_FX);
+      p.disc(18, 18, 2.4, ['#334155', '#1e293b', '#0f172a', '#020617'], LAYER_FX);
+      p.set(14, 14, '#0f172a', LAYER_FX);
+      p.set(18, 18, '#ffffff', LAYER_FX);
+      break;
+    }
   }
 
   p.flush(ctx, canvasSize);

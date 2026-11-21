@@ -114,5 +114,121 @@
       "bossDamagePct": 18,
       "atkPct": 12
     }
+  },
+  {
+    "id": "arm_buddha_staff",
+    "name": "금강항마장 · 소림진보",
+    "badge": "항마",
+    "tag": "불문 · 파갑",
+    "iconKind": "staff",
+    "color": "#facc15",
+    "secondaryColor": "#fef08a",
+    "desc": "공격력 +24% · 방어력 파쇄 +16 · 보스 피해 +18%",
+    "atkPct": 24,
+    "armorShred": 16,
+    "bossDamagePct": 18,
+    "resonance": {
+      "faction": "orthodox",
+      "label": "정파 공명: 공격력 +10% · 초식 피해 +16%",
+      "atkPct": 10,
+      "skillDamagePct": 16
+    }
+  },
+  {
+    "id": "arm_taiji_mirror",
+    "name": "태극음양경 · 무당선보",
+    "badge": "음양",
+    "tag": "태극 · 절기",
+    "iconKind": "mirror",
+    "color": "#60a5fa",
+    "secondaryColor": "#f8fafc",
+    "desc": "공격력 +20% · 초식 피해 +26% · 회심 확률 +6%",
+    "atkPct": 20,
+    "skillDamagePct": 26,
+    "critChanceBps": 600,
+    "resonance": {
+      "faction": "orthodox",
+      "label": "정파 공명: 회심 배율 +0.35x · 초식 피해 +14%",
+      "critMultBonus": 0.35,
+      "skillDamagePct": 14
+    }
+  },
+  {
+    "id": "arm_haomun_feather_fan",
+    "name": "천기백우선 · 하오문비보",
+    "badge": "백우",
+    "tag": "책략 · 속공",
+    "iconKind": "fan",
+    "color": "#34d399",
+    "secondaryColor": "#fde047",
+    "desc": "공격력 +20% · 공격 속도 +20% · 둔화 +14% · 광역 반경 +26",
+    "atkPct": 20,
+    "speedPct": 20,
+    "bonusSlowPct": 14,
+    "splashBonus": 26,
+    "resonance": {
+      "faction": "unorthodox",
+      "label": "사파 공명: 공속 +12% · 방어력 파쇄 +10",
+      "speedPct": 12,
+      "armorShred": 10
+    }
+  },
+  {
+    "id": "arm_tyrant_greatsword",
+    "name": "패왕열천도 · 흑도신병",
+    "badge": "열천",
+    "tag": "패왕 · 극회심",
+    "iconKind": "greatsword",
+    "color": "#fb923c",
+    "secondaryColor": "#fef08a",
+    "desc": "공격력 +30% · 회심 확률 +7% · 회심 배율 +0.32x",
+    "atkPct": 30,
+    "critChanceBps": 700,
+    "critMultBonus": 0.32,
+    "resonance": {
+      "faction": "unorthodox",
+      "label": "사파 공명: 공격력 +12% · 보스 피해 +20%",
+      "atkPct": 12,
+      "bossDamagePct": 20
+    }
+  },
+  {
+    "id": "arm_blood_moon_saber",
+    "name": "혈월참마도 · 혈교성병",
+    "badge": "혈월",
+    "tag": "혈마 · 파쇄",
+    "iconKind": "saber",
+    "color": "#f43f5e",
+    "secondaryColor": "#fda4af",
+    "desc": "공격력 +28% · 방어력 파쇄 +16 · 회심 배율 +0.35x",
+    "atkPct": 28,
+    "armorShred": 16,
+    "critMultBonus": 0.35,
+    "resonance": {
+      "faction": "demonic",
+      "label": "마교 공명: 회심 확률 +8% · 보스 피해 +18%",
+      "critChanceBps": 800,
+      "bossDamagePct": 18
+    }
+  },
+  {
+    "id": "arm_myriad_demon_blades",
+    "name": "만마비검갑 · 천마신병",
+    "badge": "만마",
+    "tag": "만검 · 광역",
+    "iconKind": "sword",
+    "color": "#c084fc",
+    "secondaryColor": "#f0abfc",
+    "desc": "공격력 +25% · 공격 속도 +16% · 초식 피해 +24% · 반경 +30",
+    "atkPct": 25,
+    "speedPct": 16,
+    "skillDamagePct": 24,
+    "splashBonus": 30,
+    "resonance": {
+      "faction": "demonic",
+      "label": "마교 공명: 초식 피해 +20% · 공격 속도 +10%",
+      "skillDamagePct": 20,
+      "speedPct": 10
+    }
   }
 ]

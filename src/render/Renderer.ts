@@ -232,7 +232,149 @@ export class Renderer {
     alpha: number,
     simTimeSec: number,
   ): void {
-    // 0. Blood Patriarch Tile Hazards (2.0s telegraph magic circle -> 4.5s blood-jade seal)
+    // 0a. Seeded Spirit Vein Sanctuary Tiles (영맥 명당 2칸: ☀ 화양혈 / 🍃 청풍혈)
+    const spiritTiles = sim.getSpiritTiles();
+    for (let i = 0; i < spiritTiles.length; i++) {
+      const st = spiritTiles[i]!;
+      const rect = expandedSlotRect(sim.board, { area: 'field', index: st.fieldIndex });
+      const cx = rect.x + rect.w * 0.5;
+      const cy = rect.y + rect.h * 0.5;
+      const isSolar = st.kind === 'solar';
+      const primary = isSolar ? '#f59e0b' : '#06b6d4';
+      const deepStroke = isSolar ? '#b45309' : '#0f766e';
+      const highlight = isSolar ? '#fef08a' : '#a5f3fc';
+      const glowSpr = this.sprites.glow(primary, 32);
+
+      this.buckets[RenderLayer.GroundFx]!.push({
+        layer: RenderLayer.GroundFx,
+        sortY: rect.y - 2,
+        render: (ctx) => {
+          const pulse = 0.72 + Math.sin(simTimeSec * 3.2 + i * 2.1) * 0.24;
+          const prevAlpha = ctx.globalAlpha;
+
+          // Warm aura glow underneath tile
+          ctx.globalAlpha = prevAlpha * (0.36 * pulse);
+          ctx.drawImage(glowSpr, cx - rect.w * 0.58, cy - rect.h * 0.54, rect.w * 1.16, rect.h * 1.08);
+
+          // Rich tinted sanctuary floor pad with crisp dark-ink outer outline for high contrast on jade tiles
+          ctx.globalAlpha = prevAlpha * 0.96;
+          ctx.beginPath();
+          ctx.roundRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4, 10);
+          ctx.fillStyle = isSolar
+            ? `rgba(245, 158, 11, ${(0.22 + 0.08 * pulse).toFixed(3)})`
+            : `rgba(6, 182, 212, ${(0.20 + 0.08 * pulse).toFixed(3)})`;
+          ctx.fill();
+          ctx.lineWidth = 4.2;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.lineWidth = 2.4;
+          ctx.strokeStyle = isSolar ? '#f59e0b' : '#06b6d4';
+          ctx.stroke();
+
+          // Four bold ink-framed ornamental corner brackets
+          const pad = 6;
+          const leg = 13;
+          ctx.beginPath();
+          // Top-left
+          ctx.moveTo(rect.x + pad, rect.y + pad + leg);
+          ctx.lineTo(rect.x + pad, rect.y + pad);
+          ctx.lineTo(rect.x + pad + leg, rect.y + pad);
+          // Top-right
+          ctx.moveTo(rect.x + rect.w - pad - leg, rect.y + pad);
+          ctx.lineTo(rect.x + rect.w - pad, rect.y + pad);
+          ctx.lineTo(rect.x + rect.w - pad, rect.y + pad + leg);
+          // Bottom-left
+          ctx.moveTo(rect.x + pad, rect.y + rect.h - pad - leg);
+          ctx.lineTo(rect.x + pad, rect.y + rect.h - pad);
+          ctx.lineTo(rect.x + pad + leg, rect.y + rect.h - pad);
+          // Bottom-right
+          ctx.moveTo(rect.x + rect.w - pad - leg, rect.y + rect.h - pad);
+          ctx.lineTo(rect.x + rect.w - pad, rect.y + rect.h - pad);
+          ctx.lineTo(rect.x + rect.w - pad, rect.y + rect.h - pad - leg);
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.lineWidth = 2.2;
+          ctx.strokeStyle = highlight;
+          ctx.stroke();
+
+          // Rotating inner rune motif (Solar lotus diamond vs Wind spiral ring)
+          ctx.save();
+          ctx.translate(cx, cy + 10);
+          ctx.rotate(simTimeSec * (isSolar ? 0.55 : -0.9));
+          const runeR = Math.min(rect.w, rect.h) * 0.27;
+          ctx.globalAlpha = prevAlpha * (0.68 + 0.2 * pulse);
+          if (isSolar) {
+            ctx.strokeStyle = deepStroke;
+            ctx.lineWidth = 2.6;
+            ctx.strokeRect(-runeR * 0.72, -runeR * 0.72, runeR * 1.44, runeR * 1.44);
+            ctx.strokeStyle = '#fde047';
+            ctx.lineWidth = 1.4;
+            ctx.strokeRect(-runeR * 0.72, -runeR * 0.72, runeR * 1.44, runeR * 1.44);
+            ctx.rotate(Math.PI * 0.25);
+            ctx.strokeStyle = '#ea580c';
+            ctx.lineWidth = 2.2;
+            ctx.strokeRect(-runeR * 0.72, -runeR * 0.72, runeR * 1.44, runeR * 1.44);
+          } else {
+            ctx.strokeStyle = deepStroke;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, runeR * 0.92, 0, Math.PI * 1.45);
+            ctx.stroke();
+            ctx.strokeStyle = '#67e8f9';
+            ctx.lineWidth = 1.6;
+            ctx.stroke();
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.arc(0, 0, runeR * 0.56, Math.PI * 0.7, Math.PI * 2.15);
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Crisp corner Spirit Vein sigil medallion (visible even when a hero stands on the tile)
+          const badgeX = rect.x + rect.w - 13;
+          const badgeY = rect.y + 13;
+          ctx.globalAlpha = prevAlpha * 0.98;
+          ctx.beginPath();
+          ctx.arc(badgeX, badgeY, 9.5, 0, Math.PI * 2);
+          ctx.fillStyle = deepStroke;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.beginPath();
+          if (isSolar) {
+            // 4-point solar sun star
+            ctx.moveTo(badgeX, badgeY - 5.5);
+            ctx.lineTo(badgeX + 2.2, badgeY - 2.2);
+            ctx.lineTo(badgeX + 5.5, badgeY);
+            ctx.lineTo(badgeX + 2.2, badgeY + 2.2);
+            ctx.lineTo(badgeX, badgeY + 5.5);
+            ctx.lineTo(badgeX - 2.2, badgeY + 2.2);
+            ctx.lineTo(badgeX - 5.5, badgeY);
+            ctx.lineTo(badgeX - 2.2, badgeY - 2.2);
+            ctx.closePath();
+            ctx.fillStyle = '#fde047';
+            ctx.fill();
+          } else {
+            // Wind crescent-leaf emblem
+            ctx.arc(badgeX, badgeY, 4.6, -Math.PI * 0.85, Math.PI * 0.65);
+            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = '#a5f3fc';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(badgeX + 1.5, badgeY - 1.5, 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = '#34d399';
+            ctx.fill();
+          }
+
+          ctx.globalAlpha = prevAlpha;
+        },
+      });
+    }
+
+    // 0b. Blood Patriarch Tile Hazards (2.0s telegraph magic circle -> 4.5s blood-jade seal)
     const hazards = sim.getTileHazards();
     for (let i = 0; i < hazards.length; i++) {
       const h = hazards[i]!;

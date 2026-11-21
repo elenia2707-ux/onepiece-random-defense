@@ -4,7 +4,7 @@ import type {
   ContractOfferSnapshot,
   GambleResultSnapshot,
 } from '../core/Simulation';
-import type { RunModeId } from '../data/specialModes';
+import type { ChronicleId, RunModeId } from '../data/specialModes';
 import type {
   ArmamentId,
   BoonId,
@@ -14,6 +14,7 @@ import type {
   GradeId,
   RelicId,
   SectId,
+  SpiritTileSpec,
   TrialId,
   UnitId,
   UpgradeGroupId,
@@ -29,6 +30,7 @@ export interface RunSaveData {
   readonly trialId: TrialId | null;
   readonly ascensionLevel?: number;
   readonly runMode?: RunModeId;
+  readonly chronicleId?: ChronicleId | null;
   readonly dailyDateKey?: string | null;
   readonly endlessMilestonesReached?: readonly number[];
   readonly currentTick: number;
@@ -56,7 +58,12 @@ export interface RunSaveData {
     readonly slotIndex: number;
     readonly armamentId: ArmamentId;
     readonly equippedUid: number | null;
+    readonly temperLevel?: number;
   }>;
+  readonly tacticalQi?: number;
+  readonly cmdSwordBarrageTicksLeft?: number;
+  readonly cmdCooldowns?: Readonly<Record<string, number>>;
+  readonly spiritTiles?: readonly SpiritTileSpec[];
   readonly pledgedSect?: SectId | null;
   readonly sectVowCompleted?: boolean;
   readonly primordialUnlocked?: boolean;

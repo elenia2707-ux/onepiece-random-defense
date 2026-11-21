@@ -756,6 +756,22 @@ export function buildUpgradeSheetView(params: {
           ? bestBoardCandidate
           : null;
 
+      const temperLv = slot.temperLevel;
+      const maxTemper = slot.maxTemperLevel;
+      const nextTemper = slot.nextTemperCost;
+      const canTemper =
+        nextTemper !== null &&
+        snapshot.coin >= nextTemper.coin &&
+        snapshot.luckStone >= nextTemper.luck;
+      const temperPillHtml =
+        temperLv > 0
+          ? `<span class="arm-temper-pill${temperLv >= maxTemper ? ' is-max' : ''}">🔥 +${temperLv}강${temperLv >= maxTemper ? ' 극' : ''}</span>`
+          : '';
+      const temperNoteHtml =
+        temperLv > 0
+          ? `<div class="armament-res-line active"><span>🔥 담금질 +${temperLv}강 활성 — 모든 신병 능력치 <b>+${temperLv * 25}%</b> 증폭 (재연마·합공 계승 유지)</span></div>`
+          : '';
+
       return `
         <div class="sheet-card armament-slot-card${slot.resonanceActive ? ' is-resonating' : ''}" style="border-color:${armDef.color}">
           <div class="card-left">
@@ -765,13 +781,15 @@ export function buildUpgradeSheetView(params: {
             <div class="card-info">
               <div class="card-name-row">
                 <span class="grade-pill" style="background:${armDef.color}">제${slot.slotIndex + 1}신병 · ${escapeHtml(armDef.badge)}</span>
+                ${temperPillHtml}
                 <span class="boon-tag-pill">${escapeHtml(armDef.tag)}</span>
                 <span class="card-name">${escapeHtml(armDef.name)}</span>
               </div>
               <div class="card-sub">${escapeHtml(armDef.desc)}</div>
+              ${temperNoteHtml}
               <div class="armament-res-line ${slot.resonanceActive ? 'active' : ''}">
                 <span class="armament-fac-dot" style="background:${resFacMeta.color}"></span>
-                ${escapeHtml(armDef.resonance.label)} ${slot.resonanceActive ? '<b>(공명 발동✦)</b>' : ''}
+                <span>${escapeHtml(armDef.resonance.label)}${slot.resonanceActive ? ' <b>(공명 발동✦)</b>' : ''}</span>
               </div>
               <div class="armament-owner-line">
                 ${
@@ -783,6 +801,20 @@ export function buildUpgradeSheetView(params: {
             </div>
           </div>
           <div class="upgrade-cta-row armament-cta-row">
+            ${
+              nextTemper
+                ? `<button
+                    type="button"
+                    class="card-cta-btn upgrade-x5-btn ${canTemper ? 'cta-gold interactive' : 'cta-disabled'}"
+                    data-sheet-action="temper-armament"
+                    data-slot-index="${slot.slotIndex}"
+                    ${canTemper ? '' : 'disabled'}
+                  >
+                    <span>🔥 +${temperLv + 1}강</span>
+                    <span class="mini-price">${ICON.coin}${nextTemper.coin}·${ICON.elixir}${nextTemper.luck}</span>
+                  </button>`
+                : `<button type="button" class="card-cta-btn cta-disabled" disabled><span>🔥 극강</span><span class="mini-price">+${maxTemper} MAX</span></button>`
+            }
             <button
               type="button"
               class="card-cta-btn upgrade-x5-btn ${canReforge ? 'cta-sky interactive' : 'cta-disabled'}"
@@ -838,7 +870,7 @@ export function buildUpgradeSheetView(params: {
               <span class="card-name">제 ${nextIdx} 신병이기 단조</span>
             </div>
             <div class="card-sub">
-              6대 전설 명병 중 미보유 신병 1자루를 주조하여 최강 협객에게 즉시 패용합니다. 문파 일치 시 전용 공명이 개방됩니다!
+              12대 전설 명병(정·사·마 각 4종) 중 미보유 신병 1자루를 주조하여 최강 협객에게 즉시 패용합니다. 담금질(+1~+3강)로 모든 능력치를 최대 +75% 증폭할 수 있습니다!
             </div>
           </div>
         </div>

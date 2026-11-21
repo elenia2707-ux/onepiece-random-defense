@@ -1,5 +1,6 @@
 import type { EndgameMetaBonuses } from './relicFormulas';
 import type { ContractId } from '../data/contracts';
+import type { CommandSkillId } from '../data/specialModes';
 import type {
   ArenaRuleId,
   BoonId,
@@ -41,7 +42,9 @@ export type GameCommand =
   | { readonly type: 'pledgeSect'; readonly sectId: SectId }
   | { readonly type: 'forgeArmament' }
   | { readonly type: 'reforgeArmament'; readonly slotIndex: number }
+  | { readonly type: 'temperArmament'; readonly slotIndex: number }
   | { readonly type: 'equipArmament'; readonly slotIndex: number; readonly targetUid: number | null }
+  | { readonly type: 'castCommandSkill'; readonly skillId: CommandSkillId }
   | {
       readonly type: 'syncRelics';
       readonly relics: Readonly<Partial<Record<RelicId, number>>>;

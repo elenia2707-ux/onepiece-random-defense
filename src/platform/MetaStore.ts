@@ -10,6 +10,7 @@ import {
   computeHeroProficiencyInfo,
   computeHeroProficiencyRankUpRewards,
   computeRelicSetBonuses,
+  computeRelicSetStatuses,
   createEmptyMeridianLevels,
   CULTIVATION_MAX_LEVEL,
   CULTIVATION_MILESTONE_REALMS,
@@ -51,6 +52,10 @@ import {
   TRIAL_ORDER,
 } from '../core/relicFormulas';
 import {
+  CHRONICLE_CHAPTERS,
+  CHRONICLE_IDS_ORDERED,
+  CHRONICLES_BY_ID,
+  type ChronicleId,
   computeDailyChallengeScore,
   ENDLESS_MILESTONES,
   type RunModeId,
@@ -156,12 +161,19 @@ export interface BossRushRecord {
   readonly bestTicks: number | null;
 }
 
+export interface ChronicleRecord {
+  readonly clears: number;
+  readonly bestWave: number;
+  readonly bestTicks: number | null;
+}
+
 export interface HallOfFameEntry {
   readonly id: string;
   readonly dateKey: string;
   readonly runMode: RunModeId;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly chronicleId?: ChronicleId | null;
   readonly ascensionLevel?: number;
   readonly wave: number;
   readonly victory: boolean;
@@ -391,6 +403,7 @@ export interface MetaProfile {
   readonly totalRuns: number;
   readonly bestWave: number;
   readonly selectedRunMode: RunModeId;
+  readonly selectedChronicleId: ChronicleId;
   readonly selectedDifficulty: DifficultyId;
   readonly selectedTrialId: TrialId | null;
   readonly unlockedAscensionLevel: number;
@@ -402,6 +415,9 @@ export interface MetaProfile {
   readonly clearedTrials: Readonly<Record<TrialId, boolean>>;
   readonly trialRecords: Readonly<Record<TrialId, TrialRecord>>;
   readonly clearedTrialCount: number;
+  readonly clearedChronicles: Readonly<Record<ChronicleId, boolean>>;
+  readonly chronicleRecords: Readonly<Record<ChronicleId, ChronicleRecord>>;
+  readonly clearedChronicleCount: number;
   readonly dailyChallengeToday: DailyChallengeRecord | null;
   readonly dailyChallengeStreak: number;
   readonly bossRushRecord: BossRushRecord;
@@ -440,6 +456,7 @@ export interface SettlementInput {
   readonly bountiesSlain?: number;
   readonly difficulty?: DifficultyId;
   readonly trialId?: TrialId | null;
+  readonly chronicleId?: ChronicleId | null;
   readonly runMode?: RunModeId;
   readonly ascensionLevel?: number;
   readonly victory?: boolean;
@@ -466,6 +483,7 @@ export interface SettlementRecord extends SettlementReward {
   readonly bountiesSlain: number;
   readonly difficulty: DifficultyId;
   readonly trialId: TrialId | null;
+  readonly chronicleId?: ChronicleId | null;
   readonly runMode: RunModeId;
   readonly ascensionLevel?: number;
   readonly victory: boolean;
@@ -650,10 +668,20 @@ export function computeTitleProgress(profile: MetaProfile, title: TitleDef): Tit
       const sets = computeRelicSetBonuses(profile.relics);
       return { current: Math.min(title.target, sets.mythicSetCount), target: title.target };
     }
+    case 'relic_sets_chaos': {
+      const chaosCount = computeRelicSetStatuses(profile.relics).filter((s) => s.tier >= 4).length;
+      return { current: Math.min(title.target, chaosCount), target: title.target };
+    }
     case 'daily_quests_claimed':
       return { current: Math.min(title.target, profile.totalDailyClaimed), target: title.target };
     case 'trial_abyss_clear':
       return { current: profile.clearedTrials.trial_abyss_sanctum ? 1 : 0, target: 1 };
+    case 'ascension_cleared':
+      return { current: Math.min(title.target, profile.clearedAscensionLevel), target: title.target };
+    case 'reincarnation_count':
+      return { current: Math.min(title.target, profile.reincarnationCount), target: title.target };
+    case 'chronicle_cleared':
+      return { current: Math.min(title.target, profile.clearedChronicleCount), target: title.target };
   }
 }
 
@@ -715,8 +743,17 @@ export function getCodexDiscoveryReward(gradeDef: GradeDef | undefined): {
 
 export function computeSettlementReward(input: SettlementInput): SettlementReward {
   const rawWave = Math.floor(input.wave);
-  const trialCfg = input.trialId ? TRIAL_CONFIGS[input.trialId] : null;
-  const targetWave = trialCfg ? trialCfg.targetWave : CLEAR_TARGET_WAVE;
+  const runMode = input.runMode ?? 'standard';
+  const chronCfg =
+    runMode === 'chronicle' && input.chronicleId
+      ? (CHRONICLES_BY_ID.get(input.chronicleId) ?? null)
+      : null;
+  const trialCfg = runMode === 'standard' && input.trialId ? TRIAL_CONFIGS[input.trialId] : null;
+  const targetWave = chronCfg
+    ? chronCfg.targetWave
+    : trialCfg
+      ? trialCfg.targetWave
+      : CLEAR_TARGET_WAVE;
   const clearedWaves = Math.max(
     0,
     input.victory && rawWave === targetWave ? targetWave : rawWave - 1,
@@ -724,9 +761,9 @@ export function computeSettlementReward(input: SettlementInput): SettlementRewar
   const bosses = Math.max(0, Math.floor(input.bossesSlain));
   const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
   const kills = Math.max(0, Math.floor(input.monstersSlain));
-  const diff = input.difficulty ?? 'normal';
+  const diff = chronCfg ? chronCfg.baseDifficulty : (input.difficulty ?? 'normal');
   const ascBonus =
-    !trialCfg && diff === 'abyss'
+    runMode === 'standard' && !trialCfg && diff === 'abyss'
       ? computeAscensionModifiers(input.ascensionLevel ?? 0).rewardMultBonus
       : 0;
   const mult = trialCfg
@@ -759,8 +796,16 @@ export function computeSettlementReward(input: SettlementInput): SettlementRewar
 export function computeSettlementCultivationXp(input: SettlementInput): number {
   const rawWave = Math.max(1, Math.floor(input.wave));
   const runMode = input.runMode ?? 'standard';
+  const chronCfg =
+    runMode === 'chronicle' && input.chronicleId
+      ? (CHRONICLES_BY_ID.get(input.chronicleId) ?? null)
+      : null;
   const trialCfg = runMode === 'standard' && input.trialId ? TRIAL_CONFIGS[input.trialId] : null;
-  const targetWave = trialCfg ? trialCfg.targetWave : CLEAR_TARGET_WAVE;
+  const targetWave = chronCfg
+    ? chronCfg.targetWave
+    : trialCfg
+      ? trialCfg.targetWave
+      : CLEAR_TARGET_WAVE;
   const clearedWaves = Math.max(
     0,
     input.victory && rawWave >= targetWave ? rawWave : rawWave - 1,
@@ -768,7 +813,7 @@ export function computeSettlementCultivationXp(input: SettlementInput): number {
   const bosses = Math.max(0, Math.floor(input.bossesSlain));
   const bounties = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
   const kills = Math.max(0, Math.floor(input.monstersSlain));
-  const diff = input.difficulty ?? 'normal';
+  const diff = chronCfg ? chronCfg.baseDifficulty : (input.difficulty ?? 'normal');
   const ascBonus =
     runMode === 'standard' && !trialCfg && diff === 'abyss'
       ? computeAscensionModifiers(input.ascensionLevel ?? 0).rewardMultBonus
@@ -778,9 +823,11 @@ export function computeSettlementCultivationXp(input: SettlementInput): number {
       ? 1.4
       : runMode === 'daily_challenge'
         ? 1.3
-        : trialCfg
-          ? trialCfg.rewardMult
-          : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0) + ascBonus;
+        : chronCfg
+          ? 1.35 + (chronCfg.chapterNo - 1) * 0.15
+          : trialCfg
+            ? trialCfg.rewardMult
+            : (DIFFICULTY_CONFIGS[diff]?.rewardMult ?? 1.0) + ascBonus;
 
   const baseXp =
     20 +
@@ -872,6 +919,26 @@ function createEmptyTrialRecords(): Record<TrialId, TrialRecord> {
   };
 }
 
+function createEmptyClearedChronicles(): Record<ChronicleId, boolean> {
+  return {
+    chr_hwasan_sword_tomb: false,
+    chr_tang_river_ambush: false,
+    chr_shaolin_four_beasts: false,
+    chr_demon_citadel_siege: false,
+    chr_primordial_genesis: false,
+  };
+}
+
+function createEmptyChronicleRecords(): Record<ChronicleId, ChronicleRecord> {
+  return {
+    chr_hwasan_sword_tomb: { clears: 0, bestWave: 0, bestTicks: null },
+    chr_tang_river_ambush: { clears: 0, bestWave: 0, bestTicks: null },
+    chr_shaolin_four_beasts: { clears: 0, bestWave: 0, bestTicks: null },
+    chr_demon_citadel_siege: { clears: 0, bestWave: 0, bestTicks: null },
+    chr_primordial_genesis: { clears: 0, bestWave: 0, bestTicks: null },
+  };
+}
+
 function createEmptyDifficultyBestWave(): Record<DifficultyId, number> {
   return {
     normal: 0,
@@ -932,6 +999,10 @@ export class MetaStore {
   private readonly clearedTrials: Record<TrialId, boolean> = createEmptyClearedTrials();
   private readonly trialRecords: Record<TrialId, TrialRecord> = createEmptyTrialRecords();
   private selectedRunMode: RunModeId = 'standard';
+  private selectedChronicleId: ChronicleId = CHRONICLE_CHAPTERS[0]!.id;
+  private readonly clearedChronicles: Record<ChronicleId, boolean> = createEmptyClearedChronicles();
+  private readonly chronicleRecords: Record<ChronicleId, ChronicleRecord> =
+    createEmptyChronicleRecords();
   private readonly dailyChallengeRecords: Record<string, DailyChallengeRecord> = {};
   private dailyChallengeStreak = 0;
   private lastDailyChallengeDate: string | null = null;
@@ -1151,6 +1222,16 @@ export class MetaStore {
       trial_gale_blitz: { ...this.trialRecords.trial_gale_blitz },
       trial_abyss_sanctum: { ...this.trialRecords.trial_abyss_sanctum },
     };
+    const clearedChronicleCount = CHRONICLE_IDS_ORDERED.filter(
+      (id) => this.clearedChronicles[id],
+    ).length;
+    const chronicleRecordsCopy: Record<ChronicleId, ChronicleRecord> = {
+      chr_hwasan_sword_tomb: { ...this.chronicleRecords.chr_hwasan_sword_tomb },
+      chr_tang_river_ambush: { ...this.chronicleRecords.chr_tang_river_ambush },
+      chr_shaolin_four_beasts: { ...this.chronicleRecords.chr_shaolin_four_beasts },
+      chr_demon_citadel_siege: { ...this.chronicleRecords.chr_demon_citadel_siege },
+      chr_primordial_genesis: { ...this.chronicleRecords.chr_primordial_genesis },
+    };
     return {
       gold: this.gold,
       keys: this.keys,
@@ -1177,6 +1258,7 @@ export class MetaStore {
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
       selectedRunMode: this.selectedRunMode,
+      selectedChronicleId: this.selectedChronicleId,
       selectedDifficulty: this.selectedDifficulty,
       selectedTrialId: this.selectedTrialId,
       unlockedAscensionLevel: this.unlockedAscensionLevel,
@@ -1188,6 +1270,9 @@ export class MetaStore {
       clearedTrials: { ...this.clearedTrials },
       trialRecords: trialRecordsCopy,
       clearedTrialCount,
+      clearedChronicles: { ...this.clearedChronicles },
+      chronicleRecords: chronicleRecordsCopy,
+      clearedChronicleCount,
       dailyChallengeToday: this.dailyChallengeRecords[this.dailyDate]
         ? { ...this.dailyChallengeRecords[this.dailyDate]! }
         : null,
@@ -1247,6 +1332,10 @@ export class MetaStore {
     return this.selectedRunMode;
   }
 
+  public getSelectedChronicleId(): ChronicleId {
+    return this.selectedChronicleId;
+  }
+
   public getSelectedDifficulty(): DifficultyId {
     return this.selectedDifficulty;
   }
@@ -1285,7 +1374,12 @@ export class MetaStore {
   }
 
   public setSelectedRunMode(mode: RunModeId): boolean {
-    if (mode !== 'standard' && mode !== 'daily_challenge' && mode !== 'boss_rush') {
+    if (
+      mode !== 'standard' &&
+      mode !== 'daily_challenge' &&
+      mode !== 'boss_rush' &&
+      mode !== 'chronicle'
+    ) {
       return false;
     }
     if (this.selectedRunMode !== mode || (mode !== 'standard' && this.selectedTrialId !== null)) {
@@ -1294,7 +1388,24 @@ export class MetaStore {
     this.selectedRunMode = mode;
     if (mode !== 'standard') {
       this.selectedTrialId = null;
+      this.selectedAscensionLevel = 0;
     }
+    this.rev++;
+    this.save();
+    return true;
+  }
+
+  public setSelectedChronicle(chronicleId: ChronicleId): boolean {
+    if (!CHRONICLES_BY_ID.has(chronicleId)) {
+      return false;
+    }
+    if (this.selectedRunMode !== 'chronicle' || this.selectedChronicleId !== chronicleId) {
+      this.clearActiveRun();
+    }
+    this.selectedRunMode = 'chronicle';
+    this.selectedChronicleId = chronicleId;
+    this.selectedTrialId = null;
+    this.selectedAscensionLevel = 0;
     this.rev++;
     this.save();
     return true;
@@ -1735,6 +1846,7 @@ export class MetaStore {
     this.gold -= cost.gold;
     const newLevel = prevLevel + 1;
     this.relics[def.id] = newLevel;
+    this.evaluateTitles(true);
     this.rev++;
     this.save();
 
@@ -1896,6 +2008,7 @@ export class MetaStore {
     this.keys += REINCARNATION_REWARD.keys;
     this.silk += REINCARNATION_REWARD.silk;
     this.grantRandomRelicShards(REINCARNATION_REWARD.shards, rngFn);
+    this.evaluateTitles(true);
 
     this.rev++;
     this.save();
@@ -2329,6 +2442,14 @@ export class MetaStore {
       }
       newlyUnlocked.push('skin_thunder_jade_sovereign');
     }
+    const allChroniclesCleared = CHRONICLE_IDS_ORDERED.every((c) => this.clearedChronicles[c]);
+    if (allChroniclesCleared && !this.ownedSkins.skin_abyss_blood_crimson_moon) {
+      this.ownedSkins.skin_abyss_blood_crimson_moon = true;
+      if (!this.equippedHeroSkins.abyss_blood_emperor) {
+        this.equippedHeroSkins.abyss_blood_emperor = 'skin_abyss_blood_crimson_moon';
+      }
+      newlyUnlocked.push('skin_abyss_blood_crimson_moon');
+    }
     return newlyUnlocked;
   }
 
@@ -2487,7 +2608,14 @@ export class MetaStore {
 
   public settleRun(input: SettlementInput): SettlementRecord {
     const runMode: RunModeId = input.runMode ?? 'standard';
-    const diff = input.difficulty ?? 'normal';
+    const chronicleId: ChronicleId | null =
+      runMode === 'chronicle'
+        ? (input.chronicleId && CHRONICLES_BY_ID.has(input.chronicleId)
+            ? input.chronicleId
+            : this.selectedChronicleId)
+        : null;
+    const chronCfg = chronicleId ? (CHRONICLES_BY_ID.get(chronicleId) ?? null) : null;
+    const diff = chronCfg ? chronCfg.baseDifficulty : (input.difficulty ?? 'normal');
     const trialId = runMode === 'standard' ? (input.trialId ?? null) : null;
     const ascLv =
       runMode === 'standard' && diff === 'abyss' && trialId === null
@@ -2495,7 +2623,13 @@ export class MetaStore {
         : 0;
     const victory = Boolean(input.victory);
     const bountiesSlain = Math.max(0, Math.floor(input.bountiesSlain ?? 0));
-    const reward = computeSettlementReward({ ...input, ascensionLevel: ascLv });
+    const reward = computeSettlementReward({
+      ...input,
+      runMode,
+      difficulty: diff,
+      chronicleId,
+      ascensionLevel: ascLv,
+    });
     const wave = Math.max(1, Math.floor(input.wave));
     const isNewBest = runMode === 'standard' && wave > this.bestWave;
     const elapsedTicks =
@@ -2514,7 +2648,31 @@ export class MetaStore {
     let shardsEarned = 0;
     let dailyChallengeScore: number | undefined;
 
-    if (runMode === 'daily_challenge') {
+    if (runMode === 'chronicle' && chronicleId && chronCfg) {
+      const prevRec = this.chronicleRecords[chronicleId];
+      this.chronicleRecords[chronicleId] = {
+        clears: prevRec.clears + (victory ? 1 : 0),
+        bestWave: Math.max(prevRec.bestWave, wave),
+        bestTicks:
+          victory && elapsedTicks !== null
+            ? prevRec.bestTicks === null
+              ? elapsedTicks
+              : Math.min(prevRec.bestTicks, elapsedTicks)
+            : prevRec.bestTicks,
+      };
+      if (victory) {
+        if (!this.clearedChronicles[chronicleId]) {
+          this.clearedChronicles[chronicleId] = true;
+          firstClearBonusGold = chronCfg.firstClearGold;
+          firstClearBonusKeys = chronCfg.firstClearKeys;
+          firstClearBonusSilk = chronCfg.firstClearSilk;
+          shardsEarned += this.grantRandomRelicShards(chronCfg.firstClearShards);
+        } else {
+          firstClearBonusGold = chronCfg.repeatClearGold;
+          shardsEarned += this.grantRandomRelicShards(chronCfg.repeatClearShards);
+        }
+      }
+    } else if (runMode === 'daily_challenge') {
       dailyChallengeScore = computeDailyChallengeScore(
         wave,
         Math.max(0, Math.floor(input.bossesSlain)),
@@ -2660,6 +2818,9 @@ export class MetaStore {
     const prevCult = computeCultivationProgress(this.cultivationXp, this.reincarnationCount);
     const cultivationXpEarned = computeSettlementCultivationXp({
       ...input,
+      runMode,
+      difficulty: diff,
+      chronicleId,
       ascensionLevel: ascLv,
     });
     this.cultivationXp += cultivationXpEarned;
@@ -2683,16 +2844,25 @@ export class MetaStore {
       dailyChallengeScore ??
       (runMode === 'boss_rush'
         ? wave * 2500 + (victory ? 8000 : 0)
-        : wave * 1000 +
-          (diff === 'abyss' ? 6000 + ascLv * 1200 : diff === 'hell' ? 3500 : diff === 'hard' ? 1500 : 0) +
-          (trialId ? 4000 : 0) +
-          (victory ? 3000 : 0));
+        : runMode === 'chronicle' && chronCfg
+          ? wave * 1200 + chronCfg.chapterNo * 1800 + (victory ? 5000 : 0)
+          : wave * 1000 +
+            (diff === 'abyss'
+              ? 6000 + ascLv * 1200
+              : diff === 'hell'
+                ? 3500
+                : diff === 'hard'
+                  ? 1500
+                  : 0) +
+            (trialId ? 4000 : 0) +
+            (victory ? 3000 : 0));
     this.recordHallOfFame({
       id: `${dateKey}-${this.totalRuns}-${wave}`,
       dateKey,
       runMode,
       difficulty: diff,
       trialId,
+      ...(chronicleId ? { chronicleId } : {}),
       ...(ascLv > 0 ? { ascensionLevel: ascLv } : {}),
       wave,
       victory,
@@ -2718,6 +2888,7 @@ export class MetaStore {
       bountiesSlain,
       difficulty: diff,
       trialId,
+      ...(chronicleId ? { chronicleId } : {}),
       runMode,
       ...(ascLv > 0 ? { ascensionLevel: ascLv } : {}),
       victory,
@@ -3419,11 +3590,49 @@ export class MetaStore {
     if (
       rec.selectedRunMode === 'standard' ||
       rec.selectedRunMode === 'daily_challenge' ||
-      rec.selectedRunMode === 'boss_rush'
+      rec.selectedRunMode === 'boss_rush' ||
+      rec.selectedRunMode === 'chronicle'
     ) {
       this.selectedRunMode = rec.selectedRunMode;
       if (this.selectedRunMode !== 'standard') {
         this.selectedAscensionLevel = 0;
+      }
+    }
+    if (
+      typeof rec.selectedChronicleId === 'string' &&
+      CHRONICLES_BY_ID.has(rec.selectedChronicleId as ChronicleId)
+    ) {
+      this.selectedChronicleId = rec.selectedChronicleId as ChronicleId;
+    }
+    for (let i = 0; i < CHRONICLE_IDS_ORDERED.length; i++) {
+      const cid = CHRONICLE_IDS_ORDERED[i]!;
+      this.clearedChronicles[cid] = false;
+      this.chronicleRecords[cid] = { clears: 0, bestWave: 0, bestTicks: null };
+    }
+    if (typeof rec.clearedChronicles === 'object' && rec.clearedChronicles !== null) {
+      const ccObj = rec.clearedChronicles as Record<string, unknown>;
+      for (let i = 0; i < CHRONICLE_IDS_ORDERED.length; i++) {
+        const cid = CHRONICLE_IDS_ORDERED[i]!;
+        if (ccObj[cid] === true) {
+          this.clearedChronicles[cid] = true;
+        }
+      }
+    }
+    if (typeof rec.chronicleRecords === 'object' && rec.chronicleRecords !== null) {
+      const crObj = rec.chronicleRecords as Record<string, unknown>;
+      for (let i = 0; i < CHRONICLE_IDS_ORDERED.length; i++) {
+        const cid = CHRONICLE_IDS_ORDERED[i]!;
+        const rawEntry = crObj[cid];
+        if (typeof rawEntry === 'object' && rawEntry !== null) {
+          const e = rawEntry as Record<string, unknown>;
+          const clears = typeof e.clears === 'number' && Number.isFinite(e.clears) ? Math.max(0, Math.floor(e.clears)) : 0;
+          const bestWave = typeof e.bestWave === 'number' && Number.isFinite(e.bestWave) ? Math.max(0, Math.floor(e.bestWave)) : 0;
+          const bestTicks = typeof e.bestTicks === 'number' && Number.isFinite(e.bestTicks) && e.bestTicks > 0 ? Math.floor(e.bestTicks) : null;
+          this.chronicleRecords[cid] = { clears, bestWave, bestTicks };
+          if (clears > 0) {
+            this.clearedChronicles[cid] = true;
+          }
+        }
       }
     }
     if (typeof rec.dailyChallengeStreak === 'number' && Number.isFinite(rec.dailyChallengeStreak) && rec.dailyChallengeStreak >= 0) {
@@ -3606,7 +3815,9 @@ export class MetaStore {
               id: typeof h.id === 'string' ? h.id : `${h.dateKey}-${h.wave}`,
               dateKey: h.dateKey,
               runMode:
-                h.runMode === 'daily_challenge' || h.runMode === 'boss_rush'
+                h.runMode === 'daily_challenge' ||
+                h.runMode === 'boss_rush' ||
+                h.runMode === 'chronicle'
                   ? h.runMode
                   : 'standard',
               difficulty:
@@ -3617,6 +3828,10 @@ export class MetaStore {
                 typeof h.trialId === 'string' && (TRIAL_ORDER as readonly string[]).includes(h.trialId)
                   ? (h.trialId as TrialId)
                   : null,
+              ...(typeof h.chronicleId === 'string' &&
+              CHRONICLES_BY_ID.has(h.chronicleId as ChronicleId)
+                ? { chronicleId: h.chronicleId as ChronicleId }
+                : {}),
               ...(typeof h.ascensionLevel === 'number' && h.ascensionLevel > 0
                 ? { ascensionLevel: Math.min(ASCENSION_MAX_LEVEL, Math.floor(h.ascensionLevel)) }
                 : {}),
@@ -3666,6 +3881,7 @@ export class MetaStore {
       totalRuns: this.totalRuns,
       bestWave: this.bestWave,
       selectedRunMode: this.selectedRunMode,
+      selectedChronicleId: this.selectedChronicleId,
       selectedDifficulty: this.selectedDifficulty,
       selectedTrialId: this.selectedTrialId,
       unlockedAscensionLevel: this.unlockedAscensionLevel,
@@ -3676,6 +3892,8 @@ export class MetaStore {
       difficultyBestWave: this.difficultyBestWave,
       clearedTrials: this.clearedTrials,
       trialRecords: this.trialRecords,
+      clearedChronicles: this.clearedChronicles,
+      chronicleRecords: this.chronicleRecords,
       dailyChallengeRecords: this.dailyChallengeRecords,
       dailyChallengeStreak: this.dailyChallengeStreak,
       lastDailyChallengeDate: this.lastDailyChallengeDate,

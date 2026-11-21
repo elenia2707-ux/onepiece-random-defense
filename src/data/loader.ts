@@ -188,6 +188,7 @@ const VALID_SKIN_UNLOCKS: ReadonlySet<string> = new Set<SkinUnlockCond>([
   'wave_35',
   'wave_55',
   'all_trials_clear',
+  'chronicle_all_clear',
 ]);
 
 const VALID_TITLE_CONDITIONS: ReadonlySet<string> = new Set<TitleConditionKind>([
@@ -203,8 +204,12 @@ const VALID_TITLE_CONDITIONS: ReadonlySet<string> = new Set<TitleConditionKind>(
   'owned_relics',
   'relic_sets_active',
   'relic_sets_mythic',
+  'relic_sets_chaos',
   'daily_quests_claimed',
   'trial_abyss_clear',
+  'ascension_cleared',
+  'reincarnation_count',
+  'chronicle_cleared',
 ]);
 
 const VALID_SKIN_CRESTS: ReadonlySet<string> = new Set<SkinCrestKind>([
@@ -1344,6 +1349,12 @@ const VALID_ARMAMENT_IDS: ReadonlySet<string> = new Set<ArmamentId>([
   'arm_asura_saber',
   'arm_frost_jade_fan',
   'arm_thunder_halberd',
+  'arm_buddha_staff',
+  'arm_taiji_mirror',
+  'arm_haomun_feather_fan',
+  'arm_tyrant_greatsword',
+  'arm_blood_moon_saber',
+  'arm_myriad_demon_blades',
 ]);
 
 const VALID_ARMAMENT_ICONS: ReadonlySet<string> = new Set<ArmamentIconKind>([
@@ -1353,6 +1364,8 @@ const VALID_ARMAMENT_ICONS: ReadonlySet<string> = new Set<ArmamentIconKind>([
   'saber',
   'fan',
   'halberd',
+  'staff',
+  'mirror',
 ]);
 
 export function validateArmaments(input: unknown): ArmamentDef[] {

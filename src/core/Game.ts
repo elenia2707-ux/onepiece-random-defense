@@ -64,6 +64,7 @@ export class Game {
     this.haptics = new HapticsController();
     const runSeed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 0x20261118;
     const selRunMode = this.meta.getSelectedRunMode();
+    const selChronicle = selRunMode === 'chronicle' ? this.meta.getSelectedChronicleId() : null;
     const selDiff = this.meta.getSelectedDifficulty();
     const selTrial = selRunMode === 'standard' ? this.meta.getSelectedTrialId() : null;
     const selAscension =
@@ -86,6 +87,7 @@ export class Game {
       rookieMode,
       {
         runMode: selRunMode,
+        chronicleId: selChronicle,
         dailyDateKey: metaProf.dailyDate,
         ascensionLevel: selAscension,
         blessedRelics: this.meta.getBlessedRelics(),
@@ -108,6 +110,7 @@ export class Game {
         !savedRun.victoryHold &&
         !savedRun.victoryAchieved &&
         (savedRun.runMode ?? 'standard') === this.sim.runMode &&
+        (savedRun.chronicleId ?? null) === this.sim.chronicleId &&
         (savedRun.dailyDateKey ?? null) === (this.sim.dailyChallengeSpec?.dateKey ?? null) &&
         savedRun.difficulty === this.sim.difficulty &&
         (savedRun.trialId ?? null) === this.sim.trialId &&
@@ -265,6 +268,15 @@ export class Game {
       },
       onSelectRunMode: (mode) => {
         if (this.meta.setSelectedRunMode(mode)) {
+          this.suppressAutoSave = true;
+          this.meta.clearActiveRun();
+          window.location.reload();
+          return true;
+        }
+        return false;
+      },
+      onSelectChronicle: (chronicleId) => {
+        if (this.meta.setSelectedChronicle(chronicleId)) {
           this.suppressAutoSave = true;
           this.meta.clearActiveRun();
           window.location.reload();
@@ -843,6 +855,7 @@ export class Game {
         trialId: snap.trialId,
         ascensionLevel: snap.ascensionLevel,
         runMode: snap.runMode,
+        chronicleId: snap.chronicle?.id ?? null,
         victory: snap.victoryAchieved,
         elapsedTicks: this.sim.tickCount,
         totalDamage: snap.damageMeter.totalDamage,
@@ -1163,6 +1176,41 @@ export class Game {
       );
     });
 
+    this.sim.events.on('armament:tempered', (ev) => {
+      this.sound.playCraft(5);
+      this.haptics.trigger('success');
+      const armDef = this.sim.data.armamentsById.get(ev.armamentId);
+      if (ev.pos) {
+        this.vfx.spawnCraftPillarFx(ev.pos.x, ev.pos.y, armDef?.color ?? '#f97316', 5, ev.tick);
+      }
+      this.ui.showToast(
+        `🔥 신병 담금질 성공! [${ev.name}] +${ev.temperLevel}강 (능력치 +${ev.temperLevel * 25}%)`,
+      );
+    });
+
+    this.sim.events.on('command:cast', (ev) => {
+      this.sound.playComboSkill();
+      this.haptics.trigger('heavy');
+      this.vfx.triggerScreenFlash(
+        ev.color,
+        ev.skillId === 'cmd_heaven_cannon' ? 0.22 : 0.14,
+        ev.skillId === 'cmd_heaven_cannon' ? 0.3 : 0.22,
+        ev.tick,
+      );
+      this.vfx.spawnCommandSkillFx(ev.skillId, ev.tick);
+      if (ev.skillId === 'cmd_sword_barrage') {
+        this.ui.showToast('🗡 [만검총공] 호령 발동! 5초간 전 협객 공속 +45% · 치명률 +25%p!');
+      } else if (ev.skillId === 'cmd_bagua_bind') {
+        this.ui.showToast(
+          `☯ [팔괘금강박] 발동! 전 마물 ${ev.hitCount}기 기절 · 호신강기 -45 파쇄 · 55% 둔화!`,
+        );
+      } else {
+        this.ui.showToast(
+          `🌌 [천지개벽포] 발동! 전 마물 ${ev.hitCount}기 일제 포격 (총 ${ev.totalDamage.toLocaleString('ko-KR')} 피해)!`,
+        );
+      }
+    });
+
     this.sim.events.on('sect:pledged', (ev) => {
       this.sound.playCraft(5);
       this.haptics.trigger('success');
@@ -1347,18 +1395,23 @@ export class Game {
     this.sim.events.on('run:victory', (ev) => {
       this.sound.playVictory();
       this.haptics.trigger('success');
+      const chronDef = this.sim.chronicleDef;
       const bannerTag =
-        this.sim.runMode === 'boss_rush'
-          ? '보스러시 제패'
-          : this.sim.runMode === 'daily_challenge'
-            ? '오늘의 비무 제패'
-            : ev.trialId
-              ? TRIAL_CONFIGS[ev.trialId].badge
-              : '천하통일';
+        this.sim.runMode === 'chronicle' && chronDef
+          ? `제${chronDef.chapterNo}전 제패`
+          : this.sim.runMode === 'boss_rush'
+            ? '보스러시 제패'
+            : this.sim.runMode === 'daily_challenge'
+              ? '오늘의 비무 제패'
+              : ev.trialId
+                ? TRIAL_CONFIGS[ev.trialId].badge
+                : '천하통일';
       const subTxt =
-        this.sim.runMode === 'boss_rush'
-          ? `제 ${ev.wave} 관문 완전 정복!`
-          : `제 ${ev.wave} 장 대승리!`;
+        this.sim.runMode === 'chronicle' && chronDef
+          ? `${chronDef.name} 완전 정복!`
+          : this.sim.runMode === 'boss_rush'
+            ? `제 ${ev.wave} 관문 완전 정복!`
+            : `제 ${ev.wave} 장 대승리!`;
       this.vfx.showCraftCelebrationBanner(
         bannerTag,
         subTxt,

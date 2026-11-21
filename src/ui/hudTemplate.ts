@@ -159,6 +159,33 @@ export function buildHudShellMarkup(input: HudShellTemplateInput): string {
       </section>
 
       <footer class="bottom-dock" aria-label="무림 지휘 독">
+        <div id="command-skill-bar" class="command-skill-bar" aria-label="장문인 진법 호령">
+          <div class="cmd-qi-box" title="마물 처치(+2) · 보스(+15) · 장 돌파(+10) 시 전투 진기 충전">
+            <span class="cmd-qi-label">⚡진기</span>
+            <div class="cmd-qi-track">
+              <div id="cmd-qi-fill" class="cmd-qi-fill" style="width:25%"></div>
+            </div>
+            <b id="cmd-qi-val" class="cmd-qi-val">25</b>
+          </div>
+          <div class="cmd-skill-btns">
+            <button id="btn-cmd-sword" type="button" class="cmd-skill-btn interactive" data-cmd-skill="cmd_sword_barrage" title="만검총공 (진기 40): 5초간 전 협객 공속+45% · 치명+25%p">
+              <span class="cmd-ico">🗡</span>
+              <span class="cmd-name">만검총공</span>
+              <span id="cmd-meta-sword" class="cmd-cost">40</span>
+            </button>
+            <button id="btn-cmd-bagua" type="button" class="cmd-skill-btn interactive" data-cmd-skill="cmd_bagua_bind" title="팔괘금강박 (진기 60): 전 마물 기절 · 방어 -45 파쇄 · 55% 둔화">
+              <span class="cmd-ico">☯</span>
+              <span class="cmd-name">팔괘봉박</span>
+              <span id="cmd-meta-bagua" class="cmd-cost">60</span>
+            </button>
+            <button id="btn-cmd-cannon" type="button" class="cmd-skill-btn interactive" data-cmd-skill="cmd_heaven_cannon" title="천지개벽포 (진기 100): 출진 총 외공 1.65x 전장 포격 (보호막 2.5x · 방관 50%)">
+              <span class="cmd-ico">🌌</span>
+              <span class="cmd-name">개벽포</span>
+              <span id="cmd-meta-cannon" class="cmd-cost">100</span>
+            </button>
+          </div>
+        </div>
+
         <div class="currency-bar">
           <div class="currency-group">
             <span class="currency-pill coin" title="은자">${ICON.coin}<span id="val-coin">0</span></span>

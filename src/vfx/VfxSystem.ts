@@ -1,5 +1,6 @@
 import { Pool } from '../core/Pool';
 import { TICK_DT } from '../core/time';
+import type { CommandSkillId } from '../data/specialModes';
 import type { FactionId, PassiveProcKind, VfxTrackKind } from '../data/types';
 import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../platform/Viewport';
 import type { CanvasStack } from '../render/CanvasStack';
@@ -865,6 +866,75 @@ export class VfxSystem {
     this.emitRadialBurst(x, y, '#fde047', 26, 225, 0.45, 0, startTick);
   }
 
+  /**
+   * v4.2 Grandmaster Active Command Skills (장문인 진법 호령 3종)
+   * Purely visual pooled VFX synchronized by `startTick` (never mutates simulation state).
+   */
+  public spawnCommandSkillFx(skillId: CommandSkillId, startTick: number): void {
+    const cx = LOGICAL_WIDTH * 0.5;
+    const cy = 505;
+    if (skillId === 'cmd_sword_barrage') {
+      this.pushTrack({
+        kind: 'cmd_sword_barrage',
+        startTick,
+        durationSec: 0.95,
+        fromX: cx,
+        fromY: cy + 80,
+        x: cx,
+        y: cy,
+        fromRadius: 48,
+        toRadius: 270,
+        color: '#38bdf8',
+        secondaryColor: '#fde047',
+        lineWidth: 5,
+        glowRadius: 120,
+        gradeRank: 6,
+      });
+      this.emitRadialBurst(cx, cy + 12, '#38bdf8', 24, 230, 0.48, -40, startTick);
+      this.emitRadialBurst(cx, cy + 12, '#fef08a', 14, 175, 0.42, -60, startTick);
+      this.triggerScreenFlash('#38bdf8', 0.18, 0.24, startTick);
+    } else if (skillId === 'cmd_bagua_bind') {
+      this.pushTrack({
+        kind: 'cmd_bagua_bind',
+        startTick,
+        durationSec: 1.1,
+        fromX: cx,
+        fromY: cy,
+        x: cx,
+        y: cy,
+        fromRadius: 56,
+        toRadius: 315,
+        color: '#facc15',
+        secondaryColor: '#38bdf8',
+        lineWidth: 6,
+        glowRadius: 140,
+        gradeRank: 6,
+      });
+      this.emitRadialBurst(cx, cy, '#facc15', 28, 250, 0.52, 0, startTick);
+      this.triggerScreenFlash('#facc15', 0.2, 0.28, startTick);
+    } else {
+      this.pushTrack({
+        kind: 'cmd_heaven_cannon',
+        startTick,
+        durationSec: 1.15,
+        fromX: cx,
+        fromY: 110,
+        x: cx,
+        y: cy,
+        fromRadius: 44,
+        toRadius: 335,
+        color: '#c084fc',
+        secondaryColor: '#fde047',
+        lineWidth: 7,
+        glowRadius: 160,
+        gradeRank: 6,
+      });
+      this.emitRadialBurst(cx, cy, '#e879f9', 36, 290, 0.58, 0, startTick);
+      this.emitRadialBurst(cx, cy, '#fde047', 22, 230, 0.48, -20, startTick);
+      this.triggerScreenFlash('#c084fc', 0.28, 0.34, startTick);
+    }
+  }
+
   public spawnHitFx(
     entityId: number,
     x: number,
@@ -1286,6 +1356,149 @@ export class VfxSystem {
           }
           ctx.restore();
         }
+        break;
+      }
+
+      case 'cmd_sword_barrage': {
+        // 만검총공 — Sweeping azure-gold aura ring + 12 rising flying-sword qi silhouettes across the arena
+        const waveR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
+        ctx.save();
+        ctx.translate(inst.x, inst.y);
+        ctx.globalAlpha = inv * 0.92;
+        ctx.beginPath();
+        ctx.arc(0, 0, waveR, 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(2.5, 9 * inv);
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = Math.max(1.5, 4.8 * inv);
+        ctx.strokeStyle = inst.color;
+        ctx.stroke();
+
+        const lift = easeOutCubic(p) * 140;
+        for (let k = 0; k < 12; k++) {
+          const ang = (k * Math.PI * 2) / 12 + p * 0.9;
+          const sx = Math.cos(ang) * (70 + (k % 3) * 58);
+          const sy = Math.sin(ang) * (46 + (k % 2) * 44) + 40 - lift;
+          ctx.fillStyle = PIXEL_OUTLINE;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 30);
+          ctx.lineTo(sx + 6, sy + 12);
+          ctx.lineTo(sx, sy + 20);
+          ctx.lineTo(sx - 6, sy + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.fillStyle = k % 2 === 0 ? '#7dd3fc' : '#fef08a';
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 26);
+          ctx.lineTo(sx + 3.5, sy + 10);
+          ctx.lineTo(sx, sy + 16);
+          ctx.lineTo(sx - 3.5, sy + 10);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+        break;
+      }
+
+      case 'cmd_bagua_bind': {
+        // 팔괘금강박 — Colossal rotating golden octagonal Bagua seal locking the entire monster track
+        const sealR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(Math.min(1, p * 1.4));
+        ctx.save();
+        ctx.translate(inst.x, inst.y);
+        ctx.rotate(p * 1.65);
+        ctx.globalAlpha = inv * 0.94;
+
+        // Outer octagon + inner circle
+        ctx.beginPath();
+        for (let v = 0; v < 8; v++) {
+          const va = (v * Math.PI * 2) / 8;
+          const vx = Math.cos(va) * sealR;
+          const vy = Math.sin(va) * sealR;
+          if (v === 0) ctx.moveTo(vx, vy);
+          else ctx.lineTo(vx, vy);
+        }
+        ctx.closePath();
+        ctx.lineWidth = Math.max(3, 10 * inv);
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = Math.max(1.8, 5.2 * inv);
+        ctx.strokeStyle = '#facc15';
+        ctx.stroke();
+
+        // Inner inscribed octagon + 8 trigram radial locks
+        ctx.beginPath();
+        ctx.arc(0, 0, sealR * 0.68, 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(1.6, 3.6 * inv);
+        ctx.strokeStyle = '#fef08a';
+        ctx.stroke();
+
+        for (let v = 0; v < 8; v++) {
+          const va = (v * Math.PI * 2) / 8 + Math.PI / 8;
+          const x1 = Math.cos(va) * sealR * 0.68;
+          const y1 = Math.sin(va) * sealR * 0.68;
+          const x2 = Math.cos(va) * sealR * 0.96;
+          const y2 = Math.sin(va) * sealR * 0.96;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.lineWidth = Math.max(2, 5.5 * inv);
+          ctx.strokeStyle = v % 2 === 0 ? '#facc15' : '#38bdf8';
+          ctx.stroke();
+        }
+        ctx.restore();
+        break;
+      }
+
+      case 'cmd_heaven_cannon': {
+        // 천지개벽포 — Sky-splitting celestial violet-gold qi pillar + double shockwave rings + 8 star rays
+        const dropP = easeOutCubic(Math.min(1, p * 3.1));
+        const blastR = inst.fromRadius + (inst.toRadius - inst.fromRadius) * easeOutCubic(p);
+        const colW = Math.max(6, 56 * inv);
+        const beamBottom = inst.fromY + (inst.y - inst.fromY) * dropP;
+
+        ctx.save();
+        ctx.globalAlpha = inv * 0.96;
+        // Sky beam
+        ctx.fillStyle = PIXEL_OUTLINE;
+        ctx.fillRect(inst.x - colW - 4, 0, colW * 2 + 8, beamBottom + 20);
+        ctx.fillStyle = inst.color;
+        ctx.fillRect(inst.x - colW, 0, colW * 2, beamBottom + 16);
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(inst.x - colW * 0.45, 0, colW * 0.9, beamBottom + 12);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(inst.x - colW * 0.18, 0, colW * 0.36, beamBottom + 8);
+
+        // Twin shockwave rings + 8 radial rays once beam lands
+        if (p > 0.12) {
+          ctx.translate(inst.x, inst.y);
+          ctx.beginPath();
+          ctx.arc(0, 0, blastR, 0, Math.PI * 2);
+          ctx.lineWidth = Math.max(3, 12 * inv);
+          ctx.strokeStyle = PIXEL_OUTLINE;
+          ctx.stroke();
+          ctx.lineWidth = Math.max(2, 6.4 * inv);
+          ctx.strokeStyle = '#e879f9';
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(0, 0, blastR * 0.65, 0, Math.PI * 2);
+          ctx.lineWidth = Math.max(1.8, 4.6 * inv);
+          ctx.strokeStyle = '#fde047';
+          ctx.stroke();
+
+          ctx.rotate(p * 1.4);
+          for (let rIdx = 0; rIdx < 8; rIdx++) {
+            const ra = (rIdx * Math.PI * 2) / 8;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ra) * blastR * 0.2, Math.sin(ra) * blastR * 0.2);
+            ctx.lineTo(Math.cos(ra) * blastR * 1.05, Math.sin(ra) * blastR * 1.05);
+            ctx.lineWidth = Math.max(1.5, 4.5 * inv);
+            ctx.strokeStyle = rIdx % 2 === 0 ? '#fef08a' : '#f0abfc';
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
         break;
       }
 

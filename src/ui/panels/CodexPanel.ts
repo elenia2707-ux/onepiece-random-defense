@@ -16,6 +16,7 @@ import type { RecipeGraph } from '../../craft/RecipeGraph';
 import { COMBO_SKILLS } from '../../data/comboSkills';
 import {
   BOSS_RUSH_TARGET_STAGE,
+  CHRONICLE_CHAPTERS,
   ENDLESS_MILESTONES,
   getDailyChallengeSpec,
 } from '../../data/specialModes';
@@ -70,7 +71,7 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
 
   const ascSuffix =
     meta.clearedAscensionLevel > 0 ? ` · 등선 ${meta.clearedAscensionLevel}중천` : '';
-  const subtitle = `등재 협객 ${meta.discoveredCount}/${data.units.length}인 · 칭호 ${meta.unlockedTitleCount}/${TITLE_DEFS.length} · 비경 ${meta.clearedTrialCount}/${TRIAL_ORDER.length}${ascSuffix}`;
+  const subtitle = `등재 협객 ${meta.discoveredCount}/${data.units.length}인 · 전기 ${meta.clearedChronicleCount}/${CHRONICLE_CHAPTERS.length} · 칭호 ${meta.unlockedTitleCount}/${TITLE_DEFS.length} · 비경 ${meta.clearedTrialCount}/${TRIAL_ORDER.length}${ascSuffix}`;
 
   const diffCards = DIFFICULTY_ORDER.map((diff) => {
     const cfg = DIFFICULTY_CONFIGS[diff];
@@ -441,6 +442,55 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
     })
     .join('');
 
+  const chronicleCardsHtml = CHRONICLE_CHAPTERS.map((ch) => {
+    const cleared = Boolean(meta.clearedChronicles[ch.id]);
+    const active = snapshot.runMode === 'chronicle' && snapshot.chronicle?.id === ch.id;
+    const rec = meta.chronicleRecords[ch.id];
+    const clearBadge = cleared
+      ? `<span class="diff-clear-pill">🏆 ${ch.targetWave}장 제패</span>`
+      : `<span class="diff-bonus-pill">미제패 · 초회 대형보상</span>`;
+    const recordParts: string[] = [];
+    if (rec && (rec.clears > 0 || rec.bestWave > 0)) {
+      recordParts.push(`제패 ${rec.clears}회`);
+      recordParts.push(`최고 제 ${String(rec.bestWave).padStart(2, '0')}장`);
+      if (rec.bestTicks !== null) {
+        recordParts.push(`최단 ${formatTicksDuration(rec.bestTicks)}`);
+      }
+    }
+    const rewardLine = cleared
+      ? `반복 제패 보상: 🪙주화 +${ch.repeatClearGold} · 🔮초월파편 +${ch.repeatClearShards}${recordParts.length > 0 ? ` ｜ 📜 ${recordParts.join(' · ')}` : ''}`
+      : `초회 제패 보상: 🪙주화 +${ch.firstClearGold} · 🔑열쇠 +${ch.firstClearKeys} · 🧵비단 +${ch.firstClearSilk}필 · 🔮초월파편 +${ch.firstClearShards}`;
+    const btnClass = active
+      ? 'card-cta-btn cta-green interactive'
+      : cleared
+        ? 'card-cta-btn cta-sky interactive'
+        : 'card-cta-btn cta-gold interactive';
+    const btnLabel = active ? '출정 중 ✓' : cleared ? '재도전' : `제${ch.chapterNo}전 출정`;
+    return `
+      <div class="chronicle-card${cleared ? ' cleared' : ''}${active ? ' diff-active' : ''}" style="border-left:4px solid ${ch.color}">
+        <div class="chronicle-info">
+          <div class="card-name-row">
+            <span class="grade-pill" style="background:${ch.color}">${escapeHtml(ch.badge)}</span>
+            <span class="card-name">${escapeHtml(ch.name)}</span>
+            <span class="trial-rule-tag">${escapeHtml(ch.tag)}</span>
+            ${clearBadge}
+          </div>
+          <div class="chronicle-story-line">${escapeHtml(ch.storyText)}</div>
+          <div class="card-sub">${escapeHtml(ch.desc)}</div>
+          <div class="chronicle-reward-row">${escapeHtml(rewardLine)}</div>
+        </div>
+        <button
+          type="button"
+          class="${btnClass}"
+          data-sheet-action="select-chronicle"
+          data-chronicle-id="${ch.id}"
+        >
+          <span>${btnLabel}</span>
+        </button>
+      </div>
+    `;
+  }).join('');
+
   const dailySpec = getDailyChallengeSpec(meta.dailyDate);
   const dailyRec = meta.dailyChallengeToday;
   const dailyActive = snapshot.runMode === 'daily_challenge';
@@ -533,13 +583,15 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
           .slice(0, 8)
           .map((entry, idx) => {
             const modeLabel =
-              entry.runMode === 'daily_challenge'
-                ? '📅 일일'
-                : entry.runMode === 'boss_rush'
-                  ? '⚔ 러시'
-                  : entry.trialId
-                    ? `🌀 ${TRIAL_CONFIGS[entry.trialId]?.badge ?? '비경'}`
-                    : DIFFICULTY_CONFIGS[entry.difficulty]?.badge.split(' ')[0] ?? entry.difficulty;
+              entry.runMode === 'chronicle'
+                ? '📜 전기'
+                : entry.runMode === 'daily_challenge'
+                  ? '📅 일일'
+                  : entry.runMode === 'boss_rush'
+                    ? '⚔ 러시'
+                    : entry.trialId
+                      ? `🌀 ${TRIAL_CONFIGS[entry.trialId]?.badge ?? '비경'}`
+                      : DIFFICULTY_CONFIGS[entry.difficulty]?.badge.split(' ')[0] ?? entry.difficulty;
             const waveTxt =
               entry.runMode === 'boss_rush'
                 ? `제${entry.wave}관문`
@@ -612,6 +664,8 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
         <span>❔ 입문 교범</span>
       </button>
     </div>
+    <div class="sheet-section-label">📜 강호 전기 — 5장 시나리오 비전록 (${meta.clearedChronicleCount}/${CHRONICLE_CHAPTERS.length} 제패 · 전장 제패 시 🌌혈월강림 혈마황 스킨 해금!)</div>
+    <div class="chronicle-grid">${chronicleCardsHtml}</div>
     <div class="sheet-section-label">🌟 특수 출정 모드 — 매일의 시련 &amp; 보스 러시</div>
     ${specialModesHtml}
     <div class="sheet-section-label">🏛 무한 40장+ 마일스톤 (${meta.endlessMilestonesCleared.length}/${ENDLESS_MILESTONES.length}) &amp; 강호 명예의 전당</div>

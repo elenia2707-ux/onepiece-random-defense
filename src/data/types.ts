@@ -381,7 +381,8 @@ export type SkinUnlockCond =
   | 'abyss_clear'
   | 'wave_35'
   | 'wave_55'
-  | 'all_trials_clear';
+  | 'all_trials_clear'
+  | 'chronicle_all_clear';
 export type SkinCrestKind = 'halo' | 'crown' | 'blades' | 'orbs';
 export type ArenaRuleId = 'frost_chill' | 'sandstorm_crit' | 'bloodflame_forge';
 
@@ -443,8 +444,12 @@ export type TitleConditionKind =
   | 'owned_relics'
   | 'relic_sets_active'
   | 'relic_sets_mythic'
+  | 'relic_sets_chaos'
   | 'daily_quests_claimed'
-  | 'trial_abyss_clear';
+  | 'trial_abyss_clear'
+  | 'ascension_cleared'
+  | 'reincarnation_count'
+  | 'chronicle_cleared';
 
 export interface TitleDef {
   readonly id: TitleId;
@@ -516,7 +521,13 @@ export type ArmamentId =
   | 'arm_thousand_needles'
   | 'arm_asura_saber'
   | 'arm_frost_jade_fan'
-  | 'arm_thunder_halberd';
+  | 'arm_thunder_halberd'
+  | 'arm_buddha_staff'
+  | 'arm_taiji_mirror'
+  | 'arm_haomun_feather_fan'
+  | 'arm_tyrant_greatsword'
+  | 'arm_blood_moon_saber'
+  | 'arm_myriad_demon_blades';
 
 export type ArmamentIconKind =
   | 'sword'
@@ -524,7 +535,16 @@ export type ArmamentIconKind =
   | 'needles'
   | 'saber'
   | 'fan'
-  | 'halberd';
+  | 'halberd'
+  | 'staff'
+  | 'mirror';
+
+export type SpiritTileKind = 'solar' | 'wind';
+
+export interface SpiritTileSpec {
+  readonly fieldIndex: number;
+  readonly kind: SpiritTileKind;
+}
 
 export interface ArmamentResonanceDef {
   readonly faction: FactionId;

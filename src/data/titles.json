@@ -190,5 +190,101 @@
     "rewardGold": 900,
     "rewardKeys": 6,
     "rewardSilk": 150
+  },
+  {
+    "id": "title_chronicle_initiate",
+    "name": "강호전기 입문자",
+    "badge": "전기입문",
+    "color": "#38bdf8",
+    "desc": "강호 전기 시나리오 5장 중 1편 이상을 완수한 서사시의 주역",
+    "condition": "chronicle_cleared",
+    "target": 1,
+    "rewardGold": 280,
+    "rewardKeys": 2,
+    "rewardSilk": 40
+  },
+  {
+    "id": "title_chronicle_master",
+    "name": "강호전기 완독 대종사",
+    "badge": "전기완독",
+    "color": "#facc15",
+    "desc": "화산 검총부터 태고개벽대전까지 강호 전기 5장 전편을 제패한 전설의 장문인",
+    "condition": "chronicle_cleared",
+    "target": 5,
+    "rewardGold": 1100,
+    "rewardKeys": 6,
+    "rewardSilk": 160
+  },
+  {
+    "id": "title_ascension_5",
+    "name": "등선겁 5중천 돌파자",
+    "badge": "5중천",
+    "color": "#c084fc",
+    "desc": "등선 천겁 제 5 중천 이상을 제패한 초월의 선인",
+    "condition": "ascension_cleared",
+    "target": 5,
+    "rewardGold": 550,
+    "rewardKeys": 3,
+    "rewardSilk": 80
+  },
+  {
+    "id": "title_ascension_10",
+    "name": "등선겁 10중천 무신",
+    "badge": "10중천",
+    "color": "#f472b6",
+    "desc": "등선 천겁 제 10 중천 이상을 돌파한 구천 무신",
+    "condition": "ascension_cleared",
+    "target": 10,
+    "rewardGold": 950,
+    "rewardKeys": 5,
+    "rewardSilk": 140
+  },
+  {
+    "id": "title_ascension_20",
+    "name": "등선겁 20중천 태극황제",
+    "badge": "20중천극",
+    "color": "#fde047",
+    "desc": "등선 천겁 최종 20중천 극한을 정복한 천상천하 태극황제",
+    "condition": "ascension_cleared",
+    "target": 20,
+    "rewardGold": 2000,
+    "rewardKeys": 10,
+    "rewardSilk": 300
+  },
+  {
+    "id": "title_reincarnation_1",
+    "name": "윤회환골 탈태자",
+    "badge": "환골탈태",
+    "color": "#34d399",
+    "desc": "단전 경지 Lv.41 완수 후 첫 번째 무극 전생을 이룬 선협",
+    "condition": "reincarnation_count",
+    "target": 1,
+    "rewardGold": 650,
+    "rewardKeys": 4,
+    "rewardSilk": 95
+  },
+  {
+    "id": "title_reincarnation_5",
+    "name": "만겁윤회 불사신선",
+    "badge": "만겁윤회",
+    "color": "#2dd4bf",
+    "desc": "5회 이상 무극 전생을 거듭하여 영구 극의를 체득한 불사신선",
+    "condition": "reincarnation_count",
+    "target": 5,
+    "rewardGold": 1500,
+    "rewardKeys": 8,
+    "rewardSilk": 220
+  },
+  {
+    "id": "title_relic_chaos_master",
+    "name": "혼원신물 공명지존",
+    "badge": "혼원공명",
+    "color": "#fb7185",
+    "desc": "4대 신물 세트 중 2개 이상을 Lv.22 혼원(4단계) 공명 이상 달성한 신물 지존",
+    "condition": "relic_sets_chaos",
+    "target": 2,
+    "rewardGold": 1400,
+    "rewardKeys": 8,
+    "rewardSilk": 200
   }
 ]

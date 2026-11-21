@@ -54,12 +54,30 @@ import {
   type ContractId,
 } from '../data/contracts';
 import {
+  ARMAMENT_TEMPER_COSTS,
   BOSS_RUSH_TARGET_STAGE,
+  CHRONICLE_CHAPTERS,
+  CHRONICLES_BY_ID,
+  type ChronicleChapterDef,
+  type ChronicleId,
+  COMMAND_SKILLS,
+  COMMAND_SKILLS_BY_ID,
+  type CommandSkillId,
+  computeSeededSpiritTiles,
   type DailyChallengeSpec,
   ENDLESS_MILESTONES_BY_WAVE,
   getDailyChallengeSpec,
+  MAX_ARMAMENT_TEMPER,
   resolveBossRushWaveDef,
+  resolveChronicleWaveDef,
   type RunModeId,
+  SPIRIT_TILE_SOLAR_ATK_PCT,
+  SPIRIT_TILE_WIND_RANGE_BONUS,
+  TACTICAL_QI_INITIAL,
+  TACTICAL_QI_KILL_BOSS,
+  TACTICAL_QI_KILL_NORMAL,
+  TACTICAL_QI_MAX,
+  TACTICAL_QI_WAVE_ADVANCE,
 } from '../data/specialModes';
 import type {
   ArenaRuleId,
@@ -80,6 +98,8 @@ import type {
   RelicId,
   SectDef,
   SectId,
+  SpiritTileKind,
+  SpiritTileSpec,
   SupportAuraDef,
   TrialId,
   UnitId,
@@ -94,6 +114,7 @@ import {
   type RunSaveData,
 } from '../platform/SaveMigration';
 import {
+  applyCommandCannonBlast,
   type BenchPassiveSummary,
   type CombatSystemContext,
   computeBenchPassiveSummary,
@@ -515,6 +536,24 @@ export interface SimEventMap {
     readonly pos: Vec2 | null;
     readonly tick: number;
   };
+  'armament:tempered': {
+    readonly slotIndex: number;
+    readonly armamentId: ArmamentId;
+    readonly name: string;
+    readonly temperLevel: number;
+    readonly equippedUid: number | null;
+    readonly pos: Vec2 | null;
+    readonly tick: number;
+  };
+  'command:cast': {
+    readonly skillId: CommandSkillId;
+    readonly name: string;
+    readonly color: string;
+    readonly qiSpent: number;
+    readonly hitCount: number;
+    readonly totalDamage: number;
+    readonly tick: number;
+  };
   'command:rejected': {
     readonly cmd: GameCommand['type'];
     readonly reason: string;
@@ -529,6 +568,7 @@ export interface EquippedArmamentView {
   readonly badge: string;
   readonly color: string;
   readonly resonanceActive: boolean;
+  readonly temperLevel: number;
 }
 
 export interface ArmamentSlotSnapshot {
@@ -538,6 +578,9 @@ export interface ArmamentSlotSnapshot {
   readonly equippedUnitName: string | null;
   readonly equippedUnitFaction: FactionId | null;
   readonly resonanceActive: boolean;
+  readonly temperLevel: number;
+  readonly maxTemperLevel: number;
+  readonly nextTemperCost: { readonly coin: number; readonly luck: number } | null;
 }
 
 export interface ArmorySnapshot {
@@ -551,6 +594,28 @@ interface ArmamentSlotState {
   readonly slotIndex: number;
   armamentId: ArmamentId;
   equippedUid: number | null;
+  temperLevel: number;
+}
+
+export interface CommandSkillItemSnapshot {
+  readonly id: CommandSkillId;
+  readonly name: string;
+  readonly shortLabel: string;
+  readonly icon: string;
+  readonly qiCost: number;
+  readonly color: string;
+  readonly desc: string;
+  readonly cooldownLeftTicks: number;
+  readonly cooldownTotalTicks: number;
+  readonly activeTicksLeft: number;
+  readonly canCast: boolean;
+}
+
+export interface CommandSkillSnapshot {
+  readonly qi: number;
+  readonly maxQi: number;
+  readonly swordBarrageTicksLeft: number;
+  readonly skills: readonly CommandSkillItemSnapshot[];
 }
 
 export interface SlotView {
@@ -574,6 +639,7 @@ export interface SlotView {
   readonly passiveTrait?: PassiveTraitDef;
   readonly benchPassive?: BenchPassiveDef;
   readonly equippedArmament?: EquippedArmamentView;
+  readonly spiritTile?: SpiritTileKind;
   readonly tileBuffAtkPct: number;
   readonly tileBuffSpeedPct: number;
   readonly sealed: boolean;
@@ -701,6 +767,7 @@ export interface SectSnapshot {
 
 export interface SimulationModeOptions {
   readonly runMode?: RunModeId;
+  readonly chronicleId?: ChronicleId | null;
   readonly dailyDateKey?: string;
   readonly ascensionLevel?: number;
   readonly blessedRelics?: readonly RelicId[];
@@ -718,7 +785,10 @@ export interface UISnapshot {
   readonly trialId: TrialId | null;
   readonly ascensionLevel: number;
   readonly runMode: RunModeId;
+  readonly chronicle: ChronicleChapterDef | null;
   readonly dailyChallenge: DailyChallengeSpec | null;
+  readonly spiritTiles: readonly SpiritTileSpec[];
+  readonly commandSkills: CommandSkillSnapshot;
   readonly endlessMilestonesReached: readonly number[];
   readonly activeCombos: readonly ActiveComboView[];
   readonly codexAtkBonusPct: number;
@@ -802,6 +872,11 @@ export interface UISnapshot {
 }
 
 const UPGRADE_ORDER: readonly UpgradeGroupId[] = ['orthodox', 'unorthodox', 'demonic'];
+const COMMAND_SKILL_ORDER: readonly CommandSkillId[] = [
+  'cmd_sword_barrage',
+  'cmd_bagua_bind',
+  'cmd_heaven_cannon',
+];
 
 export class Simulation {
   public readonly data: GameDataBundle;
@@ -809,6 +884,8 @@ export class Simulation {
   public readonly trialId: TrialId | null;
   public readonly ascensionLevel: number;
   public readonly runMode: RunModeId;
+  public readonly chronicleId: ChronicleId | null;
+  public readonly chronicleDef: ChronicleChapterDef | null;
   public readonly dailyChallengeSpec: DailyChallengeSpec | null;
   public readonly rookieMode: boolean;
   public readonly events = new EventBus<SimEventMap>();
@@ -829,6 +906,14 @@ export class Simulation {
   private heroMasteryAtkPct: Readonly<Partial<Record<UnitId, number>>> = {};
   private readonly blessedRelics: RelicId[] = [];
   private readonly armory: ArmamentSlotState[] = [];
+  private spiritTiles: readonly SpiritTileSpec[] = [];
+  private tacticalQi = TACTICAL_QI_INITIAL;
+  private cmdSwordBarrageTicksLeft = 0;
+  private readonly cmdCooldowns: Record<CommandSkillId, number> = {
+    cmd_sword_barrage: 0,
+    cmd_bagua_bind: 0,
+    cmd_heaven_cannon: 0,
+  };
   private pledgedSect: SectId | null = null;
   private sectVowCompleted = false;
   private primordialUnlocked = false;
@@ -957,15 +1042,33 @@ export class Simulation {
       : ZERO_ENDGAME_META_BONUSES;
     this.arenaRule = options?.arenaRule ?? null;
     this.heroMasteryAtkPct = options?.heroMasteryAtkPct ? { ...options.heroMasteryAtkPct } : {};
-    if (this.runMode === 'daily_challenge') {
+
+    let spiritSeed = seed;
+    if (this.runMode === 'chronicle') {
+      const requestedId = options?.chronicleId ?? CHRONICLE_CHAPTERS[0]!.id;
+      const chap = CHRONICLES_BY_ID.get(requestedId) ?? CHRONICLE_CHAPTERS[0]!;
+      this.chronicleId = chap.id;
+      this.chronicleDef = chap;
+      this.dailyChallengeSpec = null;
+      this.difficulty = chap.baseDifficulty;
+      this.trialId = null;
+      this.ascensionLevel = 0;
+      this.rookieMode = false;
+      this.rng = new Rng(seed);
+    } else if (this.runMode === 'daily_challenge') {
       const spec = getDailyChallengeSpec(options?.dailyDateKey ?? '2026-11-19');
+      this.chronicleId = null;
+      this.chronicleDef = null;
       this.dailyChallengeSpec = spec;
       this.difficulty = 'hard';
       this.trialId = null;
       this.ascensionLevel = 0;
       this.rookieMode = false;
       this.rng = new Rng(spec.seed);
+      spiritSeed = spec.seed;
     } else if (this.runMode === 'boss_rush') {
+      this.chronicleId = null;
+      this.chronicleDef = null;
       this.dailyChallengeSpec = null;
       this.difficulty = 'hard';
       this.trialId = null;
@@ -973,6 +1076,8 @@ export class Simulation {
       this.rookieMode = false;
       this.rng = new Rng(seed);
     } else {
+      this.chronicleId = null;
+      this.chronicleDef = null;
       this.dailyChallengeSpec = null;
       this.difficulty = difficulty;
       this.trialId = trialId;
@@ -983,9 +1088,17 @@ export class Simulation {
       this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
       this.rng = new Rng(seed);
     }
-    this.primordialUnlocked = this.trialId !== null || this.difficulty === 'abyss';
+    this.primordialUnlocked =
+      this.trialId !== null ||
+      this.difficulty === 'abyss' ||
+      Boolean(this.chronicleDef?.primordialFromStart);
 
     this.board = new Board(data.board);
+    this.spiritTiles = computeSeededSpiritTiles(
+      spiritSeed,
+      this.board.field.capacity,
+      this.chronicleDef?.fixedSpiritTiles,
+    );
     this.path = new LoopPath(data.board.path.waypoints);
     this.recipeGraph = new RecipeGraph(data.units, data.gradesById, data.recipes);
     this.craftIndex = new CraftIndex(this.recipeGraph, data.unitsById);
@@ -994,16 +1107,26 @@ export class Simulation {
 
     const dailyMod = this.dailyChallengeSpec?.rule.modifiers;
     this.coin =
-      (this.runMode === 'boss_rush' ? 420 : data.board.economy.initialCoin) +
+      (this.chronicleDef
+        ? this.chronicleDef.startCoin
+        : this.runMode === 'boss_rush'
+          ? 420
+          : data.board.economy.initialCoin) +
       (dailyMod?.startCoinBonus ?? 0) +
       this.endgameBonuses.startCoin;
     this.luckStone =
-      (this.runMode === 'boss_rush' ? 6 : data.board.economy.initialLuckStone) +
+      (this.chronicleDef
+        ? this.chronicleDef.startLuck
+        : this.runMode === 'boss_rush'
+          ? 6
+          : data.board.economy.initialLuckStone) +
       (dailyMod?.startLuckBonus ?? 0);
     this.waveTicksLeft =
       this.runMode === 'boss_rush'
         ? resolveBossRushWaveDef(1).durationTicks
-        : (data.waves[0]?.durationTicks ?? 840);
+        : this.chronicleDef
+          ? resolveChronicleWaveDef(data.waves, this.chronicleDef, 1).durationTicks
+          : (data.waves[0]?.durationTicks ?? 840);
     if (this.runMode === 'boss_rush') {
       this.nextSpawnTick = 120; // 4s prep window before Boss 1 enters
     }
@@ -1021,6 +1144,12 @@ export class Simulation {
       this.wisps.common = (this.wisps.common ?? 0) + 2;
       this.wisps.uncommon = (this.wisps.uncommon ?? 0) + 2;
       this.wisps.rare = (this.wisps.rare ?? 0) + 1;
+    } else if (this.chronicleDef) {
+      for (const [gId, cnt] of Object.entries(this.chronicleDef.startWisps)) {
+        if (cnt && cnt > 0) {
+          this.wisps[gId] = (this.wisps[gId] ?? 0) + cnt;
+        }
+      }
     }
 
     this.summonableGrades = data.grades.filter((g) => g.summonable && g.summonWeight > 0);
@@ -1112,9 +1241,22 @@ export class Simulation {
   }
 
   public get clearTargetWave(): number {
+    if (this.chronicleDef) return this.chronicleDef.targetWave;
     if (this.runMode === 'boss_rush') return BOSS_RUSH_TARGET_STAGE;
     if (this.dailyChallengeSpec) return this.dailyChallengeSpec.targetWave;
     return this.trialId ? TRIAL_CONFIGS[this.trialId].targetWave : CLEAR_TARGET_WAVE;
+  }
+
+  public getSpiritTiles(): readonly SpiritTileSpec[] {
+    return this.spiritTiles;
+  }
+
+  public getSpiritTileKindAt(fieldIndex: number): SpiritTileKind | undefined {
+    for (let i = 0; i < this.spiritTiles.length; i++) {
+      const st = this.spiritTiles[i]!;
+      if (st.fieldIndex === fieldIndex) return st.kind;
+    }
+    return undefined;
   }
 
   public get tickCount(): number {
@@ -1355,12 +1497,12 @@ export class Simulation {
 
   public getEquippedArmamentSlotForUid(
     uid: number,
-  ): { readonly slotIndex: number; readonly def: ArmamentDef } | null {
+  ): { readonly slotIndex: number; readonly def: ArmamentDef; readonly temperLevel: number } | null {
     for (let i = 0; i < this.armory.length; i++) {
       const s = this.armory[i]!;
       if (s.equippedUid === uid) {
         const def = this.data.armamentsById.get(s.armamentId);
-        return def ? { slotIndex: s.slotIndex, def } : null;
+        return def ? { slotIndex: s.slotIndex, def, temperLevel: s.temperLevel } : null;
       }
     }
     return null;
@@ -1399,6 +1541,7 @@ export class Simulation {
   ): { readonly baseAtk: number; readonly bonusAtk: number } {
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const def = this.data.unitsById.get(unitId);
+    const effSynergy = precomputedSynergy ?? this.computeFieldSynergy();
     let extraTraitPct = 0;
     if (this.getBoonStacks('b_relic_resonance') > 0) {
       let ownedRelics = 0;
@@ -1435,12 +1578,21 @@ export class Simulation {
     if (this.arenaRule === 'bloodflame_forge') {
       extraTraitPct += 5;
     }
+    if (this.chronicleDef) {
+      const cm = this.chronicleDef.modifiers;
+      if (cm.orthodoxAtkPct && def?.faction === 'orthodox') {
+        extraTraitPct += cm.orthodoxAtkPct;
+      }
+      if (cm.trinityAtkPct && effSynergy.trinityActive) {
+        extraTraitPct += cm.trinityAtkPct;
+      }
+    }
 
     const baseResult = computeUnitEffectiveAtk(
       this.data,
       unitId,
       this.upgradeLv,
-      precomputedSynergy ?? this.computeFieldSynergy(),
+      effSynergy,
       tileBuffAtkPct,
       this.getEffectiveWealthBps(),
       this.getBoonStacks('b_trinity_harmony'),
@@ -1523,6 +1675,17 @@ export class Simulation {
     }
 
     if (!this.gameOver && !this.victoryHold) {
+      // Tick down active tactical command skill buff & cooldowns
+      if (this.cmdSwordBarrageTicksLeft > 0) {
+        this.cmdSwordBarrageTicksLeft--;
+      }
+      for (let cIdx = 0; cIdx < COMMAND_SKILL_ORDER.length; cIdx++) {
+        const cid = COMMAND_SKILL_ORDER[cIdx]!;
+        if (this.cmdCooldowns[cid] > 0) {
+          this.cmdCooldowns[cid]--;
+        }
+      }
+
       const waveCtx = this.createWaveSystemContext();
 
       // 2. Wave & Spawn progression
@@ -1584,6 +1747,7 @@ export class Simulation {
       trialId: this.trialId,
       ascensionLevel: this.ascensionLevel,
       runMode: this.runMode,
+      chronicleDef: this.chronicleDef,
       dailyRule: this.dailyChallengeSpec?.rule ?? null,
       arenaRule: this.arenaRule,
       rookieMode: this.rookieMode,
@@ -1666,6 +1830,7 @@ export class Simulation {
         this.priorityDirty = true;
       },
       onWaveAdvanced: (completedWave, nextWaveNum) => {
+        this.tacticalQi = Math.min(TACTICAL_QI_MAX, this.tacticalQi + TACTICAL_QI_WAVE_ADVANCE);
         this.handleWaveAdvancedForContracts(completedWave, nextWaveNum);
       },
     };
@@ -1677,10 +1842,13 @@ export class Simulation {
       difficulty: this.difficulty,
       trialId: this.trialId,
       runMode: this.runMode,
+      chronicleDef: this.chronicleDef,
       dailyRule: this.dailyChallengeSpec?.rule ?? null,
       arenaRule: this.arenaRule,
       endgameBonuses: this.endgameBonuses,
       pledgedSectDef: this.getPledgedSectDef(),
+      spiritTiles: this.spiritTiles,
+      cmdSwordBarrageTicksLeft: this.cmdSwordBarrageTicksLeft,
       clearTargetWave: this.clearTargetWave,
       board: this.board,
       rng: this.rng,
@@ -1701,6 +1869,7 @@ export class Simulation {
       getBoonStacks: (id) => this.getBoonStacks(id),
       isFieldSlotSealed: (fieldIndex) => this.isFieldSlotSealed(fieldIndex),
       getUnitArmament: (uid) => this.getEquippedArmamentForUid(uid),
+      getUnitArmamentSlot: (uid) => this.getEquippedArmamentSlotForUid(uid),
       getUnitEffectiveAtk: (unitId, synergy, tileBuffAtkPct, starLevel = 0, extraArmAtkPct = 0) =>
         this.getUnitEffectiveAtk(unitId, synergy, tileBuffAtkPct, starLevel, extraArmAtkPct),
       allocateProjectileId: () => this.nextProjectileId++,
@@ -1728,6 +1897,8 @@ export class Simulation {
       },
       onMonsterSlain: (isWaveBoss, isBounty, spawnTick) => {
         this.monstersSlain++;
+        const qiGain = isWaveBoss || isBounty ? TACTICAL_QI_KILL_BOSS : TACTICAL_QI_KILL_NORMAL;
+        this.tacticalQi = Math.min(TACTICAL_QI_MAX, this.tacticalQi + qiGain);
         if (isWaveBoss) {
           this.bossesSlain++;
           if (spawnTick !== undefined) {
@@ -2631,6 +2802,7 @@ export class Simulation {
           slotIndex: nextSlot,
           armamentId: picked.id,
           equippedUid: autoTargetUid,
+          temperLevel: 0,
         });
         const eqUnit = autoTargetUid !== null ? this.unitsByUid.get(autoTargetUid) : undefined;
         this.priorityDirty = true;
@@ -2677,6 +2849,162 @@ export class Simulation {
           name: nextArm.name,
           equippedUid: slot.equippedUid,
           pos: eqUnit ? { x: eqUnit.currX, y: eqUnit.currY } : null,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'temperArmament': {
+        const slotIdx = Math.floor(cmd.slotIndex);
+        const slot = this.armory[slotIdx];
+        if (!slot) {
+          this.reject('temperArmament', '담금질할 신병 슬롯이 없습니다.');
+          return;
+        }
+        if (slot.temperLevel >= MAX_ARMAMENT_TEMPER) {
+          this.reject('temperArmament', '이미 최고 단계(+3강)까지 담금질이 완료되었습니다.');
+          return;
+        }
+        const cost = ARMAMENT_TEMPER_COSTS[slot.temperLevel];
+        if (!cost) {
+          this.reject('temperArmament', '담금질 비용 정보를 찾을 수 없습니다.');
+          return;
+        }
+        if (this.coin < cost.coin) {
+          this.reject('temperArmament', `은자가 부족합니다 (${cost.coin} 필요)`);
+          return;
+        }
+        if (this.luckStone < cost.luck) {
+          this.reject('temperArmament', `영단이 부족합니다 (${cost.luck}개 필요)`);
+          return;
+        }
+        const armDef = this.data.armamentsById.get(slot.armamentId);
+        if (!armDef) {
+          this.reject('temperArmament', '신병 정보를 찾을 수 없습니다.');
+          return;
+        }
+        this.coin -= cost.coin;
+        this.luckStone -= cost.luck;
+        slot.temperLevel++;
+        const eqUnit =
+          slot.equippedUid !== null ? this.unitsByUid.get(slot.equippedUid) : undefined;
+        this.priorityDirty = true;
+        this.events.emit('armament:tempered', {
+          slotIndex: slotIdx,
+          armamentId: armDef.id,
+          name: armDef.name,
+          temperLevel: slot.temperLevel,
+          equippedUid: slot.equippedUid,
+          pos: eqUnit ? { x: eqUnit.currX, y: eqUnit.currY } : null,
+          tick: this.currentTick,
+        });
+        return;
+      }
+
+      case 'castCommandSkill': {
+        if (this.gameOver || this.victoryHold) {
+          this.reject('castCommandSkill', '현재 전장 상태에서는 호령을 발동할 수 없습니다.');
+          return;
+        }
+        const def = COMMAND_SKILLS_BY_ID.get(cmd.skillId);
+        if (!def) {
+          this.reject('castCommandSkill', '알 수 없는 장문인 호령입니다.');
+          return;
+        }
+        const cdLeft = this.cmdCooldowns[def.id] ?? 0;
+        if (cdLeft > 0) {
+          this.reject(
+            'castCommandSkill',
+            `${def.name} 재사용 대기 중 (${(cdLeft / 30).toFixed(1)}초)`,
+          );
+          return;
+        }
+        if (this.tacticalQi < def.qiCost) {
+          this.reject(
+            'castCommandSkill',
+            `전투 진기가 부족합니다 (${this.tacticalQi}/${def.qiCost})`,
+          );
+          return;
+        }
+        if (
+          (def.id === 'cmd_bagua_bind' || def.id === 'cmd_heaven_cannon') &&
+          this.monsters.length === 0
+        ) {
+          this.reject('castCommandSkill', '전장에 공격할 마물이 없습니다.');
+          return;
+        }
+
+        this.tacticalQi = Math.max(0, this.tacticalQi - def.qiCost);
+        this.cmdCooldowns[def.id] = def.cooldownTicks;
+
+        let hitCount = 0;
+        let totalDamage = 0;
+
+        if (def.id === 'cmd_sword_barrage') {
+          this.cmdSwordBarrageTicksLeft = def.durationTicks;
+          hitCount = this.board.field.countOccupied();
+        } else if (def.id === 'cmd_bagua_bind') {
+          const ordered = this.monsters
+            .slice()
+            .sort((a, b) =>
+              b.currDistance !== a.currDistance
+                ? b.currDistance - a.currDistance
+                : a.entityId - b.entityId,
+            );
+          for (let i = 0; i < ordered.length; i++) {
+            const m = ordered[i]!;
+            if (m.hp <= 0) continue;
+            const stunDur = m.isBoss || m.isBounty ? 36 : 54;
+            m.stunUntilTick = Math.max(m.stunUntilTick, this.currentTick + stunDur);
+            const curShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
+            m.armorShred = Math.min(200, curShred + 45);
+            m.shredExpireTick = Math.max(m.shredExpireTick, this.currentTick + 150);
+            if (this.currentTick >= m.hasteUntilTick) {
+              m.slowUntilTick = Math.max(m.slowUntilTick, this.currentTick + 90);
+              m.slowFactor = Math.min(m.slowFactor, 0.45);
+            }
+            hitCount++;
+          }
+        } else if (def.id === 'cmd_heaven_cannon') {
+          const synergy = this.computeFieldSynergy();
+          const tileBuffs = this.computeFieldTileBuffs();
+          let totalFieldAtk = 0;
+          for (let i = 0; i < this.units.length; i++) {
+            const u = this.units[i]!;
+            if (u.slot.area !== 'field') continue;
+            const uDef = this.data.unitsById.get(u.unitId);
+            if (!uDef) continue;
+            const eqSlot = this.getEquippedArmamentSlotForUid(u.uid);
+            const armAtk = resolveArmamentBonuses(
+              eqSlot?.def ?? null,
+              uDef.faction,
+              eqSlot?.temperLevel ?? 0,
+            ).atkPct;
+            const spKind = this.getSpiritTileKindAt(u.slot.index);
+            const tbAtk =
+              (tileBuffs[u.slot.index]?.atkPct ?? 0) +
+              (spKind === 'solar' ? SPIRIT_TILE_SOLAR_ATK_PCT : 0);
+            const eff = this.getUnitEffectiveAtk(u.unitId, synergy, tbAtk, u.starLevel ?? 0, armAtk);
+            totalFieldAtk += eff.baseAtk + eff.bonusAtk;
+          }
+          const cannonBaseDmg = Math.max(800, Math.round(totalFieldAtk * 1.65));
+          const res = applyCommandCannonBlast(
+            this.createCombatSystemContext(),
+            cannonBaseDmg,
+            def.color,
+          );
+          hitCount = res.hitCount;
+          totalDamage = res.totalDamage;
+        }
+
+        this.priorityDirty = true;
+        this.events.emit('command:cast', {
+          skillId: def.id,
+          name: def.name,
+          color: def.color,
+          qiSpent: def.qiCost,
+          hitCount,
+          totalDamage,
           tick: this.currentTick,
         });
         return;
@@ -3543,9 +3871,13 @@ export class Simulation {
     const waveDef =
       this.runMode === 'boss_rush'
         ? resolveBossRushWaveDef(this.waveNumber)
-        : resolveWaveDef(this.data.waves, this.waveNumber);
+        : this.chronicleDef
+          ? resolveChronicleWaveDef(this.data.waves, this.chronicleDef, this.waveNumber)
+          : resolveWaveDef(this.data.waves, this.waveNumber);
     const mutantKind =
-      this.runMode === 'boss_rush' ? null : getWaveMutantKind(this.waveNumber, waveDef.isBoss);
+      this.runMode === 'boss_rush'
+        ? null
+        : getWaveMutantKind(this.waveNumber, waveDef.isBoss, this.chronicleDef?.mutantEveryNWaves);
     const waveMutant = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
     const waveBoss = this.monsters.find((m) => m.isBoss && !m.isBounty);
     const bountyBoss = this.monsters.find((m) => m.isBounty);
@@ -3718,6 +4050,10 @@ export class Simulation {
       const aDef = this.data.armamentsById.get(s.armamentId);
       const eqUnit = s.equippedUid !== null ? this.unitsByUid.get(s.equippedUid) : undefined;
       const eqDef = eqUnit ? this.data.unitsById.get(eqUnit.unitId) : undefined;
+      const nextTemperCost =
+        s.temperLevel < MAX_ARMAMENT_TEMPER
+          ? (ARMAMENT_TEMPER_COSTS[s.temperLevel] ?? null)
+          : null;
       return {
         slotIndex: s.slotIndex,
         armamentId: s.armamentId,
@@ -3725,12 +4061,45 @@ export class Simulation {
         equippedUnitName: eqDef?.name ?? null,
         equippedUnitFaction: eqDef?.faction ?? null,
         resonanceActive: Boolean(aDef && eqDef && aDef.resonance.faction === eqDef.faction),
+        temperLevel: s.temperLevel,
+        maxTemperLevel: MAX_ARMAMENT_TEMPER,
+        nextTemperCost,
       };
     });
     const nextForgeCost =
       this.armory.length < MAX_ARMAMENT_SLOTS
         ? (ARMAMENT_FORGE_COSTS[this.armory.length] ?? { coin: 380, luck: 4 })
         : null;
+
+    const commandSkillItems: CommandSkillItemSnapshot[] = COMMAND_SKILLS.map((def) => {
+      const cdLeft = this.cmdCooldowns[def.id] ?? 0;
+      const needsMonsters = def.id === 'cmd_bagua_bind' || def.id === 'cmd_heaven_cannon';
+      const canCast =
+        !this.gameOver &&
+        !this.victoryHold &&
+        cdLeft === 0 &&
+        this.tacticalQi >= def.qiCost &&
+        (!needsMonsters || this.monsters.length > 0);
+      return {
+        id: def.id,
+        name: def.name,
+        shortLabel: def.shortLabel,
+        icon: def.icon,
+        qiCost: def.qiCost,
+        color: def.color,
+        desc: def.desc,
+        cooldownLeftTicks: cdLeft,
+        cooldownTotalTicks: def.cooldownTicks,
+        activeTicksLeft: def.id === 'cmd_sword_barrage' ? this.cmdSwordBarrageTicksLeft : 0,
+        canCast,
+      };
+    });
+    const commandSkills: CommandSkillSnapshot = {
+      qi: this.tacticalQi,
+      maxQi: TACTICAL_QI_MAX,
+      swordBarrageTicksLeft: this.cmdSwordBarrageTicksLeft,
+      skills: commandSkillItems,
+    };
 
     const pledgedSectDef = this.getPledgedSectDef();
     const vowTarget = pledgedSectDef ? pledgedSectDef.vow.target : 0;
@@ -3807,7 +4176,10 @@ export class Simulation {
       trialId: this.trialId,
       ascensionLevel: this.ascensionLevel,
       runMode: this.runMode,
+      chronicle: this.chronicleDef,
       dailyChallenge: this.dailyChallengeSpec,
+      spiritTiles: this.spiritTiles,
+      commandSkills,
       endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
       activeCombos,
       codexAtkBonusPct: this.codexAtkBonusPct,
@@ -3927,26 +4299,37 @@ export class Simulation {
     const def = this.data.unitsById.get(u.unitId);
     const faction = def?.faction ?? 'orthodox';
     const eqSlot = this.getEquippedArmamentSlotForUid(u.uid);
-    const armBonus = resolveArmamentBonuses(eqSlot?.def ?? null, faction);
+    const armBonus = resolveArmamentBonuses(
+      eqSlot?.def ?? null,
+      faction,
+      eqSlot?.temperLevel ?? 0,
+    );
     const sectDef = this.getPledgedSectDef();
     const sectShred =
       sectDef && (!sectDef.perk.faction || sectDef.perk.faction === faction)
         ? (sectDef.perk.armorShred ?? 0)
         : 0;
+    const isField = u.slot.area === 'field';
+    const spiritTile = isField ? this.getSpiritTileKindAt(u.slot.index) : undefined;
+    const solarAtkBonus = spiritTile === 'solar' ? SPIRIT_TILE_SOLAR_ATK_PCT : 0;
+    const windRangeBonus = spiritTile === 'wind' ? SPIRIT_TILE_WIND_RANGE_BONUS : 0;
     const starLevel = u.starLevel ?? 0;
     const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
       u.unitId,
       synergy,
-      tileBuff.atkPct,
+      tileBuff.atkPct + solarAtkBonus,
       starLevel,
       armBonus.atkPct,
     );
-    const isField = u.slot.area === 'field';
     const harmonyRange = this.getBoonStacks('b_trinity_harmony') * 25;
     const crusherShred = this.getBoonStacks('b_armor_crusher') * 6;
     const trialShred =
       faction === 'unorthodox' && this.trialId
         ? TRIAL_CONFIGS[this.trialId].unorthodoxBonusShred
+        : 0;
+    const chronShred =
+      faction === 'unorthodox' && this.chronicleDef?.modifiers.unorthodoxShred
+        ? this.chronicleDef.modifiers.unorthodoxShred
         : 0;
     const gradeDef = this.data.gradesById.get(u.grade);
     const refundSpec = getUnitSellLuckRefund(gradeDef);
@@ -3971,12 +4354,13 @@ export class Simulation {
       sellLuckChancePct: refundSpec.chancePct,
       baseAtk,
       bonusAtk,
-      range: (def?.range ?? 150) + harmonyRange + rangeMirrorBonus,
+      range: (def?.range ?? 150) + harmonyRange + rangeMirrorBonus + windRangeBonus,
       skillName: def?.skill.name ?? '기본 초식',
       armorShred:
         (def?.armorShred ?? 0) +
         crusherShred +
         trialShred +
+        chronShred +
         relicShred +
         benchPassives.armorShred +
         (this.endgameBonuses.armorShred ?? 0) +
@@ -3994,9 +4378,11 @@ export class Simulation {
               badge: eqSlot.def.badge,
               color: eqSlot.def.color,
               resonanceActive: armBonus.resonanceActive,
+              temperLevel: eqSlot.temperLevel,
             },
           }
         : {}),
+      ...(spiritTile ? { spiritTile } : {}),
       tileBuffAtkPct: tileBuff.atkPct,
       tileBuffSpeedPct: tileBuff.speedPct,
       sealed: isField ? this.isFieldSlotSealed(u.slot.index) : false,
@@ -4037,6 +4423,7 @@ export class Simulation {
       trialId: this.trialId,
       ascensionLevel: this.ascensionLevel,
       runMode: this.runMode,
+      chronicleId: this.chronicleId,
       dailyDateKey: this.dailyChallengeSpec?.dateKey ?? null,
       endlessMilestonesReached: [...this.endlessMilestonesReached].sort((a, b) => a - b),
       currentTick: this.currentTick,
@@ -4076,7 +4463,12 @@ export class Simulation {
         slotIndex: s.slotIndex,
         armamentId: s.armamentId,
         equippedUid: s.equippedUid,
+        temperLevel: s.temperLevel,
       })),
+      tacticalQi: this.tacticalQi,
+      cmdSwordBarrageTicksLeft: this.cmdSwordBarrageTicksLeft,
+      cmdCooldowns: { ...this.cmdCooldowns },
+      spiritTiles: this.spiritTiles.map((st) => ({ ...st })),
       pledgedSect: this.pledgedSect,
       sectVowCompleted: this.sectVowCompleted,
       primordialUnlocked: this.primordialUnlocked,
@@ -4126,6 +4518,7 @@ export class Simulation {
       (save.trialId ?? null) !== this.trialId ||
       (save.ascensionLevel ?? 0) !== this.ascensionLevel ||
       (save.runMode ?? 'standard') !== this.runMode ||
+      (save.chronicleId ?? null) !== this.chronicleId ||
       (save.dailyDateKey ?? null) !== (this.dailyChallengeSpec?.dateKey ?? null)
     ) {
       return false;
@@ -4167,6 +4560,40 @@ export class Simulation {
     this.coin = Math.max(0, Math.floor(save.coin));
     this.luckStone = Math.max(0, Math.floor(save.luckStone));
     this.summonCount = Math.max(0, Math.floor(save.summonCount));
+
+    this.tacticalQi =
+      typeof save.tacticalQi === 'number' && Number.isFinite(save.tacticalQi)
+        ? Math.max(0, Math.min(TACTICAL_QI_MAX, Math.floor(save.tacticalQi)))
+        : TACTICAL_QI_INITIAL;
+    this.cmdSwordBarrageTicksLeft =
+      typeof save.cmdSwordBarrageTicksLeft === 'number' &&
+      Number.isFinite(save.cmdSwordBarrageTicksLeft)
+        ? Math.max(0, Math.floor(save.cmdSwordBarrageTicksLeft))
+        : 0;
+    for (let i = 0; i < COMMAND_SKILL_ORDER.length; i++) {
+      const cid = COMMAND_SKILL_ORDER[i]!;
+      const rawCd = save.cmdCooldowns?.[cid];
+      this.cmdCooldowns[cid] =
+        typeof rawCd === 'number' && Number.isFinite(rawCd) ? Math.max(0, Math.floor(rawCd)) : 0;
+    }
+    if (Array.isArray(save.spiritTiles) && save.spiritTiles.length > 0) {
+      const validTiles: SpiritTileSpec[] = [];
+      for (let i = 0; i < save.spiritTiles.length; i++) {
+        const st = save.spiritTiles[i];
+        if (
+          st &&
+          typeof st.fieldIndex === 'number' &&
+          st.fieldIndex >= 0 &&
+          st.fieldIndex < this.board.field.capacity &&
+          (st.kind === 'solar' || st.kind === 'wind')
+        ) {
+          validTiles.push({ fieldIndex: Math.floor(st.fieldIndex), kind: st.kind });
+        }
+      }
+      if (validTiles.length > 0) {
+        this.spiritTiles = validTiles;
+      }
+    }
 
     for (const k of Object.keys(this.wisps)) {
       delete this.wisps[k];
@@ -4256,7 +4683,8 @@ export class Simulation {
       Boolean(save.primordialUnlocked) ||
       this.sectVowCompleted ||
       this.trialId !== null ||
-      this.difficulty === 'abyss';
+      this.difficulty === 'abyss' ||
+      Boolean(this.chronicleDef?.primordialFromStart);
     this.preserveBenchPassives = save.preserveBenchPassives !== false;
     this.bossRetryUsed = Boolean(save.bossRetryUsed);
 
@@ -4358,10 +4786,15 @@ export class Simulation {
           eqUid = validUid;
           seenEq.add(validUid);
         }
+        const temperLevel =
+          typeof item.temperLevel === 'number' && Number.isFinite(item.temperLevel)
+            ? Math.max(0, Math.min(MAX_ARMAMENT_TEMPER, Math.floor(item.temperLevel)))
+            : 0;
         this.armory.push({
           slotIndex: this.armory.length,
           armamentId: item.armamentId,
           equippedUid: eqUid,
+          temperLevel,
         });
       }
     }
@@ -4420,10 +4853,22 @@ export class Simulation {
 
     feedInt(this.currentTick);
     feedStr(this.trialId ?? 'std');
+    feedStr(this.chronicleId ?? 'none');
     feedInt(this.ascensionLevel);
     feedStr(this.pledgedSect ?? 'none');
     feedInt(this.sectVowCompleted ? 1 : 0);
     feedInt(this.primordialUnlocked ? 1 : 0);
+    feedInt(this.tacticalQi);
+    feedInt(this.cmdSwordBarrageTicksLeft);
+    for (let i = 0; i < COMMAND_SKILL_ORDER.length; i++) {
+      feedInt(this.cmdCooldowns[COMMAND_SKILL_ORDER[i]!] ?? 0);
+    }
+    feedInt(this.spiritTiles.length);
+    for (let i = 0; i < this.spiritTiles.length; i++) {
+      const st = this.spiritTiles[i]!;
+      feedInt(st.fieldIndex);
+      feedStr(st.kind);
+    }
     feedInt(this.rng.getState());
     feedInt(this.coin);
     feedInt(this.luckStone);
@@ -4476,6 +4921,7 @@ export class Simulation {
       const arm = this.armory[i]!;
       feedStr(arm.armamentId);
       feedInt(arm.equippedUid ?? -1);
+      feedInt(arm.temperLevel);
     }
 
     feedInt(this.tileHazards.length);

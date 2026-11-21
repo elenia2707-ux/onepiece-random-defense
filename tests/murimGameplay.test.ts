@@ -23,8 +23,13 @@ import {
 import { loadGameData } from '../src/data/loader';
 import {
   BOSS_RUSH_TARGET_STAGE,
+  CHRONICLE_CHAPTERS,
+  COMMAND_SKILLS,
   ENDLESS_MILESTONES,
   getDailyChallengeSpec,
+  MAX_ARMAMENT_TEMPER,
+  SPIRIT_TILE_WIND_RANGE_BONUS,
+  TACTICAL_QI_INITIAL,
 } from '../src/data/specialModes';
 import type { BoonId, MonsterKind, PassiveProcKind, RelicId, TrialId } from '../src/data/types';
 import { DISCARD_DROP_RECT, isPointInDiscardZone } from '../src/input/DragController';
@@ -177,7 +182,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
   it('packs all 60 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
     const data = loadGameData();
     expect(data.units.length).toBe(60);
-    expect(data.heroSkins.length).toBe(16);
+    expect(data.heroSkins.length).toBe(24);
     expect(data.courtSkins.length).toBe(8);
 
     const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
@@ -2228,7 +2233,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       },
     };
 
-    expect(TITLE_DEFS.length).toBe(16);
+    expect(TITLE_DEFS.length).toBe(24);
     const meta = new MetaStore(memStorage);
     expect(meta.getProfile().unlockedTitleCount).toBe(0);
     expect(meta.getEquippedTitle()).toBeNull();
@@ -4173,6 +4178,395 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(prof2.relicSoulSlots.golden_vault).toHaveLength(SOUL_SLOT_COUNT);
     expect(prof2.blessedRelics.length).toBeGreaterThan(0);
     expect(ASCENSION_MAX_LEVEL).toBe(20);
+  });
+
+  it('v4.1 강호 전기 (5-Chapter Chronicle Campaign): custom starts, fixed Spirit Tiles, Ch.5 Primordial unlock & Wave 30 Twin Boss, Chaos Shards rewards, all-clear skin, and MRD1- backup', () => {
+    const data = loadGameData();
+    expect(CHRONICLE_CHAPTERS).toHaveLength(5);
+
+    // Ch.1: 15 waves, fixed central Spirit Vein tiles [7, 10], Orthodox +22% bonus
+    const simCh1 = new Simulation(data, 0x4101, {}, 'hard', null, false, {
+      runMode: 'chronicle',
+      chronicleId: 'chr_hwasan_sword_tomb',
+    });
+    const snapCh1 = simCh1.buildSnapshot(1, false);
+    expect(snapCh1.runMode).toBe('chronicle');
+    expect(snapCh1.chronicle?.id).toBe('chr_hwasan_sword_tomb');
+    expect(snapCh1.clearTargetWave).toBe(15);
+    expect(snapCh1.coin).toBe(200);
+    expect(snapCh1.luckStone).toBe(3);
+    expect(snapCh1.spiritTiles).toEqual([
+      { fieldIndex: 7, kind: 'solar' },
+      { fieldIndex: 10, kind: 'wind' },
+    ]);
+
+    // Ch.5: 30 waves, Primordial Mythic unlocked from Wave 1, Twin Bosses spawn on Wave 30
+    const simCh5 = new Simulation(data, 0x4105, {}, 'abyss', null, false, {
+      runMode: 'chronicle',
+      chronicleId: 'chr_primordial_genesis',
+    });
+    const snapCh5Start = simCh5.buildSnapshot(1, false);
+    expect(snapCh5Start.clearTargetWave).toBe(30);
+    expect(snapCh5Start.primordialUnlocked).toBe(true);
+
+    // Advance Ch.5 into Wave 30 via save-state jump to verify Twin Boss spawn
+    const baseSave = simCh5.exportRunSave(1000);
+    const wave29EndSave = {
+      ...baseSave,
+      waveNumber: 29,
+      waveTicksLeft: 1,
+      waveSpawned: 99,
+      monsters: [],
+    };
+    expect(simCh5.restoreRunSave(wave29EndSave)).toBe(true);
+    for (let i = 0; i < 40; i++) {
+      simCh5.tick();
+    }
+    const snapW30 = simCh5.buildSnapshot(1, false);
+    expect(snapW30.wave).toBe(30);
+    expect(snapW30.isBossWave).toBe(true);
+    const liveBosses = simCh5.getMonsters().filter((m) => m.isBoss && m.hp > 0);
+    expect(liveBosses.length).toBe(2);
+
+    // MetaStore Chronicle progression: clear all 5 chapters -> first-clear Chaos Shards + all-clear skin + titles + repeat clear + backup round-trip
+    const backing = new Map<string, string>();
+    const meta = new MetaStore({
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+    });
+
+    expect(meta.setSelectedChronicle('chr_hwasan_sword_tomb')).toBe(true);
+    expect(meta.getSelectedRunMode()).toBe('chronicle');
+    expect(meta.getSelectedChronicleId()).toBe('chr_hwasan_sword_tomb');
+
+    let totalFirstShards = 0;
+    for (let i = 0; i < CHRONICLE_CHAPTERS.length; i++) {
+      const ch = CHRONICLE_CHAPTERS[i]!;
+      const rec = meta.settleRun({
+        wave: ch.targetWave,
+        monstersSlain: 250,
+        bossesSlain: 3,
+        bountiesSlain: 1,
+        difficulty: ch.baseDifficulty,
+        trialId: null,
+        ascensionLevel: 0,
+        runMode: 'chronicle',
+        chronicleId: ch.id,
+        victory: true,
+        elapsedTicks: 30 * 120,
+        totalDamage: 500000,
+        topHeroId: 'hwasan_master',
+        topHeroName: '화산 장문인',
+      });
+      expect(rec.firstClearBonusGold).toBe(ch.firstClearGold);
+      expect(rec.shardsEarned).toBe(ch.firstClearShards);
+      totalFirstShards += ch.firstClearShards;
+      if (i === 0) {
+        expect(meta.getProfile().unlockedTitles.title_chronicle_initiate).toBe(true);
+      }
+      if (i === CHRONICLE_CHAPTERS.length - 1) {
+        expect(rec.unlockedSkinIds).toContain('skin_abyss_blood_crimson_moon');
+      }
+    }
+
+    const profAfterAll = meta.getProfile();
+    expect(profAfterAll.clearedChronicleCount).toBe(5);
+    const totalShardsCollected = Object.values(profAfterAll.relicShards).reduce(
+      (sum, v) => sum + (v ?? 0),
+      0,
+    );
+    expect(totalShardsCollected).toBe(totalFirstShards);
+    expect(profAfterAll.ownedSkins.skin_abyss_blood_crimson_moon).toBe(true);
+    expect(profAfterAll.unlockedTitles.title_chronicle_master).toBe(true);
+
+    // Repeat clear grants repeat-clear gold + shards (not first-clear bonus again)
+    const ch1 = CHRONICLE_CHAPTERS[0]!;
+    const repeatRec = meta.settleRun({
+      wave: ch1.targetWave,
+      monstersSlain: 220,
+      bossesSlain: 3,
+      bountiesSlain: 0,
+      difficulty: ch1.baseDifficulty,
+      trialId: null,
+      ascensionLevel: 0,
+      runMode: 'chronicle',
+      chronicleId: ch1.id,
+      victory: true,
+      elapsedTicks: 30 * 90,
+      totalDamage: 600000,
+    });
+    expect(repeatRec.firstClearBonusGold).toBe(ch1.repeatClearGold);
+    expect(repeatRec.shardsEarned).toBe(ch1.repeatClearShards);
+
+    // MRD1- backup preserves clearedChronicles & chronicleRecords
+    const backup = meta.exportBackupCode();
+    const backing2 = new Map<string, string>();
+    const meta2 = new MetaStore({
+      getItem: (k) => backing2.get(k) ?? null,
+      setItem: (k, v) => {
+        backing2.set(k, v);
+      },
+    });
+    expect(meta2.importBackupCode(backup).ok).toBe(true);
+    expect(meta2.getProfile().clearedChronicleCount).toBe(5);
+    expect(meta2.getProfile().chronicleRecords.chr_hwasan_sword_tomb?.clears).toBe(2);
+    expect(meta2.getProfile().ownedSkins.skin_abyss_blood_crimson_moon).toBe(true);
+  });
+
+  it('v4.2 장문인 진법 호령 3종 (Active Command Skills): Qi gain, 3 tactical skills, save round-trip, and bit-exact 1x vs 3x determinism', () => {
+    const data = loadGameData();
+    expect(COMMAND_SKILLS).toHaveLength(3);
+
+    const sim = new Simulation(data, 0x42004200);
+    const snap0 = sim.buildSnapshot(1, false);
+    expect(snap0.commandSkills.qi).toBe(TACTICAL_QI_INITIAL);
+
+    // At 25 Qi, cmd_sword_barrage (40 Qi) must be rejected
+    sim.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_sword_barrage' });
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'castCommandSkill')).toBe(true);
+
+    // Spawn a strong unit so monsters die across waves and Qi charges up to 100
+    spawnCheonmaHelper(sim);
+    for (let i = 0; i < 2400; i++) {
+      sim.tick();
+      if (sim.buildSnapshot(1, false).commandSkills.qi >= 100) break;
+    }
+    expect(sim.buildSnapshot(1, false).commandSkills.qi).toBeGreaterThanOrEqual(100);
+
+    // 1. Cast 만검총공 (40 Qi) -> swordBarrageTicksLeft = 150, Qi reduced by 40
+    const castEvents: string[] = [];
+    sim.events.on('command:cast', (ev) => castEvents.push(ev.skillId));
+    const qiBeforeSword = sim.buildSnapshot(1, false).commandSkills.qi;
+    sim.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_sword_barrage' });
+    sim.tick();
+    const snapAfterSword = sim.buildSnapshot(1, false);
+    expect(snapAfterSword.commandSkills.qi).toBeLessThanOrEqual(qiBeforeSword - 38);
+    expect(snapAfterSword.commandSkills.swordBarrageTicksLeft).toBeGreaterThan(140);
+    expect(castEvents).toContain('cmd_sword_barrage');
+
+    // Save/restore preserves Qi, active duration, and cooldowns identically
+    const saved = sim.exportRunSave(777);
+    const simRestored = new Simulation(data, 0x11111111);
+    expect(simRestored.restoreRunSave(saved)).toBe(true);
+    expect(simRestored.hashState()).toBe(sim.hashState());
+
+    // 2. Test 팔괘금강박 (60 Qi) and 천지개벽포 (100 Qi) on live monsters
+    const sim2 = new Simulation(data, 0x42009999);
+    // Let Wave 1 monsters spawn cleanly onto the loop before casting debuffs & cannon
+    for (let i = 0; i < 120; i++) sim2.tick();
+    const s2 = sim2.exportRunSave(888);
+    expect(sim2.restoreRunSave({ ...s2, tacticalQi: 100 })).toBe(true);
+    expect(sim2.getMonsters().filter((m) => m.hp > 0).length).toBeGreaterThan(0);
+
+    sim2.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_bagua_bind' });
+    sim2.tick();
+    const afterBaguaMonsters = sim2.getMonsters().filter((m) => m.hp > 0);
+    expect(afterBaguaMonsters.length).toBeGreaterThan(0);
+    expect(
+      afterBaguaMonsters.every(
+        (m) =>
+          m.stunUntilTick > sim2.tickCount &&
+          m.armorShred >= 45 &&
+          m.slowUntilTick > sim2.tickCount &&
+          m.slowFactor <= 0.46,
+      ),
+    ).toBe(true);
+
+    // Recharge to 100 Qi and fire 천지개벽포 (cmd_heaven_cannon)
+    const s2b = sim2.exportRunSave(889);
+    expect(sim2.restoreRunSave({ ...s2b, tacticalQi: 100 })).toBe(true);
+    let cannonTotalDmg = 0;
+    sim2.events.on('command:cast', (ev) => {
+      if (ev.skillId === 'cmd_heaven_cannon') cannonTotalDmg = ev.totalDamage;
+    });
+    sim2.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_heaven_cannon' });
+    sim2.tick();
+    expect(cannonTotalDmg).toBeGreaterThan(0);
+    expect(sim2.getMonsters().filter((m) => m.hp > 0).length).toBe(0);
+
+    // 3. Bit-exact 1x vs 3x determinism with Command Skill + Armament Temper commands
+    const runAtBatch = (batchSize: number): string => {
+      const s = new Simulation(data, 0x42424242);
+      s.commands.enqueue({ type: 'grantTestCoin', amount: 1200 });
+      s.commands.enqueue({ type: 'grantTestResource', luck: 10 });
+      s.commands.enqueue({ type: 'summon' });
+      s.commands.enqueue({ type: 'summon' });
+      s.commands.enqueue({ type: 'forgeArmament' });
+      s.commands.enqueue({ type: 'temperArmament', slotIndex: 0 });
+      let t = 0;
+      while (t < 360) {
+        if (t === 180) {
+          s.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_sword_barrage' });
+        }
+        const steps = Math.min(batchSize, 360 - t);
+        for (let k = 0; k < steps; k++) {
+          s.tick();
+          t++;
+        }
+      }
+      return s.hashState();
+    };
+    expect(runAtBatch(1)).toBe(runAtBatch(3));
+  });
+
+  it('v4.3 신병이기 12종 담금질 (+1~+3강, 재연마/합공 계승 유지) & 비무대 영맥 타일 2칸 (화양혈·청풍혈)', () => {
+    const data = loadGameData();
+    const sim = new Simulation(data, 0x43004300);
+
+    // Verify 2 distinct deterministic Spirit Vein tiles (solar & wind)
+    const snapInit = sim.buildSnapshot(1, false);
+    expect(snapInit.spiritTiles).toHaveLength(2);
+    const solarTile = snapInit.spiritTiles.find((t) => t.kind === 'solar')!;
+    const windTile = snapInit.spiritTiles.find((t) => t.kind === 'wind')!;
+    expect(solarTile).toBeDefined();
+    expect(windTile).toBeDefined();
+    expect(solarTile.fieldIndex).not.toBe(windTile.fieldIndex);
+
+    // Place a rare hero on a neutral tile, then onto solar and wind tiles to verify stat deltas
+    const neutralIdx = Array.from({ length: 18 }, (_, i) => i).find(
+      (i) => i !== solarTile.fieldIndex && i !== windTile.fieldIndex,
+    )!;
+    sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'rare' });
+    sim.commands.enqueue({ type: 'useWisp', grade: 'rare', unitId: 'cult_elder' }); // lands on field[0]
+    sim.tick();
+    if (neutralIdx !== 0) {
+      sim.commands.enqueue({
+        type: 'move',
+        from: { area: 'field', index: 0 },
+        to: { area: 'field', index: neutralIdx },
+      });
+      sim.tick();
+    }
+    const neutralSlot = sim.buildSnapshot(1, false).field[neutralIdx]!;
+    expect(neutralSlot.spiritTile).toBeUndefined();
+    const neutralAtk = neutralSlot.baseAtk + neutralSlot.bonusAtk;
+    const neutralRange = neutralSlot.range;
+
+    // Move to solar tile (☀ 화양혈: +16% ATK)
+    sim.commands.enqueue({
+      type: 'move',
+      from: { area: 'field', index: neutralIdx },
+      to: { area: 'field', index: solarTile.fieldIndex },
+    });
+    sim.tick();
+    const solarSlot = sim.buildSnapshot(1, false).field[solarTile.fieldIndex]!;
+    expect(solarSlot.spiritTile).toBe('solar');
+    expect(solarSlot.baseAtk + solarSlot.bonusAtk).toBeGreaterThan(neutralAtk);
+
+    // Move to wind tile (🍃 청풍혈: +34 range)
+    sim.commands.enqueue({
+      type: 'move',
+      from: { area: 'field', index: solarTile.fieldIndex },
+      to: { area: 'field', index: windTile.fieldIndex },
+    });
+    sim.tick();
+    const windSlot = sim.buildSnapshot(1, false).field[windTile.fieldIndex]!;
+    expect(windSlot.spiritTile).toBe('wind');
+    expect(windSlot.range).toBe(neutralRange + SPIRIT_TILE_WIND_RANGE_BONUS);
+
+    // Armament Tempering (+0 -> +1 -> +2 -> +3 MAX), Reforge preservation, and Save/Restore
+    sim.commands.enqueue({ type: 'grantTestCoin', amount: 3000 });
+    sim.commands.enqueue({ type: 'grantTestResource', luck: 20 });
+    sim.commands.enqueue({ type: 'forgeArmament' });
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).armory.slots[0]?.temperLevel).toBe(0);
+
+    for (let lv = 1; lv <= MAX_ARMAMENT_TEMPER; lv++) {
+      sim.commands.enqueue({ type: 'temperArmament', slotIndex: 0 });
+      sim.tick();
+      expect(sim.buildSnapshot(1, false).armory.slots[0]?.temperLevel).toBe(lv);
+    }
+
+    // Tempering beyond +3 MAX must be rejected
+    sim.commands.enqueue({ type: 'temperArmament', slotIndex: 0 });
+    sim.tick();
+    expect(sim.buildSnapshot(1, false).rejects.some((r) => r.cmd === 'temperArmament')).toBe(true);
+    expect(sim.buildSnapshot(1, false).armory.slots[0]?.nextTemperCost).toBeNull();
+
+    // Reforge preserves temperLevel === 3
+    const beforeReforgeId = sim.buildSnapshot(1, false).armory.slots[0]!.armamentId;
+    sim.commands.enqueue({ type: 'reforgeArmament', slotIndex: 0 });
+    sim.tick();
+    const afterReforgeSlot = sim.buildSnapshot(1, false).armory.slots[0]!;
+    expect(afterReforgeSlot.armamentId).not.toBe(beforeReforgeId);
+    expect(afterReforgeSlot.temperLevel).toBe(3);
+
+    // Save/Restore preserves both temperLevel and spiritTiles
+    const saved = sim.exportRunSave(999);
+    const simCopy = new Simulation(data, 0x1234);
+    expect(simCopy.restoreRunSave(saved)).toBe(true);
+    expect(simCopy.buildSnapshot(1, false).armory.slots[0]?.temperLevel).toBe(3);
+    expect(simCopy.buildSnapshot(1, false).spiritTiles).toEqual(snapInit.spiritTiles);
+    expect(simCopy.hashState()).toBe(sim.hashState());
+  });
+
+  it('v4.4 신규 영웅 스킨 24종 & 엔드게임 칭호 24종 (ascension, reincarnation, chaos relic set conditions)', () => {
+    const data = loadGameData();
+    expect(data.heroSkins).toHaveLength(24);
+    expect(data.heroSkinsById.has('skin_primordial_sword_celestial')).toBe(true);
+    expect(data.heroSkinsById.has('skin_void_cheonma_eclipse')).toBe(true);
+    expect(data.heroSkinsById.has('skin_chaos_poison_amethyst')).toBe(true);
+    expect(data.heroSkinsById.has('skin_tyrant_overlord_golden')).toBe(true);
+    expect(data.heroSkinsById.has('skin_myriad_demon_azure')).toBe(true);
+    expect(data.heroSkinsById.get('skin_abyss_blood_crimson_moon')?.unlockCond).toBe(
+      'chronicle_all_clear',
+    );
+    expect(TITLE_DEFS).toHaveLength(24);
+
+    const backing = new Map<string, string>();
+    const meta = new MetaStore({
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+    });
+    meta.grantDevMeta(500000, 200);
+
+    // Unlock Ascension 5 & 10 titles via abyss ascension settlement
+    meta.settleRun({
+      wave: 30,
+      monstersSlain: 400,
+      bossesSlain: 6,
+      bountiesSlain: 2,
+      difficulty: 'abyss',
+      trialId: null,
+      ascensionLevel: 10,
+      runMode: 'standard',
+      victory: true,
+    });
+    expect(meta.getProfile().unlockedTitles.title_ascension_5).toBe(true);
+    expect(meta.getProfile().unlockedTitles.title_ascension_10).toBe(true);
+
+    // Unlock Reincarnation title immediately upon reincarnating
+    meta.grantCultivationXp(120000);
+    const reinc = meta.reincarnateCultivation(() => 0.5);
+    expect(reinc.ok).toBe(true);
+    expect(meta.getProfile().unlockedTitles.title_reincarnation_1).toBe(true);
+
+    // Max all 16 relics to base Lv.15 so Chaos Chest yields shards, then transcend 2 sets to Lv.22+
+    for (const def of data.relics) {
+      while ((meta.getProfile().relics[def.id] ?? 0) < def.maxLevel) {
+        meta.upgradeRelic(def);
+      }
+    }
+    const twoSets = [RELIC_SETS[0]!, RELIC_SETS[1]!];
+    for (const setDef of twoSets) {
+      for (const rId of setDef.members) {
+        const rDef = data.relicsById.get(rId)!;
+        const rIdx = data.relics.findIndex((d) => d.id === rId);
+        const targetedRoll = (rIdx + 0.1) / data.relics.length;
+        while ((meta.getProfile().relics[rId] ?? 0) < 22) {
+          meta.grantDevMeta(10000, 10);
+          meta.drawRelicBatch(data.relics, 10, 'key', () => targetedRoll);
+          const tr = meta.transcendRelic(rDef);
+          if (!tr.ok) break;
+        }
+      }
+    }
+    expect(meta.getProfile().unlockedTitles.title_relic_chaos_master).toBe(true);
   });
 });
 

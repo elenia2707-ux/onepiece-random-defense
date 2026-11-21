@@ -85,6 +85,7 @@ export const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
   all_trials_clear: '6대 무림 비경 시련 전부 제패 시 영구 해금',
   wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
   wave_55: '무한 혈투 제 55 장 돌파 시 영구 해금',
+  chronicle_all_clear: '강호 전기 5장 시나리오 전편 제패 시 영구 해금',
 };
 
 export function formatTicksDuration(ticks: number): string {
