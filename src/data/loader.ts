@@ -94,6 +94,9 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'tx_ice_empress',
   'tx_blood_sovereign',
   'tx_abyss_emperor',
+  'tx_kunlun_immortal',
+  'tx_crimson_shadow',
+  'tx_hellfire_archon',
   'im_cheonma',
   'im_sword_immortal',
   'im_asura_emperor',
@@ -106,6 +109,9 @@ const VALID_VFX_TRACKS: ReadonlySet<string> = new Set<VfxTrackKind>([
   'im_primordial_sword',
   'im_chaos_poison',
   'im_void_cheonma',
+  'im_jade_emperor',
+  'im_nether_sovereign',
+  'im_eclipse_demon',
 ]);
 
 const VALID_MONSTER_KINDS: ReadonlySet<string> = new Set<MonsterKind>([
@@ -149,6 +155,11 @@ const VALID_DIFFICULTY_IDS: ReadonlySet<string> = new Set<DifficultyId>([
   'hard',
   'hell',
   'abyss',
+  'chaos_realm',
+  'crimson_eclipse',
+  'nine_heavens',
+  'primordial_void',
+  'absolute_zenith',
 ]);
 
 const VALID_TRIAL_IDS: ReadonlySet<string> = new Set<TrialId>([
@@ -185,6 +196,7 @@ const VALID_SKIN_UNLOCKS: ReadonlySet<string> = new Set<SkinUnlockCond>([
   'hard_clear',
   'hell_clear',
   'abyss_clear',
+  'chaos_realm_clear',
   'wave_35',
   'wave_55',
   'all_trials_clear',
@@ -197,6 +209,11 @@ const VALID_TITLE_CONDITIONS: ReadonlySet<string> = new Set<TitleConditionKind>(
   'hard_clear',
   'hell_clear',
   'abyss_clear',
+  'chaos_realm_clear',
+  'crimson_eclipse_clear',
+  'nine_heavens_clear',
+  'primordial_void_clear',
+  'absolute_zenith_clear',
   'all_trials_clear',
   'best_wave',
   'discovered_units',
@@ -228,12 +245,18 @@ const VALID_COURT_IDS: ReadonlySet<string> = new Set<CourtSkinId>([
   'court_frost_palace',
   'court_western_desert',
   'court_demonic_citadel',
+  'court_celestial_jade_peak',
+  'court_nether_abyss_forge',
+  'court_primordial_cosmos',
 ]);
 
 const VALID_ARENA_RULES: ReadonlySet<string> = new Set([
   'frost_chill',
   'sandstorm_crit',
   'bloodflame_forge',
+  'celestial_qi',
+  'abyss_melt',
+  'primordial_star',
 ]);
 
 function assertRecord(val: unknown, label: string): Record<string, unknown> {
@@ -799,6 +822,78 @@ export function validateDifficulties(input: unknown): DifficultyConfig[] {
       firstClearKeys: Math.floor(
         assertNonNegativeNumber(r.firstClearKeys, `difficulties[${i}].firstClearKeys`),
       ),
+      ...(r.firstClearSilk !== undefined
+        ? {
+            firstClearSilk: Math.floor(
+              assertNonNegativeNumber(r.firstClearSilk, `difficulties[${i}].firstClearSilk`),
+            ),
+          }
+        : {}),
+      ...(r.firstClearShards !== undefined
+        ? {
+            firstClearShards: Math.floor(
+              assertNonNegativeNumber(r.firstClearShards, `difficulties[${i}].firstClearShards`),
+            ),
+          }
+        : {}),
+      ...(r.repeatClearShards !== undefined
+        ? {
+            repeatClearShards: Math.floor(
+              assertNonNegativeNumber(
+                r.repeatClearShards,
+                `difficulties[${i}].repeatClearShards`,
+              ),
+            ),
+          }
+        : {}),
+      ...(r.bossCooldownMult !== undefined
+        ? {
+            bossCooldownMult: assertPositiveNumber(
+              r.bossCooldownMult,
+              `difficulties[${i}].bossCooldownMult`,
+            ),
+          }
+        : {}),
+      ...(r.bossArmorRegenPerSec !== undefined
+        ? {
+            bossArmorRegenPerSec: Math.round(
+              assertNonNegativeNumber(
+                r.bossArmorRegenPerSec,
+                `difficulties[${i}].bossArmorRegenPerSec`,
+              ),
+            ),
+          }
+        : {}),
+      ...(r.summonSurcharge !== undefined
+        ? {
+            summonSurcharge: Math.round(
+              assertNonNegativeNumber(r.summonSurcharge, `difficulties[${i}].summonSurcharge`),
+            ),
+          }
+        : {}),
+      ...(r.gamblePenaltyPct !== undefined
+        ? {
+            gamblePenaltyPct: assertNonNegativeNumber(
+              r.gamblePenaltyPct,
+              `difficulties[${i}].gamblePenaltyPct`,
+            ),
+          }
+        : {}),
+      ...(r.twinBossMinWave !== undefined
+        ? {
+            twinBossMinWave: Math.floor(
+              assertPositiveNumber(r.twinBossMinWave, `difficulties[${i}].twinBossMinWave`),
+            ),
+          }
+        : {}),
+      ...(r.unlocksPrimordial !== undefined
+        ? {
+            unlocksPrimordial: assertBoolean(
+              r.unlocksPrimordial,
+              `difficulties[${i}].unlocksPrimordial`,
+            ),
+          }
+        : {}),
     };
   });
 }
@@ -1161,6 +1256,10 @@ export function validateSkins(
     }
     const silkCost = assertNonNegativeNumber(r.silkCost, `skins.courtSkins[${i}].silkCost`);
     const desc = assertNonEmptyString(r.desc, `skins.courtSkins[${i}].desc`);
+    const bgImage =
+      r.bgImage !== undefined
+        ? assertNonEmptyString(r.bgImage, `skins.courtSkins[${i}].bgImage`)
+        : undefined;
     const tintColor = assertNonEmptyString(r.tintColor, `skins.courtSkins[${i}].tintColor`);
     const tintAlpha = assertNonNegativeNumber(r.tintAlpha, `skins.courtSkins[${i}].tintAlpha`);
     const lanternColor = assertNonEmptyString(
@@ -1200,6 +1299,7 @@ export function validateSkins(
       unlockCond,
       silkCost,
       desc,
+      ...(bgImage ? { bgImage } : {}),
       tintColor,
       tintAlpha: Math.min(0.6, tintAlpha),
       lanternColor,

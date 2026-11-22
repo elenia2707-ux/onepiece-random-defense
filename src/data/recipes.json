@@ -1055,6 +1055,126 @@
       { "unit": "shaolin_elder", "n": 1 }
     ],
     "priority": 605
+  },
+  {
+    "id": "r_kunlun_immortal",
+    "output": "kunlun_immortal",
+    "ingredients": [
+      { "unit": "hwasan_master", "n": 1 },
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "shaolin_elder", "n": 1 }
+    ],
+    "priority": 519
+  },
+  {
+    "id": "r_alt_kunlun_immortal",
+    "output": "kunlun_immortal",
+    "ingredients": [
+      { "unit": "shaolin_abbot", "n": 1 },
+      { "unit": "plum_elder", "n": 1 },
+      { "unit": "gaebang_elder", "n": 1 }
+    ],
+    "priority": 506
+  },
+  {
+    "id": "r_celestial_jade_emperor",
+    "output": "celestial_jade_emperor",
+    "ingredients": [
+      { "unit": "kunlun_immortal", "n": 1 },
+      { "unit": "mudang_master", "n": 1 },
+      { "unit": "shaolin_elder", "n": 1 }
+    ],
+    "priority": 594
+  },
+  {
+    "id": "r_alt_celestial_jade_emperor",
+    "output": "celestial_jade_emperor",
+    "ingredients": [
+      { "unit": "kunlun_immortal", "n": 1 },
+      { "unit": "shaolin_abbot", "n": 1 },
+      { "unit": "plum_elder", "n": 1 }
+    ],
+    "priority": 581
+  },
+  {
+    "id": "r_crimson_shadow_lord",
+    "output": "crimson_shadow_lord",
+    "ingredients": [
+      { "unit": "black_alliance_lord", "n": 1 },
+      { "unit": "tang_elder", "n": 1 },
+      { "unit": "nokrim_chief", "n": 1 }
+    ],
+    "priority": 518
+  },
+  {
+    "id": "r_alt_crimson_shadow_lord",
+    "output": "crimson_shadow_lord",
+    "ingredients": [
+      { "unit": "blood_demon", "n": 1 },
+      { "unit": "haomun_strategist", "n": 1 },
+      { "unit": "tang_elder", "n": 1 }
+    ],
+    "priority": 505
+  },
+  {
+    "id": "r_nether_ghost_sovereign",
+    "output": "nether_ghost_sovereign",
+    "ingredients": [
+      { "unit": "crimson_shadow_lord", "n": 1 },
+      { "unit": "tang_patriarch", "n": 1 },
+      { "unit": "haomun_strategist", "n": 1 }
+    ],
+    "priority": 593
+  },
+  {
+    "id": "r_alt_nether_ghost_sovereign",
+    "output": "nether_ghost_sovereign",
+    "ingredients": [
+      { "unit": "crimson_shadow_lord", "n": 1 },
+      { "unit": "black_alliance_lord", "n": 1 },
+      { "unit": "tang_elder", "n": 1 }
+    ],
+    "priority": 580
+  },
+  {
+    "id": "r_hellfire_archon",
+    "output": "hellfire_archon",
+    "ingredients": [
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "blood_fiend_lord", "n": 1 },
+      { "unit": "soul_warlock", "n": 1 }
+    ],
+    "priority": 517
+  },
+  {
+    "id": "r_alt_hellfire_archon",
+    "output": "hellfire_archon",
+    "ingredients": [
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "soul_warlock", "n": 1 },
+      { "unit": "cult_elder", "n": 1 }
+    ],
+    "priority": 504
+  },
+  {
+    "id": "r_eclipse_demon_god",
+    "output": "eclipse_demon_god",
+    "ingredients": [
+      { "unit": "hellfire_archon", "n": 1 },
+      { "unit": "sword_demon", "n": 1 },
+      { "unit": "soul_warlock", "n": 1 }
+    ],
+    "priority": 592
+  },
+  {
+    "id": "r_alt_eclipse_demon_god",
+    "output": "eclipse_demon_god",
+    "ingredients": [
+      { "unit": "hellfire_archon", "n": 1 },
+      { "unit": "flame_demon", "n": 1 },
+      { "unit": "blood_bishop", "n": 1 }
+    ],
+    "priority": 579
   }
 ]
 

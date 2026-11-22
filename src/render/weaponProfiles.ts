@@ -541,6 +541,53 @@ export const UNIT_COMBAT_PROFILES: Readonly<Record<string, UnitCombatProfile>> =
     secondary: '#f43f5e',
     heavyBlade: true,
   },
+  kunlun_immortal: {
+    style: 'flying_sword',
+    sect: 'mudang',
+    weaponLabel: '곤륜 옥허비검',
+    primary: '#38bdf8',
+    secondary: '#fef08a',
+  },
+  celestial_jade_emperor: {
+    style: 'flying_sword',
+    sect: 'namgung',
+    weaponLabel: '태청 옥황신검',
+    primary: '#fde047',
+    secondary: '#38bdf8',
+    heavyBlade: true,
+  },
+  crimson_shadow_lord: {
+    style: 'dual_sword',
+    sect: 'sapa_blade',
+    weaponLabel: '적영 혈월쌍도',
+    primary: '#f43f5e',
+    secondary: '#94a3b8',
+    dualWield: true,
+  },
+  nether_ghost_sovereign: {
+    style: 'staff_gourd',
+    sect: 'tang_poison',
+    weaponLabel: '구천 유명혼등장',
+    primary: '#2dd4bf',
+    secondary: '#0f766e',
+  },
+  hellfire_archon: {
+    style: 'spear_staff',
+    sect: 'magyo_flame',
+    weaponLabel: '업화 마염파천극',
+    primary: '#f97316',
+    secondary: '#dc2626',
+    heavyBlade: true,
+  },
+  eclipse_demon_god: {
+    style: 'dual_sword',
+    sect: 'magyo_sword',
+    weaponLabel: '적월 일식쌍도',
+    primary: '#e11d48',
+    secondary: '#fde047',
+    dualWield: true,
+    heavyBlade: true,
+  },
 };
 
 export function getUnitCombatProfile(unitId: UnitId): UnitCombatProfile {

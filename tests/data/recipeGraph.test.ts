@@ -4,13 +4,13 @@ import { loadGameData } from '../../src/data/loader';
 import type { RecipeDef, UnitDef } from '../../src/data/types';
 
 describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
-  it('validates production Murim 3-faction game data cleanly (60 units [20:20:20], 110 recipes, R1..R5, symmetric 3-ingredient Immortal & Primordial routes)', () => {
+  it('validates production Murim 3-faction game data cleanly (66 units [22:22:22], 122 recipes, R1..R5, symmetric 3-ingredient Immortal & Primordial routes)', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(60);
-    expect(data.recipes.length).toBe(110);
-    expect(data.units.filter((u) => u.faction === 'orthodox').length).toBe(20);
-    expect(data.units.filter((u) => u.faction === 'unorthodox').length).toBe(20);
-    expect(data.units.filter((u) => u.faction === 'demonic').length).toBe(20);
+    expect(data.units.length).toBe(66);
+    expect(data.recipes.length).toBe(122);
+    expect(data.units.filter((u) => u.faction === 'orthodox').length).toBe(22);
+    expect(data.units.filter((u) => u.faction === 'unorthodox').length).toBe(22);
+    expect(data.units.filter((u) => u.faction === 'demonic').length).toBe(22);
     expect(data.units.filter((u) => u.leaf && u.faction === 'orthodox').length).toBe(4);
     expect(data.units.filter((u) => u.leaf && u.faction === 'unorthodox').length).toBe(4);
     expect(data.units.filter((u) => u.leaf && u.faction === 'demonic').length).toBe(4);
@@ -23,9 +23,15 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     expect(data.unitsById.get('ice_palace_empress')?.grade).toBe('transcendent');
     expect(data.unitsById.get('blood_shadow_sovereign')?.grade).toBe('transcendent');
     expect(data.unitsById.get('abyss_blood_emperor')?.grade).toBe('transcendent');
+    expect(data.unitsById.get('kunlun_immortal')?.grade).toBe('transcendent');
+    expect(data.unitsById.get('crimson_shadow_lord')?.grade).toBe('transcendent');
+    expect(data.unitsById.get('hellfire_archon')?.grade).toBe('transcendent');
     expect(data.unitsById.get('wuji_grandmaster')?.grade).toBe('immortal');
     expect(data.unitsById.get('tyrant_overlord')?.grade).toBe('immortal');
     expect(data.unitsById.get('myriad_demon_emperor')?.grade).toBe('immortal');
+    expect(data.unitsById.get('celestial_jade_emperor')?.grade).toBe('immortal');
+    expect(data.unitsById.get('nether_ghost_sovereign')?.grade).toBe('immortal');
+    expect(data.unitsById.get('eclipse_demon_god')?.grade).toBe('immortal');
     expect(data.unitsById.get('primordial_sword_god')?.hiddenMythic).toBe(true);
     expect(data.unitsById.get('chaos_poison_emperor')?.hiddenMythic).toBe(true);
     expect(data.unitsById.get('void_heavenly_demon')?.hiddenMythic).toBe(true);
@@ -33,6 +39,9 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     expect(graph.byOutput.get('ice_palace_empress')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('blood_shadow_sovereign')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('abyss_blood_emperor')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('kunlun_immortal')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('crimson_shadow_lord')?.length).toBeGreaterThanOrEqual(2);
+    expect(graph.byOutput.get('hellfire_archon')?.length).toBeGreaterThanOrEqual(2);
     expect(graph.byOutput.get('cheonma')?.length).toBe(3);
     expect(graph.byOutput.get('sword_immortal')?.length).toBe(3);
     expect(graph.byOutput.get('asura_emperor')?.length).toBe(3);
@@ -42,6 +51,9 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     expect(graph.byOutput.get('wuji_grandmaster')?.length).toBe(3);
     expect(graph.byOutput.get('tyrant_overlord')?.length).toBe(2);
     expect(graph.byOutput.get('myriad_demon_emperor')?.length).toBe(2);
+    expect(graph.byOutput.get('celestial_jade_emperor')?.length).toBe(2);
+    expect(graph.byOutput.get('nether_ghost_sovereign')?.length).toBe(2);
+    expect(graph.byOutput.get('eclipse_demon_god')?.length).toBe(2);
     expect(graph.byOutput.get('primordial_sword_god')?.length).toBe(1);
     expect(graph.byOutput.get('chaos_poison_emperor')?.length).toBe(1);
     expect(graph.byOutput.get('void_heavenly_demon')?.length).toBe(1);
@@ -52,7 +64,7 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       (r) => data.unitsById.get(r.output)?.grade === 'immortal' && !r.hiddenUnlock,
     );
     const primordialRecipes = data.recipes.filter((r) => r.hiddenUnlock === 'primordial');
-    expect(standardImmortalRecipes.length).toBe(22);
+    expect(standardImmortalRecipes.length).toBe(28);
     expect(primordialRecipes.length).toBe(3);
 
     for (const rec of standardImmortalRecipes) {
@@ -241,7 +253,7 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
     expect(data.waves[29]?.monsterKind).toBe('blood_patriarch');
   });
 
-  it('validates v3.4/v4.0 sects.json (7 Murim Sects across 3 factions) and v3.5 3-hero Trinity Combo definitions', async () => {
+  it('validates v3.4/v4.0 sects.json (7 Murim Sects across 3 factions) and v3.5/v5.0 3-hero Trinity Combo definitions', async () => {
     const { validateSects } = await import('../../src/data/loader');
     const { COMBO_SKILLS } = await import('../../src/data/comboSkills');
     const data = loadGameData();
@@ -268,6 +280,7 @@ describe('RecipeGraph DAG validation (R1 ~ R5)', () => {
       'combo_trinity_immortals',
       'combo_four_elements_calamity',
       'combo_primordial_genesis',
+      'combo_v5_eclipse_trinity',
     ]);
     for (const c of COMBO_SKILLS) {
       for (const uid of c.requiredUnits) {

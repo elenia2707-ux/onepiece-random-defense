@@ -824,12 +824,12 @@ describe('Balance Regression Suite (Opus Review Fixes: Wave 16 Continuity, Pacin
     expect(sanctum15Wins).toBeGreaterThanOrEqual(2);
   }, 35_000);
 
-  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs (all 9 Immortals)', () => {
+  it('prevents Immortal monopoly: balanced damage share (<= 35% per Immortal) and broad roster participation across Hard runs (all 12 Immortals)', () => {
     const data = loadGameData();
     const immortalIds = data.units
       .filter((u) => u.grade === 'immortal' && !u.hiddenMythic)
       .map((u) => u.id);
-    expect(immortalIds.length).toBe(9);
+    expect(immortalIds.length).toBe(12);
 
     const midRelics: Partial<Record<RelicId, number>> = {
       founding_jade_seal: 3,

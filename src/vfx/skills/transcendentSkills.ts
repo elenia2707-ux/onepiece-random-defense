@@ -17,7 +17,10 @@ export type TranscendentSkillTrack =
   | 'tx_nether_queen'
   | 'tx_ice_empress'
   | 'tx_blood_sovereign'
-  | 'tx_abyss_emperor';
+  | 'tx_abyss_emperor'
+  | 'tx_kunlun_immortal'
+  | 'tx_crimson_shadow'
+  | 'tx_hellfire_archon';
 
 export function isTranscendentSkillTrack(kind: string): kind is TranscendentSkillTrack {
   return (
@@ -29,7 +32,10 @@ export function isTranscendentSkillTrack(kind: string): kind is TranscendentSkil
     kind === 'tx_nether_queen' ||
     kind === 'tx_ice_empress' ||
     kind === 'tx_blood_sovereign' ||
-    kind === 'tx_abyss_emperor'
+    kind === 'tx_abyss_emperor' ||
+    kind === 'tx_kunlun_immortal' ||
+    kind === 'tx_crimson_shadow' ||
+    kind === 'tx_hellfire_archon'
   );
 }
 
@@ -281,6 +287,84 @@ export function spawnTranscendentSkillVfx(
       });
       api.emitRadialBurst(x, y, c1, 20, 190, 0.4, -10, startTick);
       api.emitRadialBurst(x, y, c2, 12, 155, 0.38, 10, startTick);
+      break;
+    }
+
+    case 'tx_kunlun_immortal': {
+      // 곤륜비선 · 옥허만검: jade-sky flying sword constellation + mist cloud burst
+      const c1 = skinPrimary ?? '#38bdf8';
+      const c2 = skinSecondary ?? '#fef08a';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'flying_sword',
+        startTick,
+        durationSec: 0.58,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 18,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 5.4,
+        glowRadius: 94,
+        gradeRank,
+      });
+      api.emitRadialBurst(x, y, c1, 18, 175, 0.4, 8, startTick);
+      api.emitRadialBurst(x, y, c2, 12, 145, 0.38, -8, startTick);
+      break;
+    }
+
+    case 'tx_crimson_shadow': {
+      // 적영만살 · 혈월분신참: quad crimson-silver assassin clone afterimage slashes
+      const c1 = skinPrimary ?? '#f43f5e';
+      const c2 = skinSecondary ?? '#e2e8f0';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'dual_sword',
+        startTick,
+        durationSec: 0.54,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 20,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 5.8,
+        glowRadius: 92,
+        gradeRank,
+      });
+      api.emitRadialBurst(x, y, c1, 20, 205, 0.36, 0, startTick);
+      api.emitRadialBurst(x, y, PIXEL_OUTLINE, 10, 150, 0.34, 0, startTick);
+      break;
+    }
+
+    case 'tx_hellfire_archon': {
+      // 지옥업화 · 마염파천극: molten volcanic halberd fissure + karmic ember eruption
+      const c1 = skinPrimary ?? '#f97316';
+      const c2 = skinSecondary ?? '#dc2626';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'spear_staff',
+        startTick,
+        durationSec: 0.6,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 20,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.2,
+        glowRadius: 96,
+        gradeRank,
+      });
+      api.emitRadialBurst(x, y, c1, 20, 185, 0.4, -75, startTick);
+      api.emitRadialBurst(x, y, c2, 14, 155, 0.38, -95, startTick);
       break;
     }
   }
@@ -661,6 +745,102 @@ export function renderTranscendentSkillAir(
       ctx.restore();
 
       const seal = rc.sprites.kanjiSeal('魔', inst.color);
+      const sz = 76 * (0.85 + inv * 0.22);
+      ctx.globalAlpha = inv * 0.95;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'tx_kunlun_immortal': {
+      // 7 jade-gold flying swords forming a celestial dipper ring + '仙' seal
+      const r = inst.toRadius * (0.44 + easeOutCubic(p) * 0.54);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(p * 1.9);
+      ctx.globalAlpha = inv * 0.96;
+      for (let i = 0; i < 7; i++) {
+        const a = (i * Math.PI * 2) / 7;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.34, Math.sin(a) * r * 0.34);
+        ctx.lineTo(Math.cos(a) * r * 1.02, Math.sin(a) * r * 1.02);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 7.2 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 3.8 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('仙', inst.color);
+      const sz = 74 * (0.85 + inv * 0.22);
+      ctx.globalAlpha = inv * 0.95;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'tx_crimson_shadow': {
+      // 4 crisp intersecting crimson-silver assassin clone slashes + '殺' seal
+      const r = inst.toRadius * (0.48 + easeOutCubic(p) * 0.52);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.98;
+      for (const ang of [0.35, -0.35, 1.15, -1.15]) {
+        ctx.save();
+        ctx.rotate(ang);
+        const drawBlade = (w: number, col: string): void => {
+          ctx.beginPath();
+          ctx.moveTo(-r * 1.05, 0);
+          ctx.lineTo(r * 1.05, 0);
+          ctx.lineCap = 'round';
+          ctx.lineWidth = w * inv;
+          ctx.strokeStyle = col;
+          ctx.stroke();
+        };
+        drawBlade(10, PIXEL_OUTLINE);
+        drawBlade(5.2, inst.color);
+        drawBlade(2, inst.secondaryColor);
+        ctx.restore();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('殺', inst.color);
+      const sz = 74 * (0.85 + inv * 0.22);
+      ctx.globalAlpha = inv * 0.95;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'tx_hellfire_archon': {
+      // Molten obsidian-crimson halberd cross-cleave + volcanic spire eruption + '業' seal
+      const r = inst.toRadius * (0.45 + easeOutCubic(p) * 0.56);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.96;
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI * 2) / 6 + 0.25;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.2, Math.sin(a) * r * 0.2);
+        ctx.lineTo(Math.cos(a + 0.14) * r * 0.65, Math.sin(a + 0.14) * r * 0.65);
+        ctx.lineTo(Math.cos(a) * r * 1.06, Math.sin(a) * r * 1.06);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 8.5 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 4.6 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = '#fef08a';
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('業', inst.color);
       const sz = 76 * (0.85 + inv * 0.22);
       ctx.globalAlpha = inv * 0.95;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 24 - p * 22 - sz * 0.5, sz, sz);

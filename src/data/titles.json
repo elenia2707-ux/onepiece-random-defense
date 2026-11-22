@@ -286,5 +286,65 @@
     "rewardGold": 1400,
     "rewardKeys": 8,
     "rewardSilk": 200
+  },
+  {
+    "id": "title_chaos_realm_victor",
+    "name": "혼원마역 제패자",
+    "badge": "혼원제패",
+    "color": "#a855f7",
+    "desc": "혼원마역(5단계) 난이도 제30장을 제패한 혼원의 초월자",
+    "condition": "chaos_realm_clear",
+    "target": 1,
+    "rewardGold": 1100,
+    "rewardKeys": 6,
+    "rewardSilk": 140
+  },
+  {
+    "id": "title_crimson_eclipse_victor",
+    "name": "혈월멸세 패황",
+    "badge": "혈월패황",
+    "color": "#f43f5e",
+    "desc": "혈월멸세(6단계) 난이도 제30장을 제패한 적월의 패황",
+    "condition": "crimson_eclipse_clear",
+    "target": 1,
+    "rewardGold": 1500,
+    "rewardKeys": 8,
+    "rewardSilk": 190
+  },
+  {
+    "id": "title_nine_heavens_victor",
+    "name": "구천천겁 무제",
+    "badge": "구천무제",
+    "color": "#38bdf8",
+    "desc": "구천천겁(7단계) 난이도 제30장을 정복한 천겁의 무제",
+    "condition": "nine_heavens_clear",
+    "target": 1,
+    "rewardGold": 2000,
+    "rewardKeys": 10,
+    "rewardSilk": 250
+  },
+  {
+    "id": "title_primordial_void_victor",
+    "name": "태고허무 선신",
+    "badge": "태고선신",
+    "color": "#818cf8",
+    "desc": "태고허무(8단계) 난이도 제30장을 정복한 허무의 선신",
+    "condition": "primordial_void_clear",
+    "target": 1,
+    "rewardGold": 2800,
+    "rewardKeys": 12,
+    "rewardSilk": 340
+  },
+  {
+    "id": "title_absolute_zenith_victor",
+    "name": "무극종언 천외지존",
+    "badge": "천외지존",
+    "color": "#fde047",
+    "desc": "최종 무극종언(9단계) 제30장을 정복한 천외무극의 절대지존",
+    "condition": "absolute_zenith_clear",
+    "target": 1,
+    "rewardGold": 4500,
+    "rewardKeys": 18,
+    "rewardSilk": 550
   }
 ]

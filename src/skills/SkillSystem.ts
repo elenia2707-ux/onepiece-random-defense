@@ -463,6 +463,12 @@ export function stepCombat(ctx: CombatSystemContext): void {
   const swordBarrageActive = (ctx.cmdSwordBarrageTicksLeft ?? 0) > 0;
   const chronMod = ctx.chronicleDef?.modifiers;
 
+  const veinMult = ctx.arenaRule === 'primordial_star' ? 1.5 : 1;
+  const effSolarAtkPct = Math.round(SPIRIT_TILE_SOLAR_ATK_PCT * veinMult);
+  const effSolarSkillPct = Math.round(SPIRIT_TILE_SOLAR_SKILL_PCT * veinMult);
+  const effWindSpeedPct = Math.round(SPIRIT_TILE_WIND_SPEED_PCT * veinMult);
+  const effWindRangeBonus = Math.round(SPIRIT_TILE_WIND_RANGE_BONUS * veinMult);
+
   if (ctx.monsters.length > 0) {
     for (let i = 0; i < ctx.units.length; i++) {
       const u = ctx.units[i]!;
@@ -487,7 +493,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
         def.range +
         harmonyStacks * 25 +
         rangeMirrorBonus +
-        (spiritKind === 'wind' ? SPIRIT_TILE_WIND_RANGE_BONUS : 0);
+        (spiritKind === 'wind' ? effWindRangeBonus : 0);
       const rangeSq = effectiveRange * effectiveRange;
       let bestTarget: MonsterEntity | null = null;
 
@@ -545,7 +551,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
           speedMult *= 1 + tileBuff.speedPct / 100;
         }
         if (spiritKind === 'wind') {
-          speedMult *= 1 + SPIRIT_TILE_WIND_SPEED_PCT / 100;
+          speedMult *= 1 + effWindSpeedPct / 100;
         }
         const starSpeedPct = getStarSpeedPct(u.starLevel ?? 0);
         if (starSpeedPct > 0) {
@@ -579,7 +585,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
         const gradeColor = armDef?.color ?? gradeDef.color;
         const gradeRank = gradeDef.rank;
 
-        const solarAtkBonus = spiritKind === 'solar' ? SPIRIT_TILE_SOLAR_ATK_PCT : 0;
+        const solarAtkBonus = spiritKind === 'solar' ? effSolarAtkPct : 0;
         const { baseAtk, bonusAtk } = ctx.getUnitEffectiveAtk(
           u.unitId,
           synergy,
@@ -617,7 +623,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
           benchPassive.critMultBonus +
           (ctx.endgameBonuses?.critMultBonus ?? 0) +
           armBonus.critMultBonus +
-          sectCritMult;
+          sectCritMult +
+          (ctx.arenaRule === 'primordial_star' ? 0.25 : 0);
         const skillJadePct =
           getSkillJadeDamagePct(ctx.relicLv.celestial_skill_jade ?? 0) +
           setBonus.skillDamagePct +
@@ -625,7 +632,7 @@ export function stepCombat(ctx: CombatSystemContext): void {
           (ctx.endgameBonuses?.skillDamagePct ?? 0) +
           armBonus.skillDamagePct +
           sectSkillPct +
-          (spiritKind === 'solar' ? SPIRIT_TILE_SOLAR_SKILL_PCT : 0);
+          (spiritKind === 'solar' ? effSolarSkillPct : 0);
         let skillRatio = def.skill.atkRatio * (1 + skillJadePct / 100);
         let ccMult =
           (1 + 0.35 * acupointStacks) *
@@ -694,7 +701,8 @@ export function stepCombat(ctx: CombatSystemContext): void {
           benchPassive.armorShred +
           (ctx.endgameBonuses?.armorShred ?? 0) +
           armBonus.armorShred +
-          sectShred;
+          sectShred +
+          (ctx.arenaRule === 'abyss_melt' ? 15 : 0);
         const echoBonusShred =
           isSkill && piercingEchoStacks > 0 ? (piercingEchoStacks >= 2 ? 34 : 18) : 0;
         const projectileShred =
@@ -1116,7 +1124,8 @@ function applyHitToMonster(
   if (p.armorShred > 0) {
     const echoStacks = ctx.getBoonStacks('b_piercing_echo');
     const shredDur = echoStacks > 0 ? 180 : 120;
-    m.armorShred = Math.min(200, prevShredBeforeHit + p.armorShred);
+    const shredCap = m.armor > 200 ? 280 : 200;
+    m.armorShred = Math.min(shredCap, prevShredBeforeHit + p.armorShred);
     m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + shredDur);
   }
 
@@ -1135,7 +1144,8 @@ function applyHitToMonster(
     setBonus.bossDamagePct +
     benchPassive.bossDamagePct +
     (ctx.endgameBonuses?.bossDamagePct ?? 0) +
-    (p.bonusBossDamagePct ?? 0);
+    (p.bonusBossDamagePct ?? 0) +
+    (ctx.arenaRule === 'abyss_melt' ? 10 : 0);
   if (m.isBoss && slayerBannerPct > 0) {
     effectiveRaw = Math.round(effectiveRaw * (1 + slayerBannerPct / 100));
   }
@@ -1231,7 +1241,7 @@ function applyHitToMonster(
       m.hp -= overflow;
       m.lastHitTick = ctx.currentTick;
       m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + (isPhoenix ? 54 : 45));
-      m.armorShred = Math.min(200, activeShred + (isPhoenix ? 30 : 25));
+      m.armorShred = Math.min(m.armor > 200 ? 280 : 200, activeShred + (isPhoenix ? 30 : 25));
       m.shredExpireTick = Math.max(m.shredExpireTick, ctx.currentTick + (isPhoenix ? 180 : 150));
       justShattered = true;
       logDamage(damage);
@@ -1286,12 +1296,16 @@ function applyHitToMonster(
   }
 
   if (p.stunTicks > 0) {
+    const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty);
+    const diffArmor = diffCfg?.armorBonus ?? 0;
     const bossFactor =
-      ctx.difficulty === 'abyss' || ctx.trialId === 'trial_abyss_sanctum'
-        ? 0.25
-        : ctx.difficulty === 'hell'
-          ? 0.35
-          : 0.45;
+      diffArmor >= 170
+        ? 0.2
+        : diffArmor >= 84 || ctx.difficulty === 'abyss' || ctx.trialId === 'trial_abyss_sanctum'
+          ? 0.25
+          : ctx.difficulty === 'hell'
+            ? 0.35
+            : 0.45;
     const stunDur = m.isBoss ? Math.max(1, Math.round(p.stunTicks * bossFactor)) : p.stunTicks;
     m.stunUntilTick = Math.max(m.stunUntilTick, ctx.currentTick + stunDur);
   }

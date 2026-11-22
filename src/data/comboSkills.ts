@@ -12,7 +12,8 @@ export type ComboSkillId =
   | 'combo_myriad_cheonma'
   | 'combo_trinity_immortals'
   | 'combo_four_elements_calamity'
-  | 'combo_primordial_genesis';
+  | 'combo_primordial_genesis'
+  | 'combo_v5_eclipse_trinity';
 
 export interface ComboSkillDef {
   readonly id: ComboSkillId;
@@ -223,6 +224,22 @@ export const COMBO_SKILLS: readonly ComboSkillDef[] = [
     bossBonusPct: 45,
     color: '#38bdf8',
     tierLabel: '태고 합체',
+  },
+  {
+    id: 'combo_v5_eclipse_trinity',
+    name: '삼계종언 · 무극개벽진',
+    desc: '태청옥황선제 + 구천유명황 + 적월마신 3존 동시 출진 · 19초마다 선·유명·적월 삼계 합체기로 파갑 65·보스 +40% 섬멸',
+    requiredUnits: ['celestial_jade_emperor', 'nether_ghost_sovereign', 'eclipse_demon_god'],
+    cooldownTicks: 570,
+    atkMult: 3.15,
+    radius: 300,
+    armorShred: 65,
+    stunSec: 1.45,
+    slowPct: 0.7,
+    slowSec: 3.8,
+    bossBonusPct: 40,
+    color: '#fb7185',
+    tierLabel: '삼계 합체',
   },
 ];
 

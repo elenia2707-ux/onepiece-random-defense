@@ -1088,9 +1088,11 @@ export class Simulation {
       this.rookieMode = rookieMode && difficulty === 'normal' && trialId === null;
       this.rng = new Rng(seed);
     }
+    const diffCfg = this.data.difficultiesById.get(this.difficulty);
     this.primordialUnlocked =
       this.trialId !== null ||
       this.difficulty === 'abyss' ||
+      Boolean(diffCfg?.unlocksPrimordial) ||
       Boolean(this.chronicleDef?.primordialFromStart);
 
     this.board = new Board(data.board);
@@ -1394,6 +1396,10 @@ export class Simulation {
     const sectBonus = this.getPledgedSectDef()?.perk.gambleChancePct ?? 0;
     const ascPenalty =
       this.ascensionLevel > 0 ? computeAscensionModifiers(this.ascensionLevel).gamblePenaltyPct : 0;
+    const diffPenalty =
+      this.runMode === 'standard' && !this.trialId
+        ? (this.data.difficultiesById.get(this.difficulty)?.gamblePenaltyPct ?? 0)
+        : 0;
     return (
       getFurnaceChanceBonusPct(this.getEffectiveRelicLv('immortal_furnace')) +
       this.getBoonStacks('b_elixir_jackpot') * 12 +
@@ -1403,7 +1409,8 @@ export class Simulation {
       dailyBonus +
       sectBonus +
       (this.endgameBonuses.gambleBonusPct ?? 0) -
-      ascPenalty
+      ascPenalty -
+      diffPenalty
     );
   }
 
@@ -1411,7 +1418,12 @@ export class Simulation {
     const econ = this.data.board.economy;
     const ascSurcharge =
       this.ascensionLevel > 0 ? computeAscensionModifiers(this.ascensionLevel).summonSurcharge : 0;
-    const raw = econ.baseSummonCost + ascSurcharge + this.summonCount * econ.summonCostStep;
+    const diffSurcharge =
+      this.runMode === 'standard' && !this.trialId
+        ? (this.data.difficultiesById.get(this.difficulty)?.summonSurcharge ?? 0)
+        : 0;
+    const raw =
+      econ.baseSummonCost + ascSurcharge + diffSurcharge + this.summonCount * econ.summonCostStep;
     const setBonus = computeRelicSetBonuses(this.relicLv);
     const discount =
       getAbacusSummonDiscount(this.getEffectiveRelicLv('merchant_abacus')) + setBonus.summonDiscount;
@@ -1796,11 +1808,13 @@ export class Simulation {
       hasFieldHazard: (fieldIndex) => this.hasFieldHazard(fieldIndex),
       tryConsumeBossRetry: (waveNumber, boss) => {
         if (this.bossRetryUsed) return false;
+        const diffArmor = this.data.difficultiesById.get(this.difficulty)?.armorBonus ?? 0;
         if (
           this.trialId !== null ||
           this.runMode !== 'standard' ||
           this.difficulty === 'hell' ||
-          this.difficulty === 'abyss'
+          this.difficulty === 'abyss' ||
+          diffArmor >= 38
         ) {
           return false;
         }
@@ -1830,7 +1844,11 @@ export class Simulation {
         this.priorityDirty = true;
       },
       onWaveAdvanced: (completedWave, nextWaveNum) => {
-        this.tacticalQi = Math.min(TACTICAL_QI_MAX, this.tacticalQi + TACTICAL_QI_WAVE_ADVANCE);
+        const waveQi =
+          this.arenaRule === 'celestial_qi'
+            ? Math.round(TACTICAL_QI_WAVE_ADVANCE * 1.35)
+            : TACTICAL_QI_WAVE_ADVANCE;
+        this.tacticalQi = Math.min(TACTICAL_QI_MAX, this.tacticalQi + waveQi);
         this.handleWaveAdvancedForContracts(completedWave, nextWaveNum);
       },
     };
@@ -1897,7 +1915,13 @@ export class Simulation {
       },
       onMonsterSlain: (isWaveBoss, isBounty, spawnTick) => {
         this.monstersSlain++;
-        const qiGain = isWaveBoss || isBounty ? TACTICAL_QI_KILL_BOSS : TACTICAL_QI_KILL_NORMAL;
+        const baseQi = isWaveBoss || isBounty ? TACTICAL_QI_KILL_BOSS : TACTICAL_QI_KILL_NORMAL;
+        const qiGain =
+          this.arenaRule === 'celestial_qi'
+            ? isWaveBoss || isBounty
+              ? Math.round(baseQi * 1.35)
+              : baseQi + (this.monstersSlain % 3 !== 0 ? 1 : 0)
+            : baseQi;
         this.tacticalQi = Math.min(TACTICAL_QI_MAX, this.tacticalQi + qiGain);
         if (isWaveBoss) {
           this.bossesSlain++;
@@ -2935,7 +2959,8 @@ export class Simulation {
         }
 
         this.tacticalQi = Math.max(0, this.tacticalQi - def.qiCost);
-        this.cmdCooldowns[def.id] = def.cooldownTicks;
+        const cdMult = this.arenaRule === 'celestial_qi' ? 0.85 : 1;
+        this.cmdCooldowns[def.id] = Math.max(30, Math.round(def.cooldownTicks * cdMult));
 
         let hitCount = 0;
         let totalDamage = 0;
@@ -2957,7 +2982,7 @@ export class Simulation {
             const stunDur = m.isBoss || m.isBounty ? 36 : 54;
             m.stunUntilTick = Math.max(m.stunUntilTick, this.currentTick + stunDur);
             const curShred = this.currentTick < m.shredExpireTick ? m.armorShred : 0;
-            m.armorShred = Math.min(200, curShred + 45);
+            m.armorShred = Math.min(m.armor > 200 ? 280 : 200, curShred + 45);
             m.shredExpireTick = Math.max(m.shredExpireTick, this.currentTick + 150);
             if (this.currentTick >= m.hasteUntilTick) {
               m.slowUntilTick = Math.max(m.slowUntilTick, this.currentTick + 90);
@@ -2968,6 +2993,8 @@ export class Simulation {
         } else if (def.id === 'cmd_heaven_cannon') {
           const synergy = this.computeFieldSynergy();
           const tileBuffs = this.computeFieldTileBuffs();
+          const veinMult = this.arenaRule === 'primordial_star' ? 1.5 : 1;
+          const effSolarAtk = Math.round(SPIRIT_TILE_SOLAR_ATK_PCT * veinMult);
           let totalFieldAtk = 0;
           for (let i = 0; i < this.units.length; i++) {
             const u = this.units[i]!;
@@ -2983,7 +3010,7 @@ export class Simulation {
             const spKind = this.getSpiritTileKindAt(u.slot.index);
             const tbAtk =
               (tileBuffs[u.slot.index]?.atkPct ?? 0) +
-              (spKind === 'solar' ? SPIRIT_TILE_SOLAR_ATK_PCT : 0);
+              (spKind === 'solar' ? effSolarAtk : 0);
             const eff = this.getUnitEffectiveAtk(u.unitId, synergy, tbAtk, u.starLevel ?? 0, armAtk);
             totalFieldAtk += eff.baseAtk + eff.bonusAtk;
           }
@@ -3432,8 +3459,11 @@ export class Simulation {
         unlockReason = '출정 문파 서약 완수';
       } else if (this.trialId !== null) {
         unlockReason = '비경 시련 개방';
-      } else if (this.difficulty === 'abyss') {
-        unlockReason = '무간지옥 개방';
+      } else if (
+        this.difficulty === 'abyss' ||
+        Boolean(this.data.difficultiesById.get(this.difficulty)?.unlocksPrimordial)
+      ) {
+        unlockReason = '무극·천외 개방';
       } else if (this.endlessMode || this.waveNumber > 30) {
         unlockReason = '무한 파도 개방';
       } else if (this.runMode === 'boss_rush' && this.waveNumber >= 6) {
@@ -4311,8 +4341,11 @@ export class Simulation {
         : 0;
     const isField = u.slot.area === 'field';
     const spiritTile = isField ? this.getSpiritTileKindAt(u.slot.index) : undefined;
-    const solarAtkBonus = spiritTile === 'solar' ? SPIRIT_TILE_SOLAR_ATK_PCT : 0;
-    const windRangeBonus = spiritTile === 'wind' ? SPIRIT_TILE_WIND_RANGE_BONUS : 0;
+    const veinMult = this.arenaRule === 'primordial_star' ? 1.5 : 1;
+    const solarAtkBonus =
+      spiritTile === 'solar' ? Math.round(SPIRIT_TILE_SOLAR_ATK_PCT * veinMult) : 0;
+    const windRangeBonus =
+      spiritTile === 'wind' ? Math.round(SPIRIT_TILE_WIND_RANGE_BONUS * veinMult) : 0;
     const starLevel = u.starLevel ?? 0;
     const { baseAtk, bonusAtk } = this.getUnitEffectiveAtk(
       u.unitId,
@@ -4365,7 +4398,8 @@ export class Simulation {
         benchPassives.armorShred +
         (this.endgameBonuses.armorShred ?? 0) +
         armBonus.armorShred +
-        sectShred,
+        sectShred +
+        (this.arenaRule === 'abyss_melt' ? 15 : 0),
       supportAura: def?.supportAura,
       passiveTrait: def?.passiveTrait,
       benchPassive: def?.benchPassive,
@@ -4684,6 +4718,7 @@ export class Simulation {
       this.sectVowCompleted ||
       this.trialId !== null ||
       this.difficulty === 'abyss' ||
+      Boolean(this.data.difficultiesById.get(this.difficulty)?.unlocksPrimordial) ||
       Boolean(this.chronicleDef?.primordialFromStart);
     this.preserveBenchPassives = save.preserveBenchPassives !== false;
     this.bossRetryUsed = Boolean(save.bossRetryUsed);

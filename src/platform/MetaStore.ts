@@ -132,6 +132,9 @@ const VALID_COURT_SKIN_SET: ReadonlySet<string> = new Set<CourtSkinId>([
   'court_frost_palace',
   'court_western_desert',
   'court_demonic_citadel',
+  'court_celestial_jade_peak',
+  'court_nether_abyss_forge',
+  'court_primordial_cosmos',
 ]);
 
 export interface StorageLike {
@@ -640,6 +643,16 @@ export function computeTitleProgress(profile: MetaProfile, title: TitleDef): Tit
       return { current: profile.clearedDifficulties.hell ? 1 : 0, target: 1 };
     case 'abyss_clear':
       return { current: profile.clearedDifficulties.abyss ? 1 : 0, target: 1 };
+    case 'chaos_realm_clear':
+      return { current: profile.clearedDifficulties.chaos_realm ? 1 : 0, target: 1 };
+    case 'crimson_eclipse_clear':
+      return { current: profile.clearedDifficulties.crimson_eclipse ? 1 : 0, target: 1 };
+    case 'nine_heavens_clear':
+      return { current: profile.clearedDifficulties.nine_heavens ? 1 : 0, target: 1 };
+    case 'primordial_void_clear':
+      return { current: profile.clearedDifficulties.primordial_void ? 1 : 0, target: 1 };
+    case 'absolute_zenith_clear':
+      return { current: profile.clearedDifficulties.absolute_zenith ? 1 : 0, target: 1 };
     case 'all_trials_clear':
       return { current: profile.clearedTrialCount, target: TRIAL_ORDER.length };
     case 'best_wave':
@@ -945,6 +958,39 @@ function createEmptyDifficultyBestWave(): Record<DifficultyId, number> {
     hard: 0,
     hell: 0,
     abyss: 0,
+    chaos_realm: 0,
+    crimson_eclipse: 0,
+    nine_heavens: 0,
+    primordial_void: 0,
+    absolute_zenith: 0,
+  };
+}
+
+function createInitialUnlockedDifficulties(): Record<DifficultyId, boolean> {
+  return {
+    normal: true,
+    hard: false,
+    hell: false,
+    abyss: false,
+    chaos_realm: false,
+    crimson_eclipse: false,
+    nine_heavens: false,
+    primordial_void: false,
+    absolute_zenith: false,
+  };
+}
+
+function createEmptyClearedDifficulties(): Record<DifficultyId, boolean> {
+  return {
+    normal: false,
+    hard: false,
+    hell: false,
+    abyss: false,
+    chaos_realm: false,
+    crimson_eclipse: false,
+    nine_heavens: false,
+    primordial_void: false,
+    absolute_zenith: false,
   };
 }
 
@@ -982,18 +1028,10 @@ export class MetaStore {
   private unlockedAscensionLevel = 0;
   private selectedAscensionLevel = 0;
   private clearedAscensionLevel = 0;
-  private readonly unlockedDifficulties: Record<DifficultyId, boolean> = {
-    normal: true,
-    hard: false,
-    hell: false,
-    abyss: false,
-  };
-  private readonly clearedDifficulties: Record<DifficultyId, boolean> = {
-    normal: false,
-    hard: false,
-    hell: false,
-    abyss: false,
-  };
+  private readonly unlockedDifficulties: Record<DifficultyId, boolean> =
+    createInitialUnlockedDifficulties();
+  private readonly clearedDifficulties: Record<DifficultyId, boolean> =
+    createEmptyClearedDifficulties();
   private readonly difficultyBestWave: Record<DifficultyId, number> =
     createEmptyDifficultyBestWave();
   private readonly clearedTrials: Record<TrialId, boolean> = createEmptyClearedTrials();
@@ -2389,12 +2427,8 @@ export class MetaStore {
     const newlyUnlocked: string[] = [];
     const anyTrialCleared = Object.values(this.clearedTrials).some(Boolean);
     const allTrialsCleared = TRIAL_ORDER.every((t) => this.clearedTrials[t]);
-    const anyCleared =
-      this.clearedDifficulties.normal ||
-      this.clearedDifficulties.hard ||
-      this.clearedDifficulties.hell ||
-      this.clearedDifficulties.abyss ||
-      anyTrialCleared;
+    const anyDifficultyCleared = DIFFICULTY_ORDER.some((d) => this.clearedDifficulties[d]);
+    const anyCleared = anyDifficultyCleared || anyTrialCleared;
 
     if (anyCleared && !this.ownedSkins.court_golden_palace) {
       this.ownedSkins.court_golden_palace = true;
@@ -2420,6 +2454,10 @@ export class MetaStore {
         this.equippedHeroSkins.asura_emperor = 'skin_asura_blood_eclipse';
       }
       newlyUnlocked.push('skin_asura_blood_eclipse');
+    }
+    if (this.clearedDifficulties.chaos_realm && !this.ownedSkins.court_primordial_cosmos) {
+      this.ownedSkins.court_primordial_cosmos = true;
+      newlyUnlocked.push('court_primordial_cosmos');
     }
     if (allTrialsCleared && !this.ownedSkins.skin_sword_immortal_celestial) {
       this.ownedSkins.skin_sword_immortal_celestial = true;
@@ -2758,22 +2796,26 @@ export class MetaStore {
       if (wave > this.difficultyBestWave[diff]) {
         this.difficultyBestWave[diff] = wave;
       }
+      const cfg = DIFFICULTY_CONFIGS[diff];
       if (victory && !this.clearedDifficulties[diff]) {
         this.clearedDifficulties[diff] = true;
-        const cfg = DIFFICULTY_CONFIGS[diff];
         firstClearBonusGold = cfg.firstClearGold;
         firstClearBonusKeys = cfg.firstClearKeys;
-
-        if (diff === 'normal' && !this.unlockedDifficulties.hard) {
-          this.unlockedDifficulties.hard = true;
-          unlockedNextDifficulty = 'hard';
-        } else if (diff === 'hard' && !this.unlockedDifficulties.hell) {
-          this.unlockedDifficulties.hell = true;
-          unlockedNextDifficulty = 'hell';
-        } else if (diff === 'hell' && !this.unlockedDifficulties.abyss) {
-          this.unlockedDifficulties.abyss = true;
-          unlockedNextDifficulty = 'abyss';
+        firstClearBonusSilk += cfg.firstClearSilk ?? 0;
+        if (cfg.firstClearShards && cfg.firstClearShards > 0) {
+          shardsEarned += this.grantRandomRelicShards(cfg.firstClearShards);
         }
+
+        const curIdx = DIFFICULTY_ORDER.indexOf(diff);
+        if (curIdx >= 0 && curIdx + 1 < DIFFICULTY_ORDER.length) {
+          const nextDiff = DIFFICULTY_ORDER[curIdx + 1]!;
+          if (!this.unlockedDifficulties[nextDiff]) {
+            this.unlockedDifficulties[nextDiff] = true;
+            unlockedNextDifficulty = nextDiff;
+          }
+        }
+      } else if (victory && cfg.repeatClearShards && cfg.repeatClearShards > 0) {
+        shardsEarned += this.grantRandomRelicShards(cfg.repeatClearShards);
       }
       if (victory && diff === 'abyss') {
         if (this.unlockedAscensionLevel < 1) {
@@ -3274,9 +3316,9 @@ export class MetaStore {
     this.gold += Math.max(0, Math.floor(goldBonus));
     this.keys += Math.max(0, Math.floor(keyBonus));
     this.silk += Math.max(0, Math.floor(silkBonus));
-    this.unlockedDifficulties.hard = true;
-    this.unlockedDifficulties.hell = true;
-    this.unlockedDifficulties.abyss = true;
+    for (const d of DIFFICULTY_ORDER) {
+      this.unlockedDifficulties[d] = true;
+    }
     this.unlockedAscensionLevel = Math.max(5, this.unlockedAscensionLevel);
     this.rev++;
     this.save();
@@ -3298,15 +3340,9 @@ export class MetaStore {
     this.unlockedAscensionLevel = 0;
     this.selectedAscensionLevel = 0;
     this.clearedAscensionLevel = 0;
-    this.unlockedDifficulties.normal = true;
-    this.unlockedDifficulties.hard = false;
-    this.unlockedDifficulties.hell = false;
-    this.unlockedDifficulties.abyss = false;
-    this.clearedDifficulties.normal = false;
-    this.clearedDifficulties.hard = false;
-    this.clearedDifficulties.hell = false;
-    this.clearedDifficulties.abyss = false;
     for (const d of DIFFICULTY_ORDER) {
+      this.unlockedDifficulties[d] = d === 'normal';
+      this.clearedDifficulties[d] = false;
       this.difficultyBestWave[d] = 0;
     }
     for (const t of TRIAL_ORDER) {
@@ -3417,6 +3453,14 @@ export class MetaStore {
         if (typeof cObj[d] === 'boolean') {
           this.clearedDifficulties[d] = cObj[d]!;
         }
+      }
+    }
+    // Auto-migrate saves: clearing any difficulty unlocks the next tier (e.g. cleared abyss -> chaos_realm)
+    for (let i = 0; i < DIFFICULTY_ORDER.length - 1; i++) {
+      const curD = DIFFICULTY_ORDER[i]!;
+      const nextD = DIFFICULTY_ORDER[i + 1]!;
+      if (this.clearedDifficulties[curD]) {
+        this.unlockedDifficulties[nextD] = true;
       }
     }
     this.clearedAscensionLevel =

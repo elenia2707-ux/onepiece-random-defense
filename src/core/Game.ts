@@ -1471,7 +1471,9 @@ export class Game {
       const bannerTitle = isTrinity
         ? ev.comboId === 'combo_primordial_genesis'
           ? '🌌 태고삼신 합체기'
-          : '☯ 삼재 합체기'
+          : ev.comboId === 'combo_v5_eclipse_trinity'
+            ? '🌌 삼계종언 합체기'
+            : '☯ 삼재 합체기'
         : '문파 연환절기';
       this.vfx.showCraftCelebrationBanner(bannerTitle, ev.name, ev.color, performance.now());
       this.ui.showToast(

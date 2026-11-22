@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "hash": "48aaf3b17b",
+  "hash": "35280e5159",
   "image": "assets/sprites_atlas.webp",
   "width": 1764,
   "height": 1568,
@@ -102,302 +102,338 @@
       "w": 192,
       "h": 192
     },
-    "chaos_poison_emperor": {
+    "celestial_jade_emperor": {
       "x": 1374,
+      "y": 198,
+      "w": 192,
+      "h": 192
+    },
+    "chaos_poison_emperor": {
+      "x": 1570,
       "y": 198,
       "w": 192,
       "h": 192
     },
     "cheonma": {
-      "x": 1570,
-      "y": 198,
+      "x": 2,
+      "y": 394,
+      "w": 192,
+      "h": 192
+    },
+    "crimson_shadow_lord": {
+      "x": 198,
+      "y": 394,
       "w": 192,
       "h": 192
     },
     "cult_elder": {
-      "x": 2,
+      "x": 394,
       "y": 394,
       "w": 192,
       "h": 192
     },
     "cult_initiate": {
-      "x": 198,
+      "x": 590,
       "y": 394,
       "w": 192,
       "h": 192
     },
     "cult_protector": {
-      "x": 394,
+      "x": 786,
+      "y": 394,
+      "w": 192,
+      "h": 192
+    },
+    "eclipse_demon_god": {
+      "x": 982,
       "y": 394,
       "w": 192,
       "h": 192
     },
     "flame_demon": {
-      "x": 590,
+      "x": 1178,
       "y": 394,
       "w": 192,
       "h": 192
     },
     "gaebang_beggar": {
-      "x": 786,
+      "x": 1374,
       "y": 394,
       "w": 192,
       "h": 192
     },
     "gaebang_elder": {
-      "x": 982,
+      "x": 1570,
       "y": 394,
       "w": 192,
       "h": 192
     },
     "haomun_ronin": {
-      "x": 1178,
-      "y": 394,
+      "x": 2,
+      "y": 590,
       "w": 192,
       "h": 192
     },
     "haomun_strategist": {
-      "x": 1374,
-      "y": 394,
+      "x": 198,
+      "y": 590,
       "w": 192,
       "h": 192
     },
     "heavenly_demon_heir": {
-      "x": 1570,
-      "y": 394,
+      "x": 394,
+      "y": 590,
       "w": 192,
       "h": 192
     },
     "hell_flame_sovereign": {
-      "x": 2,
+      "x": 590,
+      "y": 590,
+      "w": 192,
+      "h": 192
+    },
+    "hellfire_archon": {
+      "x": 786,
       "y": 590,
       "w": 192,
       "h": 192
     },
     "hwasan_master": {
-      "x": 198,
+      "x": 982,
       "y": 590,
       "w": 192,
       "h": 192
     },
     "hwasan_novice": {
-      "x": 394,
+      "x": 1178,
       "y": 590,
       "w": 192,
       "h": 192
     },
     "ice_palace_empress": {
-      "x": 590,
+      "x": 1374,
       "y": 590,
       "w": 192,
       "h": 192
     },
     "jiangshi": {
-      "x": 786,
-      "y": 590,
-      "w": 192,
-      "h": 192
-    },
-    "mad_demon": {
-      "x": 982,
-      "y": 590,
-      "w": 192,
-      "h": 192
-    },
-    "mudang_disciple": {
-      "x": 1178,
-      "y": 590,
-      "w": 192,
-      "h": 192
-    },
-    "mudang_master": {
-      "x": 1374,
-      "y": 590,
-      "w": 192,
-      "h": 192
-    },
-    "murim_lord": {
       "x": 1570,
       "y": 590,
       "w": 192,
       "h": 192
     },
-    "murong_blade": {
+    "kunlun_immortal": {
       "x": 2,
+      "y": 786,
+      "w": 192,
+      "h": 192
+    },
+    "mad_demon": {
+      "x": 198,
+      "y": 786,
+      "w": 192,
+      "h": 192
+    },
+    "mudang_disciple": {
+      "x": 394,
+      "y": 786,
+      "w": 192,
+      "h": 192
+    },
+    "mudang_master": {
+      "x": 590,
+      "y": 786,
+      "w": 192,
+      "h": 192
+    },
+    "murim_lord": {
+      "x": 786,
+      "y": 786,
+      "w": 192,
+      "h": 192
+    },
+    "murong_blade": {
+      "x": 982,
       "y": 786,
       "w": 192,
       "h": 192
     },
     "myriad_demon_emperor": {
-      "x": 198,
+      "x": 1178,
       "y": 786,
       "w": 192,
       "h": 192
     },
     "namgung_thunder": {
-      "x": 394,
+      "x": 1374,
       "y": 786,
       "w": 192,
       "h": 192
     },
     "nether_blade_queen": {
-      "x": 590,
-      "y": 786,
-      "w": 192,
-      "h": 192
-    },
-    "nokrim_bandit": {
-      "x": 786,
-      "y": 786,
-      "w": 192,
-      "h": 192
-    },
-    "nokrim_chief": {
-      "x": 982,
-      "y": 786,
-      "w": 192,
-      "h": 192
-    },
-    "plum_elder": {
-      "x": 1178,
-      "y": 786,
-      "w": 192,
-      "h": 192
-    },
-    "plum_swordsman": {
-      "x": 1374,
-      "y": 786,
-      "w": 192,
-      "h": 192
-    },
-    "poison_dragon": {
       "x": 1570,
       "y": 786,
       "w": 192,
       "h": 192
     },
-    "poison_healer": {
+    "nether_ghost_sovereign": {
       "x": 2,
+      "y": 982,
+      "w": 192,
+      "h": 192
+    },
+    "nokrim_bandit": {
+      "x": 198,
+      "y": 982,
+      "w": 192,
+      "h": 192
+    },
+    "nokrim_chief": {
+      "x": 394,
+      "y": 982,
+      "w": 192,
+      "h": 192
+    },
+    "plum_elder": {
+      "x": 590,
+      "y": 982,
+      "w": 192,
+      "h": 192
+    },
+    "plum_swordsman": {
+      "x": 786,
+      "y": 982,
+      "w": 192,
+      "h": 192
+    },
+    "poison_dragon": {
+      "x": 982,
+      "y": 982,
+      "w": 192,
+      "h": 192
+    },
+    "poison_healer": {
+      "x": 1178,
       "y": 982,
       "w": 192,
       "h": 192
     },
     "primordial_sword_god": {
-      "x": 198,
+      "x": 1374,
       "y": 982,
       "w": 192,
       "h": 192
     },
     "sahaebang_pirate": {
-      "x": 394,
+      "x": 1570,
       "y": 982,
       "w": 192,
       "h": 192
     },
     "shaolin_abbot": {
-      "x": 590,
-      "y": 982,
+      "x": 2,
+      "y": 1178,
       "w": 192,
       "h": 192
     },
     "shaolin_elder": {
-      "x": 786,
-      "y": 982,
+      "x": 198,
+      "y": 1178,
       "w": 192,
       "h": 192
     },
     "shaolin_monk": {
-      "x": 982,
-      "y": 982,
+      "x": 394,
+      "y": 1178,
       "w": 192,
       "h": 192
     },
     "shaolin_novice": {
-      "x": 1178,
-      "y": 982,
+      "x": 590,
+      "y": 1178,
       "w": 192,
       "h": 192
     },
     "soul_acolyte": {
-      "x": 1374,
-      "y": 982,
+      "x": 786,
+      "y": 1178,
       "w": 192,
       "h": 192
     },
     "soul_warlock": {
-      "x": 1570,
-      "y": 982,
+      "x": 982,
+      "y": 1178,
       "w": 192,
       "h": 192
     },
     "sword_demon": {
-      "x": 2,
+      "x": 1178,
       "y": 1178,
       "w": 192,
       "h": 192
     },
     "sword_immortal": {
-      "x": 198,
-      "y": 1178,
-      "w": 192,
-      "h": 192
-    },
-    "sword_saint": {
-      "x": 394,
-      "y": 1178,
-      "w": 192,
-      "h": 192
-    },
-    "tang_assassin": {
-      "x": 590,
-      "y": 1178,
-      "w": 192,
-      "h": 192
-    },
-    "tang_elder": {
-      "x": 786,
-      "y": 1178,
-      "w": 192,
-      "h": 192
-    },
-    "tang_patriarch": {
-      "x": 982,
-      "y": 1178,
-      "w": 192,
-      "h": 192
-    },
-    "thousand_venom_lord": {
-      "x": 1178,
-      "y": 1178,
-      "w": 192,
-      "h": 192
-    },
-    "thunder_emperor": {
       "x": 1374,
       "y": 1178,
       "w": 192,
       "h": 192
     },
-    "tyrant_overlord": {
+    "sword_saint": {
       "x": 1570,
       "y": 1178,
       "w": 192,
       "h": 192
     },
-    "void_heavenly_demon": {
+    "tang_assassin": {
       "x": 2,
       "y": 1374,
       "w": 192,
       "h": 192
     },
-    "white_tiger": {
+    "tang_elder": {
       "x": 198,
       "y": 1374,
       "w": 192,
       "h": 192
     },
-    "wuji_grandmaster": {
+    "tang_patriarch": {
       "x": 394,
+      "y": 1374,
+      "w": 192,
+      "h": 192
+    },
+    "thousand_venom_lord": {
+      "x": 590,
+      "y": 1374,
+      "w": 192,
+      "h": 192
+    },
+    "thunder_emperor": {
+      "x": 786,
+      "y": 1374,
+      "w": 192,
+      "h": 192
+    },
+    "tyrant_overlord": {
+      "x": 982,
+      "y": 1374,
+      "w": 192,
+      "h": 192
+    },
+    "void_heavenly_demon": {
+      "x": 1178,
+      "y": 1374,
+      "w": 192,
+      "h": 192
+    },
+    "white_tiger": {
+      "x": 1374,
+      "y": 1374,
+      "w": 192,
+      "h": 192
+    },
+    "wuji_grandmaster": {
+      "x": 1570,
       "y": 1374,
       "w": 192,
       "h": 192

@@ -20,7 +20,10 @@ export type ImmortalSkillTrack =
   | 'im_myriad_demon'
   | 'im_primordial_sword'
   | 'im_chaos_poison'
-  | 'im_void_cheonma';
+  | 'im_void_cheonma'
+  | 'im_jade_emperor'
+  | 'im_nether_sovereign'
+  | 'im_eclipse_demon';
 
 export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
   return (
@@ -35,7 +38,10 @@ export function isImmortalSkillTrack(kind: string): kind is ImmortalSkillTrack {
     kind === 'im_myriad_demon' ||
     kind === 'im_primordial_sword' ||
     kind === 'im_chaos_poison' ||
-    kind === 'im_void_cheonma'
+    kind === 'im_void_cheonma' ||
+    kind === 'im_jade_emperor' ||
+    kind === 'im_nether_sovereign' ||
+    kind === 'im_eclipse_demon'
   );
 }
 
@@ -388,6 +394,90 @@ export function spawnImmortalSkillVfx(
       api.emitRadialBurst(x, y, c1, 22, 200, 0.42, -10, startTick);
       api.emitRadialBurst(x, y, c2, 16, 170, 0.4, 10, startTick);
       api.triggerScreenFlash(c1, 0.09, 0.15, startTick);
+      break;
+    }
+
+    case 'im_jade_emperor': {
+      // 태청옥경 · 구천선검진: golden celestial decree wheel + 10 jade-gold spirit swords + '皇'
+      const c1 = skinPrimary ?? '#fde047';
+      const c2 = skinSecondary ?? '#38bdf8';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'flying_sword',
+        startTick,
+        durationSec: 0.68,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 24,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.4,
+        glowRadius: 116,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 24, 210, 0.44, -15, startTick);
+      api.emitRadialBurst(x, y, c2, 16, 175, 0.42, 8, startTick);
+      api.triggerScreenFlash(c1, 0.1, 0.15, startTick);
+      break;
+    }
+
+    case 'im_nether_sovereign': {
+      // 구천유명 · 만귀등혼진: spectral jade soul lantern vortex + 8 phantom spirit orbs + '冥'
+      const c1 = skinPrimary ?? '#2dd4bf';
+      const c2 = skinSecondary ?? '#10b981';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'staff_gourd',
+        startTick,
+        durationSec: 0.68,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 24,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.2,
+        glowRadius: 114,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 22, 188, 0.44, -45, startTick);
+      api.emitRadialBurst(x, y, PIXEL_OUTLINE, 14, 155, 0.4, -30, startTick);
+      api.triggerScreenFlash(c1, 0.09, 0.15, startTick);
+      break;
+    }
+
+    case 'im_eclipse_demon': {
+      // 적월일식 · 혈천멸세쌍도: colossal blood-red solar eclipse halo + twin crimson crescent slashes + '蝕'
+      const c1 = skinPrimary ?? '#e11d48';
+      const c2 = skinSecondary ?? '#fde047';
+      api.pushTrack({
+        kind: track,
+        weaponStyle: 'dual_sword',
+        startTick,
+        durationSec: 0.7,
+        fromX,
+        fromY,
+        x,
+        y,
+        fromRadius: 24,
+        toRadius: visR,
+        color: c1,
+        secondaryColor: c2,
+        lineWidth: 6.6,
+        glowRadius: 118,
+        gradeRank,
+        isLargeUltimate: true,
+      });
+      api.emitRadialBurst(x, y, c1, 26, 220, 0.44, 0, startTick);
+      api.emitRadialBurst(x, y, c2, 16, 180, 0.42, 0, startTick);
+      api.triggerScreenFlash(c1, 0.11, 0.16, startTick);
       break;
     }
   }
@@ -1003,6 +1093,137 @@ export function renderImmortalSkillAir(
       const sz = 88 * (0.85 + inv * 0.25);
       ctx.globalAlpha = inv * 0.96;
       ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_jade_emperor': {
+      // Golden celestial halo wheel + 10 jade-gold immortal swords + '皇' seal
+      const r = inst.toRadius * (0.46 + easeOutCubic(p) * 0.56);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(p * 2.2);
+      ctx.globalAlpha = inv * 0.96;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.52, 0, Math.PI * 2);
+      ctx.lineWidth = 6 * inv + 1.5;
+      ctx.strokeStyle = PIXEL_OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = 3.2 * inv + 1;
+      ctx.strokeStyle = inst.color;
+      ctx.stroke();
+
+      for (let i = 0; i < 10; i++) {
+        const a = (i * Math.PI * 2) / 10;
+        const inner = r * 0.3;
+        const outer = r * (i % 2 === 0 ? 1.08 : 0.86);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+        ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 7 * inv + 1.4;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 3.6 * inv + 1;
+        ctx.strokeStyle = i % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('皇', inst.color);
+      const sz = 90 * (0.86 + inv * 0.25);
+      ctx.globalAlpha = inv * 0.97;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_nether_sovereign': {
+      // Spectral jade soul lantern vortex + 8 orbiting phantom flames + '冥' seal
+      const r = inst.toRadius * (0.44 + easeOutCubic(p) * 0.56);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.rotate(-p * 3.4);
+      ctx.globalAlpha = inv * 0.95;
+
+      for (let arm = 0; arm < 4; arm++) {
+        const ba = (arm * Math.PI) / 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.72, ba, ba + Math.PI * 0.65);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 8 * inv + 1.5;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.lineWidth = 4.2 * inv + 1;
+        ctx.strokeStyle = arm % 2 === 0 ? inst.color : inst.secondaryColor;
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI * 2) / 8 + p * 2.5;
+        const ox = Math.cos(a) * r * 0.82;
+        const oy = Math.sin(a) * r * 0.82;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 6.4 * inv + 2, 0, Math.PI * 2);
+        ctx.fillStyle = i % 2 === 0 ? '#ccfbf1' : inst.color;
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('冥', inst.color);
+      const sz = 90 * (0.86 + inv * 0.25);
+      ctx.globalAlpha = inv * 0.97;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 28 - p * 26 - sz * 0.5, sz, sz);
+      return true;
+    }
+
+    case 'im_eclipse_demon': {
+      // Total crimson solar eclipse crescent halo + twin obsidian-gold crossing arcs + '蝕' seal
+      const r = inst.toRadius * (0.48 + easeOutCubic(p) * 0.56);
+      ctx.save();
+      ctx.translate(inst.x, inst.y);
+      ctx.globalAlpha = inv * 0.97;
+
+      // Blood-red eclipse ring
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.56, 0, Math.PI * 2);
+      ctx.fillStyle = PIXEL_OUTLINE;
+      ctx.fill();
+      ctx.lineWidth = 6 * inv + 2;
+      ctx.strokeStyle = inst.color;
+      ctx.stroke();
+
+      // Twin crossing crimson-gold eclipse crescent blades
+      for (const dir of [-1, 1]) {
+        ctx.save();
+        ctx.rotate(dir * (0.58 + p * 0.9));
+        ctx.beginPath();
+        ctx.arc(0, 0, r, -Math.PI * 0.44, Math.PI * 0.44);
+        ctx.quadraticCurveTo(
+          r * 0.34,
+          0,
+          Math.cos(-Math.PI * 0.44) * r,
+          Math.sin(-Math.PI * 0.44) * r,
+        );
+        ctx.closePath();
+        ctx.fillStyle = dir < 0 ? inst.color : inst.secondaryColor;
+        ctx.fill();
+        ctx.lineWidth = 3.2;
+        ctx.strokeStyle = PIXEL_OUTLINE;
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      const seal = rc.sprites.kanjiSeal('蝕', inst.color);
+      const sz = 92 * (0.86 + inv * 0.26);
+      ctx.globalAlpha = inv * 0.98;
+      ctx.drawImage(seal, inst.x - sz * 0.5, inst.y - 30 - p * 26 - sz * 0.5, sz, sz);
       return true;
     }
   }

@@ -214,8 +214,8 @@ export function computeMonsterArmor(
     mutantArmor +
     trialArmor;
   const armorCap =
-    difficulty === 'abyss' || trialId === 'trial_abyss_sanctum'
-      ? 220 + ascArmor
+    diffCfg.armorBonus >= 84 || difficulty === 'abyss' || trialId === 'trial_abyss_sanctum'
+      ? Math.max(220, diffCfg.armorBonus + 136) + ascArmor
       : 180;
   return Math.min(armorCap, Math.round(base));
 }
@@ -390,12 +390,18 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
       ? computeAscensionModifiers(ascLv)
       : null;
 
-  // Ascension 8중천+: Boss Qi-Armor Regeneration every 1.0s (30 ticks)
-  if (ascMod && ascMod.bossArmorRegenPerSec > 0 && ctx.currentTick > 0 && ctx.currentTick % 30 === 0) {
+  const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
+  const bossArmorRegenPerSec =
+    ctx.runMode !== 'boss_rush' && !ctx.chronicleDef && !ctx.trialId
+      ? (ascMod?.bossArmorRegenPerSec ?? 0) + (diffCfg.bossArmorRegenPerSec ?? 0)
+      : 0;
+
+  // Ascension 8중천+ & Apex Difficulties: Boss Qi-Armor Regeneration every 1.0s (30 ticks)
+  if (bossArmorRegenPerSec > 0 && ctx.currentTick > 0 && ctx.currentTick % 30 === 0) {
     for (let i = 0; i < ctx.monsters.length; i++) {
       const m = ctx.monsters[i]!;
       if (m.isBoss && !m.isBounty && m.armorShred > 0) {
-        m.armorShred = Math.max(0, m.armorShred - ascMod.bossArmorRegenPerSec);
+        m.armorShred = Math.max(0, m.armorShred - bossArmorRegenPerSec);
       }
     }
   }
@@ -431,7 +437,6 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     ? null
     : getWaveMutantKind(waveNumber, waveDef.isBoss, chron?.mutantEveryNWaves);
   const mutantMeta = mutantKind ? WAVE_MUTANT_META[mutantKind] : null;
-  const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
   const dailyMod = ctx.dailyRule?.modifiers;
   const hpScale = isBossRush
@@ -466,8 +471,12 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
     const bonusCoin = mutantMeta ? mutantMeta.bonusCoin : 0;
     const scaledHp = Math.max(1, Math.round(waveDef.monsterHp * hpScale * hpMult));
 
+    const diffBossCd =
+      !isBossRush && !chron && !trialCfg ? (diffCfg.bossCooldownMult ?? 1) : 1;
     const bossCdMult =
-      (trialCfg ? trialCfg.bossCooldownMult : 1) * (chron ? chron.modifiers.bossCooldownMult : 1);
+      (trialCfg ? trialCfg.bossCooldownMult : 1) *
+      (chron ? chron.modifiers.bossCooldownMult : 1) *
+      diffBossCd;
     const initialSkillDelay = !waveDef.isBoss
       ? 999999999
       : Math.max(
@@ -573,14 +582,19 @@ export function stepWaveAndSpawn(ctx: WaveSystemContext): void {
       ctx.monsters.push(twinBoss);
     }
 
-    // Ascension 15중천+: Twin Lieutenant Boss accompanies Main Boss on Wave 15+!
+    // Ascension 15중천+ & Apex Difficulties (혼원마역+): Twin Lieutenant Boss accompanies Main Boss!
+    const ascTwinActive = Boolean(ascMod && ascMod.twinBossAtLateWaves && waveNumber >= 15);
+    const diffTwinActive = Boolean(
+      !trialCfg &&
+        diffCfg.twinBossMinWave !== undefined &&
+        diffCfg.twinBossMinWave > 0 &&
+        waveNumber >= diffCfg.twinBossMinWave,
+    );
     if (
-      ascMod &&
-      ascMod.twinBossAtLateWaves &&
+      (ascTwinActive || diffTwinActive) &&
       !isBossRush &&
       !chron &&
       waveDef.isBoss &&
-      waveNumber >= 15 &&
       spawnedInWave === 0
     ) {
       const twinHp = Math.max(1, Math.round(scaledHp * 0.45));
@@ -851,10 +865,16 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
   }
 
   const spawnedEscorts: MonsterEntity[] = [];
+  const diffCfg = ctx.data.difficultiesById.get(ctx.difficulty) ?? ctx.data.difficulties[0]!;
   const trialCfg = ctx.trialId ? ctx.data.trialsById.get(ctx.trialId) : undefined;
+  const diffBossCd =
+    ctx.runMode !== 'boss_rush' && !ctx.chronicleDef && !trialCfg
+      ? (diffCfg.bossCooldownMult ?? 1)
+      : 1;
   const bossCdMult =
     (trialCfg ? trialCfg.bossCooldownMult : 1) *
-    (ctx.chronicleDef ? ctx.chronicleDef.modifiers.bossCooldownMult : 1);
+    (ctx.chronicleDef ? ctx.chronicleDef.modifiers.bossCooldownMult : 1) *
+    diffBossCd;
   const waveNumber = ctx.getWaveNumber();
 
   for (let i = 0; i < ctx.monsters.length; i++) {
@@ -889,13 +909,15 @@ export function stepMonstersAndBosses(ctx: WaveSystemContext): void {
 
     const slowMult = ctx.currentTick < m.slowUntilTick ? m.slowFactor : 1;
     const hasteMult = ctx.currentTick < m.hasteUntilTick ? 1.55 : 1;
-    const frostMult =
+    const arenaMoveMult =
       ctx.arenaRule === 'frost_chill'
         ? m.isBoss && ctx.tileHazards.length > 0
           ? 0.81
           : 0.9
-        : 1;
-    m.currDistance += m.speedPerTick * slowMult * hasteMult * frostMult;
+        : ctx.arenaRule === 'abyss_melt'
+          ? 1.05
+          : 1;
+    m.currDistance += m.speedPerTick * slowMult * hasteMult * arenaMoveMult;
     const pos = ctx.path.sample(m.currDistance);
     m.currX = pos.x;
     m.currY = pos.y;

@@ -1069,7 +1069,7 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
   const ownedHeroCount = data.heroSkins.filter((s) => Boolean(meta.ownedSkins[s.id])).length;
   const ownedCourtCount = data.courtSkins.filter((c) => Boolean(meta.ownedSkins[c.id])).length;
 
-  const subtitle = `수집 ${meta.ownedSkinCount}/${totalSkins}종 · 협객 의복은 외형·이펙트 변모 · 전술 비무대 3종은 특수 전장 규칙 적용`;
+  const subtitle = `수집 ${meta.ownedSkinCount}/${totalSkins}종 · 협객 의복은 외형·이펙트 변모 · 전술 비무대 6종은 특수 전장 규칙 적용`;
 
   const canDrawKey1 = meta.keys >= 1;
   const canDrawGold1 = meta.gold >= SKIN_SINGLE_GOLD_COST;
@@ -1093,7 +1093,9 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
         } else {
           const courtDef = data.courtSkinsById.get(item.skinId as CourtSkinId);
           if (courtDef) {
-            imgUrl = sprites.courtPreviewUrl(courtDef);
+            imgUrl = courtDef.bgImage
+              ? `${import.meta.env.BASE_URL}${courtDef.bgImage}`
+              : sprites.courtPreviewUrl(courtDef);
           }
         }
 
@@ -1218,7 +1220,9 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
         const rMeta = SKIN_RARITY_META[court.rarity];
         const isOwned = Boolean(meta.ownedSkins[court.id]);
         const isEquipped = meta.equippedCourtSkin === court.id;
-        const previewUrl = sprites.courtPreviewUrl(court);
+        const previewUrl = court.bgImage
+          ? `${import.meta.env.BASE_URL}${court.bgImage}`
+          : sprites.courtPreviewUrl(court);
         const condText =
           !isOwned && court.unlockCond
             ? ` · <b class="skin-cond-note">🏆 ${escapeHtml(UNLOCK_COND_LABEL[court.unlockCond])}</b>`
@@ -1259,6 +1263,9 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
           `;
         }
 
+        const customMapBadge = court.bgImage
+          ? '<span class="grade-pill" style="background:#0f766e">🗺 신규 전장</span>'
+          : '';
         const arenaRuleBadge = court.arenaRuleLabel
           ? `<span class="arena-rule-tag">${escapeHtml(court.arenaRuleLabel)}</span>`
           : '';
@@ -1273,6 +1280,7 @@ export function buildWardrobePanelView(params: WardrobePanelParams): WardrobePan
               <div class="card-info">
                 <div class="card-name-row">
                   <span class="grade-pill" style="background:${rMeta.color}">${rMeta.label}</span>
+                  ${customMapBadge}
                   <span class="card-name">${escapeHtml(court.name)}</span>
                   ${arenaRuleBadge}
                   <span class="skin-swatches" title="등불·꽃잎 분위기 색상">

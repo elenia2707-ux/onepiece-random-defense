@@ -1956,5 +1956,233 @@
       "slowSec": 3.1,
       "vfxTrack": "im_myriad_demon"
     }
+  },
+  {
+    "id": "kunlun_immortal",
+    "name": "곤륜 검선",
+    "title": "곤륜옥허 선계검객",
+    "faction": "orthodox",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1120,
+    "range": 292,
+    "attackIntervalSec": 0.45,
+    "critChance": 0.4,
+    "critMult": 2.55,
+    "sellCoin": 520,
+    "armorShred": 24,
+    "supportAura": {
+      "name": "곤륜선검진",
+      "atkPct": 20,
+      "speedPct": 14
+    },
+    "passiveTrait": {
+      "id": "kunlun_jade_pierce",
+      "name": "곤륜옥검",
+      "desc": "적 호신강기 34% 관통 · 영물 보스 및 수배범 피해 +16% · 선검진 고무",
+      "armorPiercePct": 0.34,
+      "bossDamagePct": 16
+    },
+    "skill": {
+      "name": "곤륜비선 · 옥허만검",
+      "desc": "3타마다 옥허 백옥비검진과 운해 선기가 쇄도해 315% 광역 관통 피해 및 0.85초 기절",
+      "everyN": 3,
+      "atkRatio": 3.15,
+      "splashRadius": 176,
+      "stunSec": 0.85,
+      "slowPct": 0.44,
+      "slowSec": 2.4,
+      "vfxTrack": "tx_kunlun_immortal"
+    }
+  },
+  {
+    "id": "celestial_jade_emperor",
+    "name": "태청옥황선제",
+    "title": "구천태청 옥황선제",
+    "faction": "orthodox",
+    "grade": "immortal",
+    "leaf": false,
+    "atk": 3120,
+    "range": 365,
+    "attackIntervalSec": 0.47,
+    "critChance": 0.55,
+    "critMult": 3.25,
+    "sellCoin": 1400,
+    "armorShred": 34,
+    "supportAura": {
+      "name": "태청옥경진",
+      "atkPct": 26,
+      "speedPct": 20
+    },
+    "passiveTrait": {
+      "id": "jade_emperor_decree",
+      "name": "태청천명",
+      "desc": "적 호신강기 58% 관통 · 영물 보스 피해 +26% · 태청옥경진(공+26%·속+20%) 지원",
+      "armorPiercePct": 0.58,
+      "bossDamagePct": 26
+    },
+    "skill": {
+      "name": "태청옥경 · 구천선검진",
+      "desc": "3타마다 천상 옥경 보탑과 황금 선검진이 강림해 405% 광역 관통 피해 및 1.15초 기절",
+      "everyN": 3,
+      "atkRatio": 4.05,
+      "splashRadius": 222,
+      "stunSec": 1.15,
+      "slowPct": 0.55,
+      "slowSec": 3.0,
+      "vfxTrack": "im_jade_emperor"
+    }
+  },
+  {
+    "id": "crimson_shadow_lord",
+    "name": "적영살황",
+    "title": "적영암살 사파살황",
+    "faction": "unorthodox",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1090,
+    "range": 282,
+    "attackIntervalSec": 0.37,
+    "critChance": 0.44,
+    "critMult": 2.62,
+    "sellCoin": 520,
+    "armorShred": 40,
+    "passiveTrait": {
+      "id": "crimson_shadow_reaper",
+      "name": "적영멸살",
+      "desc": "0.37초 고속 쌍단도 · 적 강기 28% 관통 · 체력 50% 이하 적 처형 피해 +34%",
+      "armorPiercePct": 0.28,
+      "executeBelowHpPct": 0.5,
+      "executeDamagePct": 34
+    },
+    "skill": {
+      "name": "적영만살 · 혈월분신참",
+      "desc": "3타마다 4연속 적영 환영분신 쌍도참이 작렬해 295% 광역 처형 피해 및 파갑",
+      "everyN": 3,
+      "atkRatio": 2.95,
+      "splashRadius": 166,
+      "stunSec": 0.7,
+      "slowPct": 0.44,
+      "slowSec": 2.4,
+      "vfxTrack": "tx_crimson_shadow"
+    }
+  },
+  {
+    "id": "nether_ghost_sovereign",
+    "name": "구천유명황",
+    "title": "유명황천 만귀지존",
+    "faction": "unorthodox",
+    "grade": "immortal",
+    "leaf": false,
+    "atk": 2240,
+    "range": 352,
+    "attackIntervalSec": 0.38,
+    "critChance": 0.5,
+    "critMult": 3.05,
+    "sellCoin": 1400,
+    "armorShred": 66,
+    "supportAura": {
+      "name": "구천유명진",
+      "atkPct": 22,
+      "speedPct": 24
+    },
+    "passiveTrait": {
+      "id": "nether_soul_shatter",
+      "name": "유명혼식",
+      "desc": "고효율 파갑(66)·강기 36% 관통 · 파갑 적 피해 +42% · 보스 피해 +24%",
+      "armorPiercePct": 0.36,
+      "shreddedDamagePct": 42,
+      "bossDamagePct": 24
+    },
+    "skill": {
+      "name": "구천유명 · 만귀등혼진",
+      "desc": "3타마다 청록 혼등과 만귀 사슬진이 전개돼 380% 광역 부식 피해 및 65% 극감속",
+      "everyN": 3,
+      "atkRatio": 3.8,
+      "splashRadius": 228,
+      "stunSec": 1.05,
+      "slowPct": 0.65,
+      "slowSec": 3.4,
+      "vfxTrack": "im_nether_sovereign"
+    }
+  },
+  {
+    "id": "hellfire_archon",
+    "name": "업화마존",
+    "title": "지옥업화 마교전신",
+    "faction": "demonic",
+    "grade": "transcendent",
+    "leaf": false,
+    "atk": 1210,
+    "range": 278,
+    "attackIntervalSec": 0.48,
+    "critChance": 0.42,
+    "critMult": 2.72,
+    "sellCoin": 520,
+    "armorShred": 34,
+    "supportAura": {
+      "name": "업화마염진",
+      "atkPct": 22,
+      "speedPct": 12
+    },
+    "passiveTrait": {
+      "id": "hellfire_cataclysm_edge",
+      "name": "업화분쇄",
+      "desc": "적 호신강기 30% 관통 · 파갑 적 피해 +26% · 보스 피해 +18% 및 업화진 고무",
+      "armorPiercePct": 0.3,
+      "shreddedDamagePct": 26,
+      "bossDamagePct": 18
+    },
+    "skill": {
+      "name": "지옥업화 · 마염파천극",
+      "desc": "3타마다 용암 업화극이 대지를 갈라 335% 광역 소각 피해 및 0.85초 기절",
+      "everyN": 3,
+      "atkRatio": 3.35,
+      "splashRadius": 182,
+      "stunSec": 0.85,
+      "slowPct": 0.46,
+      "slowSec": 2.5,
+      "vfxTrack": "tx_hellfire_archon"
+    }
+  },
+  {
+    "id": "eclipse_demon_god",
+    "name": "적월마신",
+    "title": "혈월일식 태상마신",
+    "faction": "demonic",
+    "grade": "immortal",
+    "leaf": false,
+    "atk": 2960,
+    "range": 346,
+    "attackIntervalSec": 0.44,
+    "critChance": 0.54,
+    "critMult": 3.22,
+    "sellCoin": 1400,
+    "armorShred": 44,
+    "supportAura": {
+      "name": "적월일식진",
+      "atkPct": 28,
+      "speedPct": 16
+    },
+    "passiveTrait": {
+      "id": "eclipse_annihilation",
+      "name": "적월멸세",
+      "desc": "적 호신강기 46% 관통 · 영물 보스 피해 +36% · 체력 50% 이하 처형 피해 +34%",
+      "armorPiercePct": 0.46,
+      "bossDamagePct": 36,
+      "executeBelowHpPct": 0.5,
+      "executeDamagePct": 34
+    },
+    "skill": {
+      "name": "적월일식 · 혈천멸세쌍도",
+      "desc": "3타마다 개기혈월 광배와 쌍월 마도가 교차 폭발해 410% 전장 초토화 및 1.15초 기절",
+      "everyN": 3,
+      "atkRatio": 4.1,
+      "splashRadius": 224,
+      "stunSec": 1.15,
+      "slowPct": 0.58,
+      "slowSec": 3.1,
+      "vfxTrack": "im_eclipse_demon"
+    }
   }
 ]

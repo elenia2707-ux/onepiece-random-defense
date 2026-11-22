@@ -82,6 +82,7 @@ export const UNLOCK_COND_LABEL: Readonly<Record<SkinUnlockCond, string>> = {
   hard_clear: '무림 고수 난이도 제 30 장 제패 시 영구 해금',
   hell_clear: '아수라 혈겁 난이도 제 30 장 제패 시 영구 해금',
   abyss_clear: '천마강림(무극) 난이도 제 30 장 제패 시 영구 해금',
+  chaos_realm_clear: '혼원마역(5단계) 난이도 제 30 장 제패 시 영구 해금',
   all_trials_clear: '6대 무림 비경 시련 전부 제패 시 영구 해금',
   wave_35: '무한 혈투 제 35 장 도달 시 영구 해금',
   wave_55: '무한 혈투 제 55 장 돌파 시 영구 해금',

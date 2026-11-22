@@ -2684,7 +2684,13 @@ export class UIManager {
           ? '❄ 빙결 한파'
           : snapshot.arenaRule === 'sandstorm_crit'
             ? '🏜 모래폭풍'
-            : '🔥 혈마 화진');
+            : snapshot.arenaRule === 'celestial_qi'
+              ? '☁ 선계 영기'
+              : snapshot.arenaRule === 'abyss_melt'
+                ? '🌋 구유 용암진'
+                : snapshot.arenaRule === 'primordial_star'
+                  ? '🌌 태고 성좌진'
+                  : '🔥 혈마 화진');
       const rDesc = courtDef?.arenaRuleDesc ?? '비무대 테마 특수 규칙 활성 중';
       pills.push(
         `<span class="relic-buff-pill arena-rule-pill" title="${escapeHtml(rDesc)}">${escapeHtml(rLabel)}</span>`,

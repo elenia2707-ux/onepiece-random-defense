@@ -55,6 +55,11 @@ const DIFF_ACCENT: Readonly<Record<string, string>> = {
   hard: '#d97706',
   hell: '#be123c',
   abyss: '#7e22ce',
+  chaos_realm: '#9333ea',
+  crimson_eclipse: '#dc2626',
+  nine_heavens: '#0284c7',
+  primordial_void: '#4f46e5',
+  absolute_zenith: '#b45309',
 };
 
 const TRIAL_ACCENT: Readonly<Record<TrialId, string>> = {
@@ -84,9 +89,20 @@ export function buildCodexPanelView(params: CodexPanelParams): CodexPanelResult 
       (diff !== 'abyss' || snapshot.ascensionLevel === 0);
     const bestDiffWave = meta.difficultyBestWave[diff] ?? 0;
 
+    const firstClearParts = [`+${cfg.firstClearGold}주화`, `열쇠+${cfg.firstClearKeys}`];
+    if (cfg.firstClearSilk && cfg.firstClearSilk > 0) {
+      firstClearParts.push(`비단+${cfg.firstClearSilk}`);
+    }
+    if (cfg.firstClearShards && cfg.firstClearShards > 0) {
+      firstClearParts.push(`🔮파편+${cfg.firstClearShards}`);
+    }
+    const repeatShardBadge =
+      cleared && cfg.repeatClearShards && cfg.repeatClearShards > 0
+        ? ` <span class="diff-bonus-pill">반복 🔮파편+${cfg.repeatClearShards}</span>`
+        : '';
     const clearBadge = cleared
-      ? '<span class="diff-clear-pill">🏆 30장 제패</span>'
-      : `<span class="diff-bonus-pill">초회 +${cfg.firstClearGold}주화 · 열쇠+${cfg.firstClearKeys}</span>`;
+      ? `<span class="diff-clear-pill">🏆 30장 제패</span>${repeatShardBadge}`
+      : `<span class="diff-bonus-pill">초회 ${firstClearParts.join(' · ')}</span>`;
 
     const bestWaveBadge =
       bestDiffWave > 0

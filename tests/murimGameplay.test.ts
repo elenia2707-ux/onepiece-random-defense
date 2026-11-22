@@ -3,9 +3,11 @@ import atlasRaw from '../public/assets/sprites_atlas.json';
 import type { StampedCommand } from '../src/core/CommandQueue';
 import {
   ASCENSION_MAX_LEVEL,
+  CODEX_MILESTONES,
   computeRelicSetBonuses,
   computeRelicSetStatuses,
   DIFFICULTY_CONFIGS,
+  DIFFICULTY_ORDER,
   getBlessedEffectiveRelicLevel,
   getUnitSellLuckRefund,
   RELIC_EFFECTIVE_MAX_LEVEL,
@@ -179,11 +181,11 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(snap.lastGambleResult?.tier).toBe('uncommon');
   });
 
-  it('packs all 60 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog', () => {
+  it('packs all 66 units and 6 monsters/bosses into a lossless WebP sprite atlas (AGENTS.md §6) plus validated skin catalog & 3 bespoke arena WebP maps', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(60);
+    expect(data.units.length).toBe(66);
     expect(data.heroSkins.length).toBe(24);
-    expect(data.courtSkins.length).toBe(8);
+    expect(data.courtSkins.length).toBe(11);
 
     const spriteFiles = Object.keys(import.meta.glob('../art/sprites_src/*.png'));
     const spriteSet = new Set(
@@ -215,14 +217,18 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       expect(spriteSet.has(`${kind}.png`), `missing monster/boss sprite: ${kind}.png`).toBe(true);
       expect(atlasFrames[kind], `missing WebP atlas frame: ${kind}`).toBeDefined();
     }
-    expect(spriteSet.size).toBe(66);
-    expect(Object.keys(atlasFrames).length).toBe(66);
+    expect(spriteSet.size).toBe(72);
+    expect(Object.keys(atlasFrames).length).toBe(72);
 
     const webpAtlasFiles = Object.keys(import.meta.glob('../public/assets/*.webp'));
     expect(webpAtlasFiles.some((p) => p.endsWith('/sprites_atlas.webp'))).toBe(true);
 
     const bgFiles = Object.keys(import.meta.glob('../public/bg/*.png'));
     expect(bgFiles.some((p) => p.endsWith('/murim_arena_bg.png'))).toBe(true);
+    const bgWebpFiles = Object.keys(import.meta.glob('../public/bg/*.webp'));
+    expect(bgWebpFiles.some((p) => p.endsWith('/bg_celestial_peak.webp'))).toBe(true);
+    expect(bgWebpFiles.some((p) => p.endsWith('/bg_nether_abyss.webp'))).toBe(true);
+    expect(bgWebpFiles.some((p) => p.endsWith('/bg_primordial_cosmos.webp'))).toBe(true);
   });
 
   it('activates deterministic 3-faction field formations (북두검진 · 만독혈진 · 천마혈진 · 삼재합진) strictly from field slots', () => {
@@ -1472,9 +1478,9 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(det3x.hashState()).toBe(det1x.hashState());
   });
 
-  it('maps all 60 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
+  it('maps all 66 Murim heroes 1:1 across 10 weapon motion archetypes and emits directional monster:hit origin telemetry deterministically', () => {
     const data = loadGameData();
-    expect(data.units.length).toBe(60);
+    expect(data.units.length).toBe(66);
 
     const seenStyles = new Set<WeaponMotionStyle>();
     for (const unit of data.units) {
@@ -1993,16 +1999,16 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(rec2.firstClearBonusSilk).toBe(0);
   });
 
-  it('differentiates all 12 현경·신마 & 태고신화 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
+  it('differentiates all 15 현경·신마 & 태고신화 (Immortal) heroes with distinct stat profiles and specialized passiveTrait combat mechanics', () => {
     const data = loadGameData();
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(immortals.length).toBe(12);
+    expect(immortals.length).toBe(15);
 
     // Every Immortal must have a unique base ATK, unique passiveTrait.id, and wide archetype spread (> 2.0x max/min ATK)
     const atks = immortals.map((u) => u.atk);
     const passiveIds = new Set(immortals.map((u) => u.passiveTrait?.id).filter(Boolean));
-    expect(new Set(atks).size).toBe(12);
-    expect(passiveIds.size).toBe(12);
+    expect(new Set(atks).size).toBe(15);
+    expect(passiveIds.size).toBe(15);
     expect(Math.max(...atks) / Math.min(...atks)).toBeGreaterThan(2.0);
 
     // Verify SlotView exposes passiveTrait and sword_immortal's 70% armorPiercePct out-scales un-pierced armor reduction
@@ -2152,18 +2158,18 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(data.unitsById.get('blood_shadow_sovereign')?.skill?.vfxTrack).toBe('tx_blood_sovereign');
     expect(data.unitsById.get('wuji_grandmaster')?.skill?.vfxTrack).toBe('im_wuji_grandmaster');
 
-    // 2. All 9 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 12 Immortals have unique im_* VFX tracks
+    // 2. All 12 Transcendents have unique tx_* VFX tracks + unique passiveTraits; all 15 Immortals have unique im_* VFX tracks
     const transcendents = data.units.filter((u) => u.grade === 'transcendent');
     const immortals = data.units.filter((u) => u.grade === 'immortal');
-    expect(transcendents.length).toBe(9);
-    expect(immortals.length).toBe(12);
+    expect(transcendents.length).toBe(12);
+    expect(immortals.length).toBe(15);
 
     const txTracks = new Set(transcendents.map((u) => u.skill?.vfxTrack));
     const txPassives = new Set(transcendents.map((u) => u.passiveTrait?.id));
     const imTracks = new Set(immortals.map((u) => u.skill?.vfxTrack));
-    expect(txTracks.size).toBe(9);
-    expect(txPassives.size).toBe(9);
-    expect(imTracks.size).toBe(12);
+    expect(txTracks.size).toBe(12);
+    expect(txPassives.size).toBe(12);
+    expect(imTracks.size).toBe(15);
     for (const tr of txTracks) expect(tr?.startsWith('tx_')).toBe(true);
     for (const tr of imTracks) expect(tr?.startsWith('im_')).toBe(true);
 
@@ -2220,7 +2226,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(simDemonic.getUnits().some((u) => u.unitId === 'black_wind')).toBe(true);
   });
 
-  it('tracks MetaStore 16-title progression reward ladder, abyss difficulty, Lv.15 transcendence, equipTitle, 6 trialRecords, achievement skins, and MRD1- backup without double-granting', () => {
+  it('tracks MetaStore title progression reward ladder, abyss difficulty, Lv.15 transcendence, equipTitle, 6 trialRecords, achievement skins, and MRD1- backup without double-granting', () => {
     const data = loadGameData();
     const storeMap = new Map<string, string>();
     const memStorage: StorageLike = {
@@ -2233,7 +2239,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       },
     };
 
-    expect(TITLE_DEFS.length).toBe(24);
+    expect(TITLE_DEFS.length).toBe(29);
     const meta = new MetaStore(memStorage);
     expect(meta.getProfile().unlockedTitleCount).toBe(0);
     expect(meta.getEquippedTitle()).toBeNull();
@@ -4514,7 +4520,7 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
     expect(data.heroSkinsById.get('skin_abyss_blood_crimson_moon')?.unlockCond).toBe(
       'chronicle_all_clear',
     );
-    expect(TITLE_DEFS).toHaveLength(24);
+    expect(TITLE_DEFS).toHaveLength(29);
 
     const backing = new Map<string, string>();
     const meta = new MetaStore({
@@ -4567,6 +4573,261 @@ describe('운빨무림전 3-faction roster, chain craft (합공·등선), gamble
       }
     }
     expect(meta.getProfile().unlockedTitles.title_relic_chaos_master).toBe(true);
+  });
+
+  it('v5.0 5-Tier Apex Difficulties (혼원마역~무극종언): auto-migration, progression chain, Chaos Shards, Twin Boss, summon surcharge, gamble penalty & MRD1- backup', () => {
+    const data = loadGameData();
+    expect(data.difficulties).toHaveLength(9);
+    expect(DIFFICULTY_ORDER).toEqual([
+      'normal',
+      'hard',
+      'hell',
+      'abyss',
+      'chaos_realm',
+      'crimson_eclipse',
+      'nine_heavens',
+      'primordial_void',
+      'absolute_zenith',
+    ]);
+
+    // 1. Auto-migration: legacy save with cleared abyss (without chaos_realm keys) auto-unlocks chaos_realm
+    const legacyBacking = new Map<string, string>();
+    legacyBacking.set(
+      'murim_defense_meta_v1',
+      JSON.stringify({
+        gold: 500,
+        keys: 5,
+        silk: 50,
+        unlockedDifficulties: { normal: true, hard: true, hell: true, abyss: true },
+        clearedDifficulties: { normal: true, hard: true, hell: true, abyss: true },
+      }),
+    );
+    const migratedMeta = new MetaStore({
+      getItem: (k) => legacyBacking.get(k) ?? null,
+      setItem: (k, v) => {
+        legacyBacking.set(k, v);
+      },
+    });
+    expect(migratedMeta.getProfile().unlockedDifficulties.chaos_realm).toBe(true);
+    expect(migratedMeta.getProfile().unlockedDifficulties.crimson_eclipse).toBe(false);
+
+    // 2. Full 5-tier progression chain: chaos_realm -> crimson_eclipse -> nine_heavens -> primordial_void -> absolute_zenith
+    const apexChain = [
+      { diff: 'chaos_realm', next: 'crimson_eclipse', title: 'title_chaos_realm_victor', shards: 14 },
+      { diff: 'crimson_eclipse', next: 'nine_heavens', title: 'title_crimson_eclipse_victor', shards: 20 },
+      { diff: 'nine_heavens', next: 'primordial_void', title: 'title_nine_heavens_victor', shards: 28 },
+      { diff: 'primordial_void', next: 'absolute_zenith', title: 'title_primordial_void_victor', shards: 40 },
+      { diff: 'absolute_zenith', next: null, title: 'title_absolute_zenith_victor', shards: 65 },
+    ] as const;
+
+    for (const step of apexChain) {
+      expect(migratedMeta.setSelectedDifficulty(step.diff)).toBe(true);
+      const rec = migratedMeta.settleRun({
+        wave: 30,
+        monstersSlain: 450,
+        bossesSlain: 6,
+        bountiesSlain: 2,
+        difficulty: step.diff,
+        trialId: null,
+        runMode: 'standard',
+        victory: true,
+      });
+      expect(rec.shardsEarned).toBe(step.shards);
+      expect(rec.unlockedNextDifficulty).toBe(step.next);
+      expect(migratedMeta.getProfile().clearedDifficulties[step.diff]).toBe(true);
+      expect(migratedMeta.getProfile().unlockedTitles[step.title]).toBe(true);
+      if (step.diff === 'chaos_realm') {
+        expect(migratedMeta.getProfile().ownedSkins.court_primordial_cosmos).toBe(true);
+      }
+    }
+
+    // Repeat clear grants repeatClearShards without double-granting first-clear gold
+    const repeatRec = migratedMeta.settleRun({
+      wave: 30,
+      monstersSlain: 450,
+      bossesSlain: 6,
+      difficulty: 'absolute_zenith',
+      trialId: null,
+      runMode: 'standard',
+      victory: true,
+    });
+    expect(repeatRec.firstClearBonusGold).toBe(0);
+    expect(repeatRec.shardsEarned).toBe(16);
+
+    // MRD1- backup round-trip preserves all 9 difficulty states & achievement map
+    const code = migratedMeta.exportBackupCode();
+    const freshStore = new Map<string, string>();
+    const restoredMeta = new MetaStore({
+      getItem: (k) => freshStore.get(k) ?? null,
+      setItem: (k, v) => {
+        freshStore.set(k, v);
+      },
+    });
+    expect(restoredMeta.importBackupCode(code).ok).toBe(true);
+    expect(restoredMeta.getProfile().clearedDifficulties.absolute_zenith).toBe(true);
+    expect(restoredMeta.getProfile().ownedSkins.court_primordial_cosmos).toBe(true);
+
+    // 3. Apex gameplay modifiers in Simulation: summon surcharge, gamble penalty, primordial unlocked at Wave 1, Twin Boss on Wave 5
+    const simNormal = new Simulation(data, 0x50501111, {}, 'normal', null);
+    const simZenith = new Simulation(data, 0x50501111, {}, 'absolute_zenith', null);
+    expect(simZenith.getSummonCost()).toBe(simNormal.getSummonCost() + 8);
+    expect(simZenith.getEffectiveGambleBonusPct()).toBe(simNormal.getEffectiveGambleBonusPct() - 8);
+    expect(simZenith.buildSnapshot(1, false).primordialUnlocked).toBe(true);
+
+    // Advance absolute_zenith to Wave 5 -> Twin Lieutenant Boss spawns alongside Main Boss!
+    simZenith.commands.enqueue({ type: 'grantTestCoin', amount: 9999 });
+    simZenith.tick();
+    const snapZenith = simZenith.buildSnapshot(1, false);
+    expect(snapZenith.difficulty).toBe('absolute_zenith');
+    // Test Twin Boss spawn at Wave 5 via deterministic simulation
+    const simZenithW5 = new Simulation(data, 0x50502222, {}, 'absolute_zenith', null);
+    spawnCheonmaHelper(simZenithW5);
+    let sawTwinBoss = false;
+    for (let t = 0; t < 4500 && !sawTwinBoss; t++) {
+      simZenithW5.tick();
+      if (simZenithW5.getMonsters().some((m) => m.bossName?.includes('쌍두호법'))) {
+        sawTwinBoss = true;
+      }
+    }
+    expect(sawTwinBoss).toBe(true);
+
+    // 1x vs 3x bit-exact determinism on absolute_zenith
+    const det1 = new Simulation(data, 0x5050aaaa, {}, 'absolute_zenith', null);
+    const det3 = new Simulation(data, 0x5050aaaa, {}, 'absolute_zenith', null);
+    det1.commands.enqueue({ type: 'summon' });
+    det3.commands.enqueue({ type: 'summon' });
+    for (let t = 0; t < 240; t++) det1.tick();
+    for (let f = 0; f < 80; f++) {
+      det3.tick();
+      det3.tick();
+      det3.tick();
+    }
+    expect(det3.hashState()).toBe(det1.hashState());
+  });
+
+  it('v5.0 3 Bespoke Arena Maps (선계 영기 · 구유 용암진 · 태고 성좌진) & 6 New Heroes + 삼계종언 Trinity Combo', () => {
+    const data = loadGameData();
+    expect(data.courtSkinsById.get('court_celestial_jade_peak')?.bgImage).toBe(
+      'bg/bg_celestial_peak.webp',
+    );
+    expect(data.courtSkinsById.get('court_nether_abyss_forge')?.bgImage).toBe(
+      'bg/bg_nether_abyss.webp',
+    );
+    expect(data.courtSkinsById.get('court_primordial_cosmos')?.bgImage).toBe(
+      'bg/bg_primordial_cosmos.webp',
+    );
+    expect(CODEX_MILESTONES.some((m) => m.target === 66)).toBe(true);
+
+    // 1. celestial_qi: +35% Qi gain on kills/waves AND -15% command skill cooldown
+    const simBase = new Simulation(data, 0x50503333, {}, 'normal', null, false, { arenaRule: null });
+    const simCel = new Simulation(data, 0x50503333, {}, 'normal', null, false, {
+      arenaRule: 'celestial_qi',
+    });
+    spawnCheonmaHelper(simBase);
+    spawnCheonmaHelper(simCel);
+    for (let t = 0; t < 450; t++) {
+      simBase.tick();
+      simCel.tick();
+    }
+    const qiBase = simBase.buildSnapshot(1, false).commandSkills.qi;
+    const qiCel = simCel.buildSnapshot(1, false).commandSkills.qi;
+    expect(qiCel).toBeGreaterThanOrEqual(qiBase);
+    expect(qiCel).toBeGreaterThanOrEqual(40);
+    // Wait until base also reaches 40 Qi so both cast cmd_sword_barrage cleanly
+    while (simBase.buildSnapshot(1, false).commandSkills.qi < 40) {
+      simBase.tick();
+    }
+    simBase.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_sword_barrage' });
+    simCel.commands.enqueue({ type: 'castCommandSkill', skillId: 'cmd_sword_barrage' });
+    simBase.tick();
+    simCel.tick();
+    const cdBase = simBase.buildSnapshot(1, false).commandSkills.skills[0]!.cooldownLeftTicks;
+    const cdCel = simCel.buildSnapshot(1, false).commandSkills.skills[0]!.cooldownLeftTicks;
+    expect(cdCel).toBeLessThan(cdBase);
+    expect(cdCel).toBe(Math.round(240 * 0.85) - 1);
+
+    // 2. abyss_melt: +15 global armor shred reflected in SlotView
+    const simMelt = new Simulation(data, 0x50504444, {}, 'normal', null, false, {
+      arenaRule: 'abyss_melt',
+    });
+    const simPlain = new Simulation(data, 0x50504444, {}, 'normal', null, false, {
+      arenaRule: null,
+    });
+    simMelt.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    simMelt.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    simPlain.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+    simPlain.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+    simMelt.tick();
+    simPlain.tick();
+    const uMelt = simMelt.buildSnapshot(1, false).field.find((s) => s !== null)!;
+    const uPlain = simPlain.buildSnapshot(1, false).field.find((s) => s !== null)!;
+    expect(uMelt.armorShred).toBe(uPlain.armorShred + 15);
+
+    // 3. primordial_star: +50% Spirit Vein bonus (+51 range on wind tile vs +34)
+    const simStar = new Simulation(data, 0x50505555, {}, 'normal', null, false, {
+      arenaRule: 'primordial_star',
+    });
+    const simNoStar = new Simulation(data, 0x50505555, {}, 'normal', null, false, {
+      arenaRule: null,
+    });
+    const windIdx = simStar.buildSnapshot(1, false).spiritTiles.find((t) => t.kind === 'wind')!
+      .fieldIndex;
+    for (const s of [simStar, simNoStar]) {
+      s.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+      s.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: 'hwasan_novice' });
+      s.tick();
+      const fromIdx = s.buildSnapshot(1, false).field.findIndex((sl) => sl !== null);
+      if (fromIdx !== windIdx) {
+        s.commands.enqueue({
+          type: 'move',
+          from: { area: 'field', index: fromIdx },
+          to: { area: 'field', index: windIdx },
+        });
+        s.tick();
+      }
+    }
+    const rStar = simStar.buildSnapshot(1, false).field[windIdx]!.range;
+    const rNoStar = simNoStar.buildSnapshot(1, false).field[windIdx]!.range;
+    expect(rStar - rNoStar).toBe(17); // 51 - 34 = +17 extra wind vein range!
+
+    // 4. Chain-craft the 3 new v5.0 Immortals & fire combo_v5_eclipse_trinity deterministically
+    const simV5 = new Simulation(data, 0x50506666, {}, 'chaos_realm', null, false, {
+      arenaRule: 'primordial_star',
+    });
+    const craftByRecipe = (sim: Simulation, recipeId: string): void => {
+      const recipe = data.recipes.find((r) => r.id === recipeId)!;
+      for (const ing of recipe.ingredients) {
+        const sub = data.recipes.find((r) => r.output === ing.unit && !r.id.startsWith('r_3x_'));
+        if (sub) {
+          const leaves = sim.recipeGraph.leafCost.get(sub.id)!;
+          for (const [leafId, cnt] of leaves) {
+            for (let i = 0; i < cnt * ing.n; i++) {
+              sim.commands.enqueue({ type: 'grantTestResource', wispGrade: 'common' });
+              sim.commands.enqueue({ type: 'useWisp', grade: 'common', unitId: leafId });
+            }
+          }
+          sim.tick();
+          sim.commands.enqueue({ type: 'craft', recipeId: sub.id, chain: true });
+          sim.tick();
+        }
+      }
+      sim.commands.enqueue({ type: 'craft', recipeId, chain: false });
+      sim.tick();
+    };
+    craftByRecipe(simV5, 'r_celestial_jade_emperor');
+    craftByRecipe(simV5, 'r_nether_ghost_sovereign');
+    craftByRecipe(simV5, 'r_eclipse_demon_god');
+    const snapV5 = simV5.buildSnapshot(1, false);
+    expect(snapV5.activeCombos.some((c) => c.id === 'combo_v5_eclipse_trinity')).toBe(true);
+
+    let trinityFired = false;
+    simV5.events.on('combo:triggered', (ev) => {
+      if (ev.comboId === 'combo_v5_eclipse_trinity') trinityFired = true;
+    });
+    for (let t = 0; t < 400 && !trinityFired; t++) {
+      simV5.tick();
+    }
+    expect(trinityFired).toBe(true);
   });
 });
 

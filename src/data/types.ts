@@ -21,6 +21,9 @@ export type VfxTrackKind =
   | 'tx_ice_empress'
   | 'tx_blood_sovereign'
   | 'tx_abyss_emperor'
+  | 'tx_kunlun_immortal'
+  | 'tx_crimson_shadow'
+  | 'tx_hellfire_archon'
   | 'im_cheonma'
   | 'im_sword_immortal'
   | 'im_asura_emperor'
@@ -32,7 +35,10 @@ export type VfxTrackKind =
   | 'im_myriad_demon'
   | 'im_primordial_sword'
   | 'im_chaos_poison'
-  | 'im_void_cheonma';
+  | 'im_void_cheonma'
+  | 'im_jade_emperor'
+  | 'im_nether_sovereign'
+  | 'im_eclipse_demon';
 
 export type PassiveProcKind = 'execute' | 'pierce' | 'boss' | 'corrode';
 
@@ -294,7 +300,16 @@ export interface RelicDef {
   readonly stepUpgradeGold: number;
 }
 
-export type DifficultyId = 'normal' | 'hard' | 'hell' | 'abyss';
+export type DifficultyId =
+  | 'normal'
+  | 'hard'
+  | 'hell'
+  | 'abyss'
+  | 'chaos_realm'
+  | 'crimson_eclipse'
+  | 'nine_heavens'
+  | 'primordial_void'
+  | 'absolute_zenith';
 
 export interface DifficultyConfig {
   readonly id: DifficultyId;
@@ -309,6 +324,15 @@ export interface DifficultyConfig {
   readonly rewardMult: number;
   readonly firstClearGold: number;
   readonly firstClearKeys: number;
+  readonly firstClearSilk?: number;
+  readonly firstClearShards?: number;
+  readonly repeatClearShards?: number;
+  readonly bossCooldownMult?: number;
+  readonly bossArmorRegenPerSec?: number;
+  readonly summonSurcharge?: number;
+  readonly gamblePenaltyPct?: number;
+  readonly twinBossMinWave?: number;
+  readonly unlocksPrimordial?: boolean;
 }
 
 export type TrialId =
@@ -379,12 +403,19 @@ export type SkinUnlockCond =
   | 'hard_clear'
   | 'hell_clear'
   | 'abyss_clear'
+  | 'chaos_realm_clear'
   | 'wave_35'
   | 'wave_55'
   | 'all_trials_clear'
   | 'chronicle_all_clear';
 export type SkinCrestKind = 'halo' | 'crown' | 'blades' | 'orbs';
-export type ArenaRuleId = 'frost_chill' | 'sandstorm_crit' | 'bloodflame_forge';
+export type ArenaRuleId =
+  | 'frost_chill'
+  | 'sandstorm_crit'
+  | 'bloodflame_forge'
+  | 'celestial_qi'
+  | 'abyss_melt'
+  | 'primordial_star';
 
 export type CourtSkinId =
   | 'court_bamboo_dawn'
@@ -394,7 +425,10 @@ export type CourtSkinId =
   | 'court_snow_sword_pavilion'
   | 'court_frost_palace'
   | 'court_western_desert'
-  | 'court_demonic_citadel';
+  | 'court_demonic_citadel'
+  | 'court_celestial_jade_peak'
+  | 'court_nether_abyss_forge'
+  | 'court_primordial_cosmos';
 
 export interface HeroSkinDef {
   readonly id: string;
@@ -419,6 +453,7 @@ export interface CourtSkinDef {
   readonly unlockCond?: SkinUnlockCond;
   readonly silkCost: number;
   readonly desc: string;
+  readonly bgImage?: string;
   readonly tintColor: string;
   readonly tintAlpha: number;
   readonly lanternColor: string;
@@ -437,6 +472,11 @@ export type TitleConditionKind =
   | 'hard_clear'
   | 'hell_clear'
   | 'abyss_clear'
+  | 'chaos_realm_clear'
+  | 'crimson_eclipse_clear'
+  | 'nine_heavens_clear'
+  | 'primordial_void_clear'
+  | 'absolute_zenith_clear'
   | 'all_trials_clear'
   | 'best_wave'
   | 'discovered_units'

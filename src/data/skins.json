@@ -450,6 +450,55 @@
       "arenaRule": "bloodflame_forge",
       "arenaRuleLabel": "🔥 혈마 화진",
       "arenaRuleDesc": "전 협객 공+5% · 위험·주박 지대 상하좌우 인접 협객 공+18% (고위험 고화력)!"
+    },
+    {
+      "id": "court_celestial_jade_peak",
+      "name": "곤륜 선계 · 태청옥경전",
+      "rarity": "mythic",
+      "silkCost": 90,
+      "desc": "운해 위 천상 옥궁과 청옥 폭포가 어우러진 신규 선계 전장 · 특화 규칙 【선계 영기】 발동",
+      "bgImage": "bg/bg_celestial_peak.webp",
+      "tintColor": "#38bdf8",
+      "tintAlpha": 0.03,
+      "lanternColor": "#38bdf8",
+      "petalPrimary": "#e0f2fe",
+      "petalSecondary": "#fde047",
+      "arenaRule": "celestial_qi",
+      "arenaRuleLabel": "☁ 선계 영기",
+      "arenaRuleDesc": "장문인 진법 호령 진기 획득량 +35% · 모든 진법 호령 쿨타임 -15% 가속!"
+    },
+    {
+      "id": "court_nether_abyss_forge",
+      "name": "황천 용암 · 구유화산전",
+      "rarity": "mythic",
+      "silkCost": 110,
+      "desc": "들끓는 용암 해자와 흑요석 마룡 다리가 펼쳐진 신규 화산 전장 · 특화 규칙 【구유 용암진】 발동",
+      "bgImage": "bg/bg_nether_abyss.webp",
+      "tintColor": "#f97316",
+      "tintAlpha": 0.03,
+      "lanternColor": "#f97316",
+      "petalPrimary": "#fb923c",
+      "petalSecondary": "#ef4444",
+      "arenaRule": "abyss_melt",
+      "arenaRuleLabel": "🌋 구유 용암진",
+      "arenaRuleDesc": "전 협객 기본 파갑 +15 · 보스·수배 피해 +10% (마물 이동속도 +5% 주의)!"
+    },
+    {
+      "id": "court_primordial_cosmos",
+      "name": "태고 성좌 · 무극천외전",
+      "rarity": "achievement",
+      "unlockCond": "chaos_realm_clear",
+      "silkCost": 0,
+      "desc": "[업적 한정] 혼원마역 제 30 장 제패자에게 개방되는 은하 성좌 신규 전장 · 특화 규칙 【태고 성좌진】 발동",
+      "bgImage": "bg/bg_primordial_cosmos.webp",
+      "tintColor": "#8b5cf6",
+      "tintAlpha": 0.03,
+      "lanternColor": "#c084fc",
+      "petalPrimary": "#fde047",
+      "petalSecondary": "#7dd3fc",
+      "arenaRule": "primordial_star",
+      "arenaRuleLabel": "🌌 태고 성좌진",
+      "arenaRuleDesc": "영맥 명당 타일(양맥·풍맥) 보너스 +50% 증폭 · 전 협객 치명타 배율 +0.25x!"
     }
   ]
 }
